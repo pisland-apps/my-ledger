@@ -1,0 +1,1686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ledger</title>
+
+    <!-- PWA / "Add to Home Screen" support — this build is meant to be hosted over https (e.g. GitHub Pages)
+         so the Service Worker (sw.js) can cache the app for true offline use. -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Ledger">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --primary: #6366f1;
+            --income-color: #10b981;
+            --expense-color: #ef4444;
+            --transfer-color: #3b82f6;
+            --border-color: #e2e8f0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            /* Prevents double-tap zoom delay on mobile devices */
+            touch-action: manipulation;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            padding: 16px;
+            max-width: 600px;
+            margin: 0 auto;
+            padding-bottom: 40px;
+        }
+
+        /* SPA Page management frameworks */
+        .page { display: block; }
+        .page.hidden { display: none !important; }
+
+        header {
+            background: var(--card-bg);
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 20px;
+        }
+
+        .net-worth-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+        }
+
+        .currency-pill {
+            background: #f1f5f9;
+            border: 1px solid var(--border-color);
+            padding: 12px 14px; /* Enlarged touch target for mobile */
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .section-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+        }
+
+        .text-btn {
+            background: none;
+            border: none;
+            color: var(--primary);
+            font-size: 0.85rem;
+            font-weight: 700;
+            padding: 8px 12px; /* Touch target optimized */
+            cursor: pointer;
+        }
+
+        .actions-bar {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .action-btn {
+            border: none;
+            border-radius: 12px;
+            padding: 16px 6px; /* Touch friendly height */
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            transition: transform 0.1s ease;
+        }
+        .action-btn:active { transform: scale(0.96); }
+        .btn-income { background-color: var(--income-color); }
+        .btn-expense { background-color: var(--expense-color); }
+        .btn-transfer { background-color: var(--transfer-color); }
+
+        .report-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            border: 1.5px solid var(--border-color);
+            padding: 16px;
+        }
+
+        .report-summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .stat-box {
+            padding: 14px;
+            border-radius: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+        .stat-box:active { opacity: 0.8; }
+        .stat-box.income { background: #f0fdf4; border: 1px solid #bbf7d0; }
+        .stat-box.expense { background: #fef2f2; border: 1px solid #fecaca; }
+
+        .stat-title { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; }
+        .stat-amount { font-size: 1.15rem; margin-top: 4px; font-weight: 700; }
+
+        .net-savings-banner {
+            padding: 14px;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: 700;
+            font-size: 0.95rem;
+            margin-bottom: 14px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .net-savings-banner:active { transform: scale(0.98); }
+
+        .progress-bar-container {
+            background: #e2e8f0;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+        .progress-bar-fill { background: var(--expense-color); height: 100%; border-radius: 4px; }
+
+        .category-row-item {
+            cursor: pointer;
+            transition: background 0.15s;
+            padding: 10px 6px; /* Easier to tap on phone screens */
+            border-radius: 8px;
+        }
+        .category-row-item:active { background: #f1f5f9; }
+
+        .filters {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        select {
+            padding: 10px;
+            border: 1.5px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--bg-color);
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-main);
+            flex: 1;
+            height: 40px;
+        }
+
+        .account-list-container {
+            background: var(--card-bg);
+            border: 1.5px solid var(--border-color);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .account-list-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+        }
+        .account-list-row:last-child { border-bottom: none; }
+        .account-list-row:active { background-color: #f1f5f9; }
+
+        /* Storage Metrics elements */
+        .data-meter-box {
+            background: var(--card-bg);
+            border: 1.5px solid var(--border-color);
+            border-radius: 16px;
+            padding: 14px;
+            margin-top: 24px;
+            font-size: 0.78rem;
+            color: #555555;
+            line-height: 1.6;
+        }
+        .hardware-track {
+            background-color: #f4ede4;
+            border: 1.5px solid #dcd1c4;
+            height: 14px;
+            border-radius: 7px;
+            margin: 8px 0;
+            overflow: hidden;
+            padding: 1px;
+        }
+        .hardware-fill {
+            background: linear-gradient(to bottom, #e3cbb3, #c5a88a);
+            height: 100%;
+            border-radius: 5px;
+            width: 0.5%;
+        }
+
+        /* LEDGER WORKSPACE PAGES */
+        .nav-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .back-btn {
+            background: var(--card-bg);
+            border: 1.5px solid var(--border-color);
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+        .back-btn:active { background: #f1f5f9; }
+
+        .ledger-container {
+            background: var(--card-bg);
+            border: 1.5px solid var(--border-color);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .ledger-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .ledger-item:active { background: #f1f5f9; }
+        .item-left { display: flex; flex-direction: column; gap: 2px; max-width: 65%; }
+        .item-name { font-weight: 600; font-size: 0.9rem; }
+        .item-meta { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; }
+        .item-right { display: flex; align-items: center; gap: 10px; }
+        .item-value { font-weight: 700; font-size: 0.9rem; text-align: right; }
+        .converted-subtext { font-size: 0.65rem; color: var(--text-muted); display: block; font-weight: 500; }
+        .trash-btn { background: none; border: none; color: #cbd5e1; cursor: pointer; padding: 8px; font-size: 1.1rem; }
+        .trash-btn:active { color: var(--expense-color); }
+
+        /* Statement sheets */
+        .statement-card {
+            background: var(--card-bg);
+            border: 1.5px solid var(--border-color);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .statement-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+        .statement-row:last-child { border-bottom: none; }
+        .statement-row:active { background: #f8fafc; }
+
+        /* Modal Elements */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.4);
+            backdrop-filter: blur(4px);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 16px;
+        }
+        .modal.active { display: flex; }
+        .modal-sheet {
+            background: var(--card-bg);
+            width: 100%;
+            max-width: 450px;
+            border-radius: 16px;
+            padding: 20px;
+            max-height: 85vh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch; /* Butter-smooth scrolling on iOS/Android */
+        }
+        .form-row { margin-bottom: 12px; }
+        .form-row-inline { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+        label { display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; }
+        input, select.form-input { width: 100%; padding: 12px; border: 1.5px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; background: #f8fafc; height: 44px; }
+        .submit-btn { background: var(--primary); color: white; border: none; padding: 14px; border-radius: 10px; width: 100%; font-weight: 700; cursor: pointer; font-size: 0.9rem; margin-top: 10px; }
+        .submit-btn:active { opacity: 0.9; transform: scale(0.99); }
+        .config-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+        .config-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: #f8fafc; border-radius: 8px; border: 1px solid var(--border-color); }
+        .util-row { display: flex; gap: 8px; margin-top: 24px; }
+        .btn-util { flex: 1; padding: 12px; font-size: 0.8rem; border-radius: 8px; background: #e2e8f0; border: none; font-weight: 600; cursor: pointer; }
+
+        /* Emoji Icon Picker Grid Design */
+        .emoji-picker-container {
+            border: 1.5px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px;
+            background: #f8fafc;
+            max-height: 180px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+            -webkit-overflow-scrolling: touch;
+        }
+        .emoji-section-title {
+            font-size: 0.65rem;
+            font-weight: 800;
+            color: var(--text-muted);
+            margin: 8px 0 4px 0;
+            text-transform: uppercase;
+        }
+        .emoji-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 6px;
+        }
+        .emoji-btn {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 1.2rem;
+            padding: 8px 0; /* Expanded touch height for mobile taps */
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.1s;
+        }
+        .emoji-btn:active, .emoji-btn.selected {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            transform: scale(1.1);
+        }
+        .category-display-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ================= PAGE 1: PORTFOLIO MAIN WORKSPACE ================= -->
+    <div id="page-workspace" class="page">
+        <header>
+            <div class="net-worth-container">
+                <div>
+                    <h1 id="netWorthDisplay">0.00</h1>
+                    <p style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">Portfolio Net Worth</p>
+                </div>
+                <button class="currency-pill" onclick="openCurrencyConfig()">
+                    Base: <span id="currentBasePill">USD</span> ⚙
+                </button>
+            </div>
+        </header>
+
+        <div class="section-header" style="margin-top: 0;">
+            <span class="section-title">Quick Transaction Entry</span>
+            <button class="text-btn" onclick="openCategoriesConfig()">🏷 Categories</button>
+        </div>
+        <div class="actions-bar">
+            <button class="action-btn btn-income" onclick="openTransactionForm('income')">
+                <span>🟢 Income</span>
+            </button>
+            <button class="action-btn btn-expense" onclick="openTransactionForm('expense')">
+                <span>🔴 Expense</span>
+            </button>
+            <button class="action-btn btn-transfer" onclick="openTransactionForm('transfer')">
+                <span>🔄 Transfer</span>
+            </button>
+        </div>
+
+        <div class="section-header">
+            <span class="section-title">Financial Report Card</span>
+        </div>
+        <div class="report-card">
+            <div class="report-summary-grid">
+                <div class="stat-box income" onclick="navigateToDirectTypePage('income')">
+                    <span class="stat-title" style="color: #166534;">Total Income</span>
+                    <div class="stat-amount" id="reportIncome" style="color: #15803d;">0.00</div>
+                </div>
+                <div class="stat-box expense" onclick="navigateToDirectTypePage('expense')">
+                    <span class="stat-title" style="color: #991b1b;">Total Expenses</span>
+                    <div class="stat-amount" id="reportExpense" style="color: #b91c1c;">0.00</div>
+                </div>
+            </div>
+            <!-- Clickable Net Savings to route to SPA financial balance sheet page -->
+            <div id="savingsBanner" class="net-savings-banner" onclick="navigateToSavingsPage()">
+                Net Savings: <span id="reportSavings">0.00</span> 📊
+            </div>
+            
+            <label>Spending Breakdown (Click Category to Filter)</label>
+            <div id="categoryReportList" style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;"></div>
+
+            <div class="filters">
+                <select id="filterMonth" onchange="ledgerRenderLimit = LEDGER_PAGE_SIZE; renderApp()">
+                    <option value="all">All Months</option>
+                    <option value="0">January</option><option value="1">February</option><option value="2">March</option>
+                    <option value="3">April</option><option value="4">May</option><option value="5">June</option>
+                    <option value="6">July</option><option value="7">August</option><option value="8">September</option>
+                    <option value="9">October</option><option value="10">November</option><option value="11">December</option>
+                </select>
+                <select id="filterYear" onchange="ledgerRenderLimit = LEDGER_PAGE_SIZE; renderApp()">
+                    <option value="all">All Years</option>
+                    <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="section-header">
+            <span class="section-title">My Financial Accounts</span>
+            <button class="text-btn" onclick="openAccountsConfig()">🛠 Manage</button>
+        </div>
+        <div class="account-list-container" id="accountsListView"></div>
+
+        <!-- Fully Translated Data Meter Info -->
+        <div class="data-meter-box">
+            <div id="appStorageText">App Local Database footprint: ~0.00 MB (0 attached, 0.00 MB)</div>
+            <div class="hardware-track">
+                <div class="hardware-fill" id="meterFillElement"></div>
+            </div>
+            <div id="systemQuotaText">Total browser quota limit: ~10240.00 MB, Used: 0.00 MB (across local sandboxes)</div>
+        </div>
+
+        <div class="util-row">
+            <button class="btn-util" onclick="exportBackup()">💾 Export JSON</button>
+            <button class="btn-util" onclick="document.getElementById('importInput').click()">📥 Import JSON</button>
+            <input type="file" id="importInput" accept=".json" style="display:none" onchange="importBackup(event)">
+        </div>
+    </div>
+
+    <!-- ================= PAGE 2: LEDGER ACTIVITY LOG ================= -->
+    <div id="page-ledger" class="page hidden">
+        <div class="nav-header">
+            <button class="back-btn" onclick="handleLedgerBackClick()">&larr; Back</button>
+            <div>
+                <h3 id="ledgerTargetTitle" style="font-weight:800; font-size:1.2rem;">Account Ledger</h3>
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Transaction Log History (Click item to Edit)</p>
+            </div>
+        </div>
+        <div class="ledger-container" id="ledgerList"></div>
+    </div>
+
+    <!-- ================= PAGE 3: NET SAVINGS STATEMENT SHEET ================= -->
+    <div id="page-savings" class="page hidden">
+        <div class="nav-header">
+            <button class="back-btn" onclick="navigateToWorkspace()">&larr; Back</button>
+            <div>
+                <h3 style="font-weight:800; font-size:1.2rem;">Net Savings Statement</h3>
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Balanced Category Sheet</p>
+            </div>
+        </div>
+        
+        <div class="statement-card">
+            <h4 style="margin-bottom:10px; color:var(--income-color);">INCOME CATEGORIES</h4>
+            <div id="savingsIncomeRows"></div>
+        </div>
+
+        <div class="statement-card">
+            <h4 style="margin-bottom:10px; color:var(--expense-color);">EXPENSE CATEGORIES</h4>
+            <div id="savingsExpenseRows"></div>
+        </div>
+
+        <div class="statement-card" style="border: 2px solid var(--primary); background: #f5f3ff;">
+            <div style="display:flex; justify-content:space-between; font-weight:800; font-size:1.1rem;">
+                <span id="savingsSurplusLabel">Surplus Margin:</span>
+                <span id="savingsSurplusValue">0.00</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= SYSTEM MODALS ================= -->
+    <!-- MODAL: Advanced Multi-Currency Core Configuration -->
+    <div class="modal" id="currencyModal">
+        <div class="modal-sheet">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                <h3 style="font-weight: 800;">Global Currency Settings</h3>
+                <button onclick="closeModal('currencyModal')" style="background:none; border:none; font-size: 1.5rem; padding: 8px;">&times;</button>
+            </div>
+            <div class="form-row">
+                <label>Main Base Currency</label>
+                <select id="baseCurrencySelect" class="form-input" onchange="handleBaseCurrencyChange()">
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="SGD">SGD (S$)</option>
+                    <option value="MYR">MYR (RM)</option>
+                </select>
+            </div>
+            <p style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; margin-bottom: 8px; text-transform: uppercase;">Exchange Rates (Per 1 Base Unit)</p>
+            <div id="fxRatesFormContainer"></div>
+            <button type="button" onclick="saveFxRates()" class="submit-btn" style="margin-top: 10px;">Save FX Values</button>
+        </div>
+    </div>
+
+    <!-- MODAL: Accounts Subsystem Manager -->
+    <div class="modal" id="accountsModal">
+        <div class="modal-sheet">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                <h3 style="font-weight: 800;">Manage Accounts</h3>
+                <button onclick="closeModal('accountsModal')" style="background:none; border:none; font-size: 1.5rem; padding: 8px;">&times;</button>
+            </div>
+            <div style="border-bottom: 2px dashed var(--border-color); padding-bottom: 15px; margin-bottom: 15px;">
+                <h4 id="accountFormHeaderTitle" style="font-size:0.8rem; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px;">Create New Account</h4>
+                <input type="hidden" id="editAccountId">
+                <div class="form-row">
+                    <label>Account Name</label>
+                    <input type="text" id="newAccName" placeholder="e.g. DBS Bank, Cash Wallet" required>
+                </div>
+                <div class="form-row-inline">
+                    <div>
+                        <label>Opening Value</label>
+                        <input type="number" id="newAccBal" step="0.01" value="0">
+                    </div>
+                    <div>
+                        <label>Currency</label>
+                        <select id="newAccCurrency" class="form-input"></select>
+                    </div>
+                </div>
+                <!-- Action handlers changed to button onclick to bypass Android keyboard/form intercept bugs -->
+                <button type="button" id="accFormSubmitBtn" onclick="handleCreateAccountMobile()" class="submit-btn" style="background: var(--transfer-color);">Create Account</button>
+                <button type="button" id="accFormCancelBtn" class="submit-btn" onclick="resetAccountForm()" style="background:#64748b; margin-top:6px; display:none;">Cancel Edit</button>
+            </div>
+            <div class="config-list" id="accountConfigList"></div>
+        </div>
+    </div>
+
+    <!-- MODAL: Dynamic Category Creator & Customizer -->
+    <div class="modal" id="categoriesModal">
+        <div class="modal-sheet">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                <h3 style="font-weight: 800;">Categories Designer</h3>
+                <button onclick="closeModal('categoriesModal')" style="background:none; border:none; font-size: 1.5rem; padding: 8px;">&times;</button>
+            </div>
+            <div style="border-bottom: 2px dashed var(--border-color); padding-bottom: 15px; margin-bottom: 15px;">
+                <h4 style="font-size:0.8rem; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px;">Design Custom Category</h4>
+                <div class="form-row-inline" style="grid-template-columns: 2fr 1fr; margin-bottom: 8px;">
+                    <div>
+                        <label>Category Label Name</label>
+                        <input type="text" id="catLabelName" placeholder="e.g. Subscriptions, Crypto" required>
+                    </div>
+                    <div>
+                        <label>Fin. Type</label>
+                        <select id="catTypeSelect" class="form-input">
+                            <option value="expense">Expense</option>
+                            <option value="income">Income</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-row" style="margin-bottom: 8px;">
+                    <label>Selected Badge Icon: <span id="currentSelectedEmojiBadge" style="font-size:1.1rem; font-weight:bold;">🍔</span></label>
+                    <input type="hidden" id="catSelectedEmoji" value="🍔">
+                </div>
+
+                <!-- Rich Emoji Directory Grid -->
+                <div class="emoji-picker-container" id="emojiPickerPanel"></div>
+
+                <!-- Crucial Mobile Fix: Changed to direct touch target button executing native JS -->
+                <button type="button" onclick="handleCreateCategoryMobile()" class="submit-btn">Register Category Badge</button>
+            </div>
+            <div class="config-list" id="categoriesConfigList" style="max-height: 200px; overflow-y:auto;"></div>
+        </div>
+    </div>
+
+    <!-- MODAL: Transaction Creator / Editor (Hybrid) -->
+    <div class="modal" id="txModal">
+        <div class="modal-sheet">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                <h3 id="txModalTitle" style="font-weight: 800;">Log Ledger Item</h3>
+                <button onclick="closeModal('txModal')" style="background:none; border:none; font-size: 1.5rem; padding: 8px;">&times;</button>
+            </div>
+            <div>
+                <input type="hidden" id="txId">
+                <input type="hidden" id="txType">
+                <div class="form-row"><label>Description</label><input type="text" id="txDesc" required></div>
+                <div class="form-row-inline">
+                    <div><label>Amount</label><input type="number" id="txAmount" step="0.01" required></div>
+                    <div><label>Currency</label><select id="txCurrency" class="form-input"></select></div>
+                </div>
+                <div class="form-row" id="srcAccRow"><label id="srcAccLabel">Account</label><select id="srcAccount" class="form-input" onchange="syncTransactionCurrency()"></select></div>
+                <div class="form-row" id="destAccRow" style="display:none;"><label>To Account</label><select id="destAccount" class="form-input"></select></div>
+                <div class="form-row" id="categoryRow"><label>Category</label><select id="txCategory" class="form-input"></select></div>
+                <div class="form-row"><label>Date</label><input type="date" id="txDate" required></div>
+                <button type="button" onclick="handleTransactionSubmitMobile()" id="txSubmitBtn" class="submit-btn">Commit Entry</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Custom Confirm Dialog (replaces native confirm() for consistent styling) -->
+    <div class="modal" id="confirmModal">
+        <div class="modal-sheet" style="max-width: 340px;">
+            <p id="confirmModalMessage" style="font-size:0.9rem; line-height:1.5; margin-bottom:18px;"></p>
+            <div style="display:flex; gap:10px;">
+                <button type="button" id="confirmModalCancelBtn" class="submit-btn" style="background:#e2e8f0; color:var(--text-main); margin-top:0;">Cancel</button>
+                <button type="button" id="confirmModalOkBtn" class="submit-btn" style="background:var(--expense-color); margin-top:0;">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ENGINE CONTROLLERS ================= -->
+    <script>
+        const DB_NAME = "EnterpriseMultiCurrencyLedgerDB_v4";
+        const DB_VERSION = 2;
+        const STORES = { ACCOUNTS: "accounts", TRANSACTIONS: "transactions", SETTINGS: "settings", CATEGORIES: "categories" };
+        let db;
+        
+        // Active exploration navigation states
+        let activeLedgerAccountView = "all";
+        let activeCategoryView = "all";
+        let directTypeView = "all"; 
+        let ledgerBackToPage = "workspace"; 
+
+        // Pagination for the transaction list — avoids rendering thousands of DOM rows at once.
+        let ledgerRenderLimit = 50;
+        const LEDGER_PAGE_SIZE = 50;
+
+        let baseCurrency = "USD";
+        let fxRates = { USD: 1.0, EUR: 0.92, GBP: 0.78, SGD: 1.34, MYR: 4.42 };
+        const currencySymbols = { USD: "$", EUR: "€", GBP: "£", SGD: "S$", MYR: "RM" };
+        
+        // Dynamic category registry
+        let dynamicCategories = [];
+
+        // Dynamic Rich Catalog of Preset Icons grouped logically
+        const emojiDirectory = {
+            "Money & Fin.": ["💵", "💰", "💳", "📈", "📉", "🪙", "💎", "💸"],
+            "Food & Dining": ["🍔", "🍜", "🍕", "☕", "🍺", "🍏", "🍣", "🍩"],
+            "Transport": ["🚗", "🚌", "🚆", "✈️", "🚲", "⛽", "🚕", "🚢"],
+            "Home & Living": ["🏠", "🔌", "📡", "🛋️", "🧹", "💧", "📦", "🔑"],
+            "Life & Leisure": ["🎬", "🎮", "⚽", "🏖️", "🛒", "👕", "🎁", "💊"],
+            "Income & Business": ["🏢", "💼", "💻", "🛠️", "🤝", "🏡", "🎓", "👑"]
+        };
+
+        // Fallback default system icons if not found
+        const fallbackIcons = {
+            income: "🟢",
+            expense: "🔴",
+            transfer: "🔄",
+            salary: "💼",
+            investments: "📈",
+            freelance: "💻",
+            others: "📦",
+            groceries: "🍏",
+            "dining out": "🍔",
+            utilities: "🔌",
+            rent: "🏠",
+            commute: "🚌",
+            entertainment: "🎬"
+        };
+
+        // Helper to retrieve correct category icon safely
+        function getCategoryIcon(catName, type = "expense") {
+            const clean = catName.toLowerCase().trim();
+            const matched = dynamicCategories.find(c => c.name.toLowerCase() === clean);
+            if (matched) return matched.icon;
+            return fallbackIcons[clean] || (type === "income" ? "🟢" : "🔴");
+        }
+
+        // --- NATIVE ROUTING CORE (MOBILE BACK-BUTTON COUPLING) ---
+        function pushVirtualState(stateName) {
+            window.history.pushState({ view: stateName }, "");
+        }
+
+        window.addEventListener("popstate", (event) => {
+            if (document.getElementById("editAccountId").value !== "") {
+                resetAccountForm();
+                return;
+            }
+
+            const activeModals = ["txModal", "accountsModal", "currencyModal", "categoriesModal"];
+            let modalClosed = false;
+            activeModals.forEach(id => {
+                const modal = document.getElementById(id);
+                if (modal && modal.classList.contains("active")) {
+                    modal.classList.remove("active");
+                    modalClosed = true;
+                }
+            });
+            if (modalClosed) return;
+
+            const ledgerPage = document.getElementById("page-ledger");
+            const savingsPage = document.getElementById("page-savings");
+
+            if (!ledgerPage.classList.contains("hidden")) {
+                handleLedgerBackClick();
+            } else if (!savingsPage.classList.contains("hidden")) {
+                navigateToWorkspace();
+            }
+        });
+
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onsuccess = (e) => { db = e.target.result; resolve(db); };
+                request.onupgradeneeded = (e) => {
+                    const database = e.target.result;
+                    if (!database.objectStoreNames.contains(STORES.ACCOUNTS)) {
+                        database.createObjectStore(STORES.ACCOUNTS, { keyPath: "id" });
+                    }
+                    if (!database.objectStoreNames.contains(STORES.TRANSACTIONS)) {
+                        database.createObjectStore(STORES.TRANSACTIONS, { keyPath: "id", autoIncrement: true });
+                    }
+                    if (!database.objectStoreNames.contains(STORES.SETTINGS)) {
+                        database.createObjectStore(STORES.SETTINGS, { keyPath: "key" });
+                    }
+                    if (!database.objectStoreNames.contains(STORES.CATEGORIES)) {
+                        database.createObjectStore(STORES.CATEGORIES, { keyPath: "id" });
+                    }
+                };
+                request.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        function writeDB(storeName, data) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const tx = db.transaction([storeName], "readwrite");
+                    tx.objectStore(storeName).put(data);
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error);
+                } catch (err) { reject(err); }
+            });
+        }
+
+        function readAllDB(storeName) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const tx = db.transaction([storeName], "readonly");
+                    const req = tx.objectStore(storeName).getAll();
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                } catch (err) { reject(err); }
+            });
+        }
+
+        function deleteDB(storeName, key) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const tx = db.transaction([storeName], "readwrite");
+                    tx.objectStore(storeName).delete(key);
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error);
+                } catch (err) { reject(err); }
+            });
+        }
+
+        function formatCurrency(amount, curr) {
+            const sym = currencySymbols[curr] || curr;
+            return `${sym}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        function convertCurrency(amount, fromCurr, toCurr) {
+            if (fromCurr === toCurr) return amount;
+            return (amount / fxRates[fromCurr]) * fxRates[toCurr];
+        }
+
+        function openModal(id) { 
+            document.getElementById(id).classList.add("active"); 
+            pushVirtualState(id);
+        }
+        
+        function closeModal(id) { 
+            const el = document.getElementById(id);
+            if (el && el.classList.contains("active")) {
+                el.classList.remove("active");
+                window.history.back();
+            }
+        }
+
+        // Custom confirm dialog: returns a Promise<boolean>, styled consistently with the rest of the app.
+        function customConfirm(message) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById("confirmModal");
+                document.getElementById("confirmModalMessage").textContent = message;
+                const okBtn = document.getElementById("confirmModalOkBtn");
+                const cancelBtn = document.getElementById("confirmModalCancelBtn");
+
+                const cleanup = (result) => {
+                    modal.classList.remove("active");
+                    okBtn.onclick = null;
+                    cancelBtn.onclick = null;
+                    resolve(result);
+                };
+
+                okBtn.onclick = () => cleanup(true);
+                cancelBtn.onclick = () => cleanup(false);
+                modal.classList.add("active");
+            });
+        }
+
+        // --- SPA NAVIGATION PIPELINE ---
+        function navigateToLedgerPage(accountId) {
+            activeLedgerAccountView = accountId;
+            activeCategoryView = "all";
+            directTypeView = "all";
+            ledgerBackToPage = "workspace";
+            ledgerRenderLimit = LEDGER_PAGE_SIZE;
+            document.getElementById("page-workspace").classList.add("hidden");
+            document.getElementById("page-savings").classList.add("hidden");
+            document.getElementById("page-ledger").classList.remove("hidden");
+            window.scrollTo(0,0);
+            pushVirtualState("ledger");
+            renderApp();
+        }
+
+        function navigateToCategoryPage(categoryName, backTarget = "workspace") {
+            activeCategoryView = categoryName;
+            activeLedgerAccountView = "all";
+            directTypeView = "all";
+            ledgerBackToPage = backTarget;
+            ledgerRenderLimit = LEDGER_PAGE_SIZE;
+            document.getElementById("page-workspace").classList.add("hidden");
+            document.getElementById("page-savings").classList.add("hidden");
+            document.getElementById("page-ledger").classList.remove("hidden");
+            window.scrollTo(0,0);
+            pushVirtualState("category_history");
+            renderApp();
+        }
+
+        function navigateToDirectTypePage(type) {
+            directTypeView = type;
+            activeLedgerAccountView = "all";
+            activeCategoryView = "all";
+            ledgerBackToPage = "workspace";
+            ledgerRenderLimit = LEDGER_PAGE_SIZE;
+            document.getElementById("page-workspace").classList.add("hidden");
+            document.getElementById("page-savings").classList.add("hidden");
+            document.getElementById("page-ledger").classList.remove("hidden");
+            window.scrollTo(0,0);
+            pushVirtualState("ledger_type_filter");
+            renderApp();
+        }
+
+        function navigateToSavingsPage() {
+            document.getElementById("page-workspace").classList.add("hidden");
+            document.getElementById("page-ledger").classList.add("hidden");
+            document.getElementById("page-savings").classList.remove("hidden");
+            window.scrollTo(0,0);
+            pushVirtualState("savings");
+            renderApp();
+        }
+
+        function navigateToWorkspace() {
+            document.getElementById("page-ledger").classList.add("hidden");
+            document.getElementById("page-savings").classList.add("hidden");
+            document.getElementById("page-workspace").classList.remove("hidden");
+            renderApp();
+        }
+
+        function handleLedgerBackClick() {
+            if (ledgerBackToPage === "savings") {
+                document.getElementById("page-ledger").classList.add("hidden");
+                document.getElementById("page-savings").classList.remove("hidden");
+            } else {
+                navigateToWorkspace();
+            }
+        }
+
+        // --- LOCAL STORAGE DATA CALCULATION ---
+        async function calculateStorageMetrics() {
+            if (navigator.storage && navigator.storage.estimate) {
+                const estimate = await navigator.storage.estimate();
+                const usedMB = (estimate.usage / (1024 * 1024)).toFixed(2);
+                const totalMB = (estimate.quota / (1024 * 1024)).toFixed(2);
+                
+                const txs = await readAllDB(STORES.TRANSACTIONS);
+                const localAppBytes = JSON.stringify(txs).length * 2 + 150000; 
+                const appMB = (localAppBytes / (1024 * 1024)).toFixed(2);
+
+                document.getElementById("appStorageText").textContent = `App Local Database footprint: ~${appMB} MB (0 attachments, 0.00 MB)`;
+                document.getElementById("systemQuotaText").textContent = `Total browser quota limit: ~${totalMB} MB, Used: ${usedMB} MB (across local sandboxes)`;
+                
+                const percentage = Math.min((estimate.usage / estimate.quota) * 100, 100);
+                document.getElementById("meterFillElement").style.width = `${Math.max(percentage, 0.4)}%`;
+            }
+        }
+
+        // --- CURRENCY SETTINGS CONTROLS ---
+        function openCurrencyConfig() {
+            document.getElementById("baseCurrencySelect").value = baseCurrency;
+            renderFxRatesInputs();
+            openModal("currencyModal");
+        }
+
+        function renderFxRatesInputs() {
+            let html = "";
+            Object.keys(fxRates).forEach(curr => {
+                if (curr === baseCurrency) return;
+                html += `
+                    <div class="form-row" style="display: flex; align-items: center; gap: 8px;">
+                        <span style="width: 80px; font-weight:700; font-size:0.85rem;">1 ${baseCurrency} =</span>
+                        <input type="number" step="0.0001" id="fxRate-${curr}" value="${(fxRates[curr] / fxRates[baseCurrency]).toFixed(4)}" style="flex:1;">
+                        <span style="width: 50px; font-weight:700; font-size:0.85rem;">${curr}</span>
+                    </div>
+                `;
+            });
+            document.getElementById("fxRatesFormContainer").innerHTML = html;
+        }
+
+        function handleBaseCurrencyChange() {
+            const newBase = document.getElementById("baseCurrencySelect").value;
+            const pivotMultiplier = 1 / fxRates[newBase];
+            Object.keys(fxRates).forEach(curr => { fxRates[curr] = fxRates[curr] * pivotMultiplier; });
+            fxRates[newBase] = 1.0;
+            baseCurrency = newBase;
+            renderFxRatesInputs();
+        }
+
+        async function saveFxRates() {
+            for (const curr of Object.keys(fxRates)) {
+                if (curr === baseCurrency) continue;
+                const el = document.getElementById(`fxRate-${curr}`);
+                if (el) {
+                    const val = parseFloat(el.value);
+                    if (isNaN(val) || val <= 0) {
+                        alert(`Please enter a valid exchange rate for ${curr}.`);
+                        return;
+                    }
+                    fxRates[curr] = val;
+                }
+            }
+
+            try {
+                await writeDB(STORES.SETTINGS, { key: "baseCurrency", value: baseCurrency });
+                await writeDB(STORES.SETTINGS, { key: "fxRates", value: fxRates });
+            } catch (err) {
+                alert("Could not save currency settings: " + (err && err.message ? err.message : err));
+                return;
+            }
+
+            document.getElementById("currentBasePill").textContent = baseCurrency;
+            closeModal("currencyModal");
+            renderApp();
+        }
+
+        // --- ACCOUNTS MANAGER SETUP (WITH INTEGRATED EDITOR) ---
+        function openAccountsConfig() {
+            const select = document.getElementById("newAccCurrency"); select.innerHTML = "";
+            Object.keys(fxRates).forEach(c => { select.innerHTML += `<option value="${c}">${c}</option>`; });
+            
+            select.value = baseCurrency;
+
+            resetAccountForm();
+            renderAccountSettingsList();
+            openModal("accountsModal");
+        }
+
+        function resetAccountForm() {
+            const isEditing = document.getElementById("editAccountId").value !== "";
+            document.getElementById("editAccountId").value = "";
+            document.getElementById("newAccName").value = "";
+            document.getElementById("newAccBal").value = "0";
+            document.getElementById("newAccCurrency").value = baseCurrency;
+            document.getElementById("accountFormHeaderTitle").textContent = "Create New Account";
+            document.getElementById("accFormSubmitBtn").textContent = "Create Account";
+            document.getElementById("accFormCancelBtn").style.display = "none";
+
+            if (isEditing) {
+                pushVirtualState("accountsModal");
+            }
+        }
+
+        // Dedicated custom execution for mobile click bypassing standard form intercept
+        async function handleCreateAccountMobile() {
+            const id = document.getElementById("editAccountId").value || "acc_" + Date.now();
+            const name = document.getElementById("newAccName").value.trim();
+            const balInput = document.getElementById("newAccBal").value;
+            const bal = balInput === "" ? 0 : parseFloat(balInput);
+            const curr = document.getElementById("newAccCurrency").value;
+
+            if(!name) { alert("Please enter an account name."); return; }
+            if (isNaN(bal)) { alert("Please enter a valid initial balance."); return; }
+
+            try {
+                await writeDB(STORES.ACCOUNTS, { id, name, initialBalance: bal, currency: curr });
+            } catch (err) {
+                alert("Could not save account: " + (err && err.message ? err.message : err));
+                return;
+            }
+            resetAccountForm();
+            renderAccountSettingsList();
+            renderApp();
+        }
+
+        async function renderAccountSettingsList() {
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            let html = "";
+            accounts.forEach(a => {
+                html += `
+                    <div class="config-item">
+                        <span style="cursor:pointer;" onclick="editAccount('${a.id}')">
+                            <strong>${a.name}</strong> (${a.currency}) - <span style="color:var(--text-muted);">${formatCurrency(a.initialBalance, a.currency)}</span> 📝
+                        </span>
+                        <button class="trash-btn" onclick="removeAccount('${a.id}')">🗑</button>
+                    </div>`;
+            });
+            document.getElementById("accountConfigList").innerHTML = html;
+        }
+
+        async function editAccount(id) {
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const account = accounts.find(a => a.id === id);
+            if (!account) return;
+
+            document.getElementById("editAccountId").value = account.id;
+            document.getElementById("newAccName").value = account.name;
+            document.getElementById("newAccBal").value = account.initialBalance;
+            document.getElementById("newAccCurrency").value = account.currency;
+
+            document.getElementById("accountFormHeaderTitle").textContent = "Edit Account Credentials";
+            document.getElementById("accFormSubmitBtn").textContent = "Save Changes";
+            document.getElementById("accFormCancelBtn").style.display = "block";
+
+            pushVirtualState("edit_account");
+        }
+
+        async function removeAccount(id) {
+            const ok = await customConfirm("Delete this account? All transactions linked to it (as source or destination) will also be permanently deleted.");
+            if (!ok) return;
+
+            try {
+                const allTx = await readAllDB(STORES.TRANSACTIONS);
+                const linkedTx = allTx.filter(t => t.src === id || t.dest === id);
+                for (const t of linkedTx) {
+                    await deleteDB(STORES.TRANSACTIONS, t.id);
+                }
+                await deleteDB(STORES.ACCOUNTS, id);
+            } catch (err) {
+                alert("Could not delete account: " + (err && err.message ? err.message : err));
+                return;
+            }
+
+            if (activeLedgerAccountView === id) activeLedgerAccountView = "all";
+            resetAccountForm();
+            renderAccountSettingsList();
+            renderApp();
+        }
+
+        // --- CATEGORIES SYSTEM WORKSPACE DESIGNER ---
+        function openCategoriesConfig() {
+            document.getElementById("catLabelName").value = "";
+            document.getElementById("catSelectedEmoji").value = "🍔";
+            document.getElementById("currentSelectedEmojiBadge").textContent = "🍔";
+            buildEmojiSelectionPanel();
+            renderCategoriesManagerList();
+            openModal("categoriesModal");
+        }
+
+        function buildEmojiSelectionPanel() {
+            const container = document.getElementById("emojiPickerPanel");
+            container.innerHTML = "";
+            
+            Object.keys(emojiDirectory).forEach(groupName => {
+                const title = document.createElement("div");
+                title.className = "emoji-section-title";
+                title.textContent = groupName;
+                container.appendChild(title);
+
+                const grid = document.createElement("div");
+                grid.className = "emoji-grid";
+
+                emojiDirectory[groupName].forEach(emoji => {
+                    const btn = document.createElement("button");
+                    btn.type = "button";
+                    btn.className = "emoji-btn";
+                    btn.textContent = emoji;
+                    if(emoji === "🍔") btn.classList.add("selected");
+                    btn.onclick = (e) => {
+                        e.preventDefault();
+                        selectCategoryEmoji(emoji, btn);
+                    };
+                    grid.appendChild(btn);
+                });
+
+                container.appendChild(grid);
+            });
+        }
+
+        function selectCategoryEmoji(emoji, element) {
+            document.querySelectorAll(".emoji-btn").forEach(b => b.classList.remove("selected"));
+            element.classList.add("selected");
+            document.getElementById("catSelectedEmoji").value = emoji;
+            document.getElementById("currentSelectedEmojiBadge").textContent = emoji;
+        }
+
+        // Mobile Safe handler that overrides form submissions for zero keyboard delays
+        async function handleCreateCategoryMobile() {
+            const rawName = document.getElementById("catLabelName").value.trim();
+            if(!rawName) {
+                alert("Please enter a category name first!");
+                return;
+            }
+
+            const name = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+            const type = document.getElementById("catTypeSelect").value;
+            const icon = document.getElementById("catSelectedEmoji").value;
+
+            if (name.toLowerCase() === "others") {
+                alert("The keyword 'Others' is protected.");
+                return;
+            }
+
+            const categoryId = "cat_" + Date.now();
+            try {
+                await writeDB(STORES.CATEGORIES, { id: categoryId, name, type, icon });
+            } catch (err) {
+                alert("Could not save category: " + (err && err.message ? err.message : err));
+                return;
+            }
+
+            document.getElementById("catLabelName").value = "";
+            
+            await syncAndLoadCategories();
+            renderCategoriesManagerList();
+            renderApp();
+        }
+
+        async function renderCategoriesManagerList() {
+            const listContainer = document.getElementById("categoriesConfigList");
+            listContainer.innerHTML = "";
+            
+            dynamicCategories.forEach(c => {
+                const item = document.createElement("div");
+                item.className = "config-item";
+                item.innerHTML = `
+                    <span class="category-display-badge">
+                        <span>${c.icon}</span> 
+                        <strong>${c.name}</strong> 
+                        <span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e2e8f0; text-transform:uppercase; font-weight:bold;">${c.type}</span>
+                    </span>
+                    <button class="trash-btn" onclick="removeCategory('${c.id}')">🗑</button>
+                `;
+                listContainer.appendChild(item);
+            });
+        }
+
+        async function removeCategory(id) {
+            const ok = await customConfirm("Remove this custom category? Your transactions assigned to it will fallback to standard default icons.");
+            if (!ok) return;
+
+            try {
+                await deleteDB(STORES.CATEGORIES, id);
+            } catch (err) {
+                alert("Could not remove category: " + (err && err.message ? err.message : err));
+                return;
+            }
+            await syncAndLoadCategories();
+            renderCategoriesManagerList();
+            renderApp();
+        }
+
+        async function syncAndLoadCategories() {
+            const customCats = await readAllDB(STORES.CATEGORIES);
+            dynamicCategories = customCats;
+        }
+
+        // --- TRANSACTION CREATION / EDITOR CORE ---
+        async function openTransactionForm(type, existingTxId = null) {
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            if(accounts.length === 0) { alert("Add an account first!"); return; }
+
+            const srcSelect = document.getElementById("srcAccount"); srcSelect.innerHTML = "";
+            const destSelect = document.getElementById("destAccount"); destSelect.innerHTML = "";
+            const currSelect = document.getElementById("txCurrency"); currSelect.innerHTML = "";
+            const catSelect = document.getElementById("txCategory"); catSelect.innerHTML = "";
+
+            Object.keys(fxRates).forEach(c => { currSelect.innerHTML += `<option value="${c}">${c}</option>`; });
+            accounts.forEach(a => {
+                srcSelect.innerHTML += `<option value="${a.id}">${a.name} (${a.currency})</option>`;
+                destSelect.innerHTML += `<option value="${a.id}">${a.name} (${a.currency})</option>`;
+            });
+
+            if (existingTxId !== null) {
+                const txs = await readAllDB(STORES.TRANSACTIONS);
+                const tx = txs.find(t => t.id === existingTxId);
+                if (!tx) return;
+
+                document.getElementById("txId").value = tx.id;
+                document.getElementById("txType").value = tx.type;
+                document.getElementById("txDesc").value = tx.desc;
+                document.getElementById("txAmount").value = tx.amount;
+                document.getElementById("txCurrency").value = tx.currency;
+                document.getElementById("srcAccount").value = tx.src;
+                document.getElementById("destAccount").value = tx.dest || "";
+                document.getElementById("txDate").value = tx.date;
+
+                const currentCats = dynamicCategories.filter(c => c.type === tx.type).map(c => c.name);
+                const fallbackGroup = tx.type === "income" ? ["Salary", "Investments", "Freelance", "Others"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Others"];
+                
+                const uniqueMerged = [...new Set([...currentCats, ...fallbackGroup])];
+                uniqueMerged.forEach(c => {
+                    const icon = getCategoryIcon(c, tx.type);
+                    catSelect.innerHTML += `<option value="${c}">${icon} ${c}</option>`;
+                });
+                
+                document.getElementById("txCategory").value = tx.cat || "";
+                document.getElementById("destAccRow").style.display = tx.type === "transfer" ? "block" : "none";
+                document.getElementById("categoryRow").style.display = tx.type === "transfer" ? "none" : "block";
+
+                document.getElementById("txModalTitle").textContent = "Edit Ledger Entry";
+                document.getElementById("txSubmitBtn").textContent = "Save Changes";
+            } else {
+                document.getElementById("txId").value = "";
+                document.getElementById("txType").value = type;
+                document.getElementById("txDate").value = new Date().toISOString().split('T')[0];
+                document.getElementById("txDesc").value = "";
+                document.getElementById("txAmount").value = "";
+
+                document.getElementById("destAccRow").style.display = type === "transfer" ? "block" : "none";
+                document.getElementById("categoryRow").style.display = type === "transfer" ? "none" : "block";
+
+                const currentCats = dynamicCategories.filter(c => c.type === type).map(c => c.name);
+                const fallbackGroup = type === "income" ? ["Salary", "Investments", "Freelance", "Others"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Others"];
+                
+                const uniqueMerged = [...new Set([...currentCats, ...fallbackGroup])];
+                uniqueMerged.forEach(c => {
+                    const icon = getCategoryIcon(c, type);
+                    catSelect.innerHTML += `<option value="${c}">${icon} ${c}</option>`;
+                });
+
+                document.getElementById("txModalTitle").textContent = "Log Ledger Item";
+                document.getElementById("txSubmitBtn").textContent = "Commit Entry";
+                
+                syncTransactionCurrency();
+            }
+
+            openModal("txModal");
+        }
+
+        async function syncTransactionCurrency() {
+            const isEditing = document.getElementById("txId").value !== "";
+            if (isEditing) return;
+
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const selectedAccountId = document.getElementById("srcAccount").value;
+            const targetAccount = accounts.find(a => a.id === selectedAccountId);
+            if (targetAccount) {
+                document.getElementById("txCurrency").value = targetAccount.currency;
+            }
+        }
+
+        // Direct Mobile Save execution avoiding forms issues
+        async function handleTransactionSubmitMobile() {
+            const txIdInput = document.getElementById("txId").value;
+            const desc = document.getElementById("txDesc").value.trim();
+            const amountVal = document.getElementById("txAmount").value;
+            const dateVal = document.getElementById("txDate").value;
+
+            if(!desc || !amountVal) {
+                alert("Please fill out both description and amount fields.");
+                return;
+            }
+
+            const parsedAmount = parseFloat(amountVal);
+            if (isNaN(parsedAmount) || parsedAmount <= 0) {
+                alert("Please enter a valid amount greater than zero.");
+                return;
+            }
+
+            if (!dateVal) {
+                alert("Please select a date.");
+                return;
+            }
+
+            const record = {
+                type: document.getElementById("txType").value,
+                desc: desc,
+                amount: parsedAmount,
+                src: document.getElementById("srcAccount").value,
+                dest: document.getElementById("destAccount").value,
+                currency: document.getElementById("txCurrency").value,
+                cat: document.getElementById("txCategory").value,
+                date: dateVal
+            };
+
+            if (txIdInput !== "") {
+                record.id = parseInt(txIdInput);
+            }
+
+            try {
+                await writeDB(STORES.TRANSACTIONS, record);
+            } catch (err) {
+                alert("Could not save transaction: " + (err && err.message ? err.message : err));
+                return;
+            }
+            closeModal("txModal");
+            renderApp();
+        }
+
+        async function deleteTx(id, event) {
+            if (event) event.stopPropagation();
+            const ok = await customConfirm("Delete this transaction item?");
+            if (!ok) return;
+
+            try {
+                await deleteDB(STORES.TRANSACTIONS, id);
+            } catch (err) {
+                alert("Could not delete transaction: " + (err && err.message ? err.message : err));
+                return;
+            }
+            renderApp();
+        }
+
+        // --- CONSOLIDATED RENDER ENGINE ---
+        async function renderApp() {
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const filterM = document.getElementById("filterMonth").value;
+            const filterY = document.getElementById("filterYear").value;
+
+            document.getElementById("currentBasePill").textContent = baseCurrency;
+
+            const nativeBalances = {};
+            accounts.forEach(a => nativeBalances[a.id] = a.initialBalance);
+            txs.forEach(t => {
+                const aSrc = accounts.find(a => a.id === t.src);
+                const aDest = accounts.find(a => a.id === t.dest);
+                if (t.type === "income" && aSrc) nativeBalances[t.src] += convertCurrency(t.amount, t.currency, aSrc.currency);
+                if (t.type === "expense" && aSrc) nativeBalances[t.src] -= convertCurrency(t.amount, t.currency, aSrc.currency);
+                if (t.type === "transfer") {
+                    if(aSrc) nativeBalances[t.src] -= convertCurrency(t.amount, t.currency, aSrc.currency);
+                    if(aDest) nativeBalances[t.dest] += convertCurrency(t.amount, t.currency, aDest.currency);
+                }
+            });
+
+            let globalBaseNetWorth = 0;
+            accounts.forEach(a => globalBaseNetWorth += convertCurrency(nativeBalances[a.id], a.currency, baseCurrency));
+            document.getElementById("netWorthDisplay").textContent = formatCurrency(globalBaseNetWorth, baseCurrency);
+
+            let accListHTML = "";
+            accounts.forEach(a => {
+                const bal = nativeBalances[a.id];
+                const convText = a.currency !== baseCurrency ? `<span class="converted-subtext">≈ ${formatCurrency(convertCurrency(bal, a.currency, baseCurrency), baseCurrency)}</span>` : '';
+                accListHTML += `
+                    <div class="account-list-row" onclick="navigateToLedgerPage('${a.id}')">
+                        <div><strong>${a.name}</strong> <span style="font-size:0.7rem; color:var(--text-muted); font-weight:bold; background:#e2e8f0; padding:2px 4px; border-radius:4px;">${a.currency}</span></div>
+                        <div style="text-align:right;"><strong>${formatCurrency(bal, a.currency)}</strong>${convText}</div>
+                    </div>
+                `;
+            });
+            document.getElementById("accountsListView").innerHTML = accListHTML;
+
+            // Compute structural titles
+            if (activeCategoryView !== "all") {
+                const icon = getCategoryIcon(activeCategoryView);
+                document.getElementById("ledgerTargetTitle").textContent = `${icon} ${activeCategoryView.toUpperCase()}`;
+            } else if (directTypeView !== "all") {
+                document.getElementById("ledgerTargetTitle").textContent = `All ${directTypeView.charAt(0).toUpperCase() + directTypeView.slice(1)} Log`;
+            } else if (activeLedgerAccountView === "all") {
+                document.getElementById("ledgerTargetTitle").textContent = "Portfolio General Log";
+            } else {
+                const currentActiveAccName = accounts.find(a => a.id === activeLedgerAccountView)?.name || "Vault";
+                document.getElementById("ledgerTargetTitle").textContent = `${currentActiveAccName} Activity`;
+            }
+
+            let incBaseTotal = 0, expBaseTotal = 0;
+            let catSummary = { income: {}, expense: {} };
+            
+            // Prime fallback and custom categories
+            const currentIncomeCategories = [...new Set([...dynamicCategories.filter(c => c.type === "income").map(c => c.name), "Salary", "Investments", "Freelance", "Others"])];
+            const currentExpenseCategories = [...new Set([...dynamicCategories.filter(c => c.type === "expense").map(c => c.name), "Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Others"])];
+
+            currentIncomeCategories.forEach(c => catSummary.income[c] = 0);
+            currentExpenseCategories.forEach(c => catSummary.expense[c] = 0);
+
+            let ledgerHTML = "";
+
+            if (activeLedgerAccountView !== "all" && activeCategoryView === "all" && directTypeView === "all") {
+                const viewingAcc = accounts.find(a => a.id === activeLedgerAccountView);
+                if (viewingAcc) {
+                    const subText = viewingAcc.currency !== baseCurrency ? `<span class="converted-subtext">≈ ${formatCurrency(convertCurrency(viewingAcc.initialBalance, viewingAcc.currency, baseCurrency), baseCurrency)}</span>` : '';
+                    ledgerHTML += `
+                        <div class="ledger-item" style="background-color: #fafbfd; border-left: 4px solid var(--primary); cursor: default;">
+                            <div class="item-left">
+                                <span class="item-name" style="font-style: italic;">🏦 [Opening Balance Setup]</span>
+                                <span class="item-meta">Account Opening Initial Vault Point</span>
+                            </div>
+                            <div class="item-right">
+                                <div class="item-value" style="color: var(--text-main);">
+                                    ${formatCurrency(viewingAcc.initialBalance, viewingAcc.currency)}
+                                    ${subText}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            let matchedCount = 0;
+
+            txs.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(t => {
+                const d = new Date(t.date);
+                if (filterM !== "all" && d.getMonth().toString() !== filterM) return;
+                if (filterY !== "all" && d.getFullYear().toString() !== filterY) return;
+
+                const tBase = convertCurrency(t.amount, t.currency, baseCurrency);
+                if (t.type === "income") { 
+                    incBaseTotal += tBase; 
+                    if(catSummary.income[t.cat] !== undefined) catSummary.income[t.cat] += tBase;
+                    else catSummary.income[t.cat] = tBase;
+                }
+                if (t.type === "expense") { 
+                    expBaseTotal += tBase; 
+                    if(catSummary.expense[t.cat] !== undefined) catSummary.expense[t.cat] += tBase;
+                    else catSummary.expense[t.cat] = tBase;
+                }
+
+                let isBound = false;
+                if (activeCategoryView !== "all") {
+                    isBound = t.cat === activeCategoryView;
+                } else if (directTypeView !== "all") {
+                    isBound = t.type === directTypeView;
+                } else {
+                    isBound = activeLedgerAccountView === "all" || t.src === activeLedgerAccountView || t.dest === activeLedgerAccountView;
+                }
+
+                if (!isBound) return;
+
+                matchedCount++;
+                // Only build DOM markup for the first `ledgerRenderLimit` matches — keeps large ledgers fast on mobile.
+                if (matchedCount > ledgerRenderLimit) return;
+
+                const col = t.type === "income" ? "income-color" : t.type === "expense" ? "expense-color" : "transfer-color";
+                const sgn = t.type === "income" ? "+" : t.type === "expense" ? "-" : "🔄";
+                const sub = t.currency !== baseCurrency ? `<span class="converted-subtext">≈ ${formatCurrency(tBase, baseCurrency)}</span>` : '';
+                const iconBadge = t.type === "transfer" ? "🔄" : getCategoryIcon(t.cat, t.type);
+
+                ledgerHTML += `
+                    <div class="ledger-item" onclick="openTransactionForm('${t.type}', ${t.id})">
+                        <div class="item-left">
+                            <span class="item-name">${iconBadge} ${t.desc} 📝</span>
+                            <span class="item-meta">${t.date} [${t.cat || 'Transfer'}]</span>
+                        </div>
+                        <div class="item-right">
+                            <div class="item-value" style="color:var(--${col}); font-weight: bold;">
+                                ${sgn}${formatCurrency(t.amount, t.currency)}
+                                ${sub}
+                            </div>
+                            <button class="trash-btn" onclick="deleteTx(${t.id}, event)">🗑</button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            if (matchedCount > ledgerRenderLimit) {
+                const remaining = matchedCount - ledgerRenderLimit;
+                ledgerHTML += `
+                    <button type="button" class="submit-btn" style="background:#e2e8f0; color:var(--text-main); margin:12px;" onclick="ledgerRenderLimit += LEDGER_PAGE_SIZE; renderApp();">
+                        Load ${Math.min(remaining, LEDGER_PAGE_SIZE)} more (${remaining} remaining)
+                    </button>
+                `;
+            }
+
+            document.getElementById("reportIncome").textContent = formatCurrency(incBaseTotal, baseCurrency);
+            document.getElementById("reportExpense").textContent = formatCurrency(expBaseTotal, baseCurrency);
+            const savings = incBaseTotal - expBaseTotal;
+            document.getElementById("reportSavings").textContent = formatCurrency(savings, baseCurrency);
+            document.getElementById("savingsBanner").style.background = savings >= 0 ? "#f0fdf4" : "#fef2f2";
+
+            // Spending Breakdown rendering
+            let catHTML = "";
+            Object.keys(catSummary.expense).forEach(c => {
+                const amount = catSummary.expense[c];
+                if(amount === 0) return;
+                const pct = expBaseTotal > 0 ? ((amount / expBaseTotal) * 100).toFixed(0) : 0;
+                const icon = getCategoryIcon(c, "expense");
+                catHTML += `
+                    <div class="category-row-item" onclick="navigateToCategoryPage('${c}')" style="font-size:0.75rem; margin-top:4px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
+                            <strong>${icon} ${c.toUpperCase()}</strong>
+                            <span>${formatCurrency(amount, baseCurrency)} (${pct}%)</span>
+                        </div>
+                        <div class="progress-bar-container"><div class="progress-bar-fill" style="width:${pct}%;"></div></div>
+                    </div>
+                `;
+            });
+            document.getElementById("categoryReportList").innerHTML = catHTML || '<p style="font-size: 0.75rem; text-align: center; color: var(--text-muted);">No spending categorised.</p>';
+            document.getElementById("ledgerList").innerHTML = ledgerHTML || '<p style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.8rem;">No matches found.</p>';
+
+            // Balance Statement view rendering
+            let incRowsHTML = "";
+            Object.keys(catSummary.income).forEach(c => {
+                const val = catSummary.income[c];
+                const icon = getCategoryIcon(c, "income");
+                incRowsHTML += `
+                    <div class="statement-row" onclick="navigateToCategoryPage('${c}', 'savings')">
+                        <strong>${icon} ${c}</strong>
+                        <span style="color: var(--income-color); font-weight:700;">+${formatCurrency(val, baseCurrency)}</span>
+                    </div>
+                `;
+            });
+            document.getElementById("savingsIncomeRows").innerHTML = incRowsHTML || '<p style="font-size:0.75rem; color:var(--text-muted);">No income entries logged.</p>';
+
+            let expRowsHTML = "";
+            Object.keys(catSummary.expense).forEach(c => {
+                const val = catSummary.expense[c];
+                const icon = getCategoryIcon(c, "expense");
+                expRowsHTML += `
+                    <div class="statement-row" onclick="navigateToCategoryPage('${c}', 'savings')">
+                        <strong>${icon} ${c}</strong>
+                        <span style="color: var(--expense-color); font-weight:700;">-${formatCurrency(val, baseCurrency)}</span>
+                    </div>
+                `;
+            });
+            document.getElementById("savingsExpenseRows").innerHTML = expRowsHTML || '<p style="font-size:0.75rem; color:var(--text-muted);">No expense entries logged.</p>';
+
+            const statementDiff = incBaseTotal - expBaseTotal;
+            document.getElementById("savingsSurplusLabel").textContent = statementDiff >= 0 ? "Surplus Margin (Savings):" : "Deficit (Shortfall Margin):";
+            document.getElementById("savingsSurplusValue").textContent = formatCurrency(statementDiff, baseCurrency);
+            document.getElementById("savingsSurplusValue").style.color = statementDiff >= 0 ? "var(--income-color)" : "var(--expense-color)";
+
+            calculateStorageMetrics();
+        }
+
+        async function bootstrap() {
+            await initDB();
+            
+            const storedBase = await readKeyDB("settings", "baseCurrency");
+            if (storedBase) baseCurrency = storedBase.value;
+
+            const storedRates = await readKeyDB("settings", "fxRates");
+            if (storedRates) fxRates = storedRates.value;
+
+            await syncAndLoadCategories();
+
+            const accs = await readAllDB(STORES.ACCOUNTS);
+            if(accs.length === 0) {
+                await writeDB(STORES.ACCOUNTS, { id: "usd_w", name: "US Dollar Wallet", initialBalance: 2500, currency: "USD" });
+                await writeDB(STORES.ACCOUNTS, { id: "sgd_w", name: "DBS Singapore", initialBalance: 1200, currency: "SGD" });
+                await writeDB(STORES.ACCOUNTS, { id: "myr_w", name: "Maybank Malaysia", initialBalance: 3400, currency: "MYR" });
+            }
+            
+            window.history.replaceState({ view: "workspace" }, "");
+            
+            renderApp();
+        }
+
+        function readKeyDB(storeName, key) {
+            return new Promise((resolve) => {
+                const tx = db.transaction([storeName], "readonly");
+                const req = tx.objectStore(storeName).get(key);
+                req.onsuccess = () => resolve(req.result);
+            });
+        }
+
+        async function exportBackup() {
+            const bundle = {
+                accounts: await readAllDB(STORES.ACCOUNTS),
+                transactions: await readAllDB(STORES.TRANSACTIONS),
+                categories: await readAllDB(STORES.CATEGORIES),
+                baseCurrency: baseCurrency,
+                fxRates: fxRates
+            };
+            const blob = new Blob([JSON.stringify(bundle)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = `ledger_backup_${new Date().toISOString().split('T')[0]}.json`;
+            a.click(); URL.revokeObjectURL(url);
+        }
+
+        function clearStoreDB(storeName) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const tx = db.transaction([storeName], "readwrite");
+                    tx.objectStore(storeName).clear();
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error);
+                } catch (err) { reject(err); }
+            });
+        }
+
+        async function importBackup(e) {
+            const file = e.target.files[0]; if (!file) return;
+
+            const ok = await customConfirm("Importing a backup will permanently replace ALL current accounts, transactions, and categories. This cannot be undone. Continue?");
+            if (!ok) { e.target.value = ""; return; }
+
+            const reader = new FileReader();
+            reader.onload = async function(evt) {
+                try {
+                    const bundle = JSON.parse(evt.target.result);
+                    if (!bundle.accounts || !bundle.transactions) {
+                        alert("Invalid backup file: missing required data.");
+                        return;
+                    }
+
+                    await clearStoreDB(STORES.ACCOUNTS);
+                    await clearStoreDB(STORES.TRANSACTIONS);
+
+                    if (db.objectStoreNames.contains(STORES.CATEGORIES)) {
+                        await clearStoreDB(STORES.CATEGORIES);
+                    }
+
+                    if (bundle.baseCurrency) baseCurrency = bundle.baseCurrency;
+                    if (bundle.fxRates) fxRates = bundle.fxRates;
+                    await writeDB(STORES.SETTINGS, { key: "baseCurrency", value: baseCurrency });
+                    await writeDB(STORES.SETTINGS, { key: "fxRates", value: fxRates });
+
+                    for (const acc of bundle.accounts) await writeDB(STORES.ACCOUNTS, acc);
+                    for (const tx of bundle.transactions) { delete tx.id; await writeDB(STORES.TRANSACTIONS, tx); }
+
+                    if (bundle.categories) {
+                        for (const cat of bundle.categories) await writeDB(STORES.CATEGORIES, cat);
+                    }
+
+                    await syncAndLoadCategories();
+                    renderApp();
+                    alert("Backup imported successfully.");
+                } catch (err) {
+                    alert("Import failed: " + (err && err.message ? err.message : "Invalid backup structure file."));
+                } finally {
+                    e.target.value = "";
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        window.addEventListener("load", bootstrap);
+
+        // Register the Service Worker for offline support. Only works when served over http(s)
+        // (e.g. GitHub Pages) — silently does nothing when opened as a local file:// page.
+        if ("serviceWorker" in navigator && (location.protocol === "https:" || location.protocol === "http:")) {
+            window.addEventListener("load", () => {
+                navigator.serviceWorker.register("./sw.js").catch((err) => {
+                    console.warn("Service worker registration failed:", err);
+                });
+            });
+        }
+    </script>
+</body>
+</html>

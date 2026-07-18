@@ -11,6 +11,7 @@ Ledger is a modern, high-performance, privacy-focused financial logging applicat
 - **Bi-Directional Inline Ledger Editor:** Modify accidental transaction errors or shift account structures instantly via a pre-filled structural modal pipeline.
 - **Automated Sandbox Footprint Meter:** Displays hardware database allocation, tracking live IndexedDB byte limits and local storage consumption in real-time.
 - **Custom Category Designer:** Register bespoke income/expense categories with custom emoji badges, stored persistently in IndexedDB.
+- **Receipt & Photo Attachments:** Attach a photo to any transaction directly from the phone camera or gallery, auto-compressed client-side before storage.
 - **Installable Offline PWA:** Ships with a web manifest, app icons, and a Service Worker cache layer, so the ledger can be installed to a phone home screen and opened with zero network connectivity.
 - **Absolute Privacy Preservation:** Zero servers, zero analytics, zero data logging. Data never leaves your physical local storage.
 
@@ -18,7 +19,15 @@ Ledger is a modern, high-performance, privacy-focused financial logging applicat
 
 ## 📱 Architecture & Evolution Log
 
-### [v9.0] - Installable Offline PWA & GitHub Pages Deployment *(Current)*
+### [v10.0] - Receipt & Photo Attachments *(Current)*
+- **Camera Capture & Gallery Picker:** The transaction form now has "Take Photo" and "Gallery" buttons, using native `<input type="file">` capture on Android to open the camera app or the OS photo picker directly — no extra permissions dialog or plugin required.
+- **Client-Side Image Compression:** Selected photos are downscaled (max 1024px on the long edge) and re-encoded as JPEG (~70% quality) via an off-screen canvas before being stored, keeping the IndexedDB footprint reasonable even for high-resolution phone camera photos.
+- **Inline Preview & Removal:** A thumbnail preview appears in the form immediately after capture/selection, with a one-tap ✕ to remove and reselect before saving.
+- **Receipt Badge in Ledger List:** Transactions with an attached photo show a small 📎 icon next to the date; tapping it opens a fullscreen image viewer without needing to open the edit form.
+- **Backup-Compatible:** Attached images travel with their transaction record automatically in Export/Import JSON backups — no separate export step needed.
+- **Graceful Storage-Limit Handling:** If a device runs out of local storage while saving a photo, the app surfaces a clear "not enough storage space" message instead of silently failing.
+
+### [v9.0] - Installable Offline PWA & GitHub Pages Deployment
 - **True Offline Support:** Added `sw.js` (Service Worker) implementing a cache-first strategy for the app shell, so the ledger opens and functions with airplane mode on, once installed.
 - **Web App Manifest:** Added `manifest.json` + PNG icon set (192×192 / 512×512), enabling a proper "Install" prompt on Android Chrome — full standalone window, no browser chrome, instead of a plain bookmark shortcut.
 - **Static Hosting:** Restructured the project for deployment on GitHub Pages (`index.html` at repo root) so the app has a stable `https://` origin — a requirement for Service Worker registration, which local `file://` pages cannot satisfy.
@@ -60,6 +69,7 @@ This application operates entirely inside a single isolated context using native
 - **UI & Layout:** Pure HTML5 structure accented by optimized modern semantic flex grids.
 - **Database Layer:** Asynchronous `IndexedDB` pipeline handling persistence and structural record lookups.
 - **Offline Layer:** `Service Worker` (`sw.js`) cache-first strategy + `Web App Manifest` (`manifest.json`) for installability.
+- **Media Layer:** Native `<input capture>` for camera/gallery access + `Canvas` API for client-side JPEG compression of receipt photos.
 - **Dependencies:** 100% dependency-free. Zero external libraries, packages, or network calls are required.
 
 ### How to Run Locally (offline, no install):

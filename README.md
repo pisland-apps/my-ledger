@@ -12,6 +12,8 @@ Ledger is a modern, high-performance, privacy-focused financial logging applicat
 - **Automated Sandbox Footprint Meter:** Displays hardware database allocation, tracking live IndexedDB byte limits and local storage consumption in real-time.
 - **Custom Category Designer:** Register bespoke income/expense categories with custom emoji badges, stored persistently in IndexedDB.
 - **Receipt & Photo Attachments:** Attach a photo to any transaction directly from the phone camera or gallery, auto-compressed client-side before storage.
+- **Dual Account Types — Multi-Currency & Fixed Deposit:** Choose the right account model at creation time: flexible multi-currency wallets for everyday spending, or Fixed Deposit accounts with tenure, interest rate, and automatic maturity-date tracking.
+- **Maturity Reminders:** The dashboard surfaces an upcoming/overdue banner for any Fixed Deposit within 30 days of maturity (or already matured), so renewals or withdrawals never get missed.
 - **Installable Offline PWA:** Ships with a web manifest, app icons, and a Service Worker cache layer, so the ledger can be installed to a phone home screen and opened with zero network connectivity.
 - **Absolute Privacy Preservation:** Zero servers, zero analytics, zero data logging. Data never leaves your physical local storage.
 
@@ -19,7 +21,14 @@ Ledger is a modern, high-performance, privacy-focused financial logging applicat
 
 ## 📱 Architecture & Evolution Log
 
-### [v10.0] - Receipt & Photo Attachments *(Current)*
+### [v11.0] - Fixed Deposit Accounts & Maturity Reminders *(Current)*
+- **Account Type Selector:** Account creation/edit now starts with a choice — **💱 Multi-Currency Account** (today's flexible wallet/bank account behavior, unchanged) or **🏦 Fixed Deposit Account** (a new dedicated type for term deposits).
+- **Fixed Deposit Terms:** FD accounts capture Commencing Date, Tenure (months), and Annual Interest Rate; the Maturity Date is auto-calculated from commencing date + tenure (and recalculated live as you edit the form), alongside a projected payout preview using simple interest.
+- **Maturity Dashboard Banner:** Any FD within 30 days of maturity — or already past it — surfaces a color-coded reminder banner at the top of the dashboard (amber = upcoming, red = overdue), tapping it jumps straight to that account's edit screen.
+- **FD Badges Everywhere:** FD accounts are labeled with a `🏦 FD · rate% · maturity date` badge in the accounts list, the account management list, and prefixed in transaction account dropdowns, so they're never confused with regular wallets.
+- **Transfers Still Work Normally:** FD accounts remain fully usable as transfer source/destination (e.g. moving funds in to open a new FD, or out at maturity/withdrawal) — no changes needed to how you log deposits or payouts.
+
+### [v10.0] - Receipt & Photo Attachments
 - **Camera Capture & Gallery Picker:** The transaction form now has "Take Photo" and "Gallery" buttons, using native `<input type="file">` capture on Android to open the camera app or the OS photo picker directly — no extra permissions dialog or plugin required.
 - **Client-Side Image Compression:** Selected photos are downscaled (max 1024px on the long edge) and re-encoded as JPEG (~70% quality) via an off-screen canvas before being stored, keeping the IndexedDB footprint reasonable even for high-resolution phone camera photos.
 - **Inline Preview & Removal:** A thumbnail preview appears in the form immediately after capture/selection, with a one-tap ✕ to remove and reselect before saving.

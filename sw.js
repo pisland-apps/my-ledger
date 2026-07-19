@@ -1,5 +1,5 @@
 // Bump this version string any time you re-deploy new content, so old caches get replaced.
-const CACHE_NAME = "ledger-cache-v2";
+const CACHE_NAME = "ledger-cache-v3";
 const ASSETS_TO_CACHE = [
     "./",
     "./index.html",

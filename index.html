@@ -408,6 +408,8 @@
             </div>
         </header>
 
+        <div id="fdReminderContainer"></div>
+
         <div class="section-header" style="margin-top: 0;">
             <span class="section-title">Quick Transaction Entry</span>
             <button class="text-btn" onclick="openCategoriesConfig()">🏷 Categories</button>
@@ -557,20 +559,56 @@
             <div style="border-bottom: 2px dashed var(--border-color); padding-bottom: 15px; margin-bottom: 15px;">
                 <h4 id="accountFormHeaderTitle" style="font-size:0.8rem; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px;">Create New Account</h4>
                 <input type="hidden" id="editAccountId">
+
+                <div class="form-row">
+                    <label>Account Type</label>
+                    <div style="display:flex; gap:8px;">
+                        <button type="button" id="accTypeBtnMulti" onclick="setAccountTypeUI('multi')" class="submit-btn" style="margin-top:0; flex:1;">💱 Multi-Currency</button>
+                        <button type="button" id="accTypeBtnFd" onclick="setAccountTypeUI('fd')" class="submit-btn" style="margin-top:0; flex:1; background:#e2e8f0; color:var(--text-main);">🏦 Fixed Deposit</button>
+                    </div>
+                    <input type="hidden" id="newAccType" value="multi">
+                </div>
+
                 <div class="form-row">
                     <label>Account Name</label>
                     <input type="text" id="newAccName" placeholder="e.g. DBS Bank, Cash Wallet" required>
                 </div>
                 <div class="form-row-inline">
                     <div>
-                        <label>Opening Value</label>
-                        <input type="number" id="newAccBal" step="0.01" value="0">
+                        <label id="newAccBalLabel">Opening Value</label>
+                        <input type="number" id="newAccBal" step="0.01" value="0" oninput="recalcFdMaturity()">
                     </div>
                     <div>
                         <label>Currency</label>
-                        <select id="newAccCurrency" class="form-input"></select>
+                        <select id="newAccCurrency" class="form-input" onchange="recalcFdMaturity()"></select>
                     </div>
                 </div>
+
+                <!-- Fixed Deposit-only fields -->
+                <div id="fdFieldsWrap" style="display:none;">
+                    <div class="form-row-inline">
+                        <div>
+                            <label>Commencing Date</label>
+                            <input type="date" id="fdStartDate" onchange="recalcFdMaturity()">
+                        </div>
+                        <div>
+                            <label>Tenure (months)</label>
+                            <input type="number" id="fdTenureMonths" step="1" min="1" value="12" onchange="recalcFdMaturity()">
+                        </div>
+                    </div>
+                    <div class="form-row-inline">
+                        <div>
+                            <label>Interest Rate (% p.a.)</label>
+                            <input type="number" id="fdInterestRate" step="0.01" min="0" value="3.0" oninput="recalcFdMaturity()">
+                        </div>
+                        <div>
+                            <label>Maturity Date</label>
+                            <input type="date" id="fdMaturityDate">
+                        </div>
+                    </div>
+                    <p id="fdMaturityPreview" style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;"></p>
+                </div>
+
                 <!-- Action handlers changed to button onclick to bypass Android keyboard/form intercept bugs -->
                 <button type="button" id="accFormSubmitBtn" onclick="handleCreateAccountMobile()" class="submit-btn" style="background: var(--transfer-color);">Create Account</button>
                 <button type="button" id="accFormCancelBtn" class="submit-btn" onclick="resetAccountForm()" style="background:#64748b; margin-top:6px; display:none;">Cancel Edit</button>
@@ -1028,6 +1066,58 @@
             openModal("accountsModal");
         }
 
+        function setAccountTypeUI(type) {
+            document.getElementById("newAccType").value = type;
+            const multiBtn = document.getElementById("accTypeBtnMulti");
+            const fdBtn = document.getElementById("accTypeBtnFd");
+            const fdWrap = document.getElementById("fdFieldsWrap");
+            const balLabel = document.getElementById("newAccBalLabel");
+
+            if (type === "fd") {
+                fdBtn.style.background = "var(--transfer-color)"; fdBtn.style.color = "white";
+                multiBtn.style.background = "#e2e8f0"; multiBtn.style.color = "var(--text-main)";
+                fdWrap.style.display = "block";
+                balLabel.textContent = "Principal Amount";
+
+                if (!document.getElementById("fdStartDate").value) {
+                    document.getElementById("fdStartDate").value = new Date().toISOString().split("T")[0];
+                }
+                recalcFdMaturity();
+            } else {
+                multiBtn.style.background = "var(--transfer-color)"; multiBtn.style.color = "white";
+                fdBtn.style.background = "#e2e8f0"; fdBtn.style.color = "var(--text-main)";
+                fdWrap.style.display = "none";
+                balLabel.textContent = "Opening Value";
+            }
+        }
+
+        // Auto-calculates the maturity date from commencing date + tenure, and previews the
+        // simple-interest projected payout so the user can sanity-check the FD terms before saving.
+        function recalcFdMaturity() {
+            const startVal = document.getElementById("fdStartDate").value;
+            const tenure = parseInt(document.getElementById("fdTenureMonths").value, 10);
+            const preview = document.getElementById("fdMaturityPreview");
+
+            if (!startVal || isNaN(tenure) || tenure <= 0) {
+                preview.textContent = "";
+                return;
+            }
+
+            const start = new Date(startVal + "T00:00:00");
+            const maturity = new Date(start);
+            maturity.setMonth(maturity.getMonth() + tenure);
+            const maturityStr = maturity.toISOString().split("T")[0];
+            document.getElementById("fdMaturityDate").value = maturityStr;
+
+            const principal = parseFloat(document.getElementById("newAccBal").value) || 0;
+            const rate = parseFloat(document.getElementById("fdInterestRate").value) || 0;
+            const projectedInterest = principal * (rate / 100) * (tenure / 12);
+            const projectedTotal = principal + projectedInterest;
+            const curr = document.getElementById("newAccCurrency").value;
+
+            preview.textContent = `Matures ${maturityStr} — projected payout ≈ ${formatCurrency(projectedTotal, curr)} (principal + ${formatCurrency(projectedInterest, curr)} interest, simple interest estimate)`;
+        }
+
         function resetAccountForm() {
             const isEditing = document.getElementById("editAccountId").value !== "";
             document.getElementById("editAccountId").value = "";
@@ -1037,6 +1127,13 @@
             document.getElementById("accountFormHeaderTitle").textContent = "Create New Account";
             document.getElementById("accFormSubmitBtn").textContent = "Create Account";
             document.getElementById("accFormCancelBtn").style.display = "none";
+
+            document.getElementById("fdStartDate").value = "";
+            document.getElementById("fdTenureMonths").value = "12";
+            document.getElementById("fdInterestRate").value = "3.0";
+            document.getElementById("fdMaturityDate").value = "";
+            document.getElementById("fdMaturityPreview").textContent = "";
+            setAccountTypeUI("multi");
 
             if (isEditing) {
                 pushVirtualState("accountsModal");
@@ -1050,12 +1147,32 @@
             const balInput = document.getElementById("newAccBal").value;
             const bal = balInput === "" ? 0 : parseFloat(balInput);
             const curr = document.getElementById("newAccCurrency").value;
+            const type = document.getElementById("newAccType").value;
 
             if(!name) { alert("Please enter an account name."); return; }
             if (isNaN(bal)) { alert("Please enter a valid initial balance."); return; }
 
+            const record = { id, name, initialBalance: bal, currency: curr, type };
+
+            if (type === "fd") {
+                const fdStartDate = document.getElementById("fdStartDate").value;
+                const fdTenureMonths = parseInt(document.getElementById("fdTenureMonths").value, 10);
+                const fdInterestRate = parseFloat(document.getElementById("fdInterestRate").value);
+                const fdMaturityDate = document.getElementById("fdMaturityDate").value;
+
+                if (!fdStartDate) { alert("Please select a commencing date for this Fixed Deposit."); return; }
+                if (isNaN(fdTenureMonths) || fdTenureMonths <= 0) { alert("Please enter a valid tenure (in months)."); return; }
+                if (isNaN(fdInterestRate) || fdInterestRate < 0) { alert("Please enter a valid interest rate."); return; }
+                if (!fdMaturityDate) { alert("Could not calculate a maturity date — please re-check the commencing date and tenure."); return; }
+
+                record.fdStartDate = fdStartDate;
+                record.fdTenureMonths = fdTenureMonths;
+                record.fdInterestRate = fdInterestRate;
+                record.fdMaturityDate = fdMaturityDate;
+            }
+
             try {
-                await writeDB(STORES.ACCOUNTS, { id, name, initialBalance: bal, currency: curr });
+                await writeDB(STORES.ACCOUNTS, record);
             } catch (err) {
                 alert("Could not save account: " + (err && err.message ? err.message : err));
                 return;
@@ -1069,10 +1186,13 @@
             const accounts = await readAllDB(STORES.ACCOUNTS);
             let html = "";
             accounts.forEach(a => {
+                const fdInfo = a.type === "fd"
+                    ? ` <span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#ede9fe; color:#6d28d9; font-weight:bold;">FD · matures ${a.fdMaturityDate}</span>`
+                    : '';
                 html += `
                     <div class="config-item">
                         <span style="cursor:pointer;" onclick="editAccount('${a.id}')">
-                            <strong>${a.name}</strong> (${a.currency}) - <span style="color:var(--text-muted);">${formatCurrency(a.initialBalance, a.currency)}</span> 📝
+                            <strong>${a.name}</strong> (${a.currency}) - <span style="color:var(--text-muted);">${formatCurrency(a.initialBalance, a.currency)}</span> 📝${fdInfo}
                         </span>
                         <button class="trash-btn" onclick="removeAccount('${a.id}')">🗑</button>
                     </div>`;
@@ -1090,11 +1210,26 @@
             document.getElementById("newAccBal").value = account.initialBalance;
             document.getElementById("newAccCurrency").value = account.currency;
 
+            setAccountTypeUI(account.type === "fd" ? "fd" : "multi");
+            if (account.type === "fd") {
+                document.getElementById("fdStartDate").value = account.fdStartDate || "";
+                document.getElementById("fdTenureMonths").value = account.fdTenureMonths || 12;
+                document.getElementById("fdInterestRate").value = account.fdInterestRate || 0;
+                document.getElementById("fdMaturityDate").value = account.fdMaturityDate || "";
+                recalcFdMaturity();
+            }
+
             document.getElementById("accountFormHeaderTitle").textContent = "Edit Account Credentials";
             document.getElementById("accFormSubmitBtn").textContent = "Save Changes";
             document.getElementById("accFormCancelBtn").style.display = "block";
 
             pushVirtualState("edit_account");
+        }
+
+        // Jumps straight to editing a Fixed Deposit account from the dashboard maturity reminder banner.
+        function editAccountFromReminder(id) {
+            openAccountsConfig();
+            editAccount(id);
         }
 
         async function removeAccount(id) {
@@ -1249,8 +1384,9 @@
 
             Object.keys(fxRates).forEach(c => { currSelect.innerHTML += `<option value="${c}">${c}</option>`; });
             accounts.forEach(a => {
-                srcSelect.innerHTML += `<option value="${a.id}">${a.name} (${a.currency})</option>`;
-                destSelect.innerHTML += `<option value="${a.id}">${a.name} (${a.currency})</option>`;
+                const prefix = a.type === "fd" ? "🏦 " : "";
+                srcSelect.innerHTML += `<option value="${a.id}">${prefix}${a.name} (${a.currency})</option>`;
+                destSelect.innerHTML += `<option value="${a.id}">${prefix}${a.name} (${a.currency})</option>`;
             });
 
             if (existingTxId !== null) {
@@ -1518,13 +1654,42 @@
             accounts.forEach(a => globalBaseNetWorth += convertCurrency(nativeBalances[a.id], a.currency, baseCurrency));
             document.getElementById("netWorthDisplay").textContent = formatCurrency(globalBaseNetWorth, baseCurrency);
 
+            // --- Fixed Deposit maturity reminders ---
+            const todayMs = new Date(new Date().toISOString().split("T")[0] + "T00:00:00").getTime();
+            const MS_PER_DAY = 86400000;
+            let reminderHTML = "";
+            accounts.filter(a => a.type === "fd" && a.fdMaturityDate).forEach(a => {
+                const maturityMs = new Date(a.fdMaturityDate + "T00:00:00").getTime();
+                const daysLeft = Math.round((maturityMs - todayMs) / MS_PER_DAY);
+
+                if (daysLeft <= 30) {
+                    const overdue = daysLeft < 0;
+                    const bg = overdue ? "#fee2e2" : "#fef3c7";
+                    const border = overdue ? "#fecaca" : "#fde68a";
+                    const textCol = overdue ? "#b91c1c" : "#92400e";
+                    const label = overdue
+                        ? `matured ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? '' : 's'} ago — action needed`
+                        : (daysLeft === 0 ? `matures today` : `matures in ${daysLeft} day${daysLeft === 1 ? '' : 's'} (${a.fdMaturityDate})`);
+                    reminderHTML += `
+                        <div onclick="editAccountFromReminder('${a.id}')" style="cursor:pointer; background:${bg}; border:1px solid ${border}; color:${textCol}; border-radius:12px; padding:12px 14px; margin-bottom:8px; font-size:0.8rem; font-weight:600; display:flex; justify-content:space-between; align-items:center;">
+                            <span>${overdue ? '⏰' : '🔔'} Fixed Deposit "${a.name}" ${label} — plan renewal or withdrawal.</span>
+                            <span style="font-size:1.1rem;">›</span>
+                        </div>
+                    `;
+                }
+            });
+            document.getElementById("fdReminderContainer").innerHTML = reminderHTML;
+
             let accListHTML = "";
             accounts.forEach(a => {
                 const bal = nativeBalances[a.id];
                 const convText = a.currency !== baseCurrency ? `<span class="converted-subtext">≈ ${formatCurrency(convertCurrency(bal, a.currency, baseCurrency), baseCurrency)}</span>` : '';
+                const fdBadge = a.type === "fd"
+                    ? `<span style="font-size:0.65rem; color:#6d28d9; font-weight:bold; background:#ede9fe; padding:2px 4px; border-radius:4px; margin-left:4px;">FD · ${a.fdInterestRate}% · ${a.fdMaturityDate}</span>`
+                    : '';
                 accListHTML += `
                     <div class="account-list-row" onclick="navigateToLedgerPage('${a.id}')">
-                        <div><strong>${a.name}</strong> <span style="font-size:0.7rem; color:var(--text-muted); font-weight:bold; background:#e2e8f0; padding:2px 4px; border-radius:4px;">${a.currency}</span></div>
+                        <div><strong>${a.name}</strong> <span style="font-size:0.7rem; color:var(--text-muted); font-weight:bold; background:#e2e8f0; padding:2px 4px; border-radius:4px;">${a.currency}</span>${fdBadge}</div>
                         <div style="text-align:right;"><strong>${formatCurrency(bal, a.currency)}</strong>${convText}</div>
                     </div>
                 `;

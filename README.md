@@ -21,7 +21,12 @@ Ledger is a modern, high-performance, privacy-focused financial logging applicat
 
 ## 📱 Architecture & Evolution Log
 
-### [v14.0] - Maturity Resolution Workflow & Ledger Filter Fix *(Current)*
+### [v15.0] - Capital vs. Income Fix, FD Reference Numbers, One-Time Data Repair *(Current)*
+- **Fixed: Opening Balances & FD Placements Wrongly Counted as Income/Expense.** Opening balances, opening FD placements, FD renewal placements, and FD closures-for-renewal were being saved as `income`/`expense` transactions, which inflated the Total Income / Total Expense report card and cluttered "All Income Log" / "All Expense Log". These are now correctly saved as `transfer` — capital moving into tracking or being reinvested isn't earned income or a spend, so it no longer skews those totals. Genuine interest received (from a withdrawal or a principal-only renewal) is still correctly recorded as income.
+- **One-Time Repair Tool for Existing Data:** A new **"🔧 Fix Legacy FD/Opening Balance Entries"** button (next to Export/Import JSON) scans your existing transactions for the affected auto-generated entries and converts them to transfers in place — account balances are unaffected, only their income/expense classification changes. Safe to run more than once; it never touches transactions you entered yourself.
+- **Account / Reference Numbers for FD Placements:** You can now record a bank's certificate/account/reference number on any FD placement — at account creation, when logging a deposit, and when renewing. It's shown in the ledger entry and carried through automatically to that placement's closure/renewal/withdrawal transactions, so you can trace which certificate a given entry belongs to.
+
+### [v14.0] - Maturity Resolution Workflow & Ledger Filter Fix
 - **Fixed: Year Filter Silently Hid Older Transactions.** The ledger's Year dropdown defaulted to a hardcoded "2026," so viewing an account's activity could silently omit transactions dated in other years — most notably, an older Fixed Deposit placement (real commencing dates can predate the current year) simply wouldn't appear, even though it was correctly included in balance and net worth totals. Default changed to **"All Years"**, with the dropdown's year range widened for headroom.
 - **Reminder Banners Now Clear Themselves:** Tapping a maturity reminder no longer just navigates to the account — it opens a dedicated **Resolve Maturity** dialog. Once you act on a placement (renew or withdraw), it's flagged internally so the reminder disappears from the dashboard automatically, without deleting or hiding the original placement record.
 - **Renew Flow:** Enter the actual interest received (prefilled with the original projected estimate, editable), then choose:

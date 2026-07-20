@@ -483,6 +483,9 @@
             <button class="btn-util" onclick="document.getElementById('importInput').click()">📥 Import JSON</button>
             <input type="file" id="importInput" accept=".json" style="display:none" onchange="importBackup(event)">
         </div>
+        <div class="util-row" style="margin-top:8px;">
+            <button class="btn-util" onclick="repairLegacyFdEntries()" style="width:100%;">🔧 Fix Legacy FD/Opening Balance Entries</button>
+        </div>
     </div>
 
     <!-- ================= PAGE 2: LEDGER ACTIVITY LOG ================= -->
@@ -674,6 +677,10 @@
                 <!-- Fixed Deposit placement terms — shown only when this entry deposits funds into an FD account -->
                 <div id="txFdFieldsWrap" style="display:none; background:#faf5ff; border:1px solid #ede9fe; border-radius:10px; padding:10px; margin-bottom:10px;">
                     <p style="font-size:0.7rem; font-weight:700; text-transform:uppercase; color:#6d28d9; margin-bottom:8px;">🏦 Fixed Deposit Placement Terms</p>
+                    <div class="form-row">
+                        <label>Account / Reference No. (optional)</label>
+                        <input type="text" id="txFdReference" placeholder="e.g. FD-2026-00123">
+                    </div>
                     <div class="form-row-inline">
                         <div>
                             <label>Commencing Date</label>
@@ -763,6 +770,10 @@
                 </div>
 
                 <p style="font-size:0.72rem; font-weight:700; text-transform:uppercase; color:#6d28d9; margin:10px 0 6px;">New Placement Terms</p>
+                <div class="form-row">
+                    <label>New Account / Reference No. (optional)</label>
+                    <input type="text" id="resolveFdNewReference" placeholder="e.g. FD-2026-00456">
+                </div>
                 <div class="form-row-inline">
                     <div>
                         <label>Commencing Date</label>
@@ -871,7 +882,8 @@
             commute: "🚌",
             entertainment: "🎬",
             "opening balance": "🏛️",
-            "fixed deposit": "🏦"
+            "fixed deposit": "🏦",
+            "interest income": "💰"
         };
 
         // Helper to retrieve correct category icon safely
@@ -1264,6 +1276,10 @@
                         <input type="number" class="fd-row-amount" step="0.01" placeholder="0.00" oninput="recalcFdOpeningRowMaturity('${rowId}')">
                     </div>
                 </div>
+                <div class="form-row">
+                    <label>Account / Reference No. (optional)</label>
+                    <input type="text" class="fd-row-reference" placeholder="e.g. FD-2026-00123">
+                </div>
                 <div class="form-row-inline">
                     <div>
                         <label>Commencing Date</label>
@@ -1373,15 +1389,19 @@
                     const amount = parseFloat(row.querySelector(".multi-row-amount").value);
                     if (!amount || amount <= 0) continue; // skip empty rows
                     openingTransactions.push({
-                        type: "income",
+                        // "transfer" (not "income") — this is capital you're bringing into tracking,
+                        // not earned income, so it must not inflate the Income report. src is left
+                        // blank since the funds originate outside the app (e.g. cash you already had).
+                        type: "transfer",
                         desc: "Opening Balance",
                         amount: amount,
-                        src: id,
-                        dest: "",
+                        src: "",
+                        dest: id,
                         currency: row.querySelector(".multi-row-currency").value,
                         cat: "Opening Balance",
                         date: todayStr,
                         image: null,
+                        fdReferenceNo: null,
                         fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
                     });
                 }
@@ -1397,6 +1417,7 @@
                     const fdTenureMonths = parseInt(row.querySelector(".fd-row-tenure").value, 10);
                     const fdInterestRate = parseFloat(row.querySelector(".fd-row-rate").value);
                     const fdMaturityDate = row.querySelector(".fd-row-maturity").value;
+                    const fdReferenceNo = row.querySelector(".fd-row-reference").value.trim() || null;
 
                     if (!fdStartDate) { alert("Please select a commencing date for each Fixed Deposit placement."); return; }
                     if (isNaN(fdTenureMonths) || fdTenureMonths <= 0) { alert("Please enter a valid tenure (in months) for each placement."); return; }
@@ -1404,15 +1425,18 @@
                     if (!fdMaturityDate) { alert("Could not calculate a maturity date for a placement — please re-check its commencing date and tenure."); return; }
 
                     openingTransactions.push({
-                        type: "income",
+                        // "transfer" (not "income") — same reasoning as above: this is principal
+                        // capital, not earned income.
+                        type: "transfer",
                         desc: "Opening Fixed Deposit Placement",
                         amount: amount,
-                        src: id,
-                        dest: "",
+                        src: "",
+                        dest: id,
                         currency: row.querySelector(".fd-row-currency").value,
                         cat: "Fixed Deposit",
                         date: fdStartDate,
                         image: null,
+                        fdReferenceNo,
                         fdStartDate, fdTenureMonths, fdInterestRate, fdMaturityDate
                     });
                 }
@@ -1682,6 +1706,7 @@
 
                 updateTxFdFieldsVisibilitySync(accounts);
                 if (tx.fdMaturityDate) {
+                    document.getElementById("txFdReference").value = tx.fdReferenceNo || "";
                     document.getElementById("txFdStartDate").value = tx.fdStartDate || "";
                     document.getElementById("txFdTenureMonths").value = tx.fdTenureMonths || 12;
                     document.getElementById("txFdInterestRate").value = tx.fdInterestRate || 0;
@@ -1712,6 +1737,7 @@
 
                 setTxImagePreview(null);
 
+                document.getElementById("txFdReference").value = "";
                 document.getElementById("txFdStartDate").value = "";
                 document.getElementById("txFdTenureMonths").value = "12";
                 document.getElementById("txFdInterestRate").value = "3.0";
@@ -1904,8 +1930,9 @@
 
             document.getElementById("resolveFdTxId").value = tx.id;
 
+            const refText = tx.fdReferenceNo ? ` · Ref: ${tx.fdReferenceNo}` : '';
             document.getElementById("resolveFdSummary").textContent =
-                `${formatCurrency(tx.amount, tx.currency)} placement in "${holdingAccount.name}"`;
+                `${formatCurrency(tx.amount, tx.currency)} placement in "${holdingAccount.name}"${refText}`;
             document.getElementById("resolveFdMeta").textContent =
                 `Commenced ${tx.fdStartDate} · ${tx.fdTenureMonths} months · ${tx.fdInterestRate}% p.a. · Matures ${tx.fdMaturityDate}`;
 
@@ -1924,6 +1951,9 @@
             document.getElementById("resolveFdInterestDest").innerHTML = destOptions;
             document.getElementById("resolveFdWithdrawDest").innerHTML = destOptions;
 
+            // Many banks reuse the same certificate/account number on renewal — default to it, but
+            // it's fully editable since some issue a fresh reference number instead.
+            document.getElementById("resolveFdNewReference").value = tx.fdReferenceNo || "";
             document.getElementById("resolveFdNewStart").value = tx.fdMaturityDate;
             document.getElementById("resolveFdNewTenure").value = tx.fdTenureMonths;
             document.getElementById("resolveFdNewRate").value = tx.fdInterestRate;
@@ -2031,34 +2061,42 @@
 
             const action = document.getElementById("resolveFdAction").value;
             const today = new Date().toISOString().split("T")[0];
+            const refLabel = tx.fdReferenceNo ? `Ref: ${tx.fdReferenceNo}` : `#${tx.id}`;
 
             try {
                 if (action === "withdraw") {
                     const destId = document.getElementById("resolveFdWithdrawDest").value;
                     if (!destId) { alert("Please choose an account to receive the proceeds."); return; }
 
-                    // Move the principal out of the FD basket into the chosen account.
+                    // Move the principal out of the FD basket into the chosen account. This is a
+                    // "transfer" (not "expense") — moving your own principal isn't a spend, so it
+                    // must not be counted in the Expense report.
                     await writeDB(STORES.TRANSACTIONS, {
-                        type: "transfer", desc: `FD Withdrawal — Principal ("${tx.desc}")`,
+                        type: "transfer", desc: `FD Withdrawal — Principal (${refLabel})`,
                         amount: tx.amount, src: holdingAccountId, dest: destId, currency: tx.currency,
-                        cat: "", date: today, image: null,
+                        cat: "Fixed Deposit", date: today, image: null,
+                        fdReferenceNo: tx.fdReferenceNo || null,
                         fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
                     });
 
-                    // Record the actual interest received as income directly into the destination account.
+                    // The interest, however, IS genuine new income — record it as such into the destination account.
                     if (interest > 0) {
                         await writeDB(STORES.TRANSACTIONS, {
-                            type: "income", desc: `FD Interest Received ("${tx.desc}")`,
+                            type: "income", desc: `FD Interest Received (${refLabel})`,
                             amount: interest, src: destId, dest: "", currency: tx.currency,
                             cat: "Interest Income", date: today, image: null,
+                            fdReferenceNo: tx.fdReferenceNo || null,
                             fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
                         });
                     }
                 } else {
                     // Renew: close out the old placement's contribution to the FD basket, then open
                     // a fresh placement under the new terms (capitalizing interest, or principal-only
-                    // with interest routed to another account).
+                    // with interest routed to another account). Both the closing and re-opening legs
+                    // are "transfer" (not "expense"/"income") — this is capital moving within your own
+                    // tracked funds, not money earned or spent, so it must not skew those reports.
                     const mode = document.getElementById("resolveFdRenewMode").value;
+                    const newReference = document.getElementById("resolveFdNewReference").value.trim() || null;
                     const newStart = document.getElementById("resolveFdNewStart").value;
                     const newTenure = parseInt(document.getElementById("resolveFdNewTenure").value, 10);
                     const newRate = parseFloat(document.getElementById("resolveFdNewRate").value);
@@ -2070,17 +2108,19 @@
                     if (!newMaturity) { alert("Could not calculate the new maturity date — please re-check the commencing date and tenure."); return; }
 
                     await writeDB(STORES.TRANSACTIONS, {
-                        type: "expense", desc: `FD Placement Closed for Renewal ("${tx.desc}")`,
+                        type: "transfer", desc: `FD Placement Closed for Renewal (${refLabel})`,
                         amount: tx.amount, src: holdingAccountId, dest: "", currency: tx.currency,
-                        cat: "", date: today, image: null,
+                        cat: "Fixed Deposit", date: today, image: null,
+                        fdReferenceNo: tx.fdReferenceNo || null,
                         fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
                     });
 
                     const newPrincipal = mode === "capitalize" ? tx.amount + interest : tx.amount;
                     await writeDB(STORES.TRANSACTIONS, {
-                        type: "income", desc: `FD Renewal Placement`,
-                        amount: newPrincipal, src: holdingAccountId, dest: "", currency: tx.currency,
+                        type: "transfer", desc: `FD Renewal Placement`,
+                        amount: newPrincipal, src: "", dest: holdingAccountId, currency: tx.currency,
                         cat: "Fixed Deposit", date: today, image: null,
+                        fdReferenceNo: newReference,
                         fdStartDate: newStart, fdTenureMonths: newTenure, fdInterestRate: newRate, fdMaturityDate: newMaturity
                     });
 
@@ -2088,9 +2128,10 @@
                         const interestDestId = document.getElementById("resolveFdInterestDest").value;
                         if (!interestDestId) { alert("Please choose an account to receive the interest."); return; }
                         await writeDB(STORES.TRANSACTIONS, {
-                            type: "income", desc: `FD Interest Received ("${tx.desc}")`,
+                            type: "income", desc: `FD Interest Received (${refLabel})`,
                             amount: interest, src: interestDestId, dest: "", currency: tx.currency,
                             cat: "Interest Income", date: today, image: null,
+                            fdReferenceNo: tx.fdReferenceNo || null,
                             fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
                         });
                     }
@@ -2141,6 +2182,7 @@
                 cat: document.getElementById("txCategory").value,
                 date: dateVal,
                 image: currentTxImageData || null,
+                fdReferenceNo: null,
                 fdStartDate: null,
                 fdTenureMonths: null,
                 fdInterestRate: null,
@@ -2153,12 +2195,14 @@
                 const fdTenureMonths = parseInt(document.getElementById("txFdTenureMonths").value, 10);
                 const fdInterestRate = parseFloat(document.getElementById("txFdInterestRate").value);
                 const fdMaturityDate = document.getElementById("txFdMaturityDate").value;
+                const fdReferenceNo = document.getElementById("txFdReference").value.trim() || null;
 
                 if (!fdStartDate) { alert("Please select a commencing date for this Fixed Deposit placement."); return; }
                 if (isNaN(fdTenureMonths) || fdTenureMonths <= 0) { alert("Please enter a valid tenure (in months) for this placement."); return; }
                 if (isNaN(fdInterestRate) || fdInterestRate < 0) { alert("Please enter a valid interest rate for this placement."); return; }
                 if (!fdMaturityDate) { alert("Could not calculate a maturity date — please re-check the commencing date and tenure."); return; }
 
+                record.fdReferenceNo = fdReferenceNo;
                 record.fdStartDate = fdStartDate;
                 record.fdTenureMonths = fdTenureMonths;
                 record.fdInterestRate = fdInterestRate;
@@ -2402,12 +2446,13 @@
                 const receiptBadge = t.image
                     ? `<span onclick="openImageViewer('${t.image}', event)" style="cursor:pointer; margin-left:4px;" title="View attached photo">📎</span>`
                     : '';
+                const referenceText = t.fdReferenceNo ? ` · Ref: ${t.fdReferenceNo}` : '';
 
                 ledgerHTML += `
                     <div class="ledger-item" onclick="openTransactionForm('${t.type}', ${t.id})">
                         <div class="item-left">
                             <span class="item-name">${iconBadge} ${t.desc} 📝</span>
-                            <span class="item-meta">${t.date} [${t.cat || 'Transfer'}]${receiptBadge}</span>
+                            <span class="item-meta">${t.date} [${t.cat || 'Transfer'}]${referenceText}${receiptBadge}</span>
                         </div>
                         <div class="item-right">
                             <div class="item-value" style="color:var(--${col}); font-weight: bold;">
@@ -2519,6 +2564,52 @@
                 const req = tx.objectStore(storeName).get(key);
                 req.onsuccess = () => resolve(req.result);
             });
+        }
+
+        // One-time repair for accounts created before v14.0: opening balances, FD placements, and
+        // renewal placements were mistakenly saved as "income" (and closures as "expense"), which
+        // incorrectly inflated the Income/Expense reports. This finds those by their known
+        // auto-generated description patterns and converts them to "transfer" — the same fix now
+        // applied automatically to any new entries going forward. It never touches genuine income
+        // or expense entries you logged yourself, and it's safe to run more than once.
+        async function repairLegacyFdEntries() {
+            const ok = await customConfirm("This will scan your transactions for opening balance / FD placement / renewal entries that were mistakenly counted as income or expense, and correct them to transfers. This does not change any account balances. Continue?");
+            if (!ok) return;
+
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const incomeLikePrefixes = ["Opening Balance", "Opening Fixed Deposit Placement", "FD Renewal Placement"];
+            const expenseLikePrefix = "FD Placement Closed for Renewal";
+
+            let fixedCount = 0;
+            try {
+                for (const t of txs) {
+                    let changed = false;
+
+                    if (t.type === "income" && incomeLikePrefixes.some(p => t.desc && t.desc.startsWith(p))) {
+                        t.dest = t.src;
+                        t.src = "";
+                        t.type = "transfer";
+                        changed = true;
+                    } else if (t.type === "expense" && t.desc && t.desc.startsWith(expenseLikePrefix)) {
+                        t.type = "transfer";
+                        changed = true;
+                    }
+
+                    if (changed) {
+                        await writeDB(STORES.TRANSACTIONS, t);
+                        fixedCount++;
+                    }
+                }
+            } catch (err) {
+                alert("Repair stopped due to an error: " + (err && err.message ? err.message : err) + `. ${fixedCount} entr${fixedCount === 1 ? 'y was' : 'ies were'} fixed before the error.`);
+                renderApp();
+                return;
+            }
+
+            renderApp();
+            alert(fixedCount > 0
+                ? `Fixed ${fixedCount} entr${fixedCount === 1 ? 'y' : 'ies'}. They'll no longer be counted in your Income/Expense totals.`
+                : "No legacy entries found — nothing needed fixing.");
         }
 
         async function exportBackup() {

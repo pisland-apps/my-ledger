@@ -21,7 +21,15 @@ Ledger is a modern, high-performance, privacy-focused financial logging applicat
 
 ## 📱 Architecture & Evolution Log
 
-### [v11.0] - Fixed Deposit Accounts & Maturity Reminders *(Current)*
+### [v12.0] - Account Model Rework: Normal vs. True Multi-Currency vs. Fixed Deposit *(Current)*
+- **Three Distinct Account Types:** Account creation is now a clean three-way choice — **🏛️ Normal** (single fixed currency, chosen once at creation — unchanged from earlier behavior), **💱 Multi-Currency** (one account name holding several independent currency balances side by side, e.g. "Bank A" with its own SGD and MYR baskets that never mix), and **🏦 Fixed Deposit** (a term-deposit account whose currency and terms are captured per placement, not at creation).
+- **Minimal Account Creation:** Creating a Multi-Currency or Fixed Deposit account now only asks for a name — no currency, no opening balance, no term fields. Everything else is captured naturally as you log transactions.
+- **True Currency Baskets:** Multi-Currency and Fixed Deposit accounts no longer auto-convert incoming funds into one native currency. Each currency you transact in in gets its own running balance ("basket") shown side by side in the accounts list — depositing SGD into "Bank A" only ever affects its SGD basket, never its MYR basket. Normal accounts keep the original behavior (everything converts into their one fixed currency).
+- **FD Terms Moved to the Transaction:** Fixed Deposit placement details — Commencing Date, Tenure, Interest Rate, and the auto-calculated Maturity Date — now appear directly in the transaction form whenever you log a deposit into an FD account, instead of at account creation. This naturally supports multiple tranches/placements in the same FD account, each with its own maturity date.
+- **Reminders Now Track Every Placement:** The dashboard's maturity reminder banner scans all FD deposit transactions (not just one date per account), so if an FD account has several placements, each one gets its own upcoming/overdue reminder.
+- **Account Dropdowns Clarified:** Transaction form account pickers now show 💱/🏦 prefixes and omit the currency suffix for Multi-Currency/Fixed Deposit accounts (since they don't have one fixed currency), while Normal accounts still show their currency as before.
+
+### [v11.0] - Fixed Deposit Accounts & Maturity Reminders
 - **Account Type Selector:** Account creation/edit now starts with a choice — **💱 Multi-Currency Account** (today's flexible wallet/bank account behavior, unchanged) or **🏦 Fixed Deposit Account** (a new dedicated type for term deposits).
 - **Fixed Deposit Terms:** FD accounts capture Commencing Date, Tenure (months), and Annual Interest Rate; the Maturity Date is auto-calculated from commencing date + tenure (and recalculated live as you edit the form), alongside a projected payout preview using simple interest.
 - **Maturity Dashboard Banner:** Any FD within 30 days of maturity — or already past it — surfaces a color-coded reminder banner at the top of the dashboard (amber = upcoming, red = overdue), tapping it jumps straight to that account's edit screen.

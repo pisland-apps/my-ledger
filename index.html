@@ -2439,8 +2439,16 @@
                 // Only build DOM markup for the first `ledgerRenderLimit` matches — keeps large ledgers fast on mobile.
                 if (matchedCount > ledgerRenderLimit) return;
 
-                const col = t.type === "income" ? "income-color" : t.type === "expense" ? "expense-color" : "transfer-color";
-                const sgn = t.type === "income" ? "+" : t.type === "expense" ? "-" : "🔄";
+                // For transfers, show a directional +/− and color when viewing a specific account
+                // (money leaving that account = red/−, money arriving = green/+). When viewing "All"
+                // accounts the direction is ambiguous, so it falls back to the neutral 🔄 style.
+                let col, sgn;
+                if (t.type === "income") { col = "income-color"; sgn = "+"; }
+                else if (t.type === "expense") { col = "expense-color"; sgn = "-"; }
+                else if (activeLedgerAccountView !== "all" && t.dest === activeLedgerAccountView) { col = "income-color"; sgn = "+"; }
+                else if (activeLedgerAccountView !== "all" && t.src === activeLedgerAccountView) { col = "expense-color"; sgn = "-"; }
+                else { col = "transfer-color"; sgn = "🔄"; }
+
                 const sub = t.currency !== baseCurrency ? `<span class="converted-subtext">≈ ${formatCurrency(tBase, baseCurrency)}</span>` : '';
                 const iconBadge = t.type === "transfer" ? "🔄" : getCategoryIcon(t.cat, t.type);
                 const receiptBadge = t.image
@@ -2448,10 +2456,24 @@
                     : '';
                 const referenceText = t.fdReferenceNo ? ` · Ref: ${t.fdReferenceNo}` : '';
 
+                // FD placement status — shows at a glance whether a placement is still running,
+                // overdue for action, or has already been renewed/withdrawn and closed out.
+                let fdStatusBadge = '';
+                if (t.fdMaturityDate) {
+                    if (t.fdResolved) {
+                        fdStatusBadge = `<span style="font-size:0.62rem; font-weight:700; color:#64748b; background:#e2e8f0; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">✅ Closed</span>`;
+                    } else {
+                        const isOverdue = new Date(t.fdMaturityDate + "T00:00:00").getTime() < new Date(new Date().toISOString().split("T")[0] + "T00:00:00").getTime();
+                        fdStatusBadge = isOverdue
+                            ? `<span style="font-size:0.62rem; font-weight:700; color:#b91c1c; background:#fee2e2; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">⏰ Due</span>`
+                            : `<span style="font-size:0.62rem; font-weight:700; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">🟢 Active</span>`;
+                    }
+                }
+
                 ledgerHTML += `
                     <div class="ledger-item" onclick="openTransactionForm('${t.type}', ${t.id})">
                         <div class="item-left">
-                            <span class="item-name">${iconBadge} ${t.desc} 📝</span>
+                            <span class="item-name">${iconBadge} ${t.desc} 📝${fdStatusBadge}</span>
                             <span class="item-meta">${t.date} [${t.cat || 'Transfer'}]${referenceText}${receiptBadge}</span>
                         </div>
                         <div class="item-right">

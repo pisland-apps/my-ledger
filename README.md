@@ -21,7 +21,17 @@ Ledger is a modern, high-performance, privacy-focused financial logging applicat
 
 ## 📱 Architecture & Evolution Log
 
-### [v13.0] - Opening Balances for Multi-Currency & Fixed Deposit Accounts *(Current)*
+### [v14.0] - Maturity Resolution Workflow & Ledger Filter Fix *(Current)*
+- **Fixed: Year Filter Silently Hid Older Transactions.** The ledger's Year dropdown defaulted to a hardcoded "2026," so viewing an account's activity could silently omit transactions dated in other years — most notably, an older Fixed Deposit placement (real commencing dates can predate the current year) simply wouldn't appear, even though it was correctly included in balance and net worth totals. Default changed to **"All Years"**, with the dropdown's year range widened for headroom.
+- **Reminder Banners Now Clear Themselves:** Tapping a maturity reminder no longer just navigates to the account — it opens a dedicated **Resolve Maturity** dialog. Once you act on a placement (renew or withdraw), it's flagged internally so the reminder disappears from the dashboard automatically, without deleting or hiding the original placement record.
+- **Renew Flow:** Enter the actual interest received (prefilled with the original projected estimate, editable), then choose:
+  - **➕ Renew with Interest** — the interest is capitalized straight into the new placement's principal.
+  - **🏛️ Principal Only** — only the original principal rolls into the new placement; the interest is paid out as income to an account of your choice.
+  Either way, set the new placement's Commencing Date, Tenure, and Interest Rate — the Maturity Date auto-calculates, with a live preview of the new placement.
+- **Withdraw & Close Flow:** Enter the actual interest received and pick a destination account — the principal is transferred out and the interest is recorded as income into that same account, closing the placement out entirely.
+- **Multiple Placements, Independently Tracked:** Since each FD placement is resolved individually, an account holding several tranches (e.g. 4 separate FDs under one bank name) keeps a separate reminder — and a separate renew/withdraw action — for each one.
+
+### [v13.0] - Opening Balances for Multi-Currency & Fixed Deposit Accounts
 - **Multi-Currency Opening Balances:** Account creation for a Multi-Currency account now lets you seed one or more starting currency balances right away (e.g. open "Bank A" already holding both SGD and MYR) via repeatable "+ Add Currency" rows, instead of requiring a separate transfer afterward.
 - **Multiple Fixed Deposit Placements at Creation:** Fixed Deposit account creation now supports adding several opening placements in one go — e.g. an account "Bank A FD" that already holds 4 existing certificates, each with its own currency, principal, commencing date, tenure, and interest rate (maturity auto-calculated per placement, with a live payout preview).
 - **Backed by Real Transactions:** Each opening balance/placement row is saved as a normal "Opening Balance" (or "Opening Fixed Deposit Placement") transaction under the new account — so they show up in that account's ledger history and are automatically picked up by the maturity reminder banner, with no special-case logic needed elsewhere in the app.

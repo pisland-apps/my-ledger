@@ -457,8 +457,8 @@
                     <option value="9">October</option><option value="10">November</option><option value="11">December</option>
                 </select>
                 <select id="filterYear" onchange="ledgerRenderLimit = LEDGER_PAGE_SIZE; renderApp()">
-                    <option value="all">All Years</option>
-                    <option value="2025">2025</option><option value="2026" selected>2026</option><option value="2027">2027</option>
+                    <option value="all" selected>All Years</option>
+                    <option value="2024">2024</option><option value="2025">2025</option><option value="2026">2026</option><option value="2027">2027</option><option value="2028">2028</option>
                 </select>
             </div>
         </div>
@@ -718,6 +718,87 @@
         </div>
     </div>
 
+    <!-- MODAL: Resolve Fixed Deposit Maturity (renew or withdraw) -->
+    <div class="modal" id="resolveFdModal">
+        <div class="modal-sheet">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                <h3 style="font-weight: 800;">🏦 Resolve Maturity</h3>
+                <button onclick="closeModal('resolveFdModal')" style="background:none; border:none; font-size: 1.5rem; padding: 8px;">&times;</button>
+            </div>
+            <input type="hidden" id="resolveFdTxId">
+
+            <div style="background:#faf5ff; border:1px solid #ede9fe; border-radius:10px; padding:10px; margin-bottom:14px; font-size:0.82rem;">
+                <p id="resolveFdSummary" style="font-weight:700; color:#6d28d9;"></p>
+                <p id="resolveFdMeta" style="color:var(--text-muted); margin-top:2px;"></p>
+            </div>
+
+            <div class="form-row">
+                <label>Actual Interest Received</label>
+                <input type="number" id="resolveFdInterest" step="0.01" min="0">
+            </div>
+
+            <div class="form-row">
+                <label>What would you like to do?</label>
+                <div style="display:flex; gap:8px;">
+                    <button type="button" id="resolveFdActionRenewBtn" onclick="setResolveFdAction('renew')" class="submit-btn" style="margin-top:0; flex:1;">🔄 Renew</button>
+                    <button type="button" id="resolveFdActionWithdrawBtn" onclick="setResolveFdAction('withdraw')" class="submit-btn" style="margin-top:0; flex:1; background:#e2e8f0; color:var(--text-main);">💸 Withdraw & Close</button>
+                </div>
+                <input type="hidden" id="resolveFdAction" value="renew">
+            </div>
+
+            <!-- Renewal-specific fields -->
+            <div id="resolveFdRenewWrap">
+                <div class="form-row">
+                    <label>Renewal Mode</label>
+                    <div style="display:flex; gap:8px;">
+                        <button type="button" id="resolveFdModeCapitalizeBtn" onclick="setResolveFdRenewMode('capitalize')" class="submit-btn" style="margin-top:0; flex:1; font-size:0.78rem;">➕ Renew with Interest</button>
+                        <button type="button" id="resolveFdModePrincipalBtn" onclick="setResolveFdRenewMode('principal')" class="submit-btn" style="margin-top:0; flex:1; font-size:0.78rem; background:#e2e8f0; color:var(--text-main);">🏛️ Principal Only</button>
+                    </div>
+                    <input type="hidden" id="resolveFdRenewMode" value="capitalize">
+                </div>
+
+                <div class="form-row" id="resolveFdInterestDestRow" style="display:none;">
+                    <label>Transfer Interest To</label>
+                    <select id="resolveFdInterestDest" class="form-input"></select>
+                </div>
+
+                <p style="font-size:0.72rem; font-weight:700; text-transform:uppercase; color:#6d28d9; margin:10px 0 6px;">New Placement Terms</p>
+                <div class="form-row-inline">
+                    <div>
+                        <label>Commencing Date</label>
+                        <input type="date" id="resolveFdNewStart" onchange="recalcResolveFdMaturity()">
+                    </div>
+                    <div>
+                        <label>Tenure (months)</label>
+                        <input type="number" id="resolveFdNewTenure" step="1" min="1" value="12" onchange="recalcResolveFdMaturity()">
+                    </div>
+                </div>
+                <div class="form-row-inline">
+                    <div>
+                        <label>Interest Rate (% p.a.)</label>
+                        <input type="number" id="resolveFdNewRate" step="0.01" min="0" oninput="recalcResolveFdMaturity()">
+                    </div>
+                    <div>
+                        <label>Maturity Date</label>
+                        <input type="date" id="resolveFdNewMaturity" readonly>
+                    </div>
+                </div>
+                <p id="resolveFdRenewPreview" style="font-size:0.75rem; color:#6d28d9; margin-top:2px;"></p>
+            </div>
+
+            <!-- Withdrawal-specific fields -->
+            <div id="resolveFdWithdrawWrap" style="display:none;">
+                <div class="form-row">
+                    <label>Transfer Proceeds To</label>
+                    <select id="resolveFdWithdrawDest" class="form-input"></select>
+                </div>
+                <p id="resolveFdWithdrawPreview" style="font-size:0.8rem; color:var(--text-muted);"></p>
+            </div>
+
+            <button type="button" onclick="confirmResolveFd()" class="submit-btn" style="background:var(--transfer-color);">Confirm</button>
+        </div>
+    </div>
+
     <!-- MODAL: Fullscreen image viewer for transaction receipts -->
     <div class="modal" id="imageViewerModal" style="background:rgba(0,0,0,0.85);">
         <div style="max-width:95vw; max-height:85vh; display:flex; flex-direction:column; align-items:center; gap:12px;">
@@ -812,7 +893,7 @@
                 return;
             }
 
-            const activeModals = ["txModal", "accountsModal", "currencyModal", "categoriesModal", "imageViewerModal"];
+            const activeModals = ["txModal", "accountsModal", "currencyModal", "categoriesModal", "imageViewerModal", "resolveFdModal"];
             let modalClosed = false;
             activeModals.forEach(id => {
                 const modal = document.getElementById(id);
@@ -1810,6 +1891,223 @@
             preview.textContent = `Matures ${maturityStr} — projected payout ≈ ${formatCurrency(projectedTotal, curr)} (principal + ${formatCurrency(projectedInterest, curr)} interest, simple interest estimate)`;
         }
 
+        // --- RESOLVE FIXED DEPOSIT MATURITY (renew or withdraw) ---
+
+        async function openResolveFdModal(txId) {
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const tx = txs.find(t => t.id === txId);
+            if (!tx) return;
+
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const holdingAccount = accounts.find(a => a.id === (tx.type === "transfer" ? tx.dest : tx.src));
+            if (!holdingAccount) return;
+
+            document.getElementById("resolveFdTxId").value = tx.id;
+
+            document.getElementById("resolveFdSummary").textContent =
+                `${formatCurrency(tx.amount, tx.currency)} placement in "${holdingAccount.name}"`;
+            document.getElementById("resolveFdMeta").textContent =
+                `Commenced ${tx.fdStartDate} · ${tx.fdTenureMonths} months · ${tx.fdInterestRate}% p.a. · Matures ${tx.fdMaturityDate}`;
+
+            // Prefill the interest field with the originally-projected simple-interest estimate —
+            // the user can overwrite it with what the bank actually paid.
+            const projectedInterest = tx.amount * (tx.fdInterestRate / 100) * (tx.fdTenureMonths / 12);
+            document.getElementById("resolveFdInterest").value = projectedInterest.toFixed(2);
+
+            // Destination account pickers for both flows — any account except this same FD placement's
+            // holding account makes sense as a target (though we don't hard-block picking it either).
+            const destOptions = accounts.map(a => {
+                const prefix = a.type === "fd" ? "🏦 " : a.type === "multi" ? "💱 " : "";
+                const currLabel = (a.type === "multi" || a.type === "fd") ? "" : ` (${a.currency})`;
+                return `<option value="${a.id}">${prefix}${a.name}${currLabel}</option>`;
+            }).join("");
+            document.getElementById("resolveFdInterestDest").innerHTML = destOptions;
+            document.getElementById("resolveFdWithdrawDest").innerHTML = destOptions;
+
+            document.getElementById("resolveFdNewStart").value = tx.fdMaturityDate;
+            document.getElementById("resolveFdNewTenure").value = tx.fdTenureMonths;
+            document.getElementById("resolveFdNewRate").value = tx.fdInterestRate;
+
+            setResolveFdAction("renew");
+            setResolveFdRenewMode("capitalize");
+            recalcResolveFdMaturity();
+
+            openModal("resolveFdModal");
+        }
+
+        function setResolveFdAction(action) {
+            document.getElementById("resolveFdAction").value = action;
+            const renewBtn = document.getElementById("resolveFdActionRenewBtn");
+            const withdrawBtn = document.getElementById("resolveFdActionWithdrawBtn");
+            const renewWrap = document.getElementById("resolveFdRenewWrap");
+            const withdrawWrap = document.getElementById("resolveFdWithdrawWrap");
+
+            if (action === "renew") {
+                renewBtn.style.background = "var(--transfer-color)"; renewBtn.style.color = "white";
+                withdrawBtn.style.background = "#e2e8f0"; withdrawBtn.style.color = "var(--text-main)";
+                renewWrap.style.display = "block";
+                withdrawWrap.style.display = "none";
+            } else {
+                withdrawBtn.style.background = "var(--transfer-color)"; withdrawBtn.style.color = "white";
+                renewBtn.style.background = "#e2e8f0"; renewBtn.style.color = "var(--text-main)";
+                renewWrap.style.display = "none";
+                withdrawWrap.style.display = "block";
+                recalcResolveFdWithdrawPreview();
+            }
+        }
+
+        function setResolveFdRenewMode(mode) {
+            document.getElementById("resolveFdRenewMode").value = mode;
+            const capBtn = document.getElementById("resolveFdModeCapitalizeBtn");
+            const prinBtn = document.getElementById("resolveFdModePrincipalBtn");
+            const destRow = document.getElementById("resolveFdInterestDestRow");
+
+            if (mode === "capitalize") {
+                capBtn.style.background = "var(--transfer-color)"; capBtn.style.color = "white";
+                prinBtn.style.background = "#e2e8f0"; prinBtn.style.color = "var(--text-main)";
+                destRow.style.display = "none";
+            } else {
+                prinBtn.style.background = "var(--transfer-color)"; prinBtn.style.color = "white";
+                capBtn.style.background = "#e2e8f0"; capBtn.style.color = "var(--text-main)";
+                destRow.style.display = "block";
+            }
+            recalcResolveFdMaturity();
+        }
+
+        async function recalcResolveFdMaturity() {
+            const startVal = document.getElementById("resolveFdNewStart").value;
+            const tenure = parseInt(document.getElementById("resolveFdNewTenure").value, 10);
+            const preview = document.getElementById("resolveFdRenewPreview");
+
+            if (!startVal || isNaN(tenure) || tenure <= 0) {
+                preview.textContent = "";
+                return;
+            }
+
+            const start = new Date(startVal + "T00:00:00");
+            const maturity = new Date(start);
+            maturity.setMonth(maturity.getMonth() + tenure);
+            const maturityStr = maturity.toISOString().split("T")[0];
+            document.getElementById("resolveFdNewMaturity").value = maturityStr;
+
+            const txId = parseInt(document.getElementById("resolveFdTxId").value);
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const tx = txs.find(t => t.id === txId);
+            if (!tx) return;
+
+            const mode = document.getElementById("resolveFdRenewMode").value;
+            const interest = parseFloat(document.getElementById("resolveFdInterest").value) || 0;
+            const newPrincipal = mode === "capitalize" ? tx.amount + interest : tx.amount;
+
+            preview.textContent = `New placement: ${formatCurrency(newPrincipal, tx.currency)} at ${document.getElementById("resolveFdNewRate").value}% p.a., maturing ${maturityStr}`;
+        }
+
+        async function recalcResolveFdWithdrawPreview() {
+            const txId = parseInt(document.getElementById("resolveFdTxId").value);
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const tx = txs.find(t => t.id === txId);
+            if (!tx) return;
+
+            const interest = parseFloat(document.getElementById("resolveFdInterest").value) || 0;
+            const total = tx.amount + interest;
+            document.getElementById("resolveFdWithdrawPreview").textContent =
+                `Total payout: ${formatCurrency(tx.amount, tx.currency)} principal + ${formatCurrency(interest, tx.currency)} interest = ${formatCurrency(total, tx.currency)}`;
+        }
+
+        document.getElementById("resolveFdInterest") && document.getElementById("resolveFdInterest").addEventListener("input", () => {
+            recalcResolveFdMaturity();
+            recalcResolveFdWithdrawPreview();
+        });
+
+        async function confirmResolveFd() {
+            const txId = parseInt(document.getElementById("resolveFdTxId").value);
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const tx = txs.find(t => t.id === txId);
+            if (!tx) { alert("Could not find this placement — it may have already been resolved."); closeModal("resolveFdModal"); return; }
+
+            const holdingAccountId = tx.type === "transfer" ? tx.dest : tx.src;
+            const interest = parseFloat(document.getElementById("resolveFdInterest").value);
+            if (isNaN(interest) || interest < 0) { alert("Please enter a valid interest amount (0 if none)."); return; }
+
+            const action = document.getElementById("resolveFdAction").value;
+            const today = new Date().toISOString().split("T")[0];
+
+            try {
+                if (action === "withdraw") {
+                    const destId = document.getElementById("resolveFdWithdrawDest").value;
+                    if (!destId) { alert("Please choose an account to receive the proceeds."); return; }
+
+                    // Move the principal out of the FD basket into the chosen account.
+                    await writeDB(STORES.TRANSACTIONS, {
+                        type: "transfer", desc: `FD Withdrawal — Principal ("${tx.desc}")`,
+                        amount: tx.amount, src: holdingAccountId, dest: destId, currency: tx.currency,
+                        cat: "", date: today, image: null,
+                        fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
+                    });
+
+                    // Record the actual interest received as income directly into the destination account.
+                    if (interest > 0) {
+                        await writeDB(STORES.TRANSACTIONS, {
+                            type: "income", desc: `FD Interest Received ("${tx.desc}")`,
+                            amount: interest, src: destId, dest: "", currency: tx.currency,
+                            cat: "Interest Income", date: today, image: null,
+                            fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
+                        });
+                    }
+                } else {
+                    // Renew: close out the old placement's contribution to the FD basket, then open
+                    // a fresh placement under the new terms (capitalizing interest, or principal-only
+                    // with interest routed to another account).
+                    const mode = document.getElementById("resolveFdRenewMode").value;
+                    const newStart = document.getElementById("resolveFdNewStart").value;
+                    const newTenure = parseInt(document.getElementById("resolveFdNewTenure").value, 10);
+                    const newRate = parseFloat(document.getElementById("resolveFdNewRate").value);
+                    const newMaturity = document.getElementById("resolveFdNewMaturity").value;
+
+                    if (!newStart) { alert("Please select a commencing date for the renewed placement."); return; }
+                    if (isNaN(newTenure) || newTenure <= 0) { alert("Please enter a valid tenure for the renewed placement."); return; }
+                    if (isNaN(newRate) || newRate < 0) { alert("Please enter a valid interest rate for the renewed placement."); return; }
+                    if (!newMaturity) { alert("Could not calculate the new maturity date — please re-check the commencing date and tenure."); return; }
+
+                    await writeDB(STORES.TRANSACTIONS, {
+                        type: "expense", desc: `FD Placement Closed for Renewal ("${tx.desc}")`,
+                        amount: tx.amount, src: holdingAccountId, dest: "", currency: tx.currency,
+                        cat: "", date: today, image: null,
+                        fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
+                    });
+
+                    const newPrincipal = mode === "capitalize" ? tx.amount + interest : tx.amount;
+                    await writeDB(STORES.TRANSACTIONS, {
+                        type: "income", desc: `FD Renewal Placement`,
+                        amount: newPrincipal, src: holdingAccountId, dest: "", currency: tx.currency,
+                        cat: "Fixed Deposit", date: today, image: null,
+                        fdStartDate: newStart, fdTenureMonths: newTenure, fdInterestRate: newRate, fdMaturityDate: newMaturity
+                    });
+
+                    if (mode === "principal" && interest > 0) {
+                        const interestDestId = document.getElementById("resolveFdInterestDest").value;
+                        if (!interestDestId) { alert("Please choose an account to receive the interest."); return; }
+                        await writeDB(STORES.TRANSACTIONS, {
+                            type: "income", desc: `FD Interest Received ("${tx.desc}")`,
+                            amount: interest, src: interestDestId, dest: "", currency: tx.currency,
+                            cat: "Interest Income", date: today, image: null,
+                            fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
+                        });
+                    }
+                }
+
+                // Flag the original placement as resolved so it drops out of the reminder scan.
+                tx.fdResolved = true;
+                await writeDB(STORES.TRANSACTIONS, tx);
+            } catch (err) {
+                alert("Could not complete this action: " + (err && err.message ? err.message : err));
+                return;
+            }
+
+            closeModal("resolveFdModal");
+            renderApp();
+        }
+
         // Direct Mobile Save execution avoiding forms issues
         async function handleTransactionSubmitMobile() {
             const txIdInput = document.getElementById("txId").value;
@@ -1951,10 +2249,12 @@
             // --- Fixed Deposit maturity reminders ---
             // FD terms now live on the individual deposit transaction (each "placement"), not the
             // account itself — an FD account can hold several tranches, each maturing separately.
+            // Placements the user has already renewed or withdrawn are flagged fdResolved and
+            // dropped from this scan so the reminder clears once acted upon.
             const todayMs = new Date(new Date().toISOString().split("T")[0] + "T00:00:00").getTime();
             const MS_PER_DAY = 86400000;
             let reminderHTML = "";
-            txs.filter(t => t.fdMaturityDate).forEach(t => {
+            txs.filter(t => t.fdMaturityDate && !t.fdResolved).forEach(t => {
                 const holdingAccount = accounts.find(a => a.id === (t.type === "transfer" ? t.dest : t.src));
                 if (!holdingAccount) return;
 
@@ -1970,7 +2270,7 @@
                         ? `matured ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? '' : 's'} ago — action needed`
                         : (daysLeft === 0 ? `matures today` : `matures in ${daysLeft} day${daysLeft === 1 ? '' : 's'} (${t.fdMaturityDate})`);
                     reminderHTML += `
-                        <div onclick="navigateToLedgerPage('${holdingAccount.id}')" style="cursor:pointer; background:${bg}; border:1px solid ${border}; color:${textCol}; border-radius:12px; padding:12px 14px; margin-bottom:8px; font-size:0.8rem; font-weight:600; display:flex; justify-content:space-between; align-items:center;">
+                        <div onclick="openResolveFdModal(${t.id})" style="cursor:pointer; background:${bg}; border:1px solid ${border}; color:${textCol}; border-radius:12px; padding:12px 14px; margin-bottom:8px; font-size:0.8rem; font-weight:600; display:flex; justify-content:space-between; align-items:center;">
                             <span>${overdue ? '⏰' : '🔔'} ${formatCurrency(t.amount, t.currency)} placement in "${holdingAccount.name}" ${label} — plan renewal or withdrawal.</span>
                             <span style="font-size:1.1rem;">›</span>
                         </div>

@@ -577,9 +577,7 @@
                     <input type="text" id="newAccName" placeholder="e.g. DBS Bank, Cash Wallet" required>
                 </div>
 
-                <!-- Currency + Opening Balance — only applicable to "Normal" (single-currency) accounts.
-                     Multi-Currency and Fixed Deposit accounts don't fix a currency at creation; that's
-                     decided per-transaction/placement instead, so these fields are hidden for them. -->
+                <!-- Currency + Opening Balance — only applicable to "Normal" (single-currency) accounts. -->
                 <div class="form-row-inline" id="newAccBalCurrRow">
                     <div>
                         <label>Opening Value</label>
@@ -589,6 +587,22 @@
                         <label>Currency</label>
                         <select id="newAccCurrency" class="form-input"></select>
                     </div>
+                </div>
+
+                <!-- Multi-Currency: seed one or more opening currency balances at creation time.
+                     Each row becomes an "Opening Balance" transaction once the account is created. -->
+                <div id="multiOpeningWrap" style="display:none;">
+                    <label style="font-size:0.8rem; font-weight:700; color:var(--text-main); display:block; margin-bottom:6px;">Opening Balances (optional)</label>
+                    <div id="multiOpeningRows"></div>
+                    <button type="button" onclick="addMultiCurrencyRow()" class="submit-btn" style="margin-top:2px; margin-bottom:14px; background:#e0f2fe; color:#0369a1;">+ Add Currency</button>
+                </div>
+
+                <!-- Fixed Deposit: seed one or more opening placements (e.g. several existing FDs with
+                     Bank A, each with its own currency, amount, commencing/maturity date, and rate). -->
+                <div id="fdOpeningWrap" style="display:none;">
+                    <label style="font-size:0.8rem; font-weight:700; color:var(--text-main); display:block; margin-bottom:6px;">Opening Fixed Deposit Placements (optional)</label>
+                    <div id="fdOpeningRows"></div>
+                    <button type="button" onclick="addFdPlacementRow()" class="submit-btn" style="margin-top:2px; margin-bottom:14px; background:#ede9fe; color:#6d28d9;">+ Add Placement</button>
                 </div>
 
                 <!-- Action handlers changed to button onclick to bypass Android keyboard/form intercept bugs -->
@@ -774,7 +788,9 @@
             utilities: "🔌",
             rent: "🏠",
             commute: "🚌",
-            entertainment: "🎬"
+            entertainment: "🎬",
+            "opening balance": "🏛️",
+            "fixed deposit": "🏦"
         };
 
         // Helper to retrieve correct category icon safely
@@ -1074,17 +1090,27 @@
             openModal("accountsModal");
         }
 
+        let multiOpeningRowCounter = 0;
+        let fdOpeningRowCounter = 0;
+
         function setAccountTypeUI(type) {
             document.getElementById("newAccType").value = type;
             const normalBtn = document.getElementById("accTypeBtnNormal");
             const multiBtn = document.getElementById("accTypeBtnMulti");
             const fdBtn = document.getElementById("accTypeBtnFd");
             const balCurrRow = document.getElementById("newAccBalCurrRow");
+            const multiWrap = document.getElementById("multiOpeningWrap");
+            const fdWrap = document.getElementById("fdOpeningWrap");
             const hint = document.getElementById("accTypeHint");
+            const isEditing = document.getElementById("editAccountId").value !== "";
 
             [normalBtn, multiBtn, fdBtn].forEach(btn => {
                 btn.style.background = "#e2e8f0"; btn.style.color = "var(--text-main)";
             });
+
+            balCurrRow.style.display = "none";
+            multiWrap.style.display = "none";
+            fdWrap.style.display = "none";
 
             if (type === "normal") {
                 normalBtn.style.background = "var(--transfer-color)"; normalBtn.style.color = "white";
@@ -1092,13 +1118,123 @@
                 hint.textContent = "A single fixed currency, chosen now — e.g. a MYR bank account.";
             } else if (type === "multi") {
                 multiBtn.style.background = "var(--transfer-color)"; multiBtn.style.color = "white";
-                balCurrRow.style.display = "none";
-                hint.textContent = "Holds separate currency balances under one account name — e.g. \"Bank A\" with its own SGD and MYR balances side by side. Currency is picked per transaction.";
+                hint.textContent = "Holds separate currency balances under one account name — e.g. \"Bank A\" with its own SGD and MYR balances side by side, never mixed together.";
+                // Opening balances only make sense when creating a brand-new account — for an
+                // existing account, use the normal Income/Transfer entry to add funds instead.
+                if (!isEditing) {
+                    multiWrap.style.display = "block";
+                    if (document.getElementById("multiOpeningRows").children.length === 0) addMultiCurrencyRow();
+                }
             } else if (type === "fd") {
                 fdBtn.style.background = "var(--transfer-color)"; fdBtn.style.color = "white";
-                balCurrRow.style.display = "none";
-                hint.textContent = "Just choose the type and name for now. Currency, principal, tenure, rate, and maturity date are all entered when you transfer funds in.";
+                hint.textContent = "Just choose the type and name — currency, principal, tenure, rate, and maturity date are captured per placement below (or later, whenever you transfer funds in).";
+                if (!isEditing) {
+                    fdWrap.style.display = "block";
+                    if (document.getElementById("fdOpeningRows").children.length === 0) addFdPlacementRow();
+                }
             }
+        }
+
+        // --- Multi-Currency: dynamic "opening balance" rows (one per currency) ---
+
+        function addMultiCurrencyRow() {
+            multiOpeningRowCounter++;
+            const rowId = `mrow_${multiOpeningRowCounter}`;
+            const currencyOptions = Object.keys(fxRates).map(c => `<option value="${c}">${c}</option>`).join("");
+
+            const row = document.createElement("div");
+            row.id = rowId;
+            row.className = "form-row-inline";
+            row.style.cssText = "grid-template-columns: 1fr 1fr auto; align-items:end;";
+            row.innerHTML = `
+                <div>
+                    <label>Currency</label>
+                    <select class="form-input multi-row-currency">${currencyOptions}</select>
+                </div>
+                <div>
+                    <label>Amount</label>
+                    <input type="number" class="multi-row-amount" step="0.01" placeholder="0.00">
+                </div>
+                <button type="button" onclick="document.getElementById('${rowId}').remove()" class="trash-btn" style="margin-bottom:12px;">🗑</button>
+            `;
+            document.getElementById("multiOpeningRows").appendChild(row);
+        }
+
+        // --- Fixed Deposit: dynamic "opening placement" rows (one per existing FD tranche) ---
+
+        function addFdPlacementRow() {
+            fdOpeningRowCounter++;
+            const rowId = `fdrow_${fdOpeningRowCounter}`;
+            const currencyOptions = Object.keys(fxRates).map(c => `<option value="${c}">${c}</option>`).join("");
+            const today = new Date().toISOString().split("T")[0];
+
+            const row = document.createElement("div");
+            row.id = rowId;
+            row.style.cssText = "background:#faf5ff; border:1px solid #ede9fe; border-radius:10px; padding:10px; margin-bottom:10px; position:relative;";
+            row.innerHTML = `
+                <button type="button" onclick="document.getElementById('${rowId}').remove()" style="position:absolute; top:8px; right:8px; background:none; border:none; font-size:1rem; cursor:pointer;">🗑</button>
+                <div class="form-row-inline">
+                    <div>
+                        <label>Currency</label>
+                        <select class="form-input fd-row-currency">${currencyOptions}</select>
+                    </div>
+                    <div>
+                        <label>Principal Amount</label>
+                        <input type="number" class="fd-row-amount" step="0.01" placeholder="0.00" oninput="recalcFdOpeningRowMaturity('${rowId}')">
+                    </div>
+                </div>
+                <div class="form-row-inline">
+                    <div>
+                        <label>Commencing Date</label>
+                        <input type="date" class="fd-row-start" value="${today}" onchange="recalcFdOpeningRowMaturity('${rowId}')">
+                    </div>
+                    <div>
+                        <label>Tenure (months)</label>
+                        <input type="number" class="fd-row-tenure" step="1" min="1" value="12" onchange="recalcFdOpeningRowMaturity('${rowId}')">
+                    </div>
+                </div>
+                <div class="form-row-inline">
+                    <div>
+                        <label>Interest Rate (% p.a.)</label>
+                        <input type="number" class="fd-row-rate" step="0.01" min="0" value="3.0" oninput="recalcFdOpeningRowMaturity('${rowId}')">
+                    </div>
+                    <div>
+                        <label>Maturity Date</label>
+                        <input type="date" class="fd-row-maturity" readonly>
+                    </div>
+                </div>
+                <p class="fd-row-preview" style="font-size:0.72rem; color:#6d28d9; margin-top:2px;"></p>
+            `;
+            document.getElementById("fdOpeningRows").appendChild(row);
+            recalcFdOpeningRowMaturity(rowId);
+        }
+
+        function recalcFdOpeningRowMaturity(rowId) {
+            const row = document.getElementById(rowId);
+            if (!row) return;
+
+            const startVal = row.querySelector(".fd-row-start").value;
+            const tenure = parseInt(row.querySelector(".fd-row-tenure").value, 10);
+            const preview = row.querySelector(".fd-row-preview");
+
+            if (!startVal || isNaN(tenure) || tenure <= 0) {
+                preview.textContent = "";
+                return;
+            }
+
+            const start = new Date(startVal + "T00:00:00");
+            const maturity = new Date(start);
+            maturity.setMonth(maturity.getMonth() + tenure);
+            const maturityStr = maturity.toISOString().split("T")[0];
+            row.querySelector(".fd-row-maturity").value = maturityStr;
+
+            const principal = parseFloat(row.querySelector(".fd-row-amount").value) || 0;
+            const rate = parseFloat(row.querySelector(".fd-row-rate").value) || 0;
+            const curr = row.querySelector(".fd-row-currency").value;
+            const projectedInterest = principal * (rate / 100) * (tenure / 12);
+            const projectedTotal = principal + projectedInterest;
+
+            preview.textContent = `Matures ${maturityStr} — projected payout ≈ ${formatCurrency(projectedTotal, curr)}`;
         }
 
         function resetAccountForm() {
@@ -1111,6 +1247,9 @@
             document.getElementById("accFormSubmitBtn").textContent = "Create Account";
             document.getElementById("accFormCancelBtn").style.display = "none";
 
+            document.getElementById("multiOpeningRows").innerHTML = "";
+            document.getElementById("fdOpeningRows").innerHTML = "";
+
             setAccountTypeUI("normal");
 
             if (isEditing) {
@@ -1120,6 +1259,7 @@
 
         // Dedicated custom execution for mobile click bypassing standard form intercept
         async function handleCreateAccountMobile() {
+            const isNewAccount = document.getElementById("editAccountId").value === "";
             const id = document.getElementById("editAccountId").value || "acc_" + Date.now();
             const name = document.getElementById("newAccName").value.trim();
             const type = document.getElementById("newAccType").value;
@@ -1135,10 +1275,66 @@
                 record.initialBalance = bal;
                 record.currency = document.getElementById("newAccCurrency").value;
             } else {
-                // Multi-Currency and Fixed Deposit accounts start empty — their balances/baskets
-                // are built up entirely from transactions (each carrying its own currency, and for
-                // FD, its own placement terms), so no opening balance or currency is captured here.
+                // Multi-Currency and Fixed Deposit accounts don't have one native currency — their
+                // balances/baskets are built up entirely from transactions (seeded below for a new
+                // account, or added later via normal Income/Transfer entries).
                 record.initialBalance = 0;
+            }
+
+            // Collect opening-balance / opening-placement rows BEFORE writing anything, so we can
+            // validate everything up front and avoid creating an account with a half-seeded state.
+            let openingTransactions = [];
+            const todayStr = new Date().toISOString().split("T")[0];
+
+            if (isNewAccount && type === "multi") {
+                const rows = Array.from(document.getElementById("multiOpeningRows").children);
+                for (const row of rows) {
+                    const amount = parseFloat(row.querySelector(".multi-row-amount").value);
+                    if (!amount || amount <= 0) continue; // skip empty rows
+                    openingTransactions.push({
+                        type: "income",
+                        desc: "Opening Balance",
+                        amount: amount,
+                        src: id,
+                        dest: "",
+                        currency: row.querySelector(".multi-row-currency").value,
+                        cat: "Opening Balance",
+                        date: todayStr,
+                        image: null,
+                        fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
+                    });
+                }
+            }
+
+            if (isNewAccount && type === "fd") {
+                const rows = Array.from(document.getElementById("fdOpeningRows").children);
+                for (const row of rows) {
+                    const amount = parseFloat(row.querySelector(".fd-row-amount").value);
+                    if (!amount || amount <= 0) continue; // skip empty rows
+
+                    const fdStartDate = row.querySelector(".fd-row-start").value;
+                    const fdTenureMonths = parseInt(row.querySelector(".fd-row-tenure").value, 10);
+                    const fdInterestRate = parseFloat(row.querySelector(".fd-row-rate").value);
+                    const fdMaturityDate = row.querySelector(".fd-row-maturity").value;
+
+                    if (!fdStartDate) { alert("Please select a commencing date for each Fixed Deposit placement."); return; }
+                    if (isNaN(fdTenureMonths) || fdTenureMonths <= 0) { alert("Please enter a valid tenure (in months) for each placement."); return; }
+                    if (isNaN(fdInterestRate) || fdInterestRate < 0) { alert("Please enter a valid interest rate for each placement."); return; }
+                    if (!fdMaturityDate) { alert("Could not calculate a maturity date for a placement — please re-check its commencing date and tenure."); return; }
+
+                    openingTransactions.push({
+                        type: "income",
+                        desc: "Opening Fixed Deposit Placement",
+                        amount: amount,
+                        src: id,
+                        dest: "",
+                        currency: row.querySelector(".fd-row-currency").value,
+                        cat: "Fixed Deposit",
+                        date: fdStartDate,
+                        image: null,
+                        fdStartDate, fdTenureMonths, fdInterestRate, fdMaturityDate
+                    });
+                }
             }
 
             try {
@@ -1147,6 +1343,21 @@
                 alert("Could not save account: " + (err && err.message ? err.message : err));
                 return;
             }
+
+            if (openingTransactions.length > 0) {
+                const failedCount = { n: 0 };
+                for (const tx of openingTransactions) {
+                    try {
+                        await writeDB(STORES.TRANSACTIONS, tx);
+                    } catch (err) {
+                        failedCount.n++;
+                    }
+                }
+                if (failedCount.n > 0) {
+                    alert(`Account created, but ${failedCount.n} opening balance/placement entr${failedCount.n === 1 ? 'y' : 'ies'} could not be saved. You can add them manually via Income entries.`);
+                }
+            }
+
             resetAccountForm();
             renderAccountSettingsList();
             renderApp();

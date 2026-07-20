@@ -21,7 +21,13 @@ Ledger is a modern, high-performance, privacy-focused financial logging applicat
 
 ## 📱 Architecture & Evolution Log
 
-### [v12.0] - Account Model Rework: Normal vs. True Multi-Currency vs. Fixed Deposit *(Current)*
+### [v13.0] - Opening Balances for Multi-Currency & Fixed Deposit Accounts *(Current)*
+- **Multi-Currency Opening Balances:** Account creation for a Multi-Currency account now lets you seed one or more starting currency balances right away (e.g. open "Bank A" already holding both SGD and MYR) via repeatable "+ Add Currency" rows, instead of requiring a separate transfer afterward.
+- **Multiple Fixed Deposit Placements at Creation:** Fixed Deposit account creation now supports adding several opening placements in one go — e.g. an account "Bank A FD" that already holds 4 existing certificates, each with its own currency, principal, commencing date, tenure, and interest rate (maturity auto-calculated per placement, with a live payout preview).
+- **Backed by Real Transactions:** Each opening balance/placement row is saved as a normal "Opening Balance" (or "Opening Fixed Deposit Placement") transaction under the new account — so they show up in that account's ledger history and are automatically picked up by the maturity reminder banner, with no special-case logic needed elsewhere in the app.
+- **Creation-Only, By Design:** These opening rows only appear when creating a brand-new account. Editing an existing account no longer shows them — add further funds or placements the normal way, via Income/Transfer entries, to keep the transaction history accurate.
+
+### [v12.0] - Account Model Rework: Normal vs. True Multi-Currency vs. Fixed Deposit
 - **Three Distinct Account Types:** Account creation is now a clean three-way choice — **🏛️ Normal** (single fixed currency, chosen once at creation — unchanged from earlier behavior), **💱 Multi-Currency** (one account name holding several independent currency balances side by side, e.g. "Bank A" with its own SGD and MYR baskets that never mix), and **🏦 Fixed Deposit** (a term-deposit account whose currency and terms are captured per placement, not at creation).
 - **Minimal Account Creation:** Creating a Multi-Currency or Fixed Deposit account now only asks for a name — no currency, no opening balance, no term fields. Everything else is captured naturally as you log transactions.
 - **True Currency Baskets:** Multi-Currency and Fixed Deposit accounts no longer auto-convert incoming funds into one native currency. Each currency you transact in in gets its own running balance ("basket") shown side by side in the accounts list — depositing SGD into "Bank A" only ever affects its SGD basket, never its MYR basket. Normal accounts keep the original behavior (everything converts into their one fixed currency).

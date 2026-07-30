@@ -472,6 +472,7 @@
                 <span class="lock-icon">🔒</span>
                 <h2>Enter Passcode</h2>
                 <p class="lock-sub">This ledger is locked. Enter your passcode to decrypt and continue.</p>
+                <button type="button" class="lock-submit-btn" id="biometricUnlockBtn" style="display:none; background:#0f172a; margin-bottom:12px;">🫆 Unlock with Biometrics</button>
                 <div id="lockError2"></div>
                 <input type="password" id="unlockPasscodeInput" placeholder="Passcode" autocomplete="current-password" inputmode="text">
                 <button type="button" class="lock-submit-btn" onclick="handleUnlockSubmit()">Unlock</button>
@@ -578,6 +579,13 @@
             </label>
         </div>
         <p class="export-hint-text hidden" id="exportPlaintextHint">明文备份不含密码保护，请妥善保管</p>
+        <div class="toggle-switch-row" id="biometricToggleRow" style="display:none;">
+            <span class="toggle-switch-label">🫆 Biometric quick unlock (fingerprint/Face)</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="biometricToggle" onchange="handleBiometricToggleChange()">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
         <div class="util-row" style="margin-top:8px;">
             <button class="btn-util" onclick="repairLegacyFdEntries()" style="width:100%;">🔧 Fix Legacy FD/Opening Balance Entries</button>
         </div>
@@ -1097,6 +1105,31 @@
                 } else {
                     setupView.style.display = "none";
                     unlockView.style.display = "";
+                    const biometricBtn = document.getElementById("biometricUnlockBtn");
+                    biometricBtn.style.display = "none";
+
+                    const finishUnlock = () => {
+                        overlay.classList.add("hidden");
+                        resolve({ isNewSetup: false });
+                    };
+
+                    // If biometric quick-unlock is configured on this device, show the button and
+                    // try it automatically once — falls back to the passcode field on cancel/failure.
+                    (async () => {
+                        const record = await getBiometricRecord();
+                        const supported = record && await isBiometricSupported();
+                        if (!supported) return;
+                        biometricBtn.style.display = "";
+                        const ok = await attemptBiometricUnlock();
+                        if (ok) finishUnlock();
+                    })();
+
+                    biometricBtn.onclick = async () => {
+                        const ok = await attemptBiometricUnlock();
+                        if (ok) { finishUnlock(); }
+                        else { document.getElementById("lockError2").textContent = "Biometric unlock failed. Enter your passcode instead."; }
+                    };
+
                     window._resolveLockFlow = async () => {
                         const p1 = document.getElementById("unlockPasscodeInput").value;
                         const errEl = document.getElementById("lockError2");
@@ -1107,8 +1140,7 @@
                             if (check !== VERIFIER_PLAINTEXT) throw new Error("mismatch");
                             appKey = key;
                             currentPasscode = p1;
-                            overlay.classList.add("hidden");
-                            resolve({ isNewSetup: false });
+                            finishUnlock();
                         } catch (err) {
                             errEl.textContent = "Incorrect passcode. Try again.";
                         }
@@ -1135,7 +1167,142 @@
             if (!step2) return;
             localStorage.removeItem(LOCK_CONFIG_KEY);
             try { indexedDB.deleteDatabase(DB_NAME); } catch (err) {}
+            try { indexedDB.deleteDatabase(SECURITY_DB_NAME); } catch (err) {}
             location.reload();
+        }
+
+        /* ================= BIOMETRIC QUICK UNLOCK (WebAuthn platform authenticator) =================
+           WebAuthn doesn't hand us a reusable encryption key, so this isn't a second independent
+           encryption path — it's a convenience layer on top of the same passcode: the passcode is
+           wrapped with a non-extractable AES-GCM key that lives only in this browser's IndexedDB (so
+           script can't read the raw key material out of it), and unwrapping it is gated behind a
+           fingerprint/Face unlock prompt. The passcode itself remains the only way to derive the real
+           data-encryption key, so it's still required as a fallback and after "Forgot passcode". Needs
+           a secure context (https://) and a platform authenticator (e.g. Android fingerprint) — quietly
+           unavailable otherwise (plain file:// or an unsupported browser). */
+        const SECURITY_DB_NAME = "LedgerSecurityDB_v1";
+
+        function openSecurityDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(SECURITY_DB_NAME, 1);
+                req.onupgradeneeded = (e) => {
+                    const d = e.target.result;
+                    if (!d.objectStoreNames.contains("security")) {
+                        d.createObjectStore("security", { keyPath: "key" });
+                    }
+                };
+                req.onsuccess = (e) => resolve(e.target.result);
+                req.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        async function isBiometricSupported() {
+            if (!window.PublicKeyCredential || !window.isSecureContext) return false;
+            try {
+                return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+            } catch (err) { return false; }
+        }
+
+        function getBiometricRecord() {
+            return openSecurityDB().then(secDb => new Promise((resolve) => {
+                const tx = secDb.transaction(["security"], "readonly");
+                const req = tx.objectStore("security").get("biometric");
+                req.onsuccess = () => resolve(req.result || null);
+                req.onerror = () => resolve(null);
+            }));
+        }
+
+        // Registers a platform-authenticator (fingerprint/Face) credential, then wraps the current
+        // passcode behind a non-extractable AES-GCM key gated by it.
+        async function enableBiometricUnlock(passcode) {
+            const challenge = crypto.getRandomValues(new Uint8Array(32));
+            const userId = crypto.getRandomValues(new Uint8Array(16));
+            const credential = await navigator.credentials.create({
+                publicKey: {
+                    challenge,
+                    rp: { name: "Ledger" },
+                    user: { id: userId, name: "ledger-local-user", displayName: "Ledger" },
+                    pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+                    authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+                    timeout: 60000,
+                    attestation: "none"
+                }
+            });
+            const wrappingKey = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+            const { iv, data } = await aesEncryptString(wrappingKey, passcode);
+            const secDb = await openSecurityDB();
+            await new Promise((resolve, reject) => {
+                const tx = secDb.transaction(["security"], "readwrite");
+                tx.objectStore("security").put({ key: "biometric", credentialId: bufToB64(credential.rawId), wrappingKey, iv, data });
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        async function disableBiometricUnlock() {
+            const secDb = await openSecurityDB();
+            await new Promise((resolve, reject) => {
+                const tx = secDb.transaction(["security"], "readwrite");
+                tx.objectStore("security").delete("biometric");
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        // Prompts fingerprint/Face, unwraps the passcode, then derives the real app key from it
+        // exactly like manual passcode entry does. Returns true/false — never throws, so callers can
+        // silently fall back to the passcode input on cancel/failure.
+        async function attemptBiometricUnlock() {
+            try {
+                const record = await getBiometricRecord();
+                if (!record) return false;
+
+                const assertion = await navigator.credentials.get({
+                    publicKey: {
+                        challenge: crypto.getRandomValues(new Uint8Array(32)),
+                        allowCredentials: [{ id: b64ToBuf(record.credentialId), type: "public-key" }],
+                        userVerification: "required",
+                        timeout: 60000
+                    }
+                });
+                if (!assertion) return false;
+
+                const passcode = await aesDecryptString(record.wrappingKey, record.iv, record.data);
+                const cfg = getLockConfig();
+                const key = await deriveKeyFromPasscode(passcode, cfg.salt, cfg.iterations);
+                const check = await aesDecryptString(key, cfg.verifierIv, cfg.verifierData);
+                if (check !== VERIFIER_PLAINTEXT) return false;
+
+                appKey = key;
+                currentPasscode = passcode;
+                return true;
+            } catch (err) {
+                return false; // user cancelled, or biometric failed — caller falls back to passcode entry
+            }
+        }
+
+        // Syncs the "Biometric quick unlock" toggle in the backup panel with actual availability/state.
+        async function initBiometricToggleRow() {
+            const row = document.getElementById("biometricToggleRow");
+            const toggle = document.getElementById("biometricToggle");
+            const supported = await isBiometricSupported();
+            if (!supported) { row.style.display = "none"; return; }
+            row.style.display = "";
+            toggle.checked = !!(await getBiometricRecord());
+        }
+
+        async function handleBiometricToggleChange() {
+            const toggle = document.getElementById("biometricToggle");
+            if (toggle.checked) {
+                try {
+                    await enableBiometricUnlock(currentPasscode);
+                } catch (err) {
+                    toggle.checked = false;
+                    alert("Could not enable biometric unlock: " + (err && err.message ? err.message : err));
+                }
+            } else {
+                await disableBiometricUnlock();
+            }
         }
         
         // Active exploration navigation states
@@ -2866,7 +3033,14 @@
             await initDB();
             if (lockResult.isNewSetup) {
                 await migrateAllStoresToEncrypted();
+                if (await isBiometricSupported()) {
+                    const wantsBiometric = await customConfirm("Enable fingerprint / Face unlock for faster access next time?");
+                    if (wantsBiometric) {
+                        try { await enableBiometricUnlock(currentPasscode); } catch (err) { alert("Could not enable biometric unlock: " + (err && err.message ? err.message : err)); }
+                    }
+                }
             }
+            initBiometricToggleRow();
 
             const storedBase = await readKeyDB("settings", "baseCurrency");
             if (storedBase) baseCurrency = storedBase.value;

@@ -390,9 +390,95 @@
             align-items: center;
             gap: 4px;
         }
+
+        /* ===== App Lock (PBKDF2 + AES-GCM) ===== */
+        #lockOverlay {
+            position: fixed; inset: 0; z-index: 9999;
+            background: linear-gradient(160deg, #4f46e5 0%, #312e81 100%);
+            display: flex; align-items: center; justify-content: center;
+            padding: 24px;
+        }
+        #lockOverlay.hidden { display: none; }
+        .lock-card {
+            background: var(--card-bg); border-radius: 20px; padding: 28px 24px;
+            width: 100%; max-width: 360px; box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+        }
+        .lock-card h2 { font-size: 1.3rem; font-weight: 800; margin-bottom: 6px; }
+        .lock-card p.lock-sub { font-size: 0.82rem; color: var(--text-muted); font-weight: 600; margin-bottom: 18px; line-height: 1.5; }
+        .lock-icon { font-size: 2.2rem; margin-bottom: 8px; display: block; }
+        .lock-card input[type="password"] {
+            width: 100%; padding: 13px 14px; border-radius: 10px; border: 1.5px solid var(--border-color);
+            font-size: 1rem; margin-bottom: 12px; background: var(--bg-color); color: var(--text-main);
+            letter-spacing: 2px;
+        }
+        .lock-card button.lock-submit-btn {
+            width: 100%; padding: 13px; border-radius: 10px; border: none; background: var(--primary);
+            color: #fff; font-weight: 700; font-size: 0.95rem; cursor: pointer; margin-top: 4px;
+        }
+        .lock-card button.lock-submit-btn:active { opacity: 0.85; }
+        #lockError {
+            color: var(--expense-color); font-size: 0.8rem; font-weight: 700; margin-bottom: 10px; min-height: 1em;
+        }
+        .lock-reset-link {
+            display: block; text-align: center; margin-top: 16px; font-size: 0.75rem; color: var(--text-muted);
+            font-weight: 600; text-decoration: underline; cursor: pointer; background: none; border: none;
+        }
+        .lock-btn-header {
+            background: none; border: none; font-size: 1.2rem; cursor: pointer; padding: 6px; margin-left: 4px;
+        }
+
+        /* Toggle switch for the export-encryption option */
+        .toggle-switch-row {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            margin-top: 10px; padding: 10px 12px; background: var(--bg-color); border-radius: 10px;
+        }
+        .toggle-switch-label { font-size: 0.78rem; font-weight: 700; color: var(--text-main); }
+        .toggle-switch { position: relative; display: inline-block; width: 44px; height: 25px; flex-shrink: 0; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute; cursor: pointer; inset: 0; background-color: #cbd5e1;
+            transition: 0.2s; border-radius: 999px;
+        }
+        .toggle-slider::before {
+            position: absolute; content: ""; height: 19px; width: 19px; left: 3px; bottom: 3px;
+            background-color: #fff; transition: 0.2s; border-radius: 50%;
+        }
+        .toggle-switch input:checked + .toggle-slider { background-color: var(--income-color); }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(19px); }
+        .export-hint-text {
+            font-size: 0.7rem; color: var(--expense-color); font-weight: 600; margin-top: 6px; line-height: 1.4;
+        }
+        .export-hint-text.hidden { display: none; }
     </style>
 </head>
 <body>
+
+    <!-- ================= APP LOCK OVERLAY (PBKDF2 + AES-GCM, blocks all app access until unlocked) ================= -->
+    <div id="lockOverlay">
+        <div class="lock-card">
+            <!-- SETUP MODE: shown the very first time the app runs (no passcode configured yet) -->
+            <div id="lockSetupView">
+                <span class="lock-icon">🔐</span>
+                <h2>Set an App Passcode</h2>
+                <p class="lock-sub">Your data will be encrypted on this device with a key derived from this passcode (PBKDF2 + AES-GCM). There is no password recovery — if you forget it, your data cannot be decrypted.</p>
+                <div id="lockError"></div>
+                <input type="password" id="setupPasscodeInput" placeholder="Create passcode (min 4 characters)" autocomplete="new-password" inputmode="text">
+                <input type="password" id="setupPasscodeConfirmInput" placeholder="Confirm passcode" autocomplete="new-password" inputmode="text">
+                <button type="button" class="lock-submit-btn" onclick="handleSetupPasscodeSubmit()">Create &amp; Continue</button>
+            </div>
+
+            <!-- UNLOCK MODE: shown on every subsequent app open -->
+            <div id="lockUnlockView" style="display:none;">
+                <span class="lock-icon">🔒</span>
+                <h2>Enter Passcode</h2>
+                <p class="lock-sub">This ledger is locked. Enter your passcode to decrypt and continue.</p>
+                <div id="lockError2"></div>
+                <input type="password" id="unlockPasscodeInput" placeholder="Passcode" autocomplete="current-password" inputmode="text">
+                <button type="button" class="lock-submit-btn" onclick="handleUnlockSubmit()">Unlock</button>
+                <button type="button" class="lock-reset-link" onclick="handleForgotPasscode()">Forgot passcode? Reset app data</button>
+            </div>
+        </div>
+    </div>
 
     <!-- ================= PAGE 1: PORTFOLIO MAIN WORKSPACE ================= -->
     <div id="page-workspace" class="page">
@@ -405,6 +491,7 @@
                 <button class="currency-pill" onclick="openCurrencyConfig()">
                     Base: <span id="currentBasePill">USD</span> ⚙
                 </button>
+                <button class="lock-btn-header" title="Lock app now" onclick="lockAppNow()">🔒</button>
             </div>
         </header>
 
@@ -483,6 +570,14 @@
             <button class="btn-util" onclick="document.getElementById('importInput').click()">📥 Import JSON</button>
             <input type="file" id="importInput" accept=".json" style="display:none" onchange="importBackup(event)">
         </div>
+        <div class="toggle-switch-row">
+            <span class="toggle-switch-label">🔐 Encrypt this backup export</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="exportEncryptToggle" checked onchange="handleExportEncryptToggleChange()">
+                <span class="toggle-slider"></span>
+            </label>
+        </div>
+        <p class="export-hint-text hidden" id="exportPlaintextHint">明文备份不含密码保护，请妥善保管</p>
         <div class="util-row" style="margin-top:8px;">
             <button class="btn-util" onclick="repairLegacyFdEntries()" style="width:100%;">🔧 Fix Legacy FD/Opening Balance Entries</button>
         </div>
@@ -819,7 +914,7 @@
     </div>
 
     <!-- MODAL: Custom Confirm Dialog (replaces native confirm() for consistent styling) -->
-    <div class="modal" id="confirmModal">
+    <div class="modal" id="confirmModal" style="z-index:10000;">
         <div class="modal-sheet" style="max-width: 340px;">
             <p id="confirmModalMessage" style="font-size:0.9rem; line-height:1.5; margin-bottom:18px;"></p>
             <div style="display:flex; gap:10px;">
@@ -829,12 +924,219 @@
         </div>
     </div>
 
+    <!-- MODAL: Backup Passcode Prompt (used when importing an encrypted backup whose passcode
+         doesn't match the app's current unlocked session — e.g. restoring on a new device) -->
+    <div class="modal" id="backupPasscodeModal" style="z-index:10000;">
+        <div class="modal-sheet" style="max-width: 340px;">
+            <p style="font-size:0.9rem; line-height:1.5; margin-bottom:12px; font-weight:700;">This backup is encrypted. Enter its passcode to restore it.</p>
+            <div id="backupPasscodeError" style="color:var(--expense-color); font-size:0.8rem; font-weight:700; margin-bottom:8px; min-height:1em;"></div>
+            <input type="password" id="backupPasscodeInput" class="form-input" placeholder="Backup passcode" style="width:100%; margin-bottom:14px;">
+            <div style="display:flex; gap:10px;">
+                <button type="button" id="backupPasscodeCancelBtn" class="submit-btn" style="background:#e2e8f0; color:var(--text-main); margin-top:0;">Cancel</button>
+                <button type="button" id="backupPasscodeOkBtn" class="submit-btn" style="background:var(--primary); margin-top:0;">Decrypt</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ================= ENGINE CONTROLLERS ================= -->
     <script>
         const DB_NAME = "EnterpriseMultiCurrencyLedgerDB_v4";
         const DB_VERSION = 2;
         const STORES = { ACCOUNTS: "accounts", TRANSACTIONS: "transactions", SETTINGS: "settings", CATEGORIES: "categories" };
+        // Maps each object store to the field IndexedDB uses as its keyPath. That field must stay
+        // unencrypted on the stored record (IndexedDB needs to read it directly to index/generate keys);
+        // every other field on the record is encrypted as a single AES-GCM blob.
+        const STORE_KEYPATHS = { accounts: "id", transactions: "id", settings: "key", categories: "id" };
         let db;
+
+        /* ================= APP LOCK: PBKDF2 + AES-GCM (Web Crypto) ================= */
+        const LOCK_CONFIG_KEY = "ledgerAppLockV1";
+        const PBKDF2_ITERATIONS = 250000;
+        const VERIFIER_PLAINTEXT = "ledger-lock-verify-ok";
+
+        // appKey: the derived AES-GCM CryptoKey used to encrypt/decrypt every IndexedDB record.
+        // Lives only in memory — lost on reload/lock, which is what makes locking the app meaningful.
+        let appKey = null;
+        // currentPasscode: the raw passcode text, kept in memory only while unlocked, so backup
+        // export/import can (re)derive independent, portably-salted keys without re-prompting.
+        let currentPasscode = null;
+
+        function bufToB64(buf) {
+            const bytes = new Uint8Array(buf);
+            let bin = "";
+            for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+            return btoa(bin);
+        }
+        function b64ToBuf(b64) {
+            const bin = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            return bytes.buffer;
+        }
+
+        async function deriveKeyFromPasscode(passcode, saltB64, iterations) {
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(passcode), { name: "PBKDF2" }, false, ["deriveKey"]);
+            return crypto.subtle.deriveKey(
+                { name: "PBKDF2", salt: b64ToBuf(saltB64), iterations, hash: "SHA-256" },
+                keyMaterial,
+                { name: "AES-GCM", length: 256 },
+                false,
+                ["encrypt", "decrypt"]
+            );
+        }
+
+        async function aesEncryptString(key, plaintext) {
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const enc = new TextEncoder();
+            const cipherBuf = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(plaintext));
+            return { iv: bufToB64(iv), data: bufToB64(cipherBuf) };
+        }
+
+        async function aesDecryptString(key, ivB64, dataB64) {
+            const plainBuf = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64ToBuf(ivB64) }, key, b64ToBuf(dataB64));
+            return new TextDecoder().decode(plainBuf);
+        }
+
+        function getLockConfig() {
+            try {
+                const raw = localStorage.getItem(LOCK_CONFIG_KEY);
+                return raw ? JSON.parse(raw) : null;
+            } catch (err) { return null; }
+        }
+        function saveLockConfig(cfg) {
+            localStorage.setItem(LOCK_CONFIG_KEY, JSON.stringify(cfg));
+        }
+
+        // Encrypts a record before it's written to IndexedDB. The store's keyPath field (id/key) is
+        // left in the clear so IndexedDB can index/auto-generate it; everything else becomes one
+        // AES-GCM ciphertext blob under a fresh random IV.
+        async function encryptRecord(storeName, record) {
+            if (!appKey || !record) return record;
+            const keyField = STORE_KEYPATHS[storeName];
+            const keyVal = record[keyField];
+            const plainCopy = { ...record };
+            delete plainCopy[keyField];
+            const { iv, data } = await aesEncryptString(appKey, JSON.stringify(plainCopy));
+            const out = { iv, data };
+            if (keyVal !== undefined) out[keyField] = keyVal;
+            return out;
+        }
+
+        // Reverses encryptRecord. Records written before the app-lock feature existed (or before
+        // migration completes) won't have iv/data and are passed through unchanged.
+        async function decryptRecord(storeName, record) {
+            if (!record || !record.data || !record.iv) return record;
+            if (!appKey) return record;
+            const keyField = STORE_KEYPATHS[storeName];
+            const keyVal = record[keyField];
+            const json = await aesDecryptString(appKey, record.iv, record.data);
+            const plain = JSON.parse(json);
+            if (keyVal !== undefined) plain[keyField] = keyVal;
+            return plain;
+        }
+
+        // Reads a store's raw (still-encrypted, or legacy plaintext) records without decrypting —
+        // used only by the one-time migration pass right after a passcode is first created.
+        function rawReadAllDB(storeName) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const tx = db.transaction([storeName], "readonly");
+                    const req = tx.objectStore(storeName).getAll();
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                } catch (err) { reject(err); }
+            });
+        }
+
+        // Encrypts any still-plaintext records left over from before the app lock was set up.
+        // Safe to run more than once — already-encrypted records (having iv+data) are left alone.
+        async function migrateStoreToEncrypted(storeName) {
+            const raw = await rawReadAllDB(storeName);
+            for (const rec of raw) {
+                if (rec && rec.data && rec.iv) continue;
+                await writeDB(storeName, rec);
+            }
+        }
+        async function migrateAllStoresToEncrypted() {
+            for (const storeName of Object.values(STORES)) {
+                await migrateStoreToEncrypted(storeName);
+            }
+        }
+
+        // Resolves once the user has either created a new passcode or unlocked with an existing one.
+        function runLockFlow() {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById("lockOverlay");
+                const setupView = document.getElementById("lockSetupView");
+                const unlockView = document.getElementById("lockUnlockView");
+                const cfg = getLockConfig();
+
+                if (!cfg) {
+                    setupView.style.display = "";
+                    unlockView.style.display = "none";
+                    window._resolveLockFlow = async () => {
+                        const p1 = document.getElementById("setupPasscodeInput").value;
+                        const p2 = document.getElementById("setupPasscodeConfirmInput").value;
+                        const errEl = document.getElementById("lockError");
+                        errEl.textContent = "";
+                        if (!p1 || p1.length < 4) { errEl.textContent = "Passcode must be at least 4 characters."; return; }
+                        if (p1 !== p2) { errEl.textContent = "Passcodes do not match."; return; }
+
+                        const salt = crypto.getRandomValues(new Uint8Array(16));
+                        const saltB64 = bufToB64(salt);
+                        const key = await deriveKeyFromPasscode(p1, saltB64, PBKDF2_ITERATIONS);
+                        const verifier = await aesEncryptString(key, VERIFIER_PLAINTEXT);
+                        saveLockConfig({ salt: saltB64, iterations: PBKDF2_ITERATIONS, verifierIv: verifier.iv, verifierData: verifier.data });
+
+                        appKey = key;
+                        currentPasscode = p1;
+                        overlay.classList.add("hidden");
+                        resolve({ isNewSetup: true });
+                    };
+                } else {
+                    setupView.style.display = "none";
+                    unlockView.style.display = "";
+                    window._resolveLockFlow = async () => {
+                        const p1 = document.getElementById("unlockPasscodeInput").value;
+                        const errEl = document.getElementById("lockError2");
+                        errEl.textContent = "";
+                        try {
+                            const key = await deriveKeyFromPasscode(p1, cfg.salt, cfg.iterations);
+                            const check = await aesDecryptString(key, cfg.verifierIv, cfg.verifierData);
+                            if (check !== VERIFIER_PLAINTEXT) throw new Error("mismatch");
+                            appKey = key;
+                            currentPasscode = p1;
+                            overlay.classList.add("hidden");
+                            resolve({ isNewSetup: false });
+                        } catch (err) {
+                            errEl.textContent = "Incorrect passcode. Try again.";
+                        }
+                    };
+                }
+            });
+        }
+
+        function handleSetupPasscodeSubmit() { if (window._resolveLockFlow) window._resolveLockFlow(); }
+        function handleUnlockSubmit() { if (window._resolveLockFlow) window._resolveLockFlow(); }
+
+        // Re-locks the app immediately: drops the in-memory key/passcode and reloads, which forces
+        // the unlock screen again and guarantees no decrypted data lingers in memory or on screen.
+        function lockAppNow() {
+            appKey = null;
+            currentPasscode = null;
+            location.reload();
+        }
+
+        async function handleForgotPasscode() {
+            const step1 = await customConfirm("There is no passcode recovery. Resetting will permanently erase ALL data stored in this app on this device (accounts, transactions, categories). Continue?");
+            if (!step1) return;
+            const step2 = await customConfirm("Are you absolutely sure? This cannot be undone.");
+            if (!step2) return;
+            localStorage.removeItem(LOCK_CONFIG_KEY);
+            try { indexedDB.deleteDatabase(DB_NAME); } catch (err) {}
+            location.reload();
+        }
         
         // Active exploration navigation states
         let activeLedgerAccountView = "all";
@@ -949,19 +1251,20 @@
             });
         }
 
-        function writeDB(storeName, data) {
+        async function writeDB(storeName, data) {
+            const encrypted = await encryptRecord(storeName, data);
             return new Promise((resolve, reject) => {
                 try {
                     const tx = db.transaction([storeName], "readwrite");
-                    tx.objectStore(storeName).put(data);
+                    tx.objectStore(storeName).put(encrypted);
                     tx.oncomplete = () => resolve();
                     tx.onerror = () => reject(tx.error);
                 } catch (err) { reject(err); }
             });
         }
 
-        function readAllDB(storeName) {
-            return new Promise((resolve, reject) => {
+        async function readAllDB(storeName) {
+            const raw = await new Promise((resolve, reject) => {
                 try {
                     const tx = db.transaction([storeName], "readonly");
                     const req = tx.objectStore(storeName).getAll();
@@ -969,6 +1272,7 @@
                     req.onerror = () => reject(req.error);
                 } catch (err) { reject(err); }
             });
+            return Promise.all(raw.map(rec => decryptRecord(storeName, rec)));
         }
 
         function deleteDB(storeName, key) {
@@ -2558,8 +2862,12 @@
         }
 
         async function bootstrap() {
+            const lockResult = await runLockFlow();
             await initDB();
-            
+            if (lockResult.isNewSetup) {
+                await migrateAllStoresToEncrypted();
+            }
+
             const storedBase = await readKeyDB("settings", "baseCurrency");
             if (storedBase) baseCurrency = storedBase.value;
 
@@ -2580,12 +2888,13 @@
             renderApp();
         }
 
-        function readKeyDB(storeName, key) {
-            return new Promise((resolve) => {
+        async function readKeyDB(storeName, key) {
+            const raw = await new Promise((resolve) => {
                 const tx = db.transaction([storeName], "readonly");
                 const req = tx.objectStore(storeName).get(key);
                 req.onsuccess = () => resolve(req.result);
             });
+            return decryptRecord(storeName, raw);
         }
 
         // One-time repair for accounts created before v14.0: opening balances, FD placements, and
@@ -2634,6 +2943,12 @@
                 : "No legacy entries found — nothing needed fixing.");
         }
 
+        function handleExportEncryptToggleChange() {
+            const toggle = document.getElementById("exportEncryptToggle");
+            const hint = document.getElementById("exportPlaintextHint");
+            hint.classList.toggle("hidden", toggle.checked);
+        }
+
         async function exportBackup() {
             const bundle = {
                 accounts: await readAllDB(STORES.ACCOUNTS),
@@ -2642,11 +2957,86 @@
                 baseCurrency: baseCurrency,
                 fxRates: fxRates
             };
-            const blob = new Blob([JSON.stringify(bundle)], { type: "application/json" });
+
+            const toggle = document.getElementById("exportEncryptToggle");
+            const wantsEncryption = toggle ? toggle.checked : true; // encrypted-by-default
+
+            let outputPayload = bundle;
+            let filenameSuffix = "";
+
+            if (wantsEncryption) {
+                if (!currentPasscode) {
+                    alert("The app must be unlocked to create an encrypted backup.");
+                    return;
+                }
+                const salt = crypto.getRandomValues(new Uint8Array(16));
+                const saltB64 = bufToB64(salt);
+                const key = await deriveKeyFromPasscode(currentPasscode, saltB64, PBKDF2_ITERATIONS);
+                const { iv, data } = await aesEncryptString(key, JSON.stringify(bundle));
+                outputPayload = { encrypted: true, salt: saltB64, iterations: PBKDF2_ITERATIONS, iv, data };
+                filenameSuffix = "_encrypted";
+            } else {
+                const proceed = await customConfirm("This backup will be saved as plain, unencrypted text. Anyone with the file can read it. Continue?");
+                if (!proceed) return;
+            }
+
+            const blob = new Blob([JSON.stringify(outputPayload)], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
-            a.href = url; a.download = `ledger_backup_${new Date().toISOString().split('T')[0]}.json`;
+            a.href = url; a.download = `ledger_backup_${new Date().toISOString().split('T')[0]}${filenameSuffix}.json`;
             a.click(); URL.revokeObjectURL(url);
+        }
+
+        // Prompts for a backup's passcode via the backupPasscodeModal; resolves with the entered
+        // string, or null if the user cancels.
+        function promptBackupPasscode(presetError) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById("backupPasscodeModal");
+                const input = document.getElementById("backupPasscodeInput");
+                const errEl = document.getElementById("backupPasscodeError");
+                const okBtn = document.getElementById("backupPasscodeOkBtn");
+                const cancelBtn = document.getElementById("backupPasscodeCancelBtn");
+                input.value = "";
+                errEl.textContent = presetError || "";
+
+                const cleanup = (result) => {
+                    modal.classList.remove("active");
+                    okBtn.onclick = null;
+                    cancelBtn.onclick = null;
+                    resolve(result);
+                };
+                okBtn.onclick = () => cleanup(input.value);
+                cancelBtn.onclick = () => cleanup(null);
+                modal.classList.add("active");
+            });
+        }
+
+        // Decrypts an { encrypted: true, salt, iterations, iv, data } backup payload back into the
+        // original { accounts, transactions, categories, baseCurrency, fxRates } bundle. Tries the
+        // current session's passcode first (seamless same-device restore); if that fails — or the
+        // app isn't unlocked with a matching passcode — prompts for the backup's own passcode.
+        // Returns null if the user cancels or every attempt fails.
+        async function decryptBackupBundle(payload) {
+            if (currentPasscode) {
+                try {
+                    const key = await deriveKeyFromPasscode(currentPasscode, payload.salt, payload.iterations);
+                    const json = await aesDecryptString(key, payload.iv, payload.data);
+                    return JSON.parse(json);
+                } catch (err) { /* fall through to prompting */ }
+            }
+
+            let lastAttemptFailed = false;
+            while (true) {
+                const passcode = await promptBackupPasscode(lastAttemptFailed ? "Incorrect passcode." : "");
+                if (passcode === null) return null;
+                try {
+                    const key = await deriveKeyFromPasscode(passcode, payload.salt, payload.iterations);
+                    const json = await aesDecryptString(key, payload.iv, payload.data);
+                    return JSON.parse(json);
+                } catch (err) {
+                    lastAttemptFailed = true;
+                }
+            }
         }
 
         function clearStoreDB(storeName) {
@@ -2669,7 +3059,15 @@
             const reader = new FileReader();
             reader.onload = async function(evt) {
                 try {
-                    const bundle = JSON.parse(evt.target.result);
+                    const parsed = JSON.parse(evt.target.result);
+                    let bundle;
+                    if (parsed && parsed.encrypted) {
+                        bundle = await decryptBackupBundle(parsed);
+                        if (!bundle) { e.target.value = ""; return; } // user cancelled the passcode prompt
+                    } else {
+                        bundle = parsed;
+                    }
+
                     if (!bundle.accounts || !bundle.transactions) {
                         alert("Invalid backup file: missing required data.");
                         return;

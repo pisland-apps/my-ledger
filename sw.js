@@ -1,8 +1,9 @@
 // Bump this version string any time you re-deploy new content, so old caches get replaced.
-const CACHE_NAME = "ledger-cache-v11";
+const CACHE_NAME = "ledger-cache-v12";
 const ASSETS_TO_CACHE = [
     "./",
     "./index.html",
+    "./ledger.js",
     "./manifest.json",
     "./icon-192.png",
     "./icon-512.png"

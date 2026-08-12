@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v18";
-        const APP_VERSION_DATE = "2026-08-12";
+        const APP_VERSION = "v19";
+        const APP_VERSION_DATE = "2026-08-13";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
         // DOM — including #versionBadge and the lock overlay — already exists by this point).
@@ -602,6 +602,29 @@
         // Dynamic category registry
         let dynamicCategories = [];
 
+        // Built-in starter categories (auto-provisioned if missing; user can still
+        // rename/remove via the Categories manager same as any custom category)
+        const DEFAULT_CATEGORIES = [
+            { name: "Dividend ASNB", type: "income", icon: "📈" },
+            { name: "Divident EPF", type: "income", icon: "🏦" },
+            { name: "FD Interest", type: "income", icon: "🏦" },
+            { name: "Bank Interest", type: "income", icon: "💰" },
+            { name: "Gift Received", type: "income", icon: "🎁" },
+            { name: "Rebate", type: "income", icon: "💸" },
+            { name: "Grants", type: "income", icon: "🎓" },
+            { name: "Bank Charges", type: "expense", icon: "💳" },
+            { name: "Education", type: "expense", icon: "🎓" },
+            { name: "Family", type: "expense", icon: "👨‍👩‍👧‍👦" },
+            { name: "Beting", type: "expense", icon: "🎰" },
+            { name: "Clothing", type: "expense", icon: "👕" },
+            { name: "Gift Given", type: "expense", icon: "🎁" },
+            { name: "Subscription", type: "expense", icon: "📡" },
+            { name: "Tech Appliances", type: "expense", icon: "💻" },
+            { name: "Travelling", type: "expense", icon: "✈️" },
+            { name: "Tax", type: "expense", icon: "🧾" },
+            { name: "Offering", type: "expense", icon: "🙏" }
+        ];
+
         // Dynamic Rich Catalog of Preset Icons grouped logically
         const emojiDirectory = {
             "Money & Fin.": ["💵", "💰", "💳", "📈", "📉", "🪙", "💎", "💸"],
@@ -629,7 +652,25 @@
             entertainment: "🎬",
             "opening balance": "🏛️",
             "fixed deposit": "🏦",
-            "interest income": "💰"
+            "interest income": "💰",
+            "dividend asnb": "📈",
+            "divident epf": "🏦",
+            "fd interest": "🏦",
+            "bank interest": "💰",
+            "gift received": "🎁",
+            "rebate": "💸",
+            "grants": "🎓",
+            "bank charges": "💳",
+            "education": "🎓",
+            "family": "👨‍👩‍👧‍👦",
+            "beting": "🎰",
+            "clothing": "👕",
+            "gift given": "🎁",
+            "subscription": "📡",
+            "tech appliances": "💻",
+            "travelling": "✈️",
+            "tax": "🧾",
+            "offering": "🙏"
         };
 
         // Helper to retrieve correct category icon safely
@@ -1400,6 +1441,22 @@
         async function syncAndLoadCategories() {
             const customCats = await readAllDB(STORES.CATEGORIES);
             dynamicCategories = customCats;
+        }
+
+        // Idempotent: inserts any DEFAULT_CATEGORIES entry not already present
+        // (matched case-insensitively by name), so re-running on every launch is safe
+        // and never overwrites a category the user has renamed or customised.
+        async function ensureDefaultCategories() {
+            const existing = await readAllDB(STORES.CATEGORIES);
+            const existingNames = new Set(existing.map(c => c.name.toLowerCase().trim()));
+            const missing = DEFAULT_CATEGORIES.filter(c => !existingNames.has(c.name.toLowerCase()));
+            if (missing.length === 0) return;
+
+            const slugify = s => "cat_" + s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+            for (const c of missing) {
+                await writeDB(STORES.CATEGORIES, { id: slugify(c.name), name: c.name, type: c.type, icon: c.icon });
+            }
+            await syncAndLoadCategories();
         }
 
         // --- TRANSACTION CREATION / EDITOR CORE ---
@@ -2326,6 +2383,7 @@
             if (storedRates) fxRates = storedRates.value;
 
             await syncAndLoadCategories();
+            await ensureDefaultCategories();
 
             const accs = await readAllDB(STORES.ACCOUNTS);
             if(accs.length === 0) {

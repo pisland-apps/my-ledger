@@ -95,3 +95,25 @@ passcode (no recovery besides a full wipe) while adding little real
 resistance, since anyone with devtools access can call the underlying
 crypto functions directly, bypassing any UI-layer lockout. PBKDF2's 250k
 iterations remains the actual brute-force defense.
+
+## v19: starter categories
+
+Added `DEFAULT_CATEGORIES` (in `ledger.js`) — a starter set of income and
+expense categories with icons, auto-provisioned on launch by
+`ensureDefaultCategories()`:
+
+- **Income:** Dividend ASNB 📈, Divident EPF 🏦, FD Interest 🏦, Bank
+  Interest 💰, Gift Received 🎁, Rebate 💸, Grants 🎓
+- **Expense:** Bank Charges 💳, Education 🎓, Family 👨‍👩‍👧‍👦, Beting 🎰,
+  Clothing 👕, Gift Given 🎁, Subscription 📡, Tech Appliances 💻,
+  Travelling ✈️, Tax 🧾, Offering 🙏
+
+`ensureDefaultCategories()` runs every launch (right after
+`syncAndLoadCategories()` in `bootstrap()`) but is idempotent: it reads
+existing categories, skips any name that already exists (case-insensitive
+match), and only inserts what's missing. So it's safe to run repeatedly —
+it never overwrites or duplicates a category you've since renamed,
+re-iconed, or deleted. Matching entries were also added to the
+`fallbackIcons` map as a backstop, so the right icon still shows even if
+one of these categories is later deleted from the Categories store while
+old transactions still reference its name.

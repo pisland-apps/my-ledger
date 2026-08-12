@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v14";
+        const APP_VERSION = "v15";
         const APP_VERSION_DATE = "2026-08-12";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -1981,7 +1981,7 @@
                         : (daysLeft === 0 ? `matures today` : `matures in ${daysLeft} day${daysLeft === 1 ? '' : 's'} (${t.fdMaturityDate})`);
                     reminderHTML += `
                         <div data-click="openResolveFdModal" data-id="${t.id}" style="cursor:pointer; background:${bg}; border:1px solid ${border}; color:${textCol}; border-radius:12px; padding:12px 14px; margin-bottom:8px; font-size:0.8rem; font-weight:600; display:flex; justify-content:space-between; align-items:center;">
-                            <span>${overdue ? '⏰' : '🔔'} ${formatCurrency(t.amount, t.currency)} placement in "${holdingAccount.name}" ${label} — plan renewal or withdrawal.</span>
+                            <span>${overdue ? '⏰' : '🔔'} ${formatCurrency(t.amount, t.currency)} placement in "${escapeHtml(holdingAccount.name)}" ${label} — plan renewal or withdrawal.</span>
                             <span style="font-size:1.1rem;">›</span>
                         </div>
                     `;
@@ -2118,9 +2118,9 @@
                 const sub = t.currency !== baseCurrency ? `<span class="converted-subtext">≈ ${formatCurrency(tBase, baseCurrency)}</span>` : '';
                 const iconBadge = t.type === "transfer" ? "🔄" : getCategoryIcon(t.cat, t.type);
                 const receiptBadge = t.image
-                    ? `<span data-click="openImageViewer" data-image="${t.image}" style="cursor:pointer; margin-left:4px;" title="View attached photo">📎</span>`
+                    ? `<span data-click="openImageViewer" data-image="${escapeHtml(t.image)}" style="cursor:pointer; margin-left:4px;" title="View attached photo">📎</span>`
                     : '';
-                const referenceText = t.fdReferenceNo ? ` · Ref: ${t.fdReferenceNo}` : '';
+                const referenceText = t.fdReferenceNo ? ` · Ref: ${escapeHtml(t.fdReferenceNo)}` : '';
 
                 // FD placement status — shows at a glance whether a placement is still running,
                 // overdue for action, or has already been renewed/withdrawn and closed out.
@@ -2140,7 +2140,7 @@
                     <div class="ledger-item" data-click="openTransactionForm" data-type="${t.type}" data-id="${t.id}">
                         <div class="item-left">
                             <span class="item-name">${iconBadge} ${escapeHtml(t.desc)} 📝${fdStatusBadge}</span>
-                            <span class="item-meta">${t.date} [${t.cat || 'Transfer'}]${referenceText}${receiptBadge}</span>
+                            <span class="item-meta">${t.date} [${escapeHtml(t.cat || 'Transfer')}]${referenceText}${receiptBadge}</span>
                         </div>
                         <div class="item-right">
                             <div class="item-value" style="color:var(--${col}); font-weight: bold;">
@@ -2178,7 +2178,7 @@
                 catHTML += `
                     <div class="category-row-item" data-click="navigateToCategoryPage" data-category="${escapeHtml(c)}" style="font-size:0.75rem; margin-top:4px;">
                         <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
-                            <strong>${icon} ${c.toUpperCase()}</strong>
+                            <strong>${icon} ${escapeHtml(c.toUpperCase())}</strong>
                             <span>${formatCurrency(amount, baseCurrency)} (${pct}%)</span>
                         </div>
                         <div class="progress-bar-container"><div class="progress-bar-fill" style="width:${pct}%;"></div></div>

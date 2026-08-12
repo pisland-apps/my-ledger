@@ -57,5 +57,17 @@ old cache to be dropped and re-fetched.
 See the CSP design-note comment at the top of `index.html`'s `<head>` for
 the full reasoning behind the Content-Security-Policy, and the
 `escapeHtml()` comment near the top of `ledger.js` for why user-entered
-free text (account/category names, transaction descriptions) is always
-passed through it before being inserted into the page.
+free text (account/category names, transaction descriptions, FD reference
+numbers) must be passed through it before being inserted into the page via
+`innerHTML`. As of v15 this is applied consistently at every such site —
+an earlier v14 audit found four call sites (FD reminder banner, ledger row
+category/reference text, spending breakdown header, receipt image
+attribute) that skipped it, which was fixed in v15.
+
+Note that `importBackup()` writes account/transaction/category records
+from an imported JSON file directly into IndexedDB with no field
+validation — the escaping above is what actually neutralizes a malicious
+field in a tampered backup at render time, since nothing sanitizes it on
+the way in. Keep that in mind before removing `escapeHtml()` from any of
+these render paths, or before adding a new render path for one of these
+fields.

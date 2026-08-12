@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v20";
+        const APP_VERSION = "v21";
         const APP_VERSION_DATE = "2026-08-13";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -2423,52 +2423,6 @@
             return decryptRecord(storeName, raw);
         }
 
-        // One-time repair for accounts created before v14.0: opening balances, FD placements, and
-        // renewal placements were mistakenly saved as "income" (and closures as "expense"), which
-        // incorrectly inflated the Income/Expense reports. This finds those by their known
-        // auto-generated description patterns and converts them to "transfer" — the same fix now
-        // applied automatically to any new entries going forward. It never touches genuine income
-        // or expense entries you logged yourself, and it's safe to run more than once.
-        async function repairLegacyFdEntries() {
-            const ok = await customConfirm("This will scan your transactions for opening balance / FD placement / renewal entries that were mistakenly counted as income or expense, and correct them to transfers. This does not change any account balances. Continue?");
-            if (!ok) return;
-
-            const txs = await readAllDB(STORES.TRANSACTIONS);
-            const incomeLikePrefixes = ["Opening Balance", "Opening Fixed Deposit Placement", "FD Renewal Placement"];
-            const expenseLikePrefix = "FD Placement Closed for Renewal";
-
-            let fixedCount = 0;
-            try {
-                for (const t of txs) {
-                    let changed = false;
-
-                    if (t.type === "income" && incomeLikePrefixes.some(p => t.desc && t.desc.startsWith(p))) {
-                        t.dest = t.src;
-                        t.src = "";
-                        t.type = "transfer";
-                        changed = true;
-                    } else if (t.type === "expense" && t.desc && t.desc.startsWith(expenseLikePrefix)) {
-                        t.type = "transfer";
-                        changed = true;
-                    }
-
-                    if (changed) {
-                        await writeDB(STORES.TRANSACTIONS, t);
-                        fixedCount++;
-                    }
-                }
-            } catch (err) {
-                alert("Repair stopped due to an error: " + (err && err.message ? err.message : err) + `. ${fixedCount} entr${fixedCount === 1 ? 'y was' : 'ies were'} fixed before the error.`);
-                renderApp();
-                return;
-            }
-
-            renderApp();
-            alert(fixedCount > 0
-                ? `Fixed ${fixedCount} entr${fixedCount === 1 ? 'y' : 'ies'}. They'll no longer be counted in your Income/Expense totals.`
-                : "No legacy entries found — nothing needed fixing.");
-        }
-
         function handleExportEncryptToggleChange() {
             const toggle = document.getElementById("exportEncryptToggle");
             const hint = document.getElementById("exportPlaintextHint");
@@ -2650,7 +2604,6 @@
             openAccountsConfig: () => openAccountsConfig(),
             exportBackup: () => exportBackup(),
             openImportInput: () => document.getElementById("importInput").click(),
-            repairLegacyFdEntries: () => repairLegacyFdEntries(),
             handleLedgerBackClick: () => handleLedgerBackClick(),
             navigateToWorkspace: () => navigateToWorkspace(),
             saveFxRates: () => saveFxRates(),

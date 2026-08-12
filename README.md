@@ -134,10 +134,15 @@ old transactions still reference its name.
   don't end up with a duplicate. It only touches that specific
   auto-seeded record, never a category you've since renamed yourself.
 - **Removed the "Fix Legacy FD/Opening Balance Entries" button** from
-  the main page. The underlying `repairLegacyFdEntries()` function is
-  unchanged and unremoved — `ledger.js` is a plain classic script (not a
-  module), so top-level function declarations are still callable from
-  the browser devtools console as `repairLegacyFdEntries()` if ever
-  needed again; it just no longer has a UI entry point.
+  the main page.
 - **Year filter range** changed from All Years, 2024–2028 to All Years,
   2026–2036.
+
+## v21: removed legacy FD repair function
+
+`repairLegacyFdEntries()` and its `CLICK_ACTIONS` dispatch entry are now
+fully deleted from `ledger.js` (v20 only removed the button; the
+function and its console-callable path remained). If a pre-v14.0
+account's opening balance / FD placement / renewal entries ever need
+that repair again, restore the function from an earlier deploy zip
+(v19 or v20) rather than re-adding a UI entry point for it.

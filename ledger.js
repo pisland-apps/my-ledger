@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v19";
+        const APP_VERSION = "v20";
         const APP_VERSION_DATE = "2026-08-13";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -615,7 +615,7 @@
             { name: "Bank Charges", type: "expense", icon: "💳" },
             { name: "Education", type: "expense", icon: "🎓" },
             { name: "Family", type: "expense", icon: "👨‍👩‍👧‍👦" },
-            { name: "Beting", type: "expense", icon: "🎰" },
+            { name: "Betting", type: "expense", icon: "🎰" },
             { name: "Clothing", type: "expense", icon: "👕" },
             { name: "Gift Given", type: "expense", icon: "🎁" },
             { name: "Subscription", type: "expense", icon: "📡" },
@@ -663,7 +663,7 @@
             "bank charges": "💳",
             "education": "🎓",
             "family": "👨‍👩‍👧‍👦",
-            "beting": "🎰",
+            "betting": "🎰",
             "clothing": "👕",
             "gift given": "🎁",
             "subscription": "📡",
@@ -1440,7 +1440,12 @@
 
         async function syncAndLoadCategories() {
             const customCats = await readAllDB(STORES.CATEGORIES);
-            dynamicCategories = customCats;
+            // Sorted alphabetically by name so every consumer (transaction form dropdown,
+            // Categories manager list, income/expense report lists) lists categories in a
+            // predictable order without each call site needing to sort separately. Income
+            // and expense categories are filtered by type at each use site, so this single
+            // alphabetical sort keeps both lists sorted within their own type.
+            dynamicCategories = customCats.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
         }
 
         // Idempotent: inserts any DEFAULT_CATEGORIES entry not already present
@@ -1448,9 +1453,20 @@
         // and never overwrites a category the user has renamed or customised.
         async function ensureDefaultCategories() {
             const existing = await readAllDB(STORES.CATEGORIES);
+
+            // One-time migration: v19 seeded a category named "Beting" (typo) — rename it
+            // to "Betting" in place rather than adding a new one, so v19 users don't end
+            // up with both. Only touches the record if it still has the auto-seeded id,
+            // never a category the user has since renamed away from "Beting".
+            const legacyBeting = existing.find(c => c.id === "cat_beting");
+            if (legacyBeting && legacyBeting.name.toLowerCase() === "beting") {
+                legacyBeting.name = "Betting";
+                await writeDB(STORES.CATEGORIES, legacyBeting);
+            }
+
             const existingNames = new Set(existing.map(c => c.name.toLowerCase().trim()));
             const missing = DEFAULT_CATEGORIES.filter(c => !existingNames.has(c.name.toLowerCase()));
-            if (missing.length === 0) return;
+            if (missing.length === 0) { await syncAndLoadCategories(); return; }
 
             const slugify = s => "cat_" + s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
             for (const c of missing) {

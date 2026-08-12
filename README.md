@@ -117,3 +117,27 @@ re-iconed, or deleted. Matching entries were also added to the
 `fallbackIcons` map as a backstop, so the right icon still shows even if
 one of these categories is later deleted from the Categories store while
 old transactions still reference its name.
+
+## v20: category sort, Betting rename, year range, cleanup
+
+- **Categories now sort alphabetically.** `syncAndLoadCategories()` sorts
+  `dynamicCategories` by name (locale-aware, case-insensitive) once on
+  load, so the transaction-form category dropdown, the Categories
+  manager list, and the income/expense report lists are all sorted
+  automatically — each of those filters `dynamicCategories` by type
+  without re-sorting, so they inherit the order.
+- **"Beting" → "Betting".** `DEFAULT_CATEGORIES` and `fallbackIcons` were
+  corrected to "Betting". `ensureDefaultCategories()` also does a
+  one-time migration: if a category with the auto-seeded id `cat_beting`
+  still has the name "Beting", it's renamed in place to "Betting" rather
+  than left alongside a newly-inserted "Betting" entry — so v19 users
+  don't end up with a duplicate. It only touches that specific
+  auto-seeded record, never a category you've since renamed yourself.
+- **Removed the "Fix Legacy FD/Opening Balance Entries" button** from
+  the main page. The underlying `repairLegacyFdEntries()` function is
+  unchanged and unremoved — `ledger.js` is a plain classic script (not a
+  module), so top-level function declarations are still callable from
+  the browser devtools console as `repairLegacyFdEntries()` if ever
+  needed again; it just no longer has a UI entry point.
+- **Year filter range** changed from All Years, 2024–2028 to All Years,
+  2026–2036.

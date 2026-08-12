@@ -72,7 +72,7 @@ the way in. Keep that in mind before removing `escapeHtml()` from any of
 these render paths, or before adding a new render path for one of these
 fields.
 
-## v16: idle auto-lock, numpad, brute-force lockout
+## v16: idle auto-lock, numpad
 
 - **Idle auto-lock** — ⏱️ dropdown in the header (Never/1/5/15/30 min,
   default 15). Resets on click/keydown/touch/scroll/mousemove (throttled
@@ -84,11 +84,11 @@ fields.
   passcode field. Purely an input aid alongside the OS keyboard; passcodes
   remain free text (not digit-only), so non-numeric passcodes still work
   by typing normally.
-- **Passcode lockout** — after 5 wrong passcodes in a row, further
-  attempts are blocked for a growing delay (5s → 10s → 20s… doubling,
-  capped at 5 min) before the next guess is accepted. State lives in
-  `localStorage` (`ledgerLockoutV1`) so it survives a reload, and clears
-  automatically on the next successful unlock (passcode or biometric).
-  This is a UX deterrent, not a cryptographic control — see the comment
-  block above `LOCKOUT_KEY` in `ledger.js` for what it does and doesn't
-  protect against.
+
+A client-side brute-force lockout (delay after repeated wrong passcodes)
+was considered and built, then deliberately removed: for this app's
+threat model it mostly punished the legitimate owner mistyping their own
+passcode (no recovery besides a full wipe) while adding little real
+resistance, since anyone with devtools access can call the underlying
+crypto functions directly, bypassing any UI-layer lockout. PBKDF2's 250k
+iterations remains the actual brute-force defense.

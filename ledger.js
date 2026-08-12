@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v15";
+        const APP_VERSION = "v16";
         const APP_VERSION_DATE = "2026-08-12";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -97,6 +97,52 @@
         }
         function saveLockConfig(cfg) {
             localStorage.setItem(LOCK_CONFIG_KEY, JSON.stringify(cfg));
+        }
+
+        /* ================= PASSCODE BRUTE-FORCE LOCKOUT (client-side, best-effort) =================
+           After LOCKOUT_THRESHOLD wrong passcodes in a row, further attempts are blocked for a
+           growing delay (5s, 10s, 20s... doubling, capped at LOCKOUT_MAX_SECONDS) before the next
+           guess is allowed. State lives in localStorage (not memory) so it survives a page reload,
+           since an attacker's first move against a client-side lockout is usually to just reload.
+           This is a UX/deterrence measure, not a cryptographic one — anyone who can read/edit
+           localStorage on the device can clear ledgerLockoutV1 and bypass it outright, and it does
+           nothing for a backup file decrypted offline outside this page. The real brute-force
+           resistance is PBKDF2's 250k iterations; this just slows down someone poking at the
+           unlock screen itself. */
+        const LOCKOUT_KEY = "ledgerLockoutV1";
+        const LOCKOUT_THRESHOLD = 5;
+        const LOCKOUT_BASE_SECONDS = 5;
+        const LOCKOUT_MAX_SECONDS = 300;
+
+        function getLockoutState() {
+            try {
+                const raw = localStorage.getItem(LOCKOUT_KEY);
+                const parsed = raw ? JSON.parse(raw) : null;
+                return (parsed && typeof parsed.failCount === "number") ? parsed : { failCount: 0, lockoutUntil: 0 };
+            } catch (err) { return { failCount: 0, lockoutUntil: 0 }; }
+        }
+        function saveLockoutState(state) {
+            try { localStorage.setItem(LOCKOUT_KEY, JSON.stringify(state)); } catch (err) {}
+        }
+        function clearLockoutState() {
+            try { localStorage.removeItem(LOCKOUT_KEY); } catch (err) {}
+        }
+        function msRemainingLockout() {
+            return Math.max(0, (getLockoutState().lockoutUntil || 0) - Date.now());
+        }
+        // Records one wrong passcode guess. Once failCount reaches the threshold, sets a
+        // lockoutUntil timestamp with an exponentially growing delay (capped) and returns the
+        // updated state so the caller can reflect it in the UI.
+        function registerFailedUnlockAttempt() {
+            const state = getLockoutState();
+            state.failCount = (state.failCount || 0) + 1;
+            if (state.failCount >= LOCKOUT_THRESHOLD) {
+                const overBy = state.failCount - LOCKOUT_THRESHOLD;
+                const delaySeconds = Math.min(LOCKOUT_BASE_SECONDS * Math.pow(2, overBy), LOCKOUT_MAX_SECONDS);
+                state.lockoutUntil = Date.now() + delaySeconds * 1000;
+            }
+            saveLockoutState(state);
+            return state;
         }
 
         // Encrypts a record before it's written to IndexedDB. The store's keyPath field (id/key) is
@@ -192,9 +238,44 @@
                     biometricBtn.style.display = "none";
 
                     const finishUnlock = () => {
+                        clearLockoutState();
                         overlay.classList.add("hidden");
                         resolve({ isNewSetup: false });
                     };
+
+                    // Reflects any still-active lockout in the UI (disables passcode input, the
+                    // Unlock button, and the number pad; shows a countdown) — re-checked every
+                    // second until it expires. Called both on initial render (in case the page was
+                    // reloaded mid-lockout) and after each failed attempt.
+                    let lockoutCountdownInterval = null;
+                    const applyUnlockLockoutUI = () => {
+                        const input = document.getElementById("unlockPasscodeInput");
+                        const submitBtn = unlockView.querySelector('[data-click="handleUnlockSubmit"]');
+                        const errEl = document.getElementById("lockError2");
+                        const numpadButtons = document.querySelectorAll("#unlockNumpad button");
+
+                        const tick = () => {
+                            const remainingMs = msRemainingLockout();
+                            if (remainingMs <= 0) {
+                                if (lockoutCountdownInterval) { clearInterval(lockoutCountdownInterval); lockoutCountdownInterval = null; }
+                                input.disabled = false;
+                                submitBtn.disabled = false;
+                                numpadButtons.forEach(b => b.disabled = false);
+                                errEl.textContent = "";
+                                return;
+                            }
+                            input.disabled = true;
+                            submitBtn.disabled = true;
+                            numpadButtons.forEach(b => b.disabled = true);
+                            errEl.textContent = `Too many incorrect attempts. Try again in ${Math.ceil(remainingMs / 1000)}s.`;
+                        };
+
+                        if (lockoutCountdownInterval) clearInterval(lockoutCountdownInterval);
+                        tick();
+                        if (msRemainingLockout() > 0) lockoutCountdownInterval = setInterval(tick, 1000);
+                    };
+
+                    if (msRemainingLockout() > 0) applyUnlockLockoutUI();
 
                     // If biometric quick-unlock is configured on this device, show the button and
                     // try it automatically once — falls back to the passcode field on cancel/failure.
@@ -214,6 +295,7 @@
                     };
 
                     window._resolveLockFlow = async () => {
+                        if (msRemainingLockout() > 0) { applyUnlockLockoutUI(); return; }
                         const p1 = document.getElementById("unlockPasscodeInput").value;
                         const errEl = document.getElementById("lockError2");
                         errEl.textContent = "";
@@ -225,7 +307,12 @@
                             currentPasscode = p1;
                             finishUnlock();
                         } catch (err) {
-                            errEl.textContent = "Incorrect passcode. Try again.";
+                            const state = registerFailedUnlockAttempt();
+                            if (state.lockoutUntil > Date.now()) {
+                                applyUnlockLockoutUI();
+                            } else {
+                                errEl.textContent = "Incorrect passcode. Try again.";
+                            }
                         }
                     };
                 }
@@ -235,6 +322,29 @@
         function handleSetupPasscodeSubmit() { if (window._resolveLockFlow) window._resolveLockFlow(); }
         function handleUnlockSubmit() { if (window._resolveLockFlow) window._resolveLockFlow(); }
 
+        // On-screen number pad for the unlock passcode field — appends/removes digits from
+        // #unlockPasscodeInput. Purely an input aid alongside the physical/OS keyboard, not a
+        // replacement: passcodes are free text (any characters, min 4 chars), not digit-only PINs,
+        // so someone with a non-numeric passcode can still just type it as before.
+        function numpadDigit(digit) {
+            const input = document.getElementById("unlockPasscodeInput");
+            if (!input || input.disabled) return;
+            input.value += digit;
+            input.focus();
+        }
+        function numpadBackspace() {
+            const input = document.getElementById("unlockPasscodeInput");
+            if (!input || input.disabled) return;
+            input.value = input.value.slice(0, -1);
+            input.focus();
+        }
+        function numpadClear() {
+            const input = document.getElementById("unlockPasscodeInput");
+            if (!input || input.disabled) return;
+            input.value = "";
+            input.focus();
+        }
+
         // Re-locks the app immediately: drops the in-memory key/passcode and reloads, which forces
         // the unlock screen again and guarantees no decrypted data lingers in memory or on screen.
         function lockAppNow() {
@@ -242,6 +352,61 @@
             currentPasscode = null;
             location.reload();
         }
+
+        /* ================= IDLE AUTO-LOCK ================= */
+        // Locks the app automatically after a period of no user activity — selectable via the
+        // ⏱️ dropdown in the header (Never/1/5/15/30 min, default 15). The setting itself isn't
+        // sensitive, so it's kept in localStorage (plain, unencrypted) rather than the encrypted
+        // settings store — that also means it's available immediately on next launch without
+        // waiting on a DB read.
+        const AUTO_LOCK_KEY = "ledgerAutoLockMinutesV1";
+        const DEFAULT_AUTO_LOCK_MINUTES = 15;
+        const AUTO_LOCK_ACTIVITY_EVENTS = ["click", "keydown", "touchstart", "mousemove", "scroll"];
+        let autoLockMinutes = DEFAULT_AUTO_LOCK_MINUTES;
+        let autoLockTimer = null;
+        let lastAutoLockActivityAt = 0;
+
+        function getAutoLockMinutes() {
+            const raw = localStorage.getItem(AUTO_LOCK_KEY);
+            if (raw === null) return DEFAULT_AUTO_LOCK_MINUTES;
+            const n = parseInt(raw, 10);
+            return Number.isNaN(n) ? DEFAULT_AUTO_LOCK_MINUTES : n;
+        }
+
+        function resetAutoLockTimer() {
+            if (autoLockTimer) { clearTimeout(autoLockTimer); autoLockTimer = null; }
+            if (!appKey || !autoLockMinutes || autoLockMinutes <= 0) return; // "Never", or not unlocked
+            autoLockTimer = setTimeout(() => { lockAppNow(); }, autoLockMinutes * 60 * 1000);
+        }
+
+        // Wired to the header <select data-change="handleAutoLockChange">.
+        function handleAutoLockChange() {
+            const sel = document.getElementById("autoLockSelect");
+            autoLockMinutes = parseInt(sel.value, 10) || 0;
+            localStorage.setItem(AUTO_LOCK_KEY, String(autoLockMinutes));
+            resetAutoLockTimer();
+        }
+
+        // Called once from bootstrap() after a successful unlock — syncs the dropdown to the
+        // stored setting and starts the idle timer. Activity listeners are registered once at
+        // script load (below) and are cheap no-ops while the app is locked or set to "Never".
+        function initAutoLock() {
+            autoLockMinutes = getAutoLockMinutes();
+            const sel = document.getElementById("autoLockSelect");
+            if (sel) sel.value = String(autoLockMinutes);
+            resetAutoLockTimer();
+        }
+
+        AUTO_LOCK_ACTIVITY_EVENTS.forEach((evt) => {
+            document.addEventListener(evt, () => {
+                if (!appKey || !autoLockMinutes) return;
+                // Throttled — mousemove/scroll fire far more often than the timer needs resetting.
+                const now = Date.now();
+                if (now - lastAutoLockActivityAt < 1000) return;
+                lastAutoLockActivityAt = now;
+                resetAutoLockTimer();
+            }, { passive: true });
+        });
 
         async function handleForgotPasscode() {
             const step1 = await customConfirm("There is no passcode recovery. Resetting will permanently erase ALL data stored in this app on this device (accounts, transactions, categories). Continue?");
@@ -2254,6 +2419,7 @@
             
             window.history.replaceState({ view: "workspace" }, "");
             
+            initAutoLock();
             renderApp();
         }
 
@@ -2523,6 +2689,9 @@
             openImageViewer: (el, e) => openImageViewer(el.dataset.image, e),
             deleteTx: (el, e) => deleteTx(Number(el.dataset.id), e),
             navigateToCategoryPage: (el) => navigateToCategoryPage(el.dataset.category, el.dataset.back || "workspace"),
+            numpadDigit: (el) => numpadDigit(el.dataset.digit),
+            numpadBackspace: () => numpadBackspace(),
+            numpadClear: () => numpadClear(),
         };
 
         const CHANGE_ACTIONS = {
@@ -2536,6 +2705,7 @@
             handleTxImageSelected: (el, e) => handleTxImageSelected(e),
             recalcResolveFdMaturity: () => recalcResolveFdMaturity(),
             recalcFdOpeningRowMaturity: (el) => recalcFdOpeningRowMaturity(el.dataset.rowId),
+            handleAutoLockChange: () => handleAutoLockChange(),
         };
 
         const INPUT_ACTIONS = {

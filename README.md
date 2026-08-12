@@ -71,3 +71,24 @@ field in a tampered backup at render time, since nothing sanitizes it on
 the way in. Keep that in mind before removing `escapeHtml()` from any of
 these render paths, or before adding a new render path for one of these
 fields.
+
+## v16: idle auto-lock, numpad, brute-force lockout
+
+- **Idle auto-lock** — ⏱️ dropdown in the header (Never/1/5/15/30 min,
+  default 15). Resets on click/keydown/touch/scroll/mousemove (throttled
+  to once/sec) while unlocked; calls `lockAppNow()` after the selected
+  interval of inactivity. Setting is stored in `localStorage`
+  (`ledgerAutoLockMinutesV1`), not the encrypted settings store, since
+  it isn't sensitive and needs to be readable before unlock.
+- **Number pad** on the unlock screen — appends/removes digits from the
+  passcode field. Purely an input aid alongside the OS keyboard; passcodes
+  remain free text (not digit-only), so non-numeric passcodes still work
+  by typing normally.
+- **Passcode lockout** — after 5 wrong passcodes in a row, further
+  attempts are blocked for a growing delay (5s → 10s → 20s… doubling,
+  capped at 5 min) before the next guess is accepted. State lives in
+  `localStorage` (`ledgerLockoutV1`) so it survives a reload, and clears
+  automatically on the next successful unlock (passcode or biometric).
+  This is a UX deterrent, not a cryptographic control — see the comment
+  block above `LOCKOUT_KEY` in `ledger.js` for what it does and doesn't
+  protect against.

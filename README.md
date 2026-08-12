@@ -83,7 +83,10 @@ fields.
 - **Number pad** on the unlock screen — appends/removes digits from the
   passcode field. Purely an input aid alongside the OS keyboard; passcodes
   remain free text (not digit-only), so non-numeric passcodes still work
-  by typing normally.
+  by typing normally. Numpad taps deliberately avoid focusing the field
+  (and blur it if it was already focused), so using the numpad doesn't
+  pop the mobile virtual keyboard up alongside it — tapping the field
+  directly still opens the normal keyboard for anyone who'd rather type.
 
 A client-side brute-force lockout (delay after repeated wrong passcodes)
 was considered and built, then deliberately removed: for this app's

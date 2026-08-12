@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v17";
+        const APP_VERSION = "v18";
         const APP_VERSION_DATE = "2026-08-12";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -239,23 +239,27 @@
         // #unlockPasscodeInput. Purely an input aid alongside the physical/OS keyboard, not a
         // replacement: passcodes are free text (any characters, min 4 chars), not digit-only PINs,
         // so someone with a non-numeric passcode can still just type it as before.
+        // Deliberately does NOT call input.focus() — focusing the field is what pops the mobile
+        // OS keyboard, defeating the point of an on-screen numpad. blur() is called instead, so if
+        // the field was already focused (user tapped it directly before switching to the numpad),
+        // any open keyboard gets dismissed rather than staying up alongside the numpad.
         function numpadDigit(digit) {
             const input = document.getElementById("unlockPasscodeInput");
             if (!input || input.disabled) return;
             input.value += digit;
-            input.focus();
+            input.blur();
         }
         function numpadBackspace() {
             const input = document.getElementById("unlockPasscodeInput");
             if (!input || input.disabled) return;
             input.value = input.value.slice(0, -1);
-            input.focus();
+            input.blur();
         }
         function numpadClear() {
             const input = document.getElementById("unlockPasscodeInput");
             if (!input || input.disabled) return;
             input.value = "";
-            input.focus();
+            input.blur();
         }
 
         // Re-locks the app immediately: drops the in-memory key/passcode and reloads, which forces

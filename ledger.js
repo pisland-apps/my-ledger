@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v22";
+        const APP_VERSION = "v23";
         const APP_VERSION_DATE = "2026-08-13";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -602,6 +602,12 @@
         // Dynamic category registry
         let dynamicCategories = [];
 
+        // User-chosen category pre-selected whenever a NEW Income / Expense entry is opened
+        // (never applied when editing an existing transaction). Stored in the SETTINGS store,
+        // "" / null means "no default — leave the dropdown at its first option" as before.
+        let defaultIncomeCategory = "";
+        let defaultExpenseCategory = "";
+
         // Built-in starter categories (auto-provisioned if missing; user can still
         // rename/remove via the Categories manager same as any custom category)
         const DEFAULT_CATEGORIES = [
@@ -622,7 +628,11 @@
             { name: "Tech Appliances", type: "expense", icon: "💻" },
             { name: "Travelling", type: "expense", icon: "✈️" },
             { name: "Tax", type: "expense", icon: "🧾" },
-            { name: "Offering", type: "expense", icon: "🙏" }
+            { name: "Offering", type: "expense", icon: "🙏" },
+            { name: "Personal Care / Grooming", type: "expense", icon: "💇" },
+            { name: "Insurance", type: "expense", icon: "🛡️" },
+            { name: "Medical", type: "expense", icon: "🏥" },
+            { name: "Unknown", type: "expense", icon: "❓" }
         ];
 
         // Dynamic Rich Catalog of Preset Icons grouped logically
@@ -644,6 +654,8 @@
             investments: "📈",
             freelance: "💻",
             others: "📦",
+            "other income": "📦",
+            "other expenses": "📦",
             groceries: "🍏",
             "dining out": "🍔",
             utilities: "🔌",
@@ -670,7 +682,11 @@
             "tech appliances": "💻",
             "travelling": "✈️",
             "tax": "🧾",
-            "offering": "🙏"
+            "offering": "🙏",
+            "personal care / grooming": "💇",
+            "insurance": "🛡️",
+            "medical": "🏥",
+            "unknown": "❓"
         };
 
         // Helper to retrieve correct category icon safely
@@ -1332,7 +1348,35 @@
             document.getElementById("currentSelectedEmojiBadge").textContent = "🍔";
             buildEmojiSelectionPanel();
             renderCategoriesManagerList();
+            populateDefaultCategorySelects();
             openModal("categoriesModal");
+        }
+
+        // Fills the Default Income/Expense Category dropdowns with the same merged
+        // (custom + starter) category lists used by the transaction form, plus a leading
+        // "(None)" option, and selects whatever is currently saved as the default.
+        function populateDefaultCategorySelects() {
+            const incomeFallback = ["Salary", "Investments", "Freelance", "Other Income"];
+            const expenseFallback = ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
+
+            const incomeNames = [...new Set([...dynamicCategories.filter(c => c.type === "income").map(c => c.name), ...incomeFallback])].sort((a, b) => a.localeCompare(b));
+            const expenseNames = [...new Set([...dynamicCategories.filter(c => c.type === "expense").map(c => c.name), ...expenseFallback])].sort((a, b) => a.localeCompare(b));
+
+            const incSelect = document.getElementById("defaultIncomeCategorySelect");
+            const expSelect = document.getElementById("defaultExpenseCategorySelect");
+
+            incSelect.innerHTML = `<option value="">(None)</option>` + incomeNames.map(c => `<option value="${escapeHtml(c)}">${getCategoryIcon(c, "income")} ${escapeHtml(c)}</option>`).join("");
+            expSelect.innerHTML = `<option value="">(None)</option>` + expenseNames.map(c => `<option value="${escapeHtml(c)}">${getCategoryIcon(c, "expense")} ${escapeHtml(c)}</option>`).join("");
+
+            incSelect.value = incomeNames.includes(defaultIncomeCategory) ? defaultIncomeCategory : "";
+            expSelect.value = expenseNames.includes(defaultExpenseCategory) ? defaultExpenseCategory : "";
+        }
+
+        async function saveDefaultCategories() {
+            defaultIncomeCategory = document.getElementById("defaultIncomeCategorySelect").value;
+            defaultExpenseCategory = document.getElementById("defaultExpenseCategorySelect").value;
+            await writeDB(STORES.SETTINGS, { key: "defaultIncomeCategory", value: defaultIncomeCategory });
+            await writeDB(STORES.SETTINGS, { key: "defaultExpenseCategory", value: defaultExpenseCategory });
         }
 
         function buildEmojiSelectionPanel() {
@@ -1384,8 +1428,8 @@
             const type = document.getElementById("catTypeSelect").value;
             const icon = document.getElementById("catSelectedEmoji").value;
 
-            if (name.toLowerCase() === "others") {
-                alert("The keyword 'Others' is protected.");
+            if (name.toLowerCase() === "other income" || name.toLowerCase() === "other expenses") {
+                alert("The keyword '" + name + "' is protected.");
                 return;
             }
 
@@ -1466,13 +1510,30 @@
 
             const existingNames = new Set(existing.map(c => c.name.toLowerCase().trim()));
             const missing = DEFAULT_CATEGORIES.filter(c => !existingNames.has(c.name.toLowerCase()));
-            if (missing.length === 0) { await syncAndLoadCategories(); return; }
 
             const slugify = s => "cat_" + s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
             for (const c of missing) {
                 await writeDB(STORES.CATEGORIES, { id: slugify(c.name), name: c.name, type: c.type, icon: c.icon });
             }
             await syncAndLoadCategories();
+            await migrateOthersCategoryRename();
+        }
+
+        // One-time migration: "Others" (the implicit income/expense fallback category — never a
+        // real stored Categories record, just a literal string on transactions) was renamed to
+        // "Other Income" / "Other Expenses" per type. Existing transactions whose cat is still the
+        // literal string "Others" are updated in place to the type-appropriate new name, so old
+        // data lines up with the new dropdown options/labels instead of becoming an orphaned
+        // unmatched category string. Only touches transactions with the exact legacy value —
+        // never anything the user has since re-categorised.
+        async function migrateOthersCategoryRename() {
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            for (const t of txs) {
+                if (t.cat === "Others" && (t.type === "income" || t.type === "expense")) {
+                    t.cat = t.type === "income" ? "Other Income" : "Other Expenses";
+                    await writeDB(STORES.TRANSACTIONS, t);
+                }
+            }
         }
 
         // --- TRANSACTION CREATION / EDITOR CORE ---
@@ -1508,7 +1569,7 @@
                 document.getElementById("txDate").value = tx.date;
 
                 const currentCats = dynamicCategories.filter(c => c.type === tx.type).map(c => c.name);
-                const fallbackGroup = tx.type === "income" ? ["Salary", "Investments", "Freelance", "Others"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Others"];
+                const fallbackGroup = tx.type === "income" ? ["Salary", "Investments", "Freelance", "Other Income"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
                 
                 const uniqueMerged = [...new Set([...currentCats, ...fallbackGroup])].sort((a, b) => a.localeCompare(b));
                 uniqueMerged.forEach(c => {
@@ -1525,6 +1586,9 @@
 
                 setTxImagePreview(tx.image || null);
 
+                // Editing: default to "manual" so an existing saved Description stays visible
+                // and editable rather than being hidden the moment the FD block re-appears.
+                document.getElementById("txFdManualDesc").checked = true;
                 updateTxFdFieldsVisibilitySync(accounts);
                 if (tx.fdMaturityDate) {
                     document.getElementById("txFdReference").value = tx.fdReferenceNo || "";
@@ -1545,13 +1609,20 @@
                 document.getElementById("categoryRow").style.display = type === "transfer" ? "none" : "block";
 
                 const currentCats = dynamicCategories.filter(c => c.type === type).map(c => c.name);
-                const fallbackGroup = type === "income" ? ["Salary", "Investments", "Freelance", "Others"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Others"];
+                const fallbackGroup = type === "income" ? ["Salary", "Investments", "Freelance", "Other Income"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
                 
                 const uniqueMerged = [...new Set([...currentCats, ...fallbackGroup])].sort((a, b) => a.localeCompare(b));
                 uniqueMerged.forEach(c => {
                     const icon = getCategoryIcon(c, type);
                     catSelect.innerHTML += `<option value="${escapeHtml(c)}">${icon} ${escapeHtml(c)}</option>`;
                 });
+
+                // Pre-select the user's chosen default category for this type, if one is set
+                // and still exists among the current options — new entries only, never editing.
+                const defaultCat = type === "income" ? defaultIncomeCategory : (type === "expense" ? defaultExpenseCategory : "");
+                if (defaultCat && uniqueMerged.includes(defaultCat)) {
+                    catSelect.value = defaultCat;
+                }
 
                 document.getElementById("txModalTitle").textContent = "Log Ledger Item";
                 document.getElementById("txSubmitBtn").textContent = "Commit Entry";
@@ -1564,6 +1635,10 @@
                 document.getElementById("txFdInterestRate").value = "3.0";
                 document.getElementById("txFdMaturityDate").value = "";
                 document.getElementById("txFdMaturityPreview").textContent = "";
+
+                // New entry: default to "auto" Description (off) — most FD placements don't need
+                // a separate free-text description on top of their Account/Reference No.
+                document.getElementById("txFdManualDesc").checked = false;
 
                 syncTransactionCurrency();
             }
@@ -1691,6 +1766,31 @@
                 document.getElementById("txFdStartDate").value = document.getElementById("txDate").value || new Date().toISOString().split("T")[0];
                 recalcTxFdMaturity();
             }
+
+            toggleTxFdDescMode();
+        }
+
+        // Description field is optional/auto-filled for Fixed Deposit placements (the placement
+        // already has its own Account/Reference No. field), unless the user flips "Manually fill
+        // Description" on. For every non-FD transaction the Description field behaves as before —
+        // always shown and required.
+        function toggleTxFdDescMode() {
+            const fdVisible = document.getElementById("txFdFieldsWrap").style.display !== "none";
+            const manualChecked = document.getElementById("txFdManualDesc").checked;
+            const descRow = document.getElementById("txDescRow");
+            const descInput = document.getElementById("txDesc");
+
+            const autoMode = fdVisible && !manualChecked;
+            descRow.style.display = autoMode ? "none" : "block";
+            descInput.required = !autoMode;
+        }
+
+        // Builds the auto-generated Description used for an FD placement when the user hasn't
+        // opted to fill it in manually — derived from the Account/Reference No. if one was given,
+        // else a generic placement label.
+        function buildAutoFdDescription() {
+            const ref = document.getElementById("txFdReference").value.trim();
+            return ref ? `Fixed Deposit Placement (${ref})` : "Fixed Deposit Placement";
         }
 
         async function syncTransactionCurrency() {
@@ -1973,7 +2073,9 @@
         // Direct Mobile Save execution avoiding forms issues
         async function handleTransactionSubmitMobile() {
             const txIdInput = document.getElementById("txId").value;
-            const desc = document.getElementById("txDesc").value.trim();
+            const fdFieldsVisibleForDesc = document.getElementById("txFdFieldsWrap").style.display !== "none";
+            const fdAutoDescMode = fdFieldsVisibleForDesc && !document.getElementById("txFdManualDesc").checked;
+            const desc = fdAutoDescMode ? buildAutoFdDescription() : document.getElementById("txDesc").value.trim();
             const amountVal = document.getElementById("txAmount").value;
             const dateVal = document.getElementById("txDate").value;
 
@@ -2175,6 +2277,19 @@
             document.getElementById("fdReminderContainer").innerHTML = reminderHTML;
 
             let accListHTML = "";
+
+            // Top row of the Accounts section: total current value across every account,
+            // converted to the base currency — same figure as the header's Portfolio Net
+            // Worth, surfaced again here at the top of the account list itself.
+            if (accounts.length > 0) {
+                accListHTML += `
+                    <div class="account-list-row" style="background:#f5f3ff; border:1px solid #ede9fe; cursor:default;">
+                        <div><strong>💰 Current Value</strong></div>
+                        <div style="text-align:right;"><strong>${formatCurrency(globalBaseNetWorth, baseCurrency)}</strong></div>
+                    </div>
+                `;
+            }
+
             accounts.forEach(a => {
                 if (a.type === "multi" || a.type === "fd") {
                     const baskets = nativeBalances[a.id];
@@ -2227,19 +2342,24 @@
             let catSummary = { income: {}, expense: {} };
             
             // Prime fallback and custom categories
-            const currentIncomeCategories = [...new Set([...dynamicCategories.filter(c => c.type === "income").map(c => c.name), "Salary", "Investments", "Freelance", "Others"])];
-            const currentExpenseCategories = [...new Set([...dynamicCategories.filter(c => c.type === "expense").map(c => c.name), "Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Others"])];
+            const currentIncomeCategories = [...new Set([...dynamicCategories.filter(c => c.type === "income").map(c => c.name), "Salary", "Investments", "Freelance", "Other Income"])];
+            const currentExpenseCategories = [...new Set([...dynamicCategories.filter(c => c.type === "expense").map(c => c.name), "Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"])];
 
             currentIncomeCategories.forEach(c => catSummary.income[c] = 0);
             currentExpenseCategories.forEach(c => catSummary.expense[c] = 0);
 
             let ledgerHTML = "";
 
+            // The "Opening Balance Setup" pseudo-entry represents the account's earliest
+            // starting point, so it's built here but appended AFTER the transaction list
+            // below (not before) — it belongs at the bottom/last position, underneath every
+            // real transaction, rather than pinned above them regardless of date sort.
+            let openingBalanceHTML = "";
             if (activeLedgerAccountView !== "all" && activeCategoryView === "all" && directTypeView === "all") {
                 const viewingAcc = accounts.find(a => a.id === activeLedgerAccountView);
                 if (viewingAcc && viewingAcc.type !== "multi" && viewingAcc.type !== "fd" && viewingAcc.initialBalance) {
                     const subText = viewingAcc.currency !== baseCurrency ? `<span class="converted-subtext">≈ ${formatCurrency(convertCurrency(viewingAcc.initialBalance, viewingAcc.currency, baseCurrency), baseCurrency)}</span>` : '';
-                    ledgerHTML += `
+                    openingBalanceHTML = `
                         <div class="ledger-item" style="background-color: #fafbfd; border-left: 4px solid var(--primary); cursor: default;">
                             <div class="item-left">
                                 <span class="item-name" style="font-style: italic;">🏦 [Opening Balance Setup]</span>
@@ -2347,6 +2467,10 @@
                 `;
             }
 
+            // Appended last so it always sits at the bottom of the list, beneath every
+            // transaction currently rendered (see the comment where it's built above).
+            ledgerHTML += openingBalanceHTML;
+
             document.getElementById("reportIncome").textContent = formatCurrency(incBaseTotal, baseCurrency);
             document.getElementById("reportExpense").textContent = formatCurrency(expBaseTotal, baseCurrency);
             const savings = incBaseTotal - expBaseTotal;
@@ -2373,10 +2497,80 @@
             document.getElementById("categoryReportList").innerHTML = catHTML || '<p style="font-size: 0.75rem; text-align: center; color: var(--text-muted);">No spending categorised.</p>';
             document.getElementById("ledgerList").innerHTML = ledgerHTML || '<p style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.8rem;">No matches found.</p>';
 
-            // Balance Statement view rendering
+            // The Net Savings Statement page has its own independent "All Years / Year" filter
+            // (not the dashboard's month+year filter above), so it's rendered by a dedicated
+            // function rather than sharing catSummary computed with filterM/filterY.
+            await renderSavingsStatement();
+
+            calculateStorageMetrics();
+        }
+
+        // Populates the Net Savings Statement's own Year filter — independent of the dashboard's
+        // filterMonth/filterYear selects. Mirrors populateYearFilterOptions' behaviour (only years
+        // that actually have a transaction, plus the current year; preserves selection across
+        // re-renders; defaults to "All Years" on first load).
+        let savingsYearFilterInitialized = false;
+        function populateSavingsYearFilterOptions(txs) {
+            const select = document.getElementById("savingsYearFilter");
+            const prevValue = select.value;
+            const currentYear = new Date().getFullYear();
+
+            const years = new Set([currentYear]);
+            txs.forEach(t => {
+                const y = new Date(t.date).getFullYear();
+                if (!isNaN(y)) years.add(y);
+            });
+
+            const sortedYears = [...years].sort((a, b) => b - a);
+            select.innerHTML = `<option value="all">All Years</option>` +
+                sortedYears.map(y => `<option value="${y}">${y}</option>`).join("");
+
+            if (!savingsYearFilterInitialized) {
+                select.value = "all";
+                savingsYearFilterInitialized = true;
+            } else if (prevValue === "all" || sortedYears.map(String).includes(prevValue)) {
+                select.value = prevValue;
+            } else {
+                select.value = "all";
+            }
+        }
+
+        // Below this, a category total is treated as 0.00 and hidden — covers exact 0 as well as
+        // FX-conversion rounding noise (e.g. an expense that nets to -0.001 after currency
+        // conversion) that would otherwise display as a misleading "-0.00" row.
+        const SAVINGS_ZERO_EPS = 0.005;
+
+        async function renderSavingsStatement() {
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            populateSavingsYearFilterOptions(txs);
+            const filterY = document.getElementById("savingsYearFilter").value;
+
+            const currentIncomeCategories = [...new Set([...dynamicCategories.filter(c => c.type === "income").map(c => c.name), "Salary", "Investments", "Freelance", "Other Income"])];
+            const currentExpenseCategories = [...new Set([...dynamicCategories.filter(c => c.type === "expense").map(c => c.name), "Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"])];
+
+            const catSummary = { income: {}, expense: {} };
+            currentIncomeCategories.forEach(c => catSummary.income[c] = 0);
+            currentExpenseCategories.forEach(c => catSummary.expense[c] = 0);
+
+            let incBaseTotal = 0, expBaseTotal = 0;
+            txs.forEach(t => {
+                if (filterY !== "all" && new Date(t.date).getFullYear().toString() !== filterY) return;
+
+                const tBase = convertCurrency(t.amount, t.currency, baseCurrency);
+                if (t.type === "income") {
+                    incBaseTotal += tBase;
+                    catSummary.income[t.cat] = (catSummary.income[t.cat] || 0) + tBase;
+                }
+                if (t.type === "expense") {
+                    expBaseTotal += tBase;
+                    catSummary.expense[t.cat] = (catSummary.expense[t.cat] || 0) + tBase;
+                }
+            });
+
             let incRowsHTML = "";
-            Object.keys(catSummary.income).forEach(c => {
+            Object.keys(catSummary.income).sort((a, b) => a.localeCompare(b)).forEach(c => {
                 const val = catSummary.income[c];
+                if (Math.abs(val) < SAVINGS_ZERO_EPS) return;
                 const icon = getCategoryIcon(c, "income");
                 incRowsHTML += `
                     <div class="statement-row" data-click="navigateToCategoryPage" data-category="${escapeHtml(c)}" data-back="savings">
@@ -2386,10 +2580,12 @@
                 `;
             });
             document.getElementById("savingsIncomeRows").innerHTML = incRowsHTML || '<p style="font-size:0.75rem; color:var(--text-muted);">No income entries logged.</p>';
+            document.getElementById("savingsIncomeTotal").textContent = `+${formatCurrency(Math.abs(incBaseTotal) < SAVINGS_ZERO_EPS ? 0 : incBaseTotal, baseCurrency)}`;
 
             let expRowsHTML = "";
-            Object.keys(catSummary.expense).forEach(c => {
+            Object.keys(catSummary.expense).sort((a, b) => a.localeCompare(b)).forEach(c => {
                 const val = catSummary.expense[c];
+                if (Math.abs(val) < SAVINGS_ZERO_EPS) return;
                 const icon = getCategoryIcon(c, "expense");
                 expRowsHTML += `
                     <div class="statement-row" data-click="navigateToCategoryPage" data-category="${escapeHtml(c)}" data-back="savings">
@@ -2399,13 +2595,12 @@
                 `;
             });
             document.getElementById("savingsExpenseRows").innerHTML = expRowsHTML || '<p style="font-size:0.75rem; color:var(--text-muted);">No expense entries logged.</p>';
+            document.getElementById("savingsExpenseTotal").textContent = `-${formatCurrency(Math.abs(expBaseTotal) < SAVINGS_ZERO_EPS ? 0 : expBaseTotal, baseCurrency)}`;
 
             const statementDiff = incBaseTotal - expBaseTotal;
             document.getElementById("savingsSurplusLabel").textContent = statementDiff >= 0 ? "Surplus Margin (Savings):" : "Deficit (Shortfall Margin):";
             document.getElementById("savingsSurplusValue").textContent = formatCurrency(statementDiff, baseCurrency);
             document.getElementById("savingsSurplusValue").style.color = statementDiff >= 0 ? "var(--income-color)" : "var(--expense-color)";
-
-            calculateStorageMetrics();
         }
 
         async function bootstrap() {
@@ -2427,6 +2622,12 @@
 
             const storedRates = await readKeyDB("settings", "fxRates");
             if (storedRates) fxRates = storedRates.value;
+
+            const storedDefaultIncomeCat = await readKeyDB("settings", "defaultIncomeCategory");
+            if (storedDefaultIncomeCat) defaultIncomeCategory = storedDefaultIncomeCat.value || "";
+
+            const storedDefaultExpenseCat = await readKeyDB("settings", "defaultExpenseCategory");
+            if (storedDefaultExpenseCat) defaultExpenseCategory = storedDefaultExpenseCat.value || "";
 
             await syncAndLoadCategories();
             await ensureDefaultCategories();
@@ -2680,6 +2881,9 @@
             recalcResolveFdMaturity: () => recalcResolveFdMaturity(),
             recalcFdOpeningRowMaturity: (el) => recalcFdOpeningRowMaturity(el.dataset.rowId),
             handleAutoLockChange: () => handleAutoLockChange(),
+            saveDefaultCategories: () => saveDefaultCategories(),
+            toggleTxFdDescMode: () => toggleTxFdDescMode(),
+            resetSavingsPageAndRender: () => renderSavingsStatement(),
         };
 
         const INPUT_ACTIONS = {

@@ -1510,7 +1510,7 @@
                 const currentCats = dynamicCategories.filter(c => c.type === tx.type).map(c => c.name);
                 const fallbackGroup = tx.type === "income" ? ["Salary", "Investments", "Freelance", "Others"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Others"];
                 
-                const uniqueMerged = [...new Set([...currentCats, ...fallbackGroup])];
+                const uniqueMerged = [...new Set([...currentCats, ...fallbackGroup])].sort((a, b) => a.localeCompare(b));
                 uniqueMerged.forEach(c => {
                     const icon = getCategoryIcon(c, tx.type);
                     catSelect.innerHTML += `<option value="${escapeHtml(c)}">${icon} ${escapeHtml(c)}</option>`;
@@ -1547,7 +1547,7 @@
                 const currentCats = dynamicCategories.filter(c => c.type === type).map(c => c.name);
                 const fallbackGroup = type === "income" ? ["Salary", "Investments", "Freelance", "Others"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Others"];
                 
-                const uniqueMerged = [...new Set([...currentCats, ...fallbackGroup])];
+                const uniqueMerged = [...new Set([...currentCats, ...fallbackGroup])].sort((a, b) => a.localeCompare(b));
                 uniqueMerged.forEach(c => {
                     const icon = getCategoryIcon(c, type);
                     catSelect.innerHTML += `<option value="${escapeHtml(c)}">${icon} ${escapeHtml(c)}</option>`;
@@ -2061,10 +2061,40 @@
             renderApp();
         }
 
+        // Populates the Year filter with only years that actually have a transaction, plus the
+        // current year (so it's always available to default to). Preserves the user's current
+        // selection across re-renders; only defaults to the current year on first load.
+        let yearFilterInitialized = false;
+        function populateYearFilterOptions(txs) {
+            const select = document.getElementById("filterYear");
+            const prevValue = select.value;
+            const currentYear = new Date().getFullYear();
+
+            const years = new Set([currentYear]);
+            txs.forEach(t => {
+                const y = new Date(t.date).getFullYear();
+                if (!isNaN(y)) years.add(y);
+            });
+
+            const sortedYears = [...years].sort((a, b) => b - a);
+            select.innerHTML = `<option value="all">All Years</option>` +
+                sortedYears.map(y => `<option value="${y}">${y}</option>`).join("");
+
+            if (!yearFilterInitialized) {
+                select.value = String(currentYear);
+                yearFilterInitialized = true;
+            } else if (prevValue === "all" || sortedYears.map(String).includes(prevValue)) {
+                select.value = prevValue;
+            } else {
+                select.value = "all";
+            }
+        }
+
         // --- CONSOLIDATED RENDER ENGINE ---
         async function renderApp() {
             const accounts = await readAllDB(STORES.ACCOUNTS);
             const txs = await readAllDB(STORES.TRANSACTIONS);
+            populateYearFilterOptions(txs);
             const filterM = document.getElementById("filterMonth").value;
             const filterY = document.getElementById("filterYear").value;
 

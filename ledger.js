@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v25";
+        const APP_VERSION = "v26";
         const APP_VERSION_DATE = "2026-08-14";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -588,6 +588,14 @@
         let directTypeView = "all"; 
         let ledgerBackToPage = "workspace"; 
 
+        // Remembers how far down the workspace dashboard the user had scrolled (e.g. down to "My
+        // Financial Accounts") before drilling into an account/category/type ledger view. All three
+        // pages share the browser's own window-level scroll (none of them has its own scrollable
+        // container), so simply un-hiding page-workspace on the way back does not by itself restore
+        // where the user was — without this, returning always lands back at the very top of the
+        // dashboard instead of where they left off.
+        let workspaceScrollY = 0;
+
         // Pagination for the transaction list — avoids rendering thousands of DOM rows at once.
         let ledgerRenderLimit = 50;
         const LEDGER_PAGE_SIZE = 50;
@@ -844,6 +852,7 @@
 
         // --- SPA NAVIGATION PIPELINE ---
         function navigateToLedgerPage(accountId) {
+            workspaceScrollY = window.scrollY;
             activeLedgerAccountView = accountId;
             activeCategoryView = "all";
             directTypeView = "all";
@@ -858,6 +867,7 @@
         }
 
         function navigateToCategoryPage(categoryName, backTarget = "workspace") {
+            if (backTarget === "workspace") workspaceScrollY = window.scrollY;
             activeCategoryView = categoryName;
             activeLedgerAccountView = "all";
             directTypeView = "all";
@@ -872,6 +882,7 @@
         }
 
         function navigateToDirectTypePage(type) {
+            workspaceScrollY = window.scrollY;
             directTypeView = type;
             activeLedgerAccountView = "all";
             activeCategoryView = "all";
@@ -886,6 +897,7 @@
         }
 
         function navigateToSavingsPage() {
+            workspaceScrollY = window.scrollY;
             document.getElementById("page-workspace").classList.add("hidden");
             document.getElementById("page-ledger").classList.add("hidden");
             document.getElementById("page-savings").classList.remove("hidden");
@@ -894,11 +906,15 @@
             renderApp();
         }
 
-        function navigateToWorkspace() {
+        async function navigateToWorkspace() {
             document.getElementById("page-ledger").classList.add("hidden");
             document.getElementById("page-savings").classList.add("hidden");
             document.getElementById("page-workspace").classList.remove("hidden");
-            renderApp();
+            await renderApp();
+            // Restored after renderApp() finishes rebuilding the dashboard's DOM (account list,
+            // report card, etc.) — scrolling before that would target a not-yet-full-height page
+            // and land in the wrong place.
+            window.scrollTo(0, workspaceScrollY);
         }
 
         function handleLedgerBackClick() {
@@ -1544,6 +1560,7 @@
             await syncAndLoadCategories();
             await migrateOthersCategoryRename();
             await migrateStaleDestFieldCleanup();
+            await migrateStaleCategoryOnTransfersCleanup();
         }
 
         // One-time migration: "Others" (the implicit income/expense fallback category — never a
@@ -1574,6 +1591,26 @@
             for (const t of txs) {
                 if (t.type !== "transfer" && t.dest) {
                     t.dest = null;
+                    await writeDB(STORES.TRANSACTIONS, t);
+                }
+            }
+        }
+
+        // One-time cleanup for another fixed bug: the Category <select> used to always get
+        // populated with the expense category list — including for Transfers, which have no
+        // category and hide that field entirely. A freshly-populated <select> auto-selects its
+        // first option, so every Transfer created through the standard entry form silently got
+        // saved with whatever expense category sorted alphabetically first ("Commute") as its
+        // `cat`, invisible in the form but shown on the ledger as e.g. "[Commute]" next to a
+        // transfer. Nulls out `cat` on any already-saved Transfer that has one — EXCEPT "Fixed
+        // Deposit", which the separate FD maturity-resolution flow (handleResolveFdSubmit) sets
+        // deliberately on its own transfer-type records (withdrawals/renewals) and writes directly
+        // to the DB, bypassing this bug entirely — those are left untouched.
+        async function migrateStaleCategoryOnTransfersCleanup() {
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            for (const t of txs) {
+                if (t.type === "transfer" && t.cat && t.cat !== "Fixed Deposit") {
+                    t.cat = null;
                     await writeDB(STORES.TRANSACTIONS, t);
                 }
             }
@@ -1614,11 +1651,18 @@
                 const currentCats = dynamicCategories.filter(c => c.type === tx.type).map(c => c.name);
                 const fallbackGroup = tx.type === "income" ? ["Salary", "Investments", "Freelance", "Other Income"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
                 
-                const uniqueMerged = [...new Set([...currentCats, ...fallbackGroup])].sort((a, b) => a.localeCompare(b));
-                uniqueMerged.forEach(c => {
-                    const icon = getCategoryIcon(c, tx.type);
-                    catSelect.innerHTML += `<option value="${escapeHtml(c)}">${icon} ${escapeHtml(c)}</option>`;
-                });
+                // Transfers have no category at all (the Category row is hidden for them below) —
+                // skip populating options entirely rather than leaving the <select> holding
+                // whatever the expense list's alphabetically-first option happens to be. See the
+                // matching comment on the "new entry" branch below for how that silently corrupted
+                // Transfer records before this fix.
+                if (tx.type !== "transfer") {
+                    const uniqueMerged = [...new Set([...currentCats, ...fallbackGroup])].sort((a, b) => a.localeCompare(b));
+                    uniqueMerged.forEach(c => {
+                        const icon = getCategoryIcon(c, tx.type);
+                        catSelect.innerHTML += `<option value="${escapeHtml(c)}">${icon} ${escapeHtml(c)}</option>`;
+                    });
+                }
                 
                 document.getElementById("txCategory").value = tx.cat || "";
                 document.getElementById("destAccRow").style.display = tx.type === "transfer" ? "block" : "none";
@@ -1670,17 +1714,26 @@
                 const currentCats = dynamicCategories.filter(c => c.type === type).map(c => c.name);
                 const fallbackGroup = type === "income" ? ["Salary", "Investments", "Freelance", "Other Income"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
                 
-                const uniqueMerged = [...new Set([...currentCats, ...fallbackGroup])].sort((a, b) => a.localeCompare(b));
-                uniqueMerged.forEach(c => {
-                    const icon = getCategoryIcon(c, type);
-                    catSelect.innerHTML += `<option value="${escapeHtml(c)}">${icon} ${escapeHtml(c)}</option>`;
-                });
+                // Transfers have no category (the Category row is hidden for them just above) — skip
+                // populating the <select> entirely for them. Previously this always populated it
+                // with the expense list even for Transfers (the ternary above only special-cases
+                // "income", so "transfer" fell into the expense fallback too), and since a freshly
+                // populated <select> auto-selects its first option, every new Transfer silently got
+                // saved with the alphabetically-first expense category ("Commute") as its hidden
+                // `cat` — invisible in the form, but shown on the ledger as "[Commute]".
+                if (type !== "transfer") {
+                    const uniqueMerged = [...new Set([...currentCats, ...fallbackGroup])].sort((a, b) => a.localeCompare(b));
+                    uniqueMerged.forEach(c => {
+                        const icon = getCategoryIcon(c, type);
+                        catSelect.innerHTML += `<option value="${escapeHtml(c)}">${icon} ${escapeHtml(c)}</option>`;
+                    });
 
-                // Pre-select the user's chosen default category for this type, if one is set
-                // and still exists among the current options — new entries only, never editing.
-                const defaultCat = type === "income" ? defaultIncomeCategory : (type === "expense" ? defaultExpenseCategory : "");
-                if (defaultCat && uniqueMerged.includes(defaultCat)) {
-                    catSelect.value = defaultCat;
+                    // Pre-select the user's chosen default category for this type, if one is set
+                    // and still exists among the current options — new entries only, never editing.
+                    const defaultCat = type === "income" ? defaultIncomeCategory : defaultExpenseCategory;
+                    if (defaultCat && uniqueMerged.includes(defaultCat)) {
+                        catSelect.value = defaultCat;
+                    }
                 }
 
                 document.getElementById("txModalTitle").textContent = "Log Ledger Item";
@@ -2154,6 +2207,18 @@
                 return;
             }
 
+            // Editing an existing Transfer that already carries the "Fixed Deposit" category (set
+            // deliberately by the FD maturity-resolution flow, not through this form) should keep
+            // it rather than losing it to the blanket "Transfers have no category" rule just below
+            // — otherwise a routine edit (e.g. fixing a typo in the description) would silently
+            // strip that tag.
+            let preservedTransferCat = null;
+            if (txIdInput !== "" && document.getElementById("txType").value === "transfer") {
+                const existingTxs = await readAllDB(STORES.TRANSACTIONS);
+                const existingTx = existingTxs.find(t => t.id === parseInt(txIdInput));
+                if (existingTx && existingTx.cat === "Fixed Deposit") preservedTransferCat = "Fixed Deposit";
+            }
+
             const record = {
                 type: document.getElementById("txType").value,
                 desc: desc,
@@ -2166,7 +2231,11 @@
                 // account's ledger too (see the isBound check in renderApp()).
                 dest: document.getElementById("txType").value === "transfer" ? document.getElementById("destAccount").value : null,
                 currency: document.getElementById("txCurrency").value,
-                cat: document.getElementById("txCategory").value,
+                // Category only applies to Income/Expense — the <select> is hidden (not cleared)
+                // for Transfers, and forced to null here rather than trusted as-is; otherwise a
+                // stale/leftover category value gets saved onto the Transfer record and shown as
+                // e.g. "[Commute]" on the ledger even though Transfers have no category.
+                cat: document.getElementById("txType").value === "transfer" ? preservedTransferCat : document.getElementById("txCategory").value,
                 date: dateVal,
                 image: currentTxImageData || null,
                 fdReferenceNo: null,

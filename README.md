@@ -293,3 +293,51 @@ outside the dashboard's month/year filter
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v25.
+
+## v26: fixed Transfers silently getting a stray expense category,
+and the dashboard losing its scroll position on back navigation
+
+- **Bug: Transfer entries (Income/Expense to another account) could
+  show a random expense category like "[Commute]"** even though
+  Transfers have no category and that field is hidden on the form.
+  Root cause: the Category `<select>` was always populated with the
+  expense category list, including for Transfers — the code that
+  built it only special-cased `type === "income"`, so `"transfer"`
+  fell into the same branch as `"expense"`. A freshly-populated
+  `<select>` auto-selects its first option, and "Commute" happens to
+  sort alphabetically first among the default expense categories, so
+  it silently became every new Transfer's hidden `cat` value — never
+  visible in the form, only on the ledger afterward. Fixed three ways,
+  matching the pattern used for the earlier stale-`dest` bug: (1)
+  `openTransactionForm()` now skips populating the Category `<select>`
+  entirely when the type is Transfer; (2)
+  `handleTransactionSubmitMobile()` now forces `record.cat = null` for
+  Transfers rather than trusting whatever the hidden field holds — with
+  one carve-out: editing an existing Transfer that already legitimately
+  carries `cat: "Fixed Deposit"` (set by the separate FD
+  maturity-resolution flow, which writes its own records directly and
+  was never affected by this bug) preserves that tag instead of wiping
+  it on a routine edit; (3) a one-time migration
+  `migrateStaleCategoryOnTransfersCleanup()` nulls out `cat` on any
+  already-saved Transfer that has one, except `"Fixed Deposit"` for the
+  same reason. Ledger rows with `cat: null` already correctly fall back
+  to showing "[Transfer]" (`t.cat || 'Transfer'`), so no display-code
+  change was needed there.
+- **Bug: returning to the dashboard always landed at the very top,
+  even if you'd scrolled down to "My Financial Accounts" before tapping
+  into an account.** The workspace, ledger, and savings pages all share
+  the browser's own window-level scroll (none of them has its own
+  scrollable container) — entering a sub-page explicitly scrolls to the
+  top (correct, so you start at the top of what you just opened), but
+  nothing was restoring the dashboard's own previous scroll position
+  when you came back to it. Fixed: `navigateToLedgerPage()`,
+  `navigateToCategoryPage()` (only when its `backTarget` is the
+  workspace, not the Savings statement), `navigateToDirectTypePage()`,
+  and `navigateToSavingsPage()` now save `window.scrollY` into
+  `workspaceScrollY` right before leaving the dashboard;
+  `navigateToWorkspace()` is now `async` and, after `renderApp()`
+  finishes rebuilding the dashboard's DOM, restores that saved
+  position with `window.scrollTo(0, workspaceScrollY)`.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v26.

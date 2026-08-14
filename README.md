@@ -266,3 +266,30 @@ default payment account
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v24.
+
+## v25: account ledger view no longer silently hides transactions
+outside the dashboard's month/year filter
+
+- **Bug: an account's Activity/ledger list could show fewer
+  transactions than actually make up its balance.** The dashboard's
+  "All Months / [Year]" filter was being applied not just to the
+  Total Income/Expenses stat boxes (correct — that's period-based
+  reporting), but also to the per-account ledger view opened by
+  tapping an account row. If that filter wasn't set to "All Years",
+  any transaction dated outside the selected period still counted
+  toward the account's balance (which is always computed from the
+  FULL unfiltered transaction history) but silently disappeared from
+  that account's own Activity list — with the "[Opening Balance
+  Setup]" row still shown unconditionally at the bottom regardless.
+  So the visible list and the displayed balance could never be
+  reconciled by eye, with no indication anything was being hidden.
+  Fixed: viewing a specific account's ledger (tapping into e.g. "DBS
+  Singapore Activity") now always shows that account's complete
+  history regardless of the dashboard's month/year filter. Category
+  and Type drill-down views (tapping a category/type breakdown row)
+  intentionally keep the previous filtered behaviour, since those are
+  launched from a breakdown that was itself computed for the selected
+  period — staying scoped there is consistent, not a bug.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v25.

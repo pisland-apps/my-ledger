@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v24";
+        const APP_VERSION = "v25";
         const APP_VERSION_DATE = "2026-08-14";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -2442,21 +2442,38 @@
 
             let matchedCount = 0;
 
+            // The dashboard's month/year filter is meant to scope PERIOD-based reporting — the
+            // Total Income/Expenses stat boxes above, and the category/type breakdowns drilled into
+            // via navigateToCategoryPage()/navigateToDirectTypePage() (which were themselves built
+            // from that same filtered breakdown, so staying filtered there is consistent). It was
+            // also being applied to the per-ACCOUNT ledger view, which is wrong: that page's whole
+            // job is to show the complete history behind the account's balance (itself computed
+            // above from the FULL unfiltered transaction set), so filtering it by month/year meant
+            // the visible list and the balance could never be reconciled — a transaction dated
+            // outside the selected period still counted toward the balance but silently vanished
+            // from the list, with no indication anything was hidden. Viewing a specific account
+            // (activeLedgerAccountView !== "all") now always shows its full history regardless of
+            // the dashboard filter; category/type views keep the previous filtered behaviour.
+            const showFullAccountHistory = activeLedgerAccountView !== "all" && activeCategoryView === "all" && directTypeView === "all";
+
             txs.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(t => {
                 const d = new Date(t.date);
-                if (filterM !== "all" && d.getMonth().toString() !== filterM) return;
-                if (filterY !== "all" && d.getFullYear().toString() !== filterY) return;
+                const withinPeriodFilter = (filterM === "all" || d.getMonth().toString() === filterM) && (filterY === "all" || d.getFullYear().toString() === filterY);
+                if (!withinPeriodFilter && !showFullAccountHistory) return;
 
                 const tBase = convertCurrency(t.amount, t.currency, baseCurrency);
-                if (t.type === "income") { 
-                    incBaseTotal += tBase; 
-                    if(catSummary.income[t.cat] !== undefined) catSummary.income[t.cat] += tBase;
-                    else catSummary.income[t.cat] = tBase;
-                }
-                if (t.type === "expense") { 
-                    expBaseTotal += tBase; 
-                    if(catSummary.expense[t.cat] !== undefined) catSummary.expense[t.cat] += tBase;
-                    else catSummary.expense[t.cat] = tBase;
+
+                if (withinPeriodFilter) {
+                    if (t.type === "income") { 
+                        incBaseTotal += tBase; 
+                        if(catSummary.income[t.cat] !== undefined) catSummary.income[t.cat] += tBase;
+                        else catSummary.income[t.cat] = tBase;
+                    }
+                    if (t.type === "expense") { 
+                        expBaseTotal += tBase; 
+                        if(catSummary.expense[t.cat] !== undefined) catSummary.expense[t.cat] += tBase;
+                        else catSummary.expense[t.cat] = tBase;
+                    }
                 }
 
                 let isBound = false;

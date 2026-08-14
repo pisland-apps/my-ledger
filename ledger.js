@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v26";
+        const APP_VERSION = "v27";
         const APP_VERSION_DATE = "2026-08-14";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -1670,6 +1670,7 @@
 
                 document.getElementById("txModalTitle").textContent = "Edit Ledger Entry";
                 document.getElementById("txSubmitBtn").textContent = "Save Changes";
+                document.getElementById("txDeleteBtn").style.display = "block";
 
                 setTxImagePreview(tx.image || null);
 
@@ -1738,6 +1739,7 @@
 
                 document.getElementById("txModalTitle").textContent = "Log Ledger Item";
                 document.getElementById("txSubmitBtn").textContent = "Commit Entry";
+                document.getElementById("txDeleteBtn").style.display = "none";
 
                 setTxImagePreview(null);
 
@@ -2282,17 +2284,24 @@
             renderApp();
         }
 
-        async function deleteTx(id, event) {
-            if (event) event.stopPropagation();
+        // Delete button inside the "Edit Ledger Entry" modal itself — the ledger list no longer
+        // has its own per-row delete affordance (tapping a row opens this modal instead; deleting
+        // now happens from within it). Only shown when editing an existing entry (txDeleteBtn is
+        // hidden for a brand-new entry, where there's nothing yet to delete).
+        async function deleteTxFromEditModal() {
+            const txIdInput = document.getElementById("txId").value;
+            if (!txIdInput) return;
+
             const ok = await customConfirm("Delete this transaction item?");
             if (!ok) return;
 
             try {
-                await deleteDB(STORES.TRANSACTIONS, id);
+                await deleteDB(STORES.TRANSACTIONS, parseInt(txIdInput));
             } catch (err) {
                 alert("Could not delete transaction: " + (err && err.message ? err.message : err));
                 return;
             }
+            closeModal("txModal");
             renderApp();
         }
 
@@ -2594,7 +2603,7 @@
                 ledgerHTML += `
                     <div class="ledger-item" data-click="openTransactionForm" data-type="${t.type}" data-id="${t.id}">
                         <div class="item-left">
-                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)} 📝${fdStatusBadge}</span>
+                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}${fdStatusBadge}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(t.cat || 'Transfer')}]${referenceText}${receiptBadge}</span>
                         </div>
                         <div class="item-right">
@@ -2602,7 +2611,6 @@
                                 ${sgn}${formatCurrency(t.amount, t.currency)}
                                 ${sub}
                             </div>
-                            <button class="trash-btn" data-click="deleteTx" data-id="${t.id}">🗑</button>
                         </div>
                     </div>
                 `;
@@ -3015,7 +3023,7 @@
             openResolveFdModal: (el) => openResolveFdModal(Number(el.dataset.id)),
             navigateToLedgerPage: (el) => navigateToLedgerPage(el.dataset.id),
             openImageViewer: (el, e) => openImageViewer(el.dataset.image, e),
-            deleteTx: (el, e) => deleteTx(Number(el.dataset.id), e),
+            deleteTxFromEditModal: () => deleteTxFromEditModal(),
             navigateToCategoryPage: (el) => navigateToCategoryPage(el.dataset.category, el.dataset.back || "workspace"),
             numpadDigit: (el) => numpadDigit(el.dataset.digit),
             numpadBackspace: () => numpadBackspace(),

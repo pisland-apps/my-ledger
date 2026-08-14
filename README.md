@@ -341,3 +341,25 @@ and the dashboard losing its scroll position on back navigation
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v26.
+
+## v27: delete moved into the Edit Ledger Entry modal
+
+- **Ledger rows no longer have their own edit-pencil/trash icons.**
+  Tapping a transaction row still opens "Edit Ledger Entry" as before
+  (that was never icon-dependent — the whole row is the tap target),
+  but the row itself now only shows the description/category/amount;
+  the `📝` pencil glyph and the per-row `🗑` trash button are gone.
+  FD status badges (🟢 Active / ⏰ Due / ✅ Closed) are unaffected.
+- **Delete now lives inside the Edit Ledger Entry modal.** A "🗑 Delete
+  Entry" button appears under "Save Changes" — only when editing an
+  existing entry (`openTransactionForm()` shows/hides `#txDeleteBtn`
+  depending on whether an id was passed in; it's hidden for a
+  brand-new entry, since there's nothing yet to delete). Wired to a
+  new `deleteTxFromEditModal()`, which confirms, deletes by the id in
+  the hidden `#txId` field, closes the modal, and re-renders — the
+  same confirm-then-delete flow the old per-row button used, just
+  relocated. The old `deleteTx(id, event)` (used only by the per-row
+  button) was removed along with the button.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v27.

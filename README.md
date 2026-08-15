@@ -363,3 +363,20 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v27.
+
+## v28: every ledger row now states which account it belongs to
+
+- **Ledger rows show a 🏦 account line.** Added a third line under
+  each ledger row's date/category, resolving `t.src`
+  (Income/Expense — "🏦 Maybank Malaysia") or both legs of a Transfer
+  ("🏦 Maybank Malaysia → DBS Singapore") by looking the id(s) up in
+  `accounts`. Shown everywhere a ledger row renders — a single
+  account's own Activity page (where a Transfer's *other* leg wasn't
+  previously named at all, only "[Transfer]"), and combined views like
+  a category or type breakdown (where multiple accounts can appear
+  side by side with no way to tell them apart before this). Falls back
+  to "(deleted account)" / "(unknown)" if an id no longer resolves,
+  rather than showing a blank.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v28.

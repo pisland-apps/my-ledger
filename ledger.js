@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v27";
+        const APP_VERSION = "v28";
         const APP_VERSION_DATE = "2026-08-14";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -2586,6 +2586,19 @@
                     : '';
                 const referenceText = t.fdReferenceNo ? ` · Ref: ${escapeHtml(t.fdReferenceNo)}` : '';
 
+                // Which account(s) this entry touches — shown as its own line so an Income/Expense
+                // row states where the money came from/went, and a Transfer states both legs,
+                // regardless of which page it's viewed from (a single account's own Activity page,
+                // or a combined view like a category/type breakdown where the account otherwise
+                // isn't obvious at all).
+                const accountName = id => { const a = accounts.find(acc => acc.id === id); return a ? escapeHtml(a.name) : "(deleted account)"; };
+                let accountText;
+                if (t.type === "transfer") {
+                    accountText = `🏦 ${accountName(t.src)} → ${t.dest ? accountName(t.dest) : "(unknown)"}`;
+                } else {
+                    accountText = `🏦 ${accountName(t.src)}`;
+                }
+
                 // FD placement status — shows at a glance whether a placement is still running,
                 // overdue for action, or has already been renewed/withdrawn and closed out.
                 let fdStatusBadge = '';
@@ -2605,6 +2618,7 @@
                         <div class="item-left">
                             <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}${fdStatusBadge}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(t.cat || 'Transfer')}]${referenceText}${receiptBadge}</span>
+                            <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">${accountText}</span>
                         </div>
                         <div class="item-right">
                             <div class="item-value" style="color:var(--${col}); font-weight: bold;">

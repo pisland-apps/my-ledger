@@ -827,3 +827,41 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v37.
+
+## v38: fixed installed-shortcut launch failure on Cloudflare Pages
+(net::ERR_FAILED)
+
+- **Root cause.** Cloudflare Pages 301/308-redirects `/index.html` →
+  `/` by default (GitHub Pages doesn't do this). `manifest.json` had
+  `start_url: "./index.html"`, so an installed desktop/mobile
+  shortcut always relaunched at the literal `/index.html` URL. The
+  service worker's install step ran `cache.addAll([..., "./index.html",
+  ...])`, which silently followed Cloudflare's redirect and cached
+  the result — but that cached `Response` has `redirected: true`
+  baked in. Chrome refuses to answer a navigation with a redirected
+  `Response`; it fails the whole load with exactly `net::ERR_FAILED`.
+  The very first-ever load (before the service worker existed)
+  followed the redirect normally at the network level and landed on
+  `/`, so reloads in that same tab worked fine — but the installed
+  shortcut always relaunches fresh at `/index.html`, hitting the
+  poisoned cache entry every time.
+- **Fix 1 — `manifest.json`:** `start_url` changed from
+  `"./index.html"` to `"./"`, so installed shortcuts launch at the
+  URL that doesn't get redirected.
+- **Fix 2 — `sw.js`:** removed the redirect-vulnerable
+  `"./index.html"` entry from `ASSETS_TO_CACHE`. The `fetch` handler
+  now special-cases navigation requests (`event.request.mode ===
+  "navigate"`) so they *always* resolve through the canonical `"./"`
+  cache entry regardless of the exact URL requested — covers `/`,
+  `/index.html`, or any other in-scope path an old bookmark/shortcut
+  might still hit. If `"./"` itself isn't cached yet, it's fetched
+  fresh; if that fetch's response ever comes back `redirected` (host
+  misconfiguration), the handler falls back to cache instead of
+  handing Chrome a redirected `Response`. Non-navigation requests
+  (JS, JSON, icons) are unaffected — same cache-first-then-network
+  logic as before.
+- No IndexedDB schema/import-export format changes. Verified with
+  `node --check` after every edit.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v38.

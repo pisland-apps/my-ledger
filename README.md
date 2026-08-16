@@ -380,3 +380,33 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v28.
+
+## v29: sidebar navigation drawer
+
+- **Added a hamburger-menu sidebar.** A ☰ button now sits at the top
+  of the dashboard header, opening a slide-in left drawer (with a
+  dimmed backdrop, tap-outside-to-close) styled with a colored header
+  block and grouped, icon-led nav items — modeled loosely after
+  common finance-app patterns (a colored brand header, sectioned list,
+  active-item highlight).
+- **Drawer sections:** *Overview* (Dashboard, All Transactions, Net
+  Savings Statement), *Manage* (Accounts, Categories, Currency & FX
+  Rates), *Data & Security* (Backup & Restore, Lock App Now). These
+  consolidate navigation and settings entry points that previously
+  only lived as scattered buttons inside the dashboard page.
+  "All Transactions" opens the existing ledger page unfiltered
+  (`navigateToLedgerPage("all")`); Accounts/Categories/Currency open
+  their existing modals directly, no page navigation required;
+  Backup & Restore returns to the dashboard (if needed) and scrolls
+  the existing export/import controls into view.
+- **Active-item highlighting.** `updateSidebarActiveState()` marks
+  whichever nav item matches the page currently on screen (Dashboard
+  / All Transactions / Net Savings) each time the drawer opens, so it
+  stays in sync even when a page switch happens from outside the
+  sidebar (e.g. tapping a stat box on the dashboard).
+- No storage schema, export/import, or CSP changes — purely additive
+  UI (new CSS block, drawer markup, and 3 new CLICK_ACTIONS entries:
+  `openSidebar`, `closeSidebar`, `sidebarGo`).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v29.

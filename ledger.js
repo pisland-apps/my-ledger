@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v28";
-        const APP_VERSION_DATE = "2026-08-14";
+        const APP_VERSION = "v29";
+        const APP_VERSION_DATE = "2026-08-15";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
         // DOM — including #versionBadge and the lock overlay — already exists by this point).
@@ -924,6 +924,60 @@
             } else {
                 navigateToWorkspace();
             }
+        }
+
+        // --- SIDEBAR NAVIGATION DRAWER ---
+        function openSidebar() {
+            document.getElementById("sidebarOverlay").classList.add("open");
+            document.getElementById("sidebarDrawer").classList.add("open");
+            updateSidebarActiveState();
+        }
+
+        function closeSidebar() {
+            document.getElementById("sidebarOverlay").classList.remove("open");
+            document.getElementById("sidebarDrawer").classList.remove("open");
+        }
+
+        // Highlights the sidebar item matching whichever page is currently on screen —
+        // called on open and after every sidebar-triggered navigation so the drawer stays
+        // in sync even though page switches also happen from outside the sidebar (e.g. the
+        // dashboard's own "Total Income" stat box also opens the ledger page).
+        function updateSidebarActiveState() {
+            document.querySelectorAll(".sidebar-item").forEach(i => i.classList.remove("active"));
+            const workspaceHidden = document.getElementById("page-workspace").classList.contains("hidden");
+            const savingsHidden = document.getElementById("page-savings").classList.contains("hidden");
+            const ledgerHidden = document.getElementById("page-ledger").classList.contains("hidden");
+            let target = null;
+            if (!savingsHidden) target = "savings";
+            else if (!ledgerHidden) {
+                const isUnfiltered = activeLedgerAccountView === "all" && activeCategoryView === "all" && directTypeView === "all";
+                target = isUnfiltered ? "all-ledger" : null;
+            } else if (!workspaceHidden) target = "workspace";
+            if (target) {
+                const el = document.querySelector(`.sidebar-item[data-target="${target}"]`);
+                if (el) el.classList.add("active");
+            }
+        }
+
+        // Routes a sidebar tap to the matching page/modal. Modals (accounts/categories/currency)
+        // are their own overlay and don't require the dashboard to be the visible page underneath.
+        function sidebarGo(el) {
+            const target = el.dataset.target;
+            closeSidebar();
+            if (target === "workspace") navigateToWorkspace();
+            else if (target === "all-ledger") navigateToLedgerPage("all");
+            else if (target === "savings") navigateToSavingsPage();
+            else if (target === "accounts") openAccountsConfig();
+            else if (target === "categories") openCategoriesConfig();
+            else if (target === "currency") openCurrencyConfig();
+            else if (target === "backup") {
+                (async () => {
+                    if (document.getElementById("page-workspace").classList.contains("hidden")) {
+                        await navigateToWorkspace();
+                    }
+                    document.querySelector(".util-row")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                })();
+            } else if (target === "lock") lockAppNow();
         }
 
         // --- LOCAL STORAGE DATA CALCULATION ---
@@ -3000,6 +3054,9 @@
         // or generated later via innerHTML, since delegation is attached to `document` once.
         // ---------------------------------------------------------------------------------
         const CLICK_ACTIONS = {
+            openSidebar: () => openSidebar(),
+            closeSidebar: () => closeSidebar(),
+            sidebarGo: (el) => sidebarGo(el),
             handleSetupPasscodeSubmit: () => handleSetupPasscodeSubmit(),
             handleUnlockSubmit: () => handleUnlockSubmit(),
             handleForgotPasscode: () => handleForgotPasscode(),

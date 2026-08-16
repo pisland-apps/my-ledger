@@ -799,3 +799,31 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v36.
+
+## v37: security fix — closed remaining unescaped-HTML gaps
+
+- **Fixed: `a.currency` and `.id` fields could reach `innerHTML`
+  unescaped.** A security review found four spots where an account's
+  `currency` code was interpolated straight into `innerHTML` without
+  `escapeHtml()` — the Financial Accounts page currency badge, the
+  same badge on a member's account list, and the `currLabel` used in
+  both the Transaction form's source/destination dropdowns and the
+  FD-resolution dropdown. Thirteen more spots did the same with an
+  account/transaction/member/category `.id` inside a `data-id="..."`
+  or `<option value="...">` attribute. In normal use these fields are
+  only ever set via fixed dropdowns or generated internally, so this
+  wasn't reachable through the UI — but `importBackup()` writes
+  parsed backup JSON straight into IndexedDB with no field
+  validation, so a tampered `.json` backup could have set one of
+  these fields to break out of an HTML attribute or inject markup
+  (e.g. a `<style>` block, since `style-src` allows
+  `'unsafe-inline'`). The CSP's `script-src 'self'` (no inline
+  scripts/handlers) already blocked this from becoming actual JS
+  execution, but it's now fixed properly: every one of those 17
+  interpolations is wrapped in `escapeHtml()`, matching the pattern
+  already used everywhere else `innerHTML` is built from data.
+- No IndexedDB schema/import-export format changes — this is a
+  rendering-only fix. Verified with `node --check` after every edit.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v37.

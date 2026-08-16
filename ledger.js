@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v36";
-        const APP_VERSION_DATE = "2026-08-16";
+        const APP_VERSION = "v37";
+        const APP_VERSION_DATE = "2026-08-17";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
         // DOM — including #versionBadge and the lock overlay — already exists by this point).
@@ -880,7 +880,7 @@
             if (!sel) return;
             const current = recentTxAccountFilter;
             sel.innerHTML = `<option value="all">All Accounts</option>` +
-                accounts.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join("");
+                accounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)}</option>`).join("");
             sel.value = accounts.some(a => a.id === current) ? current : "all";
         }
 
@@ -922,7 +922,7 @@
                 const iconBadge = getCategoryIcon(t.cat, t.type);
                 const acc = accounts.find(a => a.id === t.src);
                 return `
-                    <div class="ledger-item" data-click="openTransactionForm" data-type="${t.type}" data-id="${t.id}">
+                    <div class="ledger-item" data-click="openTransactionForm" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
                             <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(t.cat || '')}]</span>
@@ -1716,7 +1716,7 @@
                     ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#ede9fe; color:#6d28d9; font-weight:bold;">Fixed Deposit</span>`
                     : a.type === "multi"
                         ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e0f2fe; color:#0369a1; font-weight:bold;">Multi-Currency</span>`
-                        : `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e2e8f0; color:var(--text-muted); font-weight:bold;">${a.currency}</span>`;
+                        : `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e2e8f0; color:var(--text-muted); font-weight:bold;">${escapeHtml(a.currency)}</span>`;
 
                 let balSummary;
                 if (a.type === "fd" || a.type === "multi") {
@@ -1730,7 +1730,7 @@
                 }
 
                 html += `
-                    <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${a.id}" data-back="accounts">
+                    <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="accounts">
                         <span>
                             <strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}
                             <br>${accountOwnerTagHTML(a)}
@@ -1937,7 +1937,7 @@
         async function renderMembersPage() {
             await loadMembersCache();
             const html = membersCache.map(m => `
-                <div class="config-item" style="cursor:pointer;" data-click="editMember" data-id="${m.id}">
+                <div class="config-item" style="cursor:pointer;" data-click="editMember" data-id="${escapeHtml(m.id)}">
                     <span style="display:flex; align-items:center; gap:10px;">
                         <span class="member-color-dot" style="background:${m.color};"></span>
                         <strong>${escapeHtml(m.name)}</strong>
@@ -1959,7 +1959,7 @@
             }
             wrap.innerHTML = membersCache.map(m => `
                 <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem; font-weight:600; cursor:pointer;">
-                    <input type="checkbox" class="acc-member-checkbox" value="${m.id}" ${selected.includes(m.id) ? "checked" : ""}>
+                    <input type="checkbox" class="acc-member-checkbox" value="${escapeHtml(m.id)}" ${selected.includes(m.id) ? "checked" : ""}>
                     <span class="member-color-dot" style="background:${m.color};"></span>
                     ${escapeHtml(m.name)}
                 </label>
@@ -2159,7 +2159,7 @@
                     ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#ede9fe; color:#6d28d9; font-weight:bold;">Fixed Deposit</span>`
                     : a.type === "multi"
                         ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e0f2fe; color:#0369a1; font-weight:bold;">Multi-Currency</span>`
-                        : `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e2e8f0; color:var(--text-muted); font-weight:bold;">${a.currency}</span>`;
+                        : `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e2e8f0; color:var(--text-muted); font-weight:bold;">${escapeHtml(a.currency)}</span>`;
 
                 let balSummary;
                 if (a.type === "fd" || a.type === "multi") {
@@ -2173,7 +2173,7 @@
                 }
 
                 html += `
-                    <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${a.id}" data-back="member">
+                    <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="member">
                         <span><strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${escapeHtml(a.group || DEFAULT_ACCOUNT_GROUP)}</span></span>
                         <span style="color:var(--text-muted);">›</span>
                     </div>`;
@@ -2320,7 +2320,7 @@
             const rowHtml = c => `
                 <div class="config-item">
                     <span class="category-display-badge"><span>${c.icon}</span> <strong>${escapeHtml(c.name)}</strong></span>
-                    <button class="trash-btn" data-click="removeCategory" data-id="${c.id}">🗑</button>
+                    <button class="trash-btn" data-click="removeCategory" data-id="${escapeHtml(c.id)}">🗑</button>
                 </div>`;
 
             const incomeCats = dynamicCategories.filter(c => c.type === "income");
@@ -2451,9 +2451,9 @@
             Object.keys(fxRates).forEach(c => { currSelect.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`; });
             accounts.forEach(a => {
                 const prefix = a.type === "fd" ? "🏦 " : a.type === "multi" ? "💱 " : "";
-                const currLabel = (a.type === "multi" || a.type === "fd") ? "" : ` (${a.currency})`;
-                srcSelect.innerHTML += `<option value="${a.id}">${prefix}${escapeHtml(a.name)}${currLabel}</option>`;
-                destSelect.innerHTML += `<option value="${a.id}">${prefix}${escapeHtml(a.name)}${currLabel}</option>`;
+                const currLabel = (a.type === "multi" || a.type === "fd") ? "" : ` (${escapeHtml(a.currency)})`;
+                srcSelect.innerHTML += `<option value="${escapeHtml(a.id)}">${prefix}${escapeHtml(a.name)}${currLabel}</option>`;
+                destSelect.innerHTML += `<option value="${escapeHtml(a.id)}">${prefix}${escapeHtml(a.name)}${currLabel}</option>`;
             });
 
             if (existingTxId !== null) {
@@ -3012,8 +3012,8 @@
             // holding account makes sense as a target (though we don't hard-block picking it either).
             const destOptions = accounts.map(a => {
                 const prefix = a.type === "fd" ? "🏦 " : a.type === "multi" ? "💱 " : "";
-                const currLabel = (a.type === "multi" || a.type === "fd") ? "" : ` (${a.currency})`;
-                return `<option value="${a.id}">${prefix}${escapeHtml(a.name)}${currLabel}</option>`;
+                const currLabel = (a.type === "multi" || a.type === "fd") ? "" : ` (${escapeHtml(a.currency)})`;
+                return `<option value="${escapeHtml(a.id)}">${prefix}${escapeHtml(a.name)}${currLabel}</option>`;
             }).join("");
             document.getElementById("resolveFdInterestDest").innerHTML = destOptions;
             document.getElementById("resolveFdWithdrawDest").innerHTML = destOptions;
@@ -3503,7 +3503,7 @@
                         ? `matured ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? '' : 's'} ago — action needed`
                         : (daysLeft === 0 ? `matures today` : `matures in ${daysLeft} day${daysLeft === 1 ? '' : 's'} (${t.fdMaturityDate})`);
                     reminderHTML += `
-                        <div data-click="openResolveFdModal" data-id="${t.id}" style="cursor:pointer; background:${bg}; border:1px solid ${border}; color:${textCol}; border-radius:12px; padding:12px 14px; margin-bottom:8px; font-size:0.8rem; font-weight:600; display:flex; justify-content:space-between; align-items:center;">
+                        <div data-click="openResolveFdModal" data-id="${escapeHtml(t.id)}" style="cursor:pointer; background:${bg}; border:1px solid ${border}; color:${textCol}; border-radius:12px; padding:12px 14px; margin-bottom:8px; font-size:0.8rem; font-weight:600; display:flex; justify-content:space-between; align-items:center;">
                             <span>${overdue ? '⏰' : '🔔'} ${formatCurrency(t.amount, t.currency)} placement in "${escapeHtml(holdingAccount.name)}" ${label} — plan renewal or withdrawal.</span>
                             <span style="font-size:1.1rem;">›</span>
                         </div>
@@ -3833,7 +3833,7 @@
                 }
 
                 ledgerHTML += `
-                    <div class="ledger-item" data-click="openTransactionForm" data-type="${t.type}" data-id="${t.id}">
+                    <div class="ledger-item" data-click="openTransactionForm" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
                             <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(t.cat || 'Transfer')}]${referenceText}${receiptBadge}</span>
@@ -4069,7 +4069,7 @@
             const select = document.getElementById(selectId);
             const prevValue = select.value || "all";
             select.innerHTML = `<option value="all">All Members (everyone, incl. joint)</option>` +
-                membersCache.map(m => `<option value="${m.id}">${escapeHtml(m.name)}</option>`).join("");
+                membersCache.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join("");
             select.value = membersCache.some(m => m.id === prevValue) ? prevValue : "all";
         }
 

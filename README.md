@@ -1,4 +1,4 @@
-# Enterprise Multi-Currency Ledger
+# My Ledger
 
 Static, single-file-style PWA (IndexedDB-based, offline-first, no backend).
 Deploy the contents of this folder as-is (e.g. to GitHub Pages).
@@ -865,3 +865,97 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v38.
+
+## v39: app rename, currency setup, member labels everywhere, year picker,
+account sub-groups + totals, and a full Unit Trust account type
+
+- **Renamed** "Enterprise Multi-Currency Ledger" → **"My Ledger"**
+  (manifest.json `name`/`short_name`, `<title>`,
+  `apple-mobile-web-app-title`).
+- **Currency setup:** default `fxRates`/`baseCurrency` now cover the
+  10 currencies actually held (MYR, SGD, USD, HKD, CNY, TWD, THB,
+  KRW, JPY, BND), MYR as base. `mergeInDefaultCurrencies()` runs on
+  every load and additively fills in any of these 10 an *existing*
+  install doesn't already have — never touches a currency the user
+  already customised. The base-currency `<select>` is now populated
+  dynamically from `fxRates` (was a hardcoded 5-currency list).
+- **Member names on every account picker**, not just the list
+  screens: transfer source/destination, Default Payment Account,
+  Recent Transactions account filter, FD-resolve destination, and
+  the new fund-transaction transfer-account picker all now show
+  `AccountName (Member1, Member2)` / `(Unassigned)` via new
+  `accountOwnerNamesText()`/`accountOptionLabel()` helpers — fixes
+  same-name accounts (e.g. two "KWSP (MYR)") being indistinguishable
+  in a dropdown.
+- **Year picker on account Activity pages:** the old plain
+  "&lt; 2019 &gt;" label is now a `<select>` (`#ledgerYearLabel`)
+  listing every year with data plus an **"All Years"** option
+  (`accountLedgerYear = null`) showing the account's complete
+  history on one page. Re-plumbed the "fresh view" vs "explicit
+  All Years" state — was a `null` sentinel for both, now `"__fresh__"`
+  vs `null` respectively, so picking "All Years" doesn't get
+  silently reset back to the latest year on the next render.
+- **Account Sub-Groups:** new `ACCOUNT_SUBGROUPS` config
+  (`Investment` → Fixed Deposit / KWSP / ASNB / Unit Trust by
+  default, easily extended) — Add/Edit Account gained a Sub-Group
+  select that only appears for a Group with sub-groups configured.
+  Financial Accounts page now shows a Sub-Total row per sub-group
+  and a Group Total row per group (via new `accountBaseValue()`
+  helper, base-currency-converted).
+- **New account type: Unit Trust** (4th button next to
+  Normal/Multi-Currency/Fixed Deposit). Holds one or more **funds**
+  (new `FUNDS` IndexedDB store, `DB_VERSION` bumped 3→4) — Add/Edit
+  Fund modal (name, code, category, currency, owner member(s),
+  Current NAV). Add Transaction modal covers **Buy, Sell, Dividend
+  (Reinvest), Dividend (Cheque Payout), Contribution**, each
+  showing/hiding the Units/Price row and a "transfer from/to
+  account" field appropriately for that type — this was the field
+  missing from the reference screenshots. New income category
+  **"Dividend Unit Trust"** added to `DEFAULT_CATEGORIES`.
+  - Design: every fund transaction is a REAL row in the existing
+    `TRANSACTIONS` store (tagged `fundId`/`fundTxType`), not a
+    parallel ledger — so they inherit year filtering, member
+    ownership, category reporting, and backup/restore for free.
+    Buy/Sell are ordinary Transfers between a cash account and the
+    Unit Trust account (account's currency-basket balance =
+    cash actually invested/withdrawn). Dividend (Reinvest) and
+    Contribution are ordinary Income transactions credited to the
+    Unit Trust account itself (mirrors how this app already treats
+    KWSP-style dividends/employer contributions). Dividend (Cheque
+    Payout) is an ordinary Income transaction on whichever cash
+    account the user names, since that money leaves the fund
+    entirely. `fund.units` is adjusted directly alongside each
+    linked transaction's save/delete.
+  - Editing a fund-linked row through the normal Edit Transaction
+    modal is blocked (would silently desync `fund.units`); tapping
+    one instead offers delete-with-unwind (reverses the unit delta),
+    via new `handleFundTxRowTap()`.
+  - **Fund Holdings report** (account's own Activity page, Unit
+    Trust accounts only): Units / NAV / Value / Invested / P&L /
+    Return / Annualised / Holding per fund, each row tagged with its
+    owner member name(s). "Invested" = net cash basis (buy +
+    reinvest + contribution − sell); "Annualised" uses
+    `((Value/Invested)^(1/years) - 1) × 100`, guarded for very new
+    holdings.
+  - `unittrust` treated as a basket-type account (same as
+    multi/fd) everywhere `computeAccountBalances()`, the dashboard
+    net-worth rollups, the Accounts page, and account-picker labels
+    branch on account type — swept every `type === "multi" ||
+    type === "fd"` check in `ledger.js` to confirm/add `unittrust`.
+  - Account deletion now cascades to delete any funds filed under
+    it. Export/import backup bundle, and the encrypted-store
+    migration loop (`Object.values(STORES)`), extended to cover the
+    new `FUNDS` store.
+- **Passcode screen mistouch fix:** "Forgot passcode? Reset app
+  data" moved well clear of the Unlock button, separated by a
+  divider — was 16px below Unlock and easy to hit by accident
+  (destructive: wipes the whole app).
+- No breaking changes to existing accounts/transactions/categories/
+  members — `DB_VERSION` bump only adds the new `funds` object
+  store, doesn't touch existing ones. Verified with `node --check`
+  on both JS files plus the usual `getElementById` /
+  `data-click`/`data-change`/`data-input` cross-reference scripts
+  before packaging.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v39.

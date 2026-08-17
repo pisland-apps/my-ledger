@@ -1,6 +1,6 @@
 {
-  "name": "Enterprise Multi-Currency Ledger",
-  "short_name": "Ledger",
+  "name": "My Ledger",
+  "short_name": "My Ledger",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

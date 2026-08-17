@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v56";
+        const APP_VERSION = "v57";
         const APP_VERSION_DATE = "2026-08-18";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -1479,11 +1479,23 @@
         }
 
         // --- ACCOUNTS MANAGER SETUP (WITH INTEGRATED EDITOR) ---
+        // Shared by every entry point that opens the Accounts modal (the "+" FAB, "+ Add
+        // Account" on a member's page, and editAccount) — (re)populates the Currency <option>s
+        // from fxRates and selects preselect (falling back to baseCurrency). Previously each
+        // entry point duplicated this population inline, and resetAccountForm() — used by the
+        // member-page "+ Add Account" flow — never populated it at all, just set .value on
+        // whatever options happened to already be in the select (often none, leaving the field
+        // blank with no dropdown arrow the first time a session went straight to a member page).
+        function populateNewAccountCurrencySelect(preselect) {
+            const select = document.getElementById("newAccCurrency");
+            select.innerHTML = "";
+            Object.keys(fxRates).forEach(c => { select.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`; });
+            select.value = preselect || baseCurrency;
+        }
+
         // Opens the Accounts modal in "create" mode — used by the "+" FAB on the Accounts page.
         function openAccountFormModal() {
-            const select = document.getElementById("newAccCurrency"); select.innerHTML = "";
-            Object.keys(fxRates).forEach(c => { select.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`; });
-            select.value = baseCurrency;
+            populateNewAccountCurrencySelect(baseCurrency);
             resetAccountForm();
             renderAccountMemberCheckboxes([]);
             openModal("accountsModal");
@@ -1676,14 +1688,17 @@
                 row.style.display = "none";
                 sel.innerHTML = "";
             } else {
-                row.style.display = "flex";
+                // block (not flex) — this row holds a <label> above a <select>, meant to stack
+                // vertically like every other .form-row in this form. flex was laying them out
+                // side-by-side instead, squeezing the select down to its min-content width.
+                row.style.display = "block";
                 sel.innerHTML = `<option value="">(No Sub-Group)</option>` + list.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
                 sel.value = (preselectSubgroup && list.includes(preselectSubgroup)) ? preselectSubgroup : "";
             }
 
             const linkedRow = document.getElementById("newAccLinkedAccountRow");
             if (group === "Bank Loan") {
-                linkedRow.style.display = "flex";
+                linkedRow.style.display = "block";
                 await populateLinkedAccountSelect(preselectLinkedAccountId);
             } else {
                 linkedRow.style.display = "none";
@@ -1692,7 +1707,7 @@
 
             const netWorthRow = document.getElementById("newAccNetWorthRow");
             if (group === "Real Estate") {
-                netWorthRow.style.display = "flex";
+                netWorthRow.style.display = "block";
                 document.getElementById("newAccIncludeNetWorth").value = preselectIncludeInNetWorth === "no" ? "no" : "yes";
             } else {
                 netWorthRow.style.display = "none";
@@ -1721,7 +1736,7 @@
             document.getElementById("newAccGroup").value = DEFAULT_ACCOUNT_GROUP;
             handleAccGroupChange();
             document.getElementById("newAccBal").value = "0";
-            document.getElementById("newAccCurrency").value = baseCurrency;
+            populateNewAccountCurrencySelect(baseCurrency);
             document.getElementById("accountFormHeaderTitle").textContent = "Create New Account";
             document.getElementById("accFormSubmitBtn").textContent = "Create Account";
             document.getElementById("accFormCancelBtn").style.display = "none";
@@ -2104,8 +2119,7 @@
             const account = accounts.find(a => a.id === id);
             if (!account) return;
 
-            const select = document.getElementById("newAccCurrency"); select.innerHTML = "";
-            Object.keys(fxRates).forEach(c => { select.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`; });
+            populateNewAccountCurrencySelect();
 
             document.getElementById("editAccountId").value = account.id;
             document.getElementById("newAccName").value = account.name;
@@ -3582,9 +3596,16 @@
                     ? ` · <span style="color:#92400e; font-weight:600;">🔗 ${escapeHtml(linkedAcc.name)}</span>`
                     : "";
 
+                // Real Estate (v53): same "excluded from Net Worth" flag renderAccountsPage()
+                // already shows on the global Accounts page — was missing here, so a property
+                // marked Exclude looked identical to an included one on a member's own page.
+                const excludedLine = a.includeInNetWorth === false
+                    ? ` · <span style="color:#991b1b; font-weight:600;">🚫 Excluded from Net Worth</span>`
+                    : "";
+
                 html += `
                     <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="member">
-                        <span><strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${escapeHtml(a.group || DEFAULT_ACCOUNT_GROUP)}</span>${linkedLine}</span>
+                        <span><strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${escapeHtml(a.group || DEFAULT_ACCOUNT_GROUP)}</span>${linkedLine}${excludedLine}</span>
                         <span style="color:var(--text-muted);">›</span>
                     </div>`;
             });

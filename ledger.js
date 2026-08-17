@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v49";
+        const APP_VERSION = "v50";
         const APP_VERSION_DATE = "2026-08-17";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -34,7 +34,7 @@
         // Account grouping (v35) — every account belongs to one of these, used to sort/section
         // both the full Accounts page and a member's account list (group, then name). Accounts
         // saved before this existed default to "Bank/Cash" wherever a group is read.
-        const ACCOUNT_GROUPS = ["Bank/Cash", "Credit Card", "Investment", "Real Estate"];
+        const ACCOUNT_GROUPS = ["Bank/Cash", "Credit Card", "Investment", "Real Estate", "Bank Loan"];
         const DEFAULT_ACCOUNT_GROUP = ACCOUNT_GROUPS[0];
 
         // Sub-groups (v39) — optional, per-Group breakdown so e.g. "Investment" can be split
@@ -43,6 +43,7 @@
         // organizational — doesn't affect account.type (Normal/Multi-Currency/Fixed
         // Deposit/Unit Trust), just where it's filed on the Accounts page.
         const ACCOUNT_SUBGROUPS = {
+            "Bank/Cash": ["Current Account", "Savings Account", "Cash Account"],
             "Investment": ["Fixed Deposit", "KWSP", "ASNB", "Unit Trust"],
         };
         function subgroupsForGroup(group) {
@@ -1655,7 +1656,9 @@
 
         // Populates the Sub-Group select for whichever Group is currently chosen, and shows/hides
         // the row entirely when that Group has no configured sub-groups (see ACCOUNT_SUBGROUPS).
-        function handleAccGroupChange(preselectSubgroup) {
+        // Also shows/hides + populates the Bank Loan "Related Account" select (see
+        // populateLinkedAccountSelect below) whenever the Group is switched to/from "Bank Loan".
+        async function handleAccGroupChange(preselectSubgroup, preselectLinkedAccountId) {
             const group = document.getElementById("newAccGroup").value;
             const list = subgroupsForGroup(group);
             const row = document.getElementById("newAccSubgroupRow");
@@ -1663,11 +1666,35 @@
             if (list.length === 0) {
                 row.style.display = "none";
                 sel.innerHTML = "";
-                return;
+            } else {
+                row.style.display = "flex";
+                sel.innerHTML = `<option value="">(No Sub-Group)</option>` + list.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+                sel.value = (preselectSubgroup && list.includes(preselectSubgroup)) ? preselectSubgroup : "";
             }
-            row.style.display = "flex";
-            sel.innerHTML = `<option value="">(No Sub-Group)</option>` + list.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
-            sel.value = (preselectSubgroup && list.includes(preselectSubgroup)) ? preselectSubgroup : "";
+
+            const linkedRow = document.getElementById("newAccLinkedAccountRow");
+            if (group === "Bank Loan") {
+                linkedRow.style.display = "flex";
+                await populateLinkedAccountSelect(preselectLinkedAccountId);
+            } else {
+                linkedRow.style.display = "none";
+                document.getElementById("newAccLinkedAccount").innerHTML = "";
+            }
+        }
+
+        // Fills the Bank Loan "Related Account" select with every OTHER account (excluding the
+        // account currently being edited, and excluding other Bank Loan accounts — a loan
+        // shouldn't relate to another loan). Purely informational: doesn't affect any balance or
+        // transaction, just shown alongside the loan account wherever it's displayed.
+        async function populateLinkedAccountSelect(preselectId) {
+            const sel = document.getElementById("newAccLinkedAccount");
+            const excludeId = document.getElementById("editAccountId").value;
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const candidates = accounts
+                .filter(a => a.id !== excludeId && (a.group || DEFAULT_ACCOUNT_GROUP) !== "Bank Loan")
+                .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            sel.innerHTML = `<option value="">(None)</option>` + candidates.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)}</option>`).join("");
+            sel.value = (preselectId && candidates.some(a => a.id === preselectId)) ? preselectId : "";
         }
 
         function resetAccountForm() {
@@ -1703,7 +1730,8 @@
 
             if(!name) { alert("Please enter an account name."); return; }
 
-            const record = { id, name, type, group: document.getElementById("newAccGroup").value || DEFAULT_ACCOUNT_GROUP, subgroup: document.getElementById("newAccSubgroup").value || "", memberIds: getCheckedAccountMemberIds() };
+            const group = document.getElementById("newAccGroup").value || DEFAULT_ACCOUNT_GROUP;
+            const record = { id, name, type, group, subgroup: document.getElementById("newAccSubgroup").value || "", linkedAccountId: (group === "Bank Loan" ? (document.getElementById("newAccLinkedAccount").value || null) : null), memberIds: getCheckedAccountMemberIds() };
 
             if (type === "normal") {
                 const balInput = document.getElementById("newAccBal").value;
@@ -1945,11 +1973,19 @@
                 groupTotal += baseVal;
                 subgroupTotal += baseVal;
 
+                // Bank Loan (v50): show which other account this loan relates to, if set —
+                // purely informational, resolved from the id against the accounts list already
+                // in scope here.
+                const linkedAcc = a.linkedAccountId ? accounts.find(x => x.id === a.linkedAccountId) : null;
+                const linkedLine = linkedAcc
+                    ? `<br><span style="font-size:0.7rem; color:#92400e; font-weight:600;">🔗 Related: ${escapeHtml(linkedAcc.name)}</span>`
+                    : "";
+
                 html += `
                     <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="accounts">
                         <span>
                             <strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}
-                            <br>${accountOwnerTagHTML(a)}
+                            <br>${accountOwnerTagHTML(a)}${linkedLine}
                         </span>
                         <span style="color:var(--text-muted);">›</span>
                     </div>`;
@@ -1991,7 +2027,7 @@
             document.getElementById("editAccountId").value = account.id;
             document.getElementById("newAccName").value = account.name;
             document.getElementById("newAccGroup").value = account.group || DEFAULT_ACCOUNT_GROUP;
-            handleAccGroupChange(account.subgroup || "");
+            await handleAccGroupChange(account.subgroup || "", account.linkedAccountId || "");
 
             setAccountTypeUI(account.type || "normal");
             if (!account.type || account.type === "normal") {
@@ -3370,9 +3406,14 @@
                     balSummary = `<strong>${formatBalanceHTML(nativeBalances[a.id], a.currency)}</strong>`;
                 }
 
+                const linkedAcc = a.linkedAccountId ? accounts.find(x => x.id === a.linkedAccountId) : null;
+                const linkedLine = linkedAcc
+                    ? ` · <span style="color:#92400e; font-weight:600;">🔗 ${escapeHtml(linkedAcc.name)}</span>`
+                    : "";
+
                 html += `
                     <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="member">
-                        <span><strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${escapeHtml(a.group || DEFAULT_ACCOUNT_GROUP)}</span></span>
+                        <span><strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${escapeHtml(a.group || DEFAULT_ACCOUNT_GROUP)}</span>${linkedLine}</span>
                         <span style="color:var(--text-muted);">›</span>
                     </div>`;
             });
@@ -4787,6 +4828,24 @@
                 balanceBanner.style.display = "none";
             }
 
+            // Related Account banner (v50) — Bank Loan accounts only, shown just under Current
+            // Balance when a linked account was set on this loan (see populateLinkedAccountSelect).
+            // Tapping it jumps straight to that account's own Activity page.
+            const linkedBanner = document.getElementById("ledgerLinkedAccountBanner");
+            if (showFullAccountHistory) {
+                const viewingAcc = accounts.find(a => a.id === activeLedgerAccountView);
+                const linkedAcc = viewingAcc && viewingAcc.linkedAccountId ? accounts.find(a => a.id === viewingAcc.linkedAccountId) : null;
+                if (linkedAcc) {
+                    document.getElementById("ledgerLinkedAccountValue").textContent = linkedAcc.name;
+                    linkedBanner.dataset.id = linkedAcc.id;
+                    linkedBanner.style.display = "block";
+                } else {
+                    linkedBanner.style.display = "none";
+                }
+            } else {
+                linkedBanner.style.display = "none";
+            }
+
             // Fund Holdings section (Unit Trust accounts only) — shown above the normal
             // transaction ledger list, which still displays every Buy/Sell/Dividend/Contribution
             // as an ordinary-looking entry (they ARE ordinary transfer/income transactions under
@@ -5757,6 +5816,7 @@
             openCategoryFormModal: () => openCategoryFormModal(),
             deleteAccountFromForm: () => deleteAccountFromForm(),
             editAccountFromLedgerHeader: () => editAccountFromLedgerHeader(),
+            navigateToLinkedAccountFromLedgerHeader: (el) => { if (el.dataset.id) navigateToLedgerPage(el.dataset.id, "workspace"); },
             exportBackup: () => exportBackup(),
             openImportInput: () => document.getElementById("importInput").click(),
             handleLedgerBackClick: () => handleLedgerBackClick(),

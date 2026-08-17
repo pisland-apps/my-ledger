@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v51";
+        const APP_VERSION = "v52";
         const APP_VERSION_DATE = "2026-08-17";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -4850,7 +4850,11 @@
 
             // Current Balance banner (v34) — the account's actual up-to-date balance, shown
             // regardless of which year is currently selected (unlike Balance B/F & C/F below,
-            // which are specific to the selected year's boundaries).
+            // which are specific to the selected year's boundaries). Label (v51): reads
+            // "Purchase Cost" for Real Estate accounts instead of "Current Balance" — a property
+            // account's running total is the cumulative cost put into it (purchase price + extras
+            // like an extra car park, less any rebate/credit note logged as a reverse Transfer),
+            // not a "balance" in the everyday cash-account sense, so the old label was misleading.
             const balanceBanner = document.getElementById("ledgerCurrentBalanceBanner");
             if (showFullAccountHistory) {
                 const viewingAcc = accounts.find(a => a.id === activeLedgerAccountView);
@@ -4865,6 +4869,8 @@
                     } else {
                         balSummary = formatBalanceHTML(nativeBalances[viewingAcc.id], viewingAcc.currency);
                     }
+                    document.getElementById("ledgerCurrentBalanceLabel").textContent =
+                        (viewingAcc.group || DEFAULT_ACCOUNT_GROUP) === "Real Estate" ? "Purchase Cost" : "Current Balance";
                     document.getElementById("ledgerCurrentBalanceValue").innerHTML = balSummary;
                     balanceBanner.style.display = "block";
                 } else {

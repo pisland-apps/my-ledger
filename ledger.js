@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v53";
+        const APP_VERSION = "v54";
         const APP_VERSION_DATE = "2026-08-17";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -3282,6 +3282,11 @@
             let total = 0;
             const currencyTotals = {};
             accountsSubset.forEach(a => {
+                // Include in Net Worth (v53/v54) — same opt-out as the main Dashboard total
+                // (currently only settable on Real Estate accounts); kept in sync here so a
+                // property excluded from the headline Net Worth is excluded from every member's
+                // and joint group's net worth too, not just the dashboard-wide figure.
+                if (a.includeInNetWorth === false) return;
                 if (a.type === "multi" || a.type === "fd" || a.type === "unittrust") {
                     Object.entries(nativeBalances[a.id] || {}).forEach(([curr, amt]) => {
                         total += convertCurrency(amt, curr, baseCurrency);

@@ -1683,6 +1683,20 @@
                     <p style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">Which account this loan relates to — e.g. the bank account repayments come from.</p>
                 </div>
 
+                <!-- Real Estate (v53): whether this property counts toward the Net Worth figure
+                     on the main Dashboard — a property's recorded "Purchase Cost" is a running
+                     cost total, not a current market valuation, so some users may prefer to track
+                     it here without it inflating that headline number. Shown only when Group =
+                     "Real Estate"; defaults to Include (unset/legacy accounts behave as Include). -->
+                <div class="form-row" id="newAccNetWorthRow" style="display:none;">
+                    <label>Include in Net Worth (Dashboard)</label>
+                    <select id="newAccIncludeNetWorth" class="form-input">
+                        <option value="yes">✅ Include</option>
+                        <option value="no">🚫 Exclude</option>
+                    </select>
+                    <p style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">Exclude if this property's recorded cost shouldn't count toward the Dashboard's Net Worth total.</p>
+                </div>
+
                 <!-- Currency + Opening Balance — only applicable to "Normal" (single-currency) accounts. -->
                 <div class="form-row-inline" id="newAccBalCurrRow">
                     <div>

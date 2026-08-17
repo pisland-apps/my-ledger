@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v52";
+        const APP_VERSION = "v53";
         const APP_VERSION_DATE = "2026-08-17";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -734,6 +734,7 @@
             { name: "Grants", type: "income", icon: "🎓" },
             { name: "Dividend Unit Trust", type: "income", icon: "🧺" },
             { name: "Bank Charges", type: "expense", icon: "💳" },
+            { name: "Mortgage Interest", type: "expense", icon: "🏠" },
             { name: "Education", type: "expense", icon: "🎓" },
             { name: "Family", type: "expense", icon: "👨‍👩‍👧‍👦" },
             { name: "Betting", type: "expense", icon: "🎰" },
@@ -1657,8 +1658,10 @@
         // Populates the Sub-Group select for whichever Group is currently chosen, and shows/hides
         // the row entirely when that Group has no configured sub-groups (see ACCOUNT_SUBGROUPS).
         // Also shows/hides + populates the Bank Loan "Related Account" select (see
-        // populateLinkedAccountSelect below) whenever the Group is switched to/from "Bank Loan".
-        async function handleAccGroupChange(preselectSubgroup, preselectLinkedAccountId) {
+        // populateLinkedAccountSelect below) whenever the Group is switched to/from "Bank Loan",
+        // and the Real Estate "Include in Net Worth" select whenever it's switched to/from
+        // "Real Estate".
+        async function handleAccGroupChange(preselectSubgroup, preselectLinkedAccountId, preselectIncludeInNetWorth) {
             const group = document.getElementById("newAccGroup").value;
             const list = subgroupsForGroup(group);
             const row = document.getElementById("newAccSubgroupRow");
@@ -1679,6 +1682,14 @@
             } else {
                 linkedRow.style.display = "none";
                 document.getElementById("newAccLinkedAccount").innerHTML = "";
+            }
+
+            const netWorthRow = document.getElementById("newAccNetWorthRow");
+            if (group === "Real Estate") {
+                netWorthRow.style.display = "flex";
+                document.getElementById("newAccIncludeNetWorth").value = preselectIncludeInNetWorth === "no" ? "no" : "yes";
+            } else {
+                netWorthRow.style.display = "none";
             }
         }
 
@@ -1731,7 +1742,7 @@
             if(!name) { alert("Please enter an account name."); return; }
 
             const group = document.getElementById("newAccGroup").value || DEFAULT_ACCOUNT_GROUP;
-            const record = { id, name, type, group, subgroup: document.getElementById("newAccSubgroup").value || "", linkedAccountId: (group === "Bank Loan" ? (document.getElementById("newAccLinkedAccount").value || null) : null), memberIds: getCheckedAccountMemberIds() };
+            const record = { id, name, type, group, subgroup: document.getElementById("newAccSubgroup").value || "", linkedAccountId: (group === "Bank Loan" ? (document.getElementById("newAccLinkedAccount").value || null) : null), includeInNetWorth: (group === "Real Estate" ? (document.getElementById("newAccIncludeNetWorth").value !== "no") : true), memberIds: getCheckedAccountMemberIds() };
 
             if (type === "normal") {
                 const balInput = document.getElementById("newAccBal").value;
@@ -1981,11 +1992,18 @@
                     ? `<br><span style="font-size:0.7rem; color:#92400e; font-weight:600;">🔗 Related: ${escapeHtml(linkedAcc.name)}</span>`
                     : "";
 
+                // Real Estate (v53): flag when a property was explicitly excluded from the
+                // Dashboard's Net Worth total (see newAccIncludeNetWorth), so it's obvious here
+                // too rather than just being a silent gap in the headline number.
+                const excludedLine = a.includeInNetWorth === false
+                    ? `<br><span style="font-size:0.7rem; color:#991b1b; font-weight:600;">🚫 Excluded from Net Worth</span>`
+                    : "";
+
                 html += `
                     <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="accounts">
                         <span>
                             <strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}
-                            <br>${accountOwnerTagHTML(a)}${linkedLine}
+                            <br>${accountOwnerTagHTML(a)}${linkedLine}${excludedLine}
                         </span>
                         <span style="color:var(--text-muted);">›</span>
                     </div>`;
@@ -2027,7 +2045,7 @@
             document.getElementById("editAccountId").value = account.id;
             document.getElementById("newAccName").value = account.name;
             document.getElementById("newAccGroup").value = account.group || DEFAULT_ACCOUNT_GROUP;
-            await handleAccGroupChange(account.subgroup || "", account.linkedAccountId || "");
+            await handleAccGroupChange(account.subgroup || "", account.linkedAccountId || "", account.includeInNetWorth === false ? "no" : "yes");
 
             setAccountTypeUI(account.type || "normal");
             if (!account.type || account.type === "normal") {
@@ -4754,6 +4772,11 @@
             let globalBaseNetWorth = 0;
             const currencyTotals = {}; // native (unconverted) sum per currency actually held, across every account
             accounts.forEach(a => {
+                // Include in Net Worth (v53) — currently only settable on Real Estate accounts
+                // (see newAccIncludeNetWorth); every other account has no way to opt out, so
+                // undefined/missing here always means "include" and this only ever filters out
+                // a Real Estate account whose owner explicitly excluded it.
+                if (a.includeInNetWorth === false) return;
                 if (a.type === "multi" || a.type === "fd" || a.type === "unittrust") {
                     Object.entries(nativeBalances[a.id]).forEach(([curr, amt]) => {
                         globalBaseNetWorth += convertCurrency(amt, curr, baseCurrency);

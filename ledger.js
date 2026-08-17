@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v50";
+        const APP_VERSION = "v51";
         const APP_VERSION_DATE = "2026-08-17";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -4692,6 +4692,52 @@
                     applyToAccountBalance(aDest, t.amount, t.currency, +1, null, t.destAmount);
                 }
             });
+
+            // Unit Trust accounts (v50): the cash-flow basket built above (Buy amount in, Sell
+            // amount out, plus whatever Total Amount was typed for Dividend Reinvest/
+            // Contribution) only approximates what the holding is worth — it never re-marks
+            // itself when a fund's NAV moves, so it silently drifts away from the Fund Holdings
+            // table's own "Total" row (units × currentNav). Net worth, the Accounts/Member page
+            // balances, and the Current Balance banner should all agree with that Total row, so
+            // for Unit Trust accounts specifically the basket above is discarded and rebuilt here
+            // from live market value instead — same inputs, same math, as renderFundHoldingsTable().
+            const unitTrustAccounts = accounts.filter(a => a.type === "unittrust");
+            if (unitTrustAccounts.length > 0) {
+                const funds = await readAllDB(STORES.FUNDS);
+                const fundsByAccountId = {};
+                funds.forEach(f => { (fundsByAccountId[f.accountId] = fundsByAccountId[f.accountId] || []).push(f); });
+
+                unitTrustAccounts.forEach(acc => {
+                    const basket = {};
+                    const accFunds = fundsByAccountId[acc.id] || [];
+                    accFunds.forEach(f => {
+                        basket[f.currency] = (basket[f.currency] || 0) + (f.units || 0) * (f.currentNav || 0);
+                    });
+
+                    // Orphaned fund transactions (the FUNDS record was deleted separately, but its
+                    // history intentionally stays — see handleDeleteFund()) still count toward this
+                    // account's balance. There's no live NAV left to mark them at, so they're
+                    // valued at remaining cost basis, exactly like the Fund Holdings table's own
+                    // "(fund deleted)" row.
+                    const liveFundIds = new Set(accFunds.map(f => f.id));
+                    const orphanTxsByFundId = {};
+                    txs.forEach(t => {
+                        if (!t.fundId || liveFundIds.has(t.fundId)) return;
+                        (orphanTxsByFundId[t.fundId] = orphanTxsByFundId[t.fundId] || []).push(t);
+                    });
+                    Object.values(orphanTxsByFundId).forEach(fTxs => {
+                        let invested = 0, recovered = 0;
+                        fTxs.forEach(t => {
+                            if (t.fundTxType === "buy") invested += t.amount;
+                            else if (t.fundTxType === "sell" || t.fundTxType === "dividend_payout") recovered += t.amount;
+                        });
+                        const currency = fTxs[0].currency || baseCurrency;
+                        basket[currency] = (basket[currency] || 0) + Math.max(invested - recovered, 0);
+                    });
+
+                    nativeBalances[acc.id] = basket;
+                });
+            }
 
             return { accounts, txs, nativeBalances };
         }

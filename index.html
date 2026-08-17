@@ -1216,6 +1216,22 @@
         <button class="fab-btn" data-click="openAddFundTxModalForActiveFund" aria-label="Add transaction" title="Add transaction">+</button>
     </div>
 
+    <!-- ================= PAGE: CURRENCY ACTIVITY (v55 — one currency basket within a
+         Multi-Currency account's own transactions, mirrors the Fund Activity page) ================= -->
+    <div id="page-currencyactivity" class="page hidden">
+        <div class="nav-header">
+            <button class="back-btn" data-click="handleCurrencyActivityBackClick">&larr; Back</button>
+            <div style="flex:1;">
+                <h3 id="currencyActivityTitle" style="font-weight:800; font-size:1.2rem;">Currency Activity</h3>
+                <p id="currencyActivityMeta" style="font-size:0.75rem; color:var(--text-muted); font-weight:600;"></p>
+            </div>
+        </div>
+        <div class="net-savings-banner" style="background:#eef2ff;">
+            Current Balance: <span id="currencyActivityBalanceValue">0.00</span>
+        </div>
+        <div class="ledger-container" id="currencyActivityList"></div>
+    </div>
+
     <!-- ================= PAGE 4: ALL ACCOUNTS ================= -->
     <div id="page-accounts" class="page hidden">
         <div class="nav-header">

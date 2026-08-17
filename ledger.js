@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v54";
-        const APP_VERSION_DATE = "2026-08-17";
+        const APP_VERSION = "v55";
+        const APP_VERSION_DATE = "2026-08-18";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
         // DOM — including #versionBadge and the lock overlay — already exists by this point).
@@ -659,6 +659,9 @@
         // fund's Buy/Sell/Dividend/Contribution transactions only.
         let activeFundActivityId = null;
         let fundActivityBackToPage = "accounts";
+        let activeCurrencyActivityAccountId = null;
+        let activeCurrencyActivityCurrency = null;
+        let currencyActivityBackToPage = "ledger";
 
         // Remembers how far down the workspace dashboard the user had scrolled (e.g. down to "My
         // Financial Accounts") before drilling into an account/category/type ledger view. All three
@@ -851,9 +854,12 @@
             const membersPage = document.getElementById("page-members");
             const memberPage = document.getElementById("page-member");
             const fundActivityPage = document.getElementById("page-fundactivity");
+            const currencyActivityPage = document.getElementById("page-currencyactivity");
 
             if (!ledgerPage.classList.contains("hidden")) {
                 handleLedgerBackClick();
+            } else if (!currencyActivityPage.classList.contains("hidden")) {
+                handleCurrencyActivityBackClick();
             } else if (!fundActivityPage.classList.contains("hidden")) {
                 handleFundActivityBackClick();
             } else if (!membersPage.classList.contains("hidden")) {
@@ -1115,7 +1121,7 @@
         // --- SPA NAVIGATION PIPELINE ---
         // Every top-level page div's id — used by showPage() to hide all but the target,
         // so adding a new page never risks leaving a stale one visible underneath.
-        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-accounts", "page-categories", "page-backup", "page-autolock", "page-database", "page-spending-breakdown", "page-income-breakdown", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity"];
+        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-accounts", "page-categories", "page-backup", "page-autolock", "page-database", "page-spending-breakdown", "page-income-breakdown", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity"];
         function showPage(id) {
             APP_PAGE_IDS.forEach(p => {
                 const el = document.getElementById(p);
@@ -1969,8 +1975,17 @@
                             ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#fef3c7; color:#92400e; font-weight:bold;">Unit Trust</span>`
                             : `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e2e8f0; color:var(--text-muted); font-weight:bold;">${escapeHtml(a.currency)}</span>`;
 
+                const baseVal = accountBaseValue(a, nativeBalances);
+
                 let balSummary;
-                if (a.type === "fd" || a.type === "multi" || a.type === "unittrust") {
+                if (a.type === "multi") {
+                    // Multi-Currency accounts (v55): the headline now shows one converted Base
+                    // total instead of a long "+"-joined string of every currency held — the
+                    // per-currency breakdown moves to its own subrow list below (same pattern as
+                    // Unit Trust's fund subrows), each line up on its own row and clickable
+                    // through to that currency's own Activity page.
+                    balSummary = `<strong>Base ${escapeHtml(baseCurrency)}: ${formatBalanceHTML(baseVal, baseCurrency)}</strong>`;
+                } else if (a.type === "fd" || a.type === "unittrust") {
                     const baskets = nativeBalances[a.id];
                     const currencies = Object.keys(baskets);
                     balSummary = currencies.length === 0
@@ -1980,7 +1995,6 @@
                     balSummary = `<strong>${formatBalanceHTML(nativeBalances[a.id], a.currency)}</strong>`;
                 }
 
-                const baseVal = accountBaseValue(a, nativeBalances);
                 groupTotal += baseVal;
                 subgroupTotal += baseVal;
 
@@ -2007,6 +2021,22 @@
                         </span>
                         <span style="color:var(--text-muted);">›</span>
                     </div>`;
+
+                // Multi-Currency account (v55): list each currency basket right under the
+                // account row, one per line (same subrow pattern as Unit Trust funds below) —
+                // tap a currency to jump straight to that currency's own Activity page, where
+                // its Opening Balance and every other transaction in that currency actually live.
+                if (a.type === "multi") {
+                    const baskets = nativeBalances[a.id] || {};
+                    const currencies = Object.keys(baskets).sort();
+                    if (currencies.length > 0) {
+                        html += currencies.map(curr => `
+                            <div class="config-item fund-subrow" style="cursor:pointer;" data-click="navigateToCurrencyActivityPage" data-id="${escapeHtml(a.id)}" data-currency="${escapeHtml(curr)}" data-back="accounts">
+                                <span>${escapeHtml(curr)} <span style="color:var(--text-muted); font-weight:600;">— ${formatBalanceHTML(baskets[curr], curr)}</span></span>
+                                <span style="color:var(--text-muted);">›</span>
+                            </div>`).join("");
+                    }
+                }
 
                 // Unit Trust account: list its individual fund holdings right under the account
                 // row (tap a fund to jump straight to that fund's own Activity page).
@@ -2166,6 +2196,89 @@
                     </div>`;
             }).join("");
             document.getElementById("fundActivityList").innerHTML = html || '<p style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.8rem;">No transactions yet — tap + to log a Buy, Sell, or Dividend.</p>';
+        }
+
+        // Currency's own Activity page (v55) — same idea as navigateToFundActivityPage, but for
+        // one currency basket within a Multi-Currency account, since that account's own Activity
+        // page now only lists currency summary rows (see isMultiCurrencyAccountView above).
+        function navigateToCurrencyActivityPage(el) {
+            const accountId = el.dataset.id;
+            const currency = el.dataset.currency;
+            workspaceScrollY = window.scrollY;
+            activeCurrencyActivityAccountId = accountId;
+            activeCurrencyActivityCurrency = currency;
+            currencyActivityBackToPage = el.dataset.back === "accounts" ? "accounts" : "ledger";
+            showPage("page-currencyactivity");
+            window.scrollTo(0, 0);
+            pushVirtualState("currencyactivity");
+            renderCurrencyActivityPage();
+        }
+
+        function handleCurrencyActivityBackClick() {
+            if (currencyActivityBackToPage === "accounts") {
+                showPage("page-accounts");
+                renderAccountsPage();
+            } else {
+                showPage("page-ledger");
+                renderApp();
+            }
+        }
+
+        // Renders the Currency Activity page: a native-currency balance banner (this basket's
+        // running total, matching what the account row/subrow shows), and every transaction in
+        // that account touching this specific currency, newest first — including the Opening
+        // Balance entry that used to show directly on the account's own Activity page.
+        async function renderCurrencyActivityPage() {
+            const accountId = activeCurrencyActivityAccountId;
+            const currency = activeCurrencyActivityCurrency;
+            if (!accountId || !currency) return;
+
+            const { accounts, txs, nativeBalances } = await computeAccountBalances();
+            const account = accounts.find(a => a.id === accountId);
+            if (!account) { handleCurrencyActivityBackClick(); return; }
+
+            document.getElementById("currencyActivityTitle").textContent = `${currency} Activity`;
+            document.getElementById("currencyActivityMeta").textContent = `${account.name} · ${currency}`;
+
+            const basket = nativeBalances[accountId] || {};
+            const balance = basket[currency] || 0;
+            document.getElementById("currencyActivityBalanceValue").innerHTML = formatBalanceHTML(balance, currency);
+
+            // Opening Balance entries deliberately leave src blank ("") — the funds originate
+            // outside the app, not from a since-deleted account — so an empty id gets its own
+            // label rather than being mistaken for a removed account record.
+            const accountName = id => { if (!id) return "(Opening Balance)"; const a = accounts.find(acc => acc.id === id); return a ? escapeHtml(a.name) : "(deleted account)"; };
+
+            const relevantTxs = txs
+                .filter(t => t.currency === currency && (t.src === accountId || t.dest === accountId))
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const html = relevantTxs.map(t => {
+                let col, sgn;
+                if (t.type === "income") { col = "income-color"; sgn = "+"; }
+                else if (t.type === "expense") { col = "expense-color"; sgn = "-"; }
+                else if (t.dest === accountId) { col = "income-color"; sgn = "+"; }
+                else { col = "expense-color"; sgn = "-"; }
+
+                const iconBadge = t.type === "transfer" ? "🔄" : getCategoryIcon(t.cat, t.type);
+                const accountText = t.type === "transfer"
+                    ? `🏦 ${accountName(t.src)} → ${t.dest ? accountName(t.dest) : "(unknown)"}`
+                    : `🏦 ${accountName(t.src)}`;
+                const referenceText = t.fdReferenceNo ? ` · Ref: ${escapeHtml(t.fdReferenceNo)}` : '';
+
+                return `
+                    <div class="ledger-item" data-click="openTransactionForm" data-type="${escapeHtml(t.type)}" data-id="${escapeHtml(t.id)}">
+                        <div class="item-left">
+                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}</span>
+                            <span class="item-meta">${escapeHtml(t.date)} [${escapeHtml(t.cat || 'Transfer')}]${referenceText}</span>
+                            <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">${accountText}</span>
+                        </div>
+                        <div class="item-right">
+                            <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(t.amount, t.currency)}</div>
+                        </div>
+                    </div>`;
+            }).join("");
+            document.getElementById("currencyActivityList").innerHTML = html || '<p style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.8rem;">No transactions yet.</p>';
         }
 
         // [+] on the Fund Activity page — same fundTxModal as everywhere else, but pre-set to
@@ -4888,7 +5001,12 @@
                 const viewingAcc = accounts.find(a => a.id === activeLedgerAccountView);
                 if (viewingAcc) {
                     let balSummary;
-                    if (viewingAcc.type === "fd" || viewingAcc.type === "multi" || viewingAcc.type === "unittrust") {
+                    if (viewingAcc.type === "multi") {
+                        // v55: Current Balance for a Multi-Currency account is now its single
+                        // converted Base total (matching the Accounts page headline), not the
+                        // raw "+"-joined string of every currency basket.
+                        balSummary = formatBalanceHTML(accountBaseValue(viewingAcc, nativeBalances), baseCurrency);
+                    } else if (viewingAcc.type === "fd" || viewingAcc.type === "unittrust") {
                         const baskets = nativeBalances[viewingAcc.id];
                         const currencies = Object.keys(baskets);
                         balSummary = currencies.length === 0
@@ -4943,6 +5061,18 @@
                 }
             } else {
                 fundSection.style.display = "none";
+            }
+
+            // Multi-Currency account's own Activity page (v55): rather than a jumbled list of
+            // raw Opening Balance / transaction rows across every currency at once, this view
+            // shows one row per currency basket held — each currency's own transactions
+            // (including its Opening Balance) live on that currency's dedicated Activity page
+            // instead (see navigateToCurrencyActivityPage / renderCurrencyActivityPage).
+            let isMultiCurrencyAccountView = false;
+            let viewingMultiAcc = null;
+            if (showFullAccountHistory) {
+                viewingMultiAcc = accounts.find(a => a.id === activeLedgerAccountView);
+                isMultiCurrencyAccountView = !!(viewingMultiAcc && viewingMultiAcc.type === "multi");
             }
 
             // Compute structural titles
@@ -5114,6 +5244,11 @@
                     }
                 }
 
+                // Multi-Currency account view (v55): skip building any per-transaction row here
+                // — see isMultiCurrencyAccountView above, this account's own list is replaced
+                // with per-currency summary rows further down instead.
+                if (isMultiCurrencyAccountView) return;
+
                 let isBound = false;
                 if (activeCategoryView !== "all") {
                     isBound = t.cat === activeCategoryView;
@@ -5150,6 +5285,11 @@
                     ? `<span data-click="openImageViewer" data-image="${escapeHtml(t.image)}" style="cursor:pointer; margin-left:4px;" title="View attached photo">📎</span>`
                     : '';
                 const referenceText = t.fdReferenceNo ? ` · Ref: ${escapeHtml(t.fdReferenceNo)}` : '';
+                // Maturity date (v55) — shown inline on every FD placement row, not just inside
+                // the maturity reminder banner, so it's visible while scrolling that account's
+                // own Activity history too. fdResolved placements keep showing their maturity
+                // date for reference even though the ✅ Closed badge already covers status.
+                const maturityText = t.fdMaturityDate ? ` · Matures ${escapeHtml(t.fdMaturityDate)}` : '';
                 const manualFxBadge = (t.manualFxRate || (t.type === "transfer" && t.destAmount != null))
                     ? `<span style="font-size:0.62rem; font-weight:700; color:#c2410c; background:#ffedd5; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">✏️ Manual FX</span>`
                     : '';
@@ -5177,7 +5317,11 @@
                 // regardless of which page it's viewed from (a single account's own Activity page,
                 // or a combined view like a category/type breakdown where the account otherwise
                 // isn't obvious at all).
-                const accountName = id => { const a = accounts.find(acc => acc.id === id); return a ? escapeHtml(a.name) : "(deleted account)"; };
+                // Opening Balance / Opening Fixed Deposit Placement entries deliberately leave
+                // src blank ("") — the funds originate outside the app, not from a since-deleted
+                // account — so an empty id is labelled distinctly from an id that actually points
+                // at a removed account record.
+                const accountName = id => { if (!id) return "(Opening Balance)"; const a = accounts.find(acc => acc.id === id); return a ? escapeHtml(a.name) : "(deleted account)"; };
                 let accountText;
                 if (t.type === "transfer") {
                     accountText = `🏦 ${accountName(t.src)} → ${t.dest ? accountName(t.dest) : "(unknown)"}`;
@@ -5203,7 +5347,7 @@
                     <div class="ledger-item" data-click="openTransactionForm" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
                             <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}</span>
-                            <span class="item-meta">${t.date} [${escapeHtml(t.cat || 'Transfer')}]${referenceText}${receiptBadge}</span>
+                            <span class="item-meta">${t.date} [${escapeHtml(t.cat || 'Transfer')}]${referenceText}${maturityText}${receiptBadge}</span>
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">${accountText}</span>
                         </div>
                         <div class="item-right">
@@ -5247,6 +5391,22 @@
             if (isUnitTrustAccountView) {
                 ledgerListEl.innerHTML = "";
                 ledgerListEl.style.display = "none";
+            } else if (isMultiCurrencyAccountView) {
+                const baskets = nativeBalances[viewingMultiAcc.id] || {};
+                const currencies = Object.keys(baskets).sort();
+                ledgerListEl.style.display = "";
+                ledgerListEl.innerHTML = currencies.length === 0
+                    ? '<p style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.8rem;">No funds yet — tap + to log an opening balance or transaction.</p>'
+                    : currencies.map(curr => `
+                        <div class="ledger-item" style="cursor:pointer;" data-click="navigateToCurrencyActivityPage" data-id="${escapeHtml(viewingMultiAcc.id)}" data-currency="${escapeHtml(curr)}" data-back="ledger">
+                            <div class="item-left">
+                                <span class="item-name">${escapeHtml(curr)}</span>
+                                <span class="item-meta">Tap to view this currency's Activity log</span>
+                            </div>
+                            <div class="item-right">
+                                <div class="item-value" style="font-weight:bold;">${formatBalanceHTML(baskets[curr], curr)}</div>
+                            </div>
+                        </div>`).join("");
             } else {
                 ledgerListEl.style.display = "";
                 ledgerListEl.innerHTML = ledgerHTML || '<p style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.8rem;">No matches found.</p>';
@@ -5938,6 +6098,8 @@
             navigateToFundActivityPage: (el) => navigateToFundActivityPage(el),
             handleFundActivityBackClick: () => handleFundActivityBackClick(),
             editFundFromActivityHeader: () => editFundFromActivityHeader(),
+            navigateToCurrencyActivityPage: (el) => navigateToCurrencyActivityPage(el),
+            handleCurrencyActivityBackClick: () => handleCurrencyActivityBackClick(),
             handleSaveFund: () => handleSaveFund(),
             handleDeleteFund: () => handleDeleteFund(),
             handleSaveFundTx: () => handleSaveFundTx(),

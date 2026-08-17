@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v48";
+        const APP_VERSION = "v49";
         const APP_VERSION_DATE = "2026-08-17";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -2562,10 +2562,15 @@
                 // everyday sense a user expects (e.g. RM100 Buy + RM100 Reinvest + RM100
                 // Contribution, all at NAV 1.00, should read as RM100 invested / RM200 profit, not
                 // RM300 invested / RM0 profit).
+                //
+                // Dividend (Cheque Payout) is cash paid straight out to another account — no units
+                // change, so unlike Reinvest it never shows up in `value`. It's real cash the owner
+                // actually pocketed from the holding, exactly like a Sell's proceeds, so it's folded
+                // into `recovered` alongside Sell rather than being silently dropped from P/L.
                 let invested = 0, recovered = 0;
                 fundTxs.forEach(t => {
                     if (t.fundTxType === "buy") invested += t.amount;
-                    else if (t.fundTxType === "sell") recovered += t.amount;
+                    else if (t.fundTxType === "sell" || t.fundTxType === "dividend_payout") recovered += t.amount;
                 });
                 return { invested, recovered };
             }

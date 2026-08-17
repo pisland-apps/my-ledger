@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v57";
+        const APP_VERSION = "v58";
         const APP_VERSION_DATE = "2026-08-18";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -5453,16 +5453,25 @@
                 ledgerListEl.style.display = "";
                 ledgerListEl.innerHTML = currencies.length === 0
                     ? '<p style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.8rem;">No funds yet — tap + to log an opening balance or transaction.</p>'
-                    : currencies.map(curr => `
+                    : currencies.map(curr => {
+                        // Base-currency equivalent shown under the native amount (same
+                        // .converted-subtext pattern used on the account's own ledger rows), so
+                        // it's clear at a glance what each foreign balance is worth in baseCurrency
+                        // without having to open that currency's own Activity log.
+                        const subText = curr !== baseCurrency
+                            ? `<span class="converted-subtext">≈ ${formatCurrency(convertCurrency(baskets[curr], curr, baseCurrency), baseCurrency)}</span>`
+                            : "";
+                        return `
                         <div class="ledger-item" style="cursor:pointer;" data-click="navigateToCurrencyActivityPage" data-id="${escapeHtml(viewingMultiAcc.id)}" data-currency="${escapeHtml(curr)}" data-back="ledger">
                             <div class="item-left">
                                 <span class="item-name">${escapeHtml(curr)}</span>
                                 <span class="item-meta">Tap to view this currency's Activity log</span>
                             </div>
                             <div class="item-right">
-                                <div class="item-value" style="font-weight:bold;">${formatBalanceHTML(baskets[curr], curr)}</div>
+                                <div class="item-value" style="font-weight:bold;">${formatBalanceHTML(baskets[curr], curr)}${subText}</div>
                             </div>
-                        </div>`).join("");
+                        </div>`;
+                    }).join("");
             } else {
                 ledgerListEl.style.display = "";
                 ledgerListEl.innerHTML = ledgerHTML || '<p style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.8rem;">No matches found.</p>';

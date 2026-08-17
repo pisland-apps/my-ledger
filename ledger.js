@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v55";
+        const APP_VERSION = "v56";
         const APP_VERSION_DATE = "2026-08-18";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -1910,7 +1910,7 @@
 
         async function renderAccountsPage() {
             await populateDefaultPaymentAccountSelect();
-            const { accounts, nativeBalances } = await computeAccountBalances();
+            const { accounts, txs, nativeBalances } = await computeAccountBalances();
             // Fetched once up front (not per-account inside the loop below) and grouped by
             // accountId, so each Unit Trust account row can list its individual fund holdings
             // (e.g. "HLBB Value Fund — RM147.20") directly on the Accounts page without the user
@@ -1918,6 +1918,15 @@
             const allFunds = await readAllDB(STORES.FUNDS);
             const fundsByAccountId = {};
             allFunds.forEach(f => { (fundsByAccountId[f.accountId] = fundsByAccountId[f.accountId] || []).push(f); });
+            // Active Fixed Deposit placements, grouped by the account holding them (v55): every
+            // still-open placement transfer (fdMaturityDate set, not yet fdResolved) into an FD
+            // account, so each FD account row can list its individual tranches right here — same
+            // idea as the fund/currency subrows above — instead of requiring a tap into that
+            // account's own Activity page just to see what's actually placed.
+            const fdPlacementsByAccountId = {};
+            txs.filter(t => t.type === "transfer" && t.fdMaturityDate && !t.fdResolved && t.dest).forEach(t => {
+                (fdPlacementsByAccountId[t.dest] = fdPlacementsByAccountId[t.dest] || []).push(t);
+            });
             const filter = accountsPageTypeFilter;
             const filtered = filter
                 ? accounts.filter(a => (a.group || DEFAULT_ACCOUNT_GROUP) === filter.group && (a.subgroup || "") === (filter.subgroup || ""))
@@ -2048,6 +2057,32 @@
                             return `
                                 <div class="config-item fund-subrow" style="cursor:pointer;" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}" data-back="accounts">
                                     <span>${escapeHtml(f.name)} <span style="color:var(--text-muted); font-weight:600;">— ${formatBalanceHTML(value, f.currency)}</span></span>
+                                    <span style="color:var(--text-muted);">›</span>
+                                </div>`;
+                        }).join("");
+                    }
+                }
+
+                // Fixed Deposit account (v55): list each still-open placement tranche right
+                // under the account row — same subrow pattern as funds/currencies above — so
+                // every active "Fixed Deposit Placement" across every FD account is visible
+                // without tapping into each account's own Activity page. Tapping a placement
+                // opens it straight in the transaction editor, same as tapping it there would.
+                if (a.type === "fd") {
+                    const placements = (fdPlacementsByAccountId[a.id] || []).slice().sort((x, y) => new Date(y.date) - new Date(x.date));
+                    if (placements.length > 0) {
+                        html += placements.map(t => {
+                            const isOverdue = new Date(t.fdMaturityDate + "T00:00:00").getTime() < new Date(new Date().toISOString().split("T")[0] + "T00:00:00").getTime();
+                            const statusBadge = isOverdue
+                                ? `<span style="font-size:0.62rem; font-weight:700; color:#b91c1c; background:#fee2e2; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">⏰ Due</span>`
+                                : `<span style="font-size:0.62rem; font-weight:700; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">🟢 Active</span>`;
+                            const refText = t.fdReferenceNo ? ` (${escapeHtml(t.fdReferenceNo)})` : '';
+                            return `
+                                <div class="config-item fund-subrow" style="cursor:pointer;" data-click="openTransactionForm" data-type="${escapeHtml(t.type)}" data-id="${escapeHtml(t.id)}">
+                                    <span>
+                                        Fixed Deposit Placement${refText}${statusBadge}
+                                        <br><span style="color:var(--text-muted); font-weight:600;">${formatBalanceHTML(t.amount, t.currency)} · Matures ${escapeHtml(t.fdMaturityDate)}</span>
+                                    </span>
                                     <span style="color:var(--text-muted);">›</span>
                                 </div>`;
                         }).join("");

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v61";
+        const APP_VERSION = "v62";
         const APP_VERSION_DATE = "2026-08-18";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -71,6 +71,11 @@
         // { group: "Investment", subgroup: "Fixed Deposit", label: "Fixed Deposit" }. null shows
         // every account, same as opening the page from "Financial Accounts" directly.
         let accountsPageTypeFilter = null;
+        // v62: which accounts' fund/currency/FD-placement subrows are expanded on the Accounts
+        // page — collapsed by default (empty Set) so an account with many holdings doesn't push
+        // the rest of the list down; persists only for this session (reset on reload), same as
+        // every other page-local UI state in this file.
+        let expandedAccountSubrows = new Set();
         let db;
 
         // Escapes a value for safe insertion into HTML text content or a double-quoted HTML
@@ -1316,15 +1321,25 @@
             renderNavUpdatePage();
         }
 
-        function handleLedgerBackClick() {
+        // v62: none of these branches restored scroll position after re-rendering the page being
+        // returned to — they navigated back to the top every time regardless of where in a long
+        // Accounts/Member/Savings list the user had tapped from. workspaceScrollY already holds
+        // the right value (captured by navigateToLedgerPage when the row was tapped); it just
+        // was never applied here. Made async so each branch can await its re-render before
+        // scrolling — scrolling before the list has re-rendered would target a not-yet-full-
+        // height page and land in the wrong place (same reasoning as navigateToWorkspace above).
+        async function handleLedgerBackClick() {
             if (ledgerBackToPage === "savings") {
                 showPage("page-savings");
+                window.scrollTo(0, workspaceScrollY);
             } else if (ledgerBackToPage === "accounts") {
                 showPage("page-accounts");
-                renderAccountsPage();
+                await renderAccountsPage();
+                window.scrollTo(0, workspaceScrollY);
             } else if (ledgerBackToPage === "member") {
                 showPage("page-member");
-                renderMemberPage();
+                await renderMemberPage();
+                window.scrollTo(0, workspaceScrollY);
             } else {
                 navigateToWorkspace();
             }
@@ -1953,6 +1968,13 @@
             if (titleEl) titleEl.textContent = filter ? filter.label : "All Accounts";
             if (hintEl) hintEl.classList.toggle("hidden", !filter);
 
+            // v62: a sidebar shortcut (e.g. "Current Account") is meant to show only that one
+            // slice — the Default Payment Account selector is unrelated to any single group/
+            // sub-group, so it's hidden whenever a filter narrowed the list, not just shown
+            // unconditionally at the top of every Accounts view.
+            document.getElementById("defaultPaymentAccountSection").classList.toggle("hidden", !!filter);
+            document.getElementById("defaultPaymentAccountRow").classList.toggle("hidden", !!filter);
+
             let html = "";
             let lastGroup = null;
             let lastSubgroup = undefined;
@@ -1966,8 +1988,15 @@
                 }
                 subgroupTotal = 0;
             }
+            // v62: when the sidebar filter has narrowed the list down to one specific sub-group
+            // (e.g. "Current Account" within "Bank/Cash"), every account shown already belongs to
+            // that one sub-group, so the Group Total below would just repeat the exact same
+            // number as the Sub-Total above it under a confusingly broader label ("Group Total ·
+            // Bank/Cash" when only Current Account accounts are actually shown). Suppressed in
+            // that case; a whole-group filter with no sub-groups (e.g. "Real Estate") still shows
+            // its Group Total as normal, since that's the only total on screen for it.
             function flushGroupTotal() {
-                if (lastGroup !== null) {
+                if (lastGroup !== null && !(filter && filter.subgroup)) {
                     html += `<div class="config-list-grouptotal"><span class="total-label">Group Total · ${escapeHtml(lastGroup)}</span>: <span class="total-amount">${formatBalanceHTML(groupTotal, baseCurrency)}</span></div>`;
                 }
                 groupTotal = 0;
@@ -2037,14 +2066,11 @@
                     ? `<br><span style="font-size:0.7rem; color:#991b1b; font-weight:600;">🚫 Excluded from Net Worth</span>`
                     : "";
 
-                html += `
-                    <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="accounts">
-                        <span>
-                            <strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}
-                            <br>${accountOwnerTagHTML(a)}${linkedLine}${excludedLine}
-                        </span>
-                        <span style="color:var(--text-muted);">›</span>
-                    </div>`;
+                // v62: subrows collapsed by default (see expandedAccountSubrows) — built into
+                // subrowsHtml first (before the main row, so the row can show a collapse/expand
+                // toggle only when there's actually something to collapse), then wrapped in one
+                // collapsible container appended right after the row.
+                let subrowsHtml = "";
 
                 // Multi-Currency account (v55): list each currency basket right under the
                 // account row, one per line (same subrow pattern as Unit Trust funds below) —
@@ -2060,7 +2086,7 @@
                         // on the right (v60 fix, same as the Unit Trust fund subrow above) —
                         // the earlier v59 version still split name (left) from amount+chevron
                         // (right), which left the same big empty-middle gap it was meant to fix.
-                        html += currencies.map(curr => {
+                        subrowsHtml += currencies.map(curr => {
                             const subText = curr !== baseCurrency
                                 ? `<span class="converted-subtext">≈ ${formatCurrency(convertCurrency(baskets[curr], curr, baseCurrency), baseCurrency)}</span>`
                                 : "";
@@ -2078,7 +2104,7 @@
                 if (a.type === "unittrust") {
                     const funds = (fundsByAccountId[a.id] || []).slice().sort((x, y) => x.name.localeCompare(y.name));
                     if (funds.length > 0) {
-                        html += funds.map(f => {
+                        subrowsHtml += funds.map(f => {
                             const value = (f.units || 0) * (f.currentNav || 0);
                             return `
                                 <div class="config-item fund-subrow" style="cursor:pointer;" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}" data-back="accounts">
@@ -2097,7 +2123,7 @@
                 if (a.type === "fd") {
                     const placements = (fdPlacementsByAccountId[a.id] || []).slice().sort((x, y) => new Date(y.date) - new Date(x.date));
                     if (placements.length > 0) {
-                        html += placements.map(t => {
+                        subrowsHtml += placements.map(t => {
                             const isOverdue = new Date(t.fdMaturityDate + "T00:00:00").getTime() < new Date(new Date().toISOString().split("T")[0] + "T00:00:00").getTime();
                             const statusBadge = isOverdue
                                 ? `<span style="font-size:0.62rem; font-weight:700; color:#b91c1c; background:#fee2e2; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">⏰ Due</span>`
@@ -2114,12 +2140,52 @@
                         }).join("");
                     }
                 }
+
+                const isExpanded = expandedAccountSubrows.has(a.id);
+                // Caret toggle only rendered when there's actually a subrow list to collapse —
+                // stopPropagation isn't needed here since the click dispatcher resolves the
+                // nearest [data-click] ancestor via closest(), so tapping the caret fires only
+                // toggleAccountSubrows, not the row's own navigateToLedgerPage.
+                const subrowToggleHTML = subrowsHtml
+                    ? `<button type="button" class="subrow-toggle-btn" data-click="toggleAccountSubrows" data-id="${escapeHtml(a.id)}" aria-label="${isExpanded ? "Collapse" : "Expand"} details" title="${isExpanded ? "Collapse" : "Expand"} details">${isExpanded ? "▾" : "▸"}</button>`
+                    : "";
+
+                html += `
+                    <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="accounts">
+                        <span>
+                            <strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}
+                            <br>${accountOwnerTagHTML(a)}${linkedLine}${excludedLine}
+                        </span>
+                        <span style="display:flex; align-items:center; gap:6px;">
+                            ${subrowToggleHTML}
+                            <span style="color:var(--text-muted);">›</span>
+                        </span>
+                    </div>`;
+
+                if (subrowsHtml) {
+                    html += `<div id="acctSubrows-${escapeHtml(a.id)}" class="${isExpanded ? "" : "hidden"}">${subrowsHtml}</div>`;
+                }
             });
             flushSubgroupTotal();
             flushGroupTotal();
             document.getElementById("accountsPageList").innerHTML = html || (filter
                 ? `<p style="color:var(--text-muted); text-align:center; padding:24px 0; font-size:0.85rem;">No ${escapeHtml(filter.label)} accounts yet.</p>`
                 : `<p style="color:var(--text-muted); text-align:center; padding:24px 0; font-size:0.85rem;">No accounts yet — tap + to add one.</p>`);
+        }
+
+        // Wired to the ▸/▾ caret on an Accounts-page row that has fund/currency/FD-placement
+        // subrows (v62) — toggles just that one account's subrow container + caret glyph
+        // directly in the DOM rather than re-rendering the whole list, so the rest of the page
+        // (scroll position, any other account's expand state) is undisturbed.
+        function toggleAccountSubrows(el) {
+            const id = el.dataset.id;
+            const container = document.getElementById(`acctSubrows-${id}`);
+            if (!container) return;
+            const nowExpanded = container.classList.toggle("hidden") === false;
+            if (nowExpanded) expandedAccountSubrows.add(id); else expandedAccountSubrows.delete(id);
+            el.textContent = nowExpanded ? "▾" : "▸";
+            el.setAttribute("aria-label", `${nowExpanded ? "Collapse" : "Expand"} details`);
+            el.setAttribute("title", `${nowExpanded ? "Collapse" : "Expand"} details`);
         }
 
         // Shared by both entry points: the ✏️ icon on an account's Activity page, and (kept for
@@ -2199,14 +2265,15 @@
             renderFundActivityPage();
         }
 
-        function handleFundActivityBackClick() {
+        async function handleFundActivityBackClick() {
             if (fundActivityBackToPage === "ledger") {
                 showPage("page-ledger");
-                renderApp();
+                await renderApp();
             } else {
                 showPage("page-accounts");
-                renderAccountsPage();
+                await renderAccountsPage();
             }
+            window.scrollTo(0, workspaceScrollY);
         }
 
         function editFundFromActivityHeader() {
@@ -2274,14 +2341,15 @@
             renderCurrencyActivityPage();
         }
 
-        function handleCurrencyActivityBackClick() {
+        async function handleCurrencyActivityBackClick() {
             if (currencyActivityBackToPage === "accounts") {
                 showPage("page-accounts");
-                renderAccountsPage();
+                await renderAccountsPage();
             } else {
                 showPage("page-ledger");
-                renderApp();
+                await renderApp();
             }
+            window.scrollTo(0, workspaceScrollY);
         }
 
         // Renders the Currency Activity page: a native-currency balance banner (this basket's
@@ -6122,6 +6190,7 @@
             sidebarGoMember: (el) => sidebarGoMember(el),
             sidebarFilterAccountsByType: (el) => sidebarFilterAccountsByType(el),
             clearAccountsPageTypeFilter: () => clearAccountsPageTypeFilter(),
+            toggleAccountSubrows: (el) => toggleAccountSubrows(el),
             openMemberFormModal: () => openMemberFormModal(),
             handleCreateMemberMobile: () => handleCreateMemberMobile(),
             deleteMemberFromForm: () => deleteMemberFromForm(),

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v58";
+        const APP_VERSION = "v59";
         const APP_VERSION_DATE = "2026-08-18";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -2054,11 +2054,22 @@
                     const baskets = nativeBalances[a.id] || {};
                     const currencies = Object.keys(baskets).sort();
                     if (currencies.length > 0) {
-                        html += currencies.map(curr => `
+                        // Base-currency equivalent under each currency subrow, same
+                        // .converted-subtext pattern used on the Foreign Cash Activity page
+                        // (v58) — previously these subrows showed only the native amount.
+                        html += currencies.map(curr => {
+                            const subText = curr !== baseCurrency
+                                ? `<span class="converted-subtext" style="text-align:right;">≈ ${formatCurrency(convertCurrency(baskets[curr], curr, baseCurrency), baseCurrency)}</span>`
+                                : "";
+                            return `
                             <div class="config-item fund-subrow" style="cursor:pointer;" data-click="navigateToCurrencyActivityPage" data-id="${escapeHtml(a.id)}" data-currency="${escapeHtml(curr)}" data-back="accounts">
-                                <span>${escapeHtml(curr)} <span style="color:var(--text-muted); font-weight:600;">— ${formatBalanceHTML(baskets[curr], curr)}</span></span>
-                                <span style="color:var(--text-muted);">›</span>
-                            </div>`).join("");
+                                <span>${escapeHtml(curr)}</span>
+                                <span style="text-align:right;">
+                                    <span style="color:var(--text-muted); font-weight:600;">${formatBalanceHTML(baskets[curr], curr)} ›</span>
+                                    ${subText}
+                                </span>
+                            </div>`;
+                        }).join("");
                     }
                 }
 
@@ -3581,7 +3592,12 @@
                             : `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e2e8f0; color:var(--text-muted); font-weight:bold;">${escapeHtml(a.currency)}</span>`;
 
                 let balSummary;
-                if (a.type === "fd" || a.type === "multi" || a.type === "unittrust") {
+                if (a.type === "multi") {
+                    // Multi-Currency accounts (v55 on the global Accounts page, ported here now):
+                    // show the one converted Base total rather than a joined "+" string of native
+                    // amounts — this page had been left on the pre-v55 joined-string format.
+                    balSummary = `<strong>Base ${escapeHtml(baseCurrency)}: ${formatBalanceHTML(accountBaseValue(a, nativeBalances), baseCurrency)}</strong>`;
+                } else if (a.type === "fd" || a.type === "unittrust") {
                     const baskets = nativeBalances[a.id];
                     const currencies = Object.keys(baskets);
                     balSummary = currencies.length === 0

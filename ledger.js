@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v64";
+        const APP_VERSION = "v65";
         const APP_VERSION_DATE = "2026-08-18";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -73,12 +73,22 @@
         let accountsPageTypeFilter = null;
         // v62: which accounts' fund/currency/FD-placement subrows are expanded on the Accounts
         // page — collapsed by default (empty Set) so an account with many holdings doesn't push
-        // the rest of the list down; persists only for this session (reset on reload), same as
-        // every other page-local UI state in this file. v64: keys are "<filter>__<accountId>"
-        // (see subrowFilterKeyPrefix in renderAccountsPage), not just the raw account id, so the
-        // same account's expand state is independent between the unfiltered "All Accounts" list
-        // and any sidebar-filtered view (e.g. "Unit Trust") that also shows that account.
+        // the rest of the list down. v64: keys are "<filter>__<accountId>" (see
+        // subrowFilterKeyPrefix in renderAccountsPage), not just the raw account id, so the same
+        // account's expand state is independent between the unfiltered "All Accounts" list and
+        // any sidebar-filtered view (e.g. "Unit Trust") that also shows that account. v65: now
+        // persisted to the SETTINGS store (key "expandedAccountSubrows", value: array of keys) —
+        // saved on every toggle, loaded in bootstrap(), and included in backup export/import — so
+        // it survives a reload and carries over to a new device, instead of resetting each session.
         let expandedAccountSubrows = new Set();
+
+        // Fire-and-forget persist of expandedAccountSubrows to the SETTINGS store. Not awaited by
+        // callers (toggleAccountSubrows stays synchronous for instant UI feedback) — worst case on
+        // a write failure is the expand state not surviving a reload, which isn't destructive.
+        function saveExpandedAccountSubrows() {
+            writeDB(STORES.SETTINGS, { key: "expandedAccountSubrows", value: Array.from(expandedAccountSubrows) })
+                .catch(err => console.error("Failed to save subrow expand state:", err));
+        }
         let db;
 
         // Escapes a value for safe insertion into HTML text content or a double-quoted HTML
@@ -2199,6 +2209,7 @@
             if (!container) return;
             const nowExpanded = container.classList.toggle("hidden") === false;
             if (nowExpanded) expandedAccountSubrows.add(id); else expandedAccountSubrows.delete(id);
+            saveExpandedAccountSubrows();
             el.textContent = nowExpanded ? "▾" : "▸";
             el.setAttribute("aria-label", `${nowExpanded ? "Collapse" : "Expand"} details`);
             el.setAttribute("title", `${nowExpanded ? "Collapse" : "Expand"} details`);
@@ -5993,6 +6004,11 @@
             const storedRecentTxCount = await readKeyDB("settings", "recentTxCount");
             if (storedRecentTxCount) recentTxCount = storedRecentTxCount.value || 5;
 
+            const storedExpandedSubrows = await readKeyDB("settings", "expandedAccountSubrows");
+            if (storedExpandedSubrows && Array.isArray(storedExpandedSubrows.value)) {
+                expandedAccountSubrows = new Set(storedExpandedSubrows.value);
+            }
+
             await syncAndLoadCategories();
             await ensureDefaultCategories();
 
@@ -6044,6 +6060,12 @@
                 members: await readAllDB(STORES.MEMBERS),
                 funds: await readAllDB(STORES.FUNDS),
                 navHistory: await readAllDB(STORES.NAV_HISTORY),
+                // v65: full SETTINGS store dump ({key,value} rows — defaultPaymentAccount,
+                // defaultIncomeCategory, defaultExpenseCategory, recentTx* widget filters,
+                // expandedAccountSubrows, plus baseCurrency/fxRates which are also kept below as
+                // their own top-level fields for backward compatibility with older backups/import
+                // code that reads them directly off the bundle).
+                settings: await readAllDB(STORES.SETTINGS),
                 baseCurrency: baseCurrency,
                 fxRates: fxRates
             };
@@ -6198,6 +6220,31 @@
                     }
                     if (bundle.navHistory) {
                         for (const rec of bundle.navHistory) await writeDB(STORES.NAV_HISTORY, rec);
+                    }
+
+                    // v65: restore preferences from the SETTINGS store dump (defaultPaymentAccount,
+                    // defaultIncomeCategory, defaultExpenseCategory, recentTx* widget filters,
+                    // expandedAccountSubrows). Absent on older backups, so this is skipped entirely
+                    // for those — accounts/transactions/etc. still import fine, just without prefs.
+                    // baseCurrency/fxRates rows are included in this dump too but are already
+                    // applied above from bundle.baseCurrency/bundle.fxRates; writing them again here
+                    // is harmless (same values, same store row).
+                    if (bundle.settings && Array.isArray(bundle.settings)) {
+                        for (const rec of bundle.settings) {
+                            if (!rec || !rec.key) continue;
+                            await writeDB(STORES.SETTINGS, rec);
+                            switch (rec.key) {
+                                case "defaultPaymentAccount": defaultPaymentAccount = rec.value || ""; break;
+                                case "defaultIncomeCategory": defaultIncomeCategory = rec.value || ""; break;
+                                case "defaultExpenseCategory": defaultExpenseCategory = rec.value || ""; break;
+                                case "recentTxTypeFilter": recentTxTypeFilter = rec.value || "both"; break;
+                                case "recentTxAccountFilter": recentTxAccountFilter = rec.value || "all"; break;
+                                case "recentTxCount": recentTxCount = rec.value || 5; break;
+                                case "expandedAccountSubrows":
+                                    expandedAccountSubrows = new Set(Array.isArray(rec.value) ? rec.value : []);
+                                    break;
+                            }
+                        }
                     }
 
                     await syncAndLoadCategories();

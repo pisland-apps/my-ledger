@@ -1280,3 +1280,42 @@ the Accounts page
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v56.
+
+## v65: Preferences (default payment account, collapse/expand state,
+etc.) now travel with backup/restore
+
+Previously, `exportBackup()` only bundled financial data (accounts,
+transactions, categories, members, funds, navHistory) plus
+`baseCurrency`/`fxRates`. Everything else in the `settings` object
+store — Default Payment Account, Default Income/Expense Category, the
+dashboard "Recent Transactions" widget filters — lived on-device only
+and was silently dropped on import to a new device.
+
+- **Backup export**: `exportBackup()` now also includes a `settings`
+  array (a full dump of the `settings` object store's `{key, value}`
+  rows). `baseCurrency`/`fxRates` remain as their own top-level bundle
+  fields too, for backward compatibility with anything reading them
+  directly off older-style bundles — they're just duplicated into the
+  `settings` dump as well, harmlessly.
+- **Backup import**: `importBackup()` now applies each row in
+  `bundle.settings` back into the `settings` store and the matching
+  in-memory variable (`defaultPaymentAccount`,
+  `defaultIncomeCategory`, `defaultExpenseCategory`,
+  `recentTxTypeFilter`, `recentTxAccountFilter`, `recentTxCount`,
+  `expandedAccountSubrows`). Older backups without a `settings` field
+  still import fine — this block is simply skipped, exactly as before.
+- **Collapse/expand toggle state** (`expandedAccountSubrows`, the
+  ▸/▾ caret on Accounts-page fund/currency/FD-placement subrows,
+  since v62/v64): this used to be in-memory only and reset on every
+  page reload, even on the same device. It's now persisted to the
+  `settings` store on every toggle (key `expandedAccountSubrows`,
+  value: array of composite `<filter>__<accountId>` keys), loaded back
+  in `bootstrap()`, and included in the `settings` backup dump above —
+  so it now survives a reload *and* carries over to a new device.
+- No IndexedDB schema/version changes (`settings` store already
+  existed) and no changes to the encrypted-backup wrapper format —
+  just a larger plaintext bundle inside it. Verified with `node
+  --check`.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v65.

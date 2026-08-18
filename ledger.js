@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v62";
+        const APP_VERSION = "v63";
         const APP_VERSION_DATE = "2026-08-18";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -3479,6 +3479,13 @@
         // type up front and only offers shortcuts for types actually in use. Tapping one opens
         // the Accounts page filtered to just that group/sub-group (see
         // sidebarFilterAccountsByType / accountsPageTypeFilter).
+        // v63: whether the sidebar's "Financial Accounts" type-shortcut list (Current Account,
+        // Savings Account, ... Bank Loan) is expanded — completely separate state from
+        // expandedAccountSubrows (the Accounts-page fund/currency/FD subrow toggle, v62). The two
+        // toggles look similar but control unrelated parts of the UI (sidebar drawer vs. main
+        // content list) and were built to stay fully independent of each other.
+        let sidebarAccountShortcutsExpanded = true;
+
         async function renderSidebarAccountTypeShortcuts() {
             const wrap = document.getElementById("sidebarAccountTypeShortcuts");
             if (!wrap) return;
@@ -3496,6 +3503,36 @@
                     </button>
                 `;
             }).join("");
+            // wrap.innerHTML above rebuilds the list on every sidebar refresh (e.g. re-opening
+            // the drawer, an active-item update) — re-apply the collapsed/expanded state each
+            // time so a previous collapse doesn't get silently undone by the next render.
+            wrap.classList.toggle("hidden", !sidebarAccountShortcutsExpanded);
+            const toggleBtn = document.getElementById("sidebarAccountShortcutsToggle");
+            if (toggleBtn) {
+                toggleBtn.textContent = sidebarAccountShortcutsExpanded ? "▾" : "▸";
+                const label = `${sidebarAccountShortcutsExpanded ? "Collapse" : "Expand"} account type list`;
+                toggleBtn.setAttribute("aria-label", label);
+                toggleBtn.setAttribute("title", label);
+                // No shortcuts to show at all (no accounts yet) — hide the toggle itself rather
+                // than leaving a caret that expands/collapses an empty list.
+                toggleBtn.classList.toggle("hidden", usedTypes.length === 0);
+            }
+        }
+
+        // Wired to the ▾/▸ beside "Financial Accounts" in the sidebar — purely a local show/hide
+        // of the type-shortcut list; does not touch accountsPageTypeFilter or navigate anywhere,
+        // so it's safe to tap even while a filter from one of those shortcuts is still active.
+        function toggleSidebarAccountShortcuts() {
+            sidebarAccountShortcutsExpanded = !sidebarAccountShortcutsExpanded;
+            const wrap = document.getElementById("sidebarAccountTypeShortcuts");
+            if (wrap) wrap.classList.toggle("hidden", !sidebarAccountShortcutsExpanded);
+            const toggleBtn = document.getElementById("sidebarAccountShortcutsToggle");
+            if (toggleBtn) {
+                toggleBtn.textContent = sidebarAccountShortcutsExpanded ? "▾" : "▸";
+                const label = `${sidebarAccountShortcutsExpanded ? "Collapse" : "Expand"} account type list`;
+                toggleBtn.setAttribute("aria-label", label);
+                toggleBtn.setAttribute("title", label);
+            }
         }
 
         // Wired to each shortcut above — opens the Accounts page filtered to just that
@@ -6191,6 +6228,7 @@
             sidebarFilterAccountsByType: (el) => sidebarFilterAccountsByType(el),
             clearAccountsPageTypeFilter: () => clearAccountsPageTypeFilter(),
             toggleAccountSubrows: (el) => toggleAccountSubrows(el),
+            toggleSidebarAccountShortcuts: () => toggleSidebarAccountShortcuts(),
             openMemberFormModal: () => openMemberFormModal(),
             handleCreateMemberMobile: () => handleCreateMemberMobile(),
             deleteMemberFromForm: () => deleteMemberFromForm(),

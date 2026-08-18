@@ -973,9 +973,12 @@
             <button class="sidebar-item" data-click="sidebarGo" data-target="workspace">
                 <span class="sidebar-item-icon">🏠</span> Dashboard
             </button>
-            <button class="sidebar-item" data-click="navigateToAccountsPage">
-                <span class="sidebar-item-icon">🏦</span> Financial Accounts
-            </button>
+            <div class="sidebar-item-row" style="display:flex; align-items:center;">
+                <button class="sidebar-item" style="flex:1;" data-click="navigateToAccountsPage">
+                    <span class="sidebar-item-icon">🏦</span> Financial Accounts
+                </button>
+                <button type="button" class="subrow-toggle-btn" id="sidebarAccountShortcutsToggle" data-click="toggleSidebarAccountShortcuts" aria-label="Collapse account type list" title="Collapse account type list">▾</button>
+            </div>
             <div id="sidebarAccountTypeShortcuts"></div>
             <button class="sidebar-item" data-click="navigateToNavUpdatePage">
                 <span class="sidebar-item-icon">📊</span> Daily NAV Update

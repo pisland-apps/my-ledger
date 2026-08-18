@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v60";
+        const APP_VERSION = "v61";
         const APP_VERSION_DATE = "2026-08-18";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -2056,18 +2056,18 @@
                     if (currencies.length > 0) {
                         // Base-currency equivalent under each currency subrow, same
                         // .converted-subtext pattern used on the Foreign Cash Activity page
-                        // (v58) — previously these subrows showed only the native amount.
+                        // (v58). Name+amount combined into the left span with the chevron alone
+                        // on the right (v60 fix, same as the Unit Trust fund subrow above) —
+                        // the earlier v59 version still split name (left) from amount+chevron
+                        // (right), which left the same big empty-middle gap it was meant to fix.
                         html += currencies.map(curr => {
                             const subText = curr !== baseCurrency
-                                ? `<span class="converted-subtext" style="text-align:right;">≈ ${formatCurrency(convertCurrency(baskets[curr], curr, baseCurrency), baseCurrency)}</span>`
+                                ? `<span class="converted-subtext">≈ ${formatCurrency(convertCurrency(baskets[curr], curr, baseCurrency), baseCurrency)}</span>`
                                 : "";
                             return `
                             <div class="config-item fund-subrow" style="cursor:pointer;" data-click="navigateToCurrencyActivityPage" data-id="${escapeHtml(a.id)}" data-currency="${escapeHtml(curr)}" data-back="accounts">
-                                <span>${escapeHtml(curr)}</span>
-                                <span style="text-align:right;">
-                                    <span style="color:var(--text-muted); font-weight:600;">${formatBalanceHTML(baskets[curr], curr)} ›</span>
-                                    ${subText}
-                                </span>
+                                <span>${escapeHtml(curr)} <span style="color:var(--text-muted); font-weight:600;">— ${formatBalanceHTML(baskets[curr], curr)}</span>${subText}</span>
+                                <span style="color:var(--text-muted);">›</span>
                             </div>`;
                         }).join("");
                     }

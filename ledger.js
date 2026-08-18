@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v63";
+        const APP_VERSION = "v64";
         const APP_VERSION_DATE = "2026-08-18";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -74,7 +74,10 @@
         // v62: which accounts' fund/currency/FD-placement subrows are expanded on the Accounts
         // page — collapsed by default (empty Set) so an account with many holdings doesn't push
         // the rest of the list down; persists only for this session (reset on reload), same as
-        // every other page-local UI state in this file.
+        // every other page-local UI state in this file. v64: keys are "<filter>__<accountId>"
+        // (see subrowFilterKeyPrefix in renderAccountsPage), not just the raw account id, so the
+        // same account's expand state is independent between the unfiltered "All Accounts" list
+        // and any sidebar-filtered view (e.g. "Unit Trust") that also shows that account.
         let expandedAccountSubrows = new Set();
         let db;
 
@@ -1963,6 +1966,14 @@
                 : accounts;
             const sorted = sortAccountsByGroupThenName(filtered);
 
+            // v64: the collapse/expand state (expandedAccountSubrows) used to be keyed by
+            // account id alone, so the same account's subrows showed the same open/closed state
+            // whichever way you reached this page — e.g. via the unfiltered "Financial Accounts"
+            // full list vs. a sidebar shortcut like "Unit Trust" that filters down to the same
+            // account. Prefixing the key with the active filter (or "all" when unfiltered) makes
+            // each of those a separate view with its own independent expand state.
+            const subrowFilterKeyPrefix = (filter ? `${filter.group}_${filter.subgroup || "none"}` : "all").replace(/\s+/g, "-");
+
             const titleEl = document.getElementById("accountsPageListTitle");
             const hintEl = document.getElementById("accountsPageFilterHint");
             if (titleEl) titleEl.textContent = filter ? filter.label : "All Accounts";
@@ -2003,6 +2014,7 @@
             }
 
             sorted.forEach(a => {
+                const subrowKey = `${subrowFilterKeyPrefix}__${a.id}`;
                 const group = a.group || DEFAULT_ACCOUNT_GROUP;
                 const subgroup = a.subgroup || "";
                 if (group !== lastGroup) {
@@ -2141,13 +2153,13 @@
                     }
                 }
 
-                const isExpanded = expandedAccountSubrows.has(a.id);
+                const isExpanded = expandedAccountSubrows.has(subrowKey);
                 // Caret toggle only rendered when there's actually a subrow list to collapse —
                 // stopPropagation isn't needed here since the click dispatcher resolves the
                 // nearest [data-click] ancestor via closest(), so tapping the caret fires only
                 // toggleAccountSubrows, not the row's own navigateToLedgerPage.
                 const subrowToggleHTML = subrowsHtml
-                    ? `<button type="button" class="subrow-toggle-btn" data-click="toggleAccountSubrows" data-id="${escapeHtml(a.id)}" aria-label="${isExpanded ? "Collapse" : "Expand"} details" title="${isExpanded ? "Collapse" : "Expand"} details">${isExpanded ? "▾" : "▸"}</button>`
+                    ? `<button type="button" class="subrow-toggle-btn" data-click="toggleAccountSubrows" data-id="${escapeHtml(subrowKey)}" aria-label="${isExpanded ? "Collapse" : "Expand"} details" title="${isExpanded ? "Collapse" : "Expand"} details">${isExpanded ? "▾" : "▸"}</button>`
                     : "";
 
                 html += `
@@ -2163,7 +2175,7 @@
                     </div>`;
 
                 if (subrowsHtml) {
-                    html += `<div id="acctSubrows-${escapeHtml(a.id)}" class="${isExpanded ? "" : "hidden"}">${subrowsHtml}</div>`;
+                    html += `<div id="acctSubrows-${escapeHtml(subrowKey)}" class="${isExpanded ? "" : "hidden"}">${subrowsHtml}</div>`;
                 }
             });
             flushSubgroupTotal();
@@ -2176,7 +2188,11 @@
         // Wired to the ▸/▾ caret on an Accounts-page row that has fund/currency/FD-placement
         // subrows (v62) — toggles just that one account's subrow container + caret glyph
         // directly in the DOM rather than re-rendering the whole list, so the rest of the page
-        // (scroll position, any other account's expand state) is undisturbed.
+        // (scroll position, any other account's expand state) is undisturbed. `id` here is the
+        // composite "<filter>__<accountId>" key (v64), not the raw account id — expand state is
+        // scoped per filtered view (see subrowFilterKeyPrefix in renderAccountsPage), so the same
+        // account can be independently expanded/collapsed in the unfiltered "All Accounts" list
+        // vs. a sidebar-filtered view like "Unit Trust" without one affecting the other.
         function toggleAccountSubrows(el) {
             const id = el.dataset.id;
             const container = document.getElementById(`acctSubrows-${id}`);

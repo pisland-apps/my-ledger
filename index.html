@@ -687,16 +687,6 @@
             width: 15px; height: 15px; min-width: 15px; flex-shrink: 0; margin: 0; cursor: pointer;
         }
 
-        /* Bottom "More" action buttons on the dashboard — icon-only, one row */
-        .dashboard-bottom-actions { display: flex; flex-direction: row; gap: 10px; margin-bottom: 8px; }
-        .dash-bottom-btn {
-            display: flex; align-items: center; justify-content: center; flex: 1;
-            background: var(--card-bg); border: 1.5px solid var(--border-color); border-radius: 12px;
-            padding: 18px 0; cursor: pointer;
-        }
-        .dash-bottom-btn:active { background: #f1f5f9; }
-        .dash-bottom-btn-icon { font-size: 1.7rem; }
-
         /* Sidebar member rows */
         .sidebar-member-item {
             display: flex; align-items: center; gap: 12px; padding: 10px 20px; font-weight: 700;
@@ -1096,6 +1086,7 @@
                 <button class="currency-pill" data-click="openCurrencyConfig">
                     Base: <span id="currentBasePill">USD</span> ⚙
                 </button>
+                <button class="lock-btn-header" title="Export &amp; Import" aria-label="Export and Import" data-click="sidebarGo" data-target="backup">💾</button>
                 <button class="lock-btn-header" title="Lock app now" data-click="lockAppNow">🔒</button>
             </div>
         </header>
@@ -1157,7 +1148,7 @@
             </div>
         </div>
 
-        <div class="section-header">
+        <div class="section-header" style="cursor:pointer;" data-click="navigateToAccountsPage">
             <span class="section-title">Accounts</span>
             <button class="text-btn" data-click="togglePinnedAccountsSettings">⚙ Settings</button>
         </div>
@@ -1195,21 +1186,6 @@
             </div>
         </div>
         <div class="ledger-container" id="recentTxList"></div>
-
-        <div class="section-header">
-            <span class="section-title">More</span>
-        </div>
-        <div class="dashboard-bottom-actions">
-            <button class="dash-bottom-btn" data-click="navigateToAccountsPage" title="Financial Accounts" aria-label="Financial Accounts">
-                <span class="dash-bottom-btn-icon">🏦</span>
-            </button>
-            <button class="dash-bottom-btn" data-click="sidebarGo" data-target="backup" title="Export &amp; Import" aria-label="Export &amp; Import">
-                <span class="dash-bottom-btn-icon">💾</span>
-            </button>
-            <button class="dash-bottom-btn" data-click="navigateToDataSecurityPage" title="Setting" aria-label="Setting">
-                <span class="dash-bottom-btn-icon">⚙️</span>
-            </button>
-        </div>
     </div>
 
 

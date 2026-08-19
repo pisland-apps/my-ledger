@@ -3122,13 +3122,41 @@
 
             const todayMs = Date.now();
 
-            // Groups every fund-linked transaction under this account by fundId — used both to
-            // compute each live fund's invested-cash-basis figure, and to find transactions whose
-            // fundId no longer resolves to any fund record under this account (orphaned).
+            const liveFundIds = new Set(funds.map(f => f.id));
+
+            // Every fund record that currently exists ANYWHERE in the app, not just under this
+            // account — used to tell "this fund still exists, just under a different Unit Trust
+            // account" apart from "this fund was genuinely deleted". `allTxs` here is the
+            // whole-app transaction list (renderApp() passes it in unfiltered), so without this
+            // check every OTHER account's live fund transactions were being swept up below as
+            // orphaned "fund deleted" rows belonging to THIS account too — inflating this
+            // account's Fund Holdings total (and Current Balance) with every other Unit Trust
+            // account's holdings, and showing each of those funds as "deleted" here even while
+            // it's alive and well under its real account.
+            const allFunds = await readAllDB(STORES.FUNDS);
+            const fundExistsElsewhere = new Set(allFunds.filter(f => !liveFundIds.has(f.id)).map(f => f.id));
+
+            // Groups every fund-linked transaction that actually belongs to this account by
+            // fundId — used both to compute each live fund's invested-cash-basis figure, and to
+            // find transactions whose fundId no longer resolves to any fund record under this
+            // account (orphaned).
             const fundTxsByFundId = {};
             allTxs.forEach(t => {
                 if (!t.fundId) return;
-                (fundTxsByFundId[t.fundId] = fundTxsByFundId[t.fundId] || []).push(t);
+                if (liveFundIds.has(t.fundId)) {
+                    // One of this account's own live funds — always relevant, regardless of tx type.
+                    (fundTxsByFundId[t.fundId] = fundTxsByFundId[t.fundId] || []).push(t);
+                    return;
+                }
+                if (fundExistsElsewhere.has(t.fundId)) return; // belongs to a different account's live fund — already shown there, not ours
+                // Fund genuinely deleted everywhere — only attribute it to THIS account if the
+                // transaction itself references this account. Buy/Sell/Dividend(Reinvest)/
+                // Contribution all do via src/dest; Dividend (Cheque Payout) doesn't carry any
+                // account link once its fund is gone, so it's left out here rather than guessed
+                // at (better to drop it than misattribute it to the wrong account).
+                if (t.src === accountId || t.dest === accountId) {
+                    (fundTxsByFundId[t.fundId] = fundTxsByFundId[t.fundId] || []).push(t);
+                }
             });
 
             function computeInvested(fundTxs) {
@@ -3216,7 +3244,6 @@
             // other way). Grouped and shown as their own read-only row so their cash basis still
             // counts toward the Totals row below — there's no live NAV left to value them at, so
             // Value is shown at cost (= Invested, P/L "-") rather than guessed.
-            const liveFundIds = new Set(funds.map(f => f.id));
             const orphanFundIds = Object.keys(fundTxsByFundId).filter(fid => !liveFundIds.has(fid));
             orphanFundIds.forEach(fid => {
                 const fundTxs = fundTxsByFundId[fid].slice().sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -5399,6 +5426,7 @@
             const unitTrustAccounts = accounts.filter(a => a.type === "unittrust");
             if (unitTrustAccounts.length > 0) {
                 const funds = await readAllDB(STORES.FUNDS);
+                const allFundIds = new Set(funds.map(f => f.id));
                 const fundsByAccountId = {};
                 funds.forEach(f => { (fundsByAccountId[f.accountId] = fundsByAccountId[f.accountId] || []).push(f); });
 
@@ -5414,10 +5442,22 @@
                     // account's balance. There's no live NAV left to mark them at, so they're
                     // valued at remaining cost basis, exactly like the Fund Holdings table's own
                     // "(fund deleted)" row.
+                    //
+                    // `txs` here is the whole-app transaction list, so a transaction's fundId can
+                    // belong to a fund that's still alive under a DIFFERENT unit trust account —
+                    // that's not orphaned, it's just not ours, and must be excluded rather than
+                    // counted here too (otherwise every account's balance silently includes every
+                    // other account's fund holdings — see renderFundHoldingsTable() for the same fix).
                     const liveFundIds = new Set(accFunds.map(f => f.id));
                     const orphanTxsByFundId = {};
                     txs.forEach(t => {
                         if (!t.fundId || liveFundIds.has(t.fundId)) return;
+                        if (allFundIds.has(t.fundId)) return; // alive under a different account — shown/counted there instead
+                        // Fund deleted everywhere — only attribute it to this account if the
+                        // transaction itself references this account (true for Buy/Sell/
+                        // Dividend(Reinvest)/Contribution; Dividend Cheque Payout carries no
+                        // account link once its fund is gone, so it's left out rather than guessed).
+                        if (t.src !== acc.id && t.dest !== acc.id) return;
                         (orphanTxsByFundId[t.fundId] = orphanTxsByFundId[t.fundId] || []).push(t);
                     });
                     Object.values(orphanTxsByFundId).forEach(fTxs => {

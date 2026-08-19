@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v71";
+        const APP_VERSION = "v72";
         const APP_VERSION_DATE = "2026-08-19";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -3979,6 +3979,7 @@
             document.getElementById("catLabelName").value = "";
             document.getElementById("catSelectedEmoji").value = "🍔";
             document.getElementById("currentSelectedEmojiBadge").textContent = "🍔";
+            document.getElementById("catExcludeFromSavings").checked = false;
             buildEmojiSelectionPanel();
             openModal("categoriesModal");
         }
@@ -4065,14 +4066,16 @@
             }
 
             const categoryId = "cat_" + Date.now();
+            const excludeFromSavings = document.getElementById("catExcludeFromSavings").checked;
             try {
-                await writeDB(STORES.CATEGORIES, { id: categoryId, name, type, icon });
+                await writeDB(STORES.CATEGORIES, { id: categoryId, name, type, icon, excludeFromSavings });
             } catch (err) {
                 alert("Could not save category: " + (err && err.message ? err.message : err));
                 return;
             }
 
             document.getElementById("catLabelName").value = "";
+            document.getElementById("catExcludeFromSavings").checked = false;
             
             await syncAndLoadCategories();
             await refreshAfterCategoryChange();
@@ -4093,10 +4096,19 @@
         async function renderCategoriesPage() {
             populateDefaultCategorySelects();
 
+            // v72: the 📊 toggle flips excludeFromSavings in place (no separate edit modal needed
+            // for existing/default-provisioned categories like "Family") — solid + labeled when a
+            // category is currently excluded, dim when it counts normally in the report.
             const rowHtml = c => `
                 <div class="config-item">
-                    <span class="category-display-badge"><span>${c.icon}</span> <strong>${escapeHtml(c.name)}</strong></span>
-                    <button class="trash-btn" data-click="removeCategory" data-id="${escapeHtml(c.id)}">🗑</button>
+                    <span class="category-display-badge">
+                        <span>${c.icon}</span> <strong>${escapeHtml(c.name)}</strong>
+                        ${c.excludeFromSavings ? '<span style="font-size:0.65rem; color:#92400e; font-weight:700; margin-left:6px;">🚫 Not in Report</span>' : ''}
+                    </span>
+                    <div style="display:flex; align-items:center;">
+                        <button class="trash-btn" data-click="toggleCategoryExcludeFromSavings" data-id="${escapeHtml(c.id)}" title="${c.excludeFromSavings ? 'Included in Net Savings Report' : 'Excluded from Net Savings Report'}" style="opacity:${c.excludeFromSavings ? '1' : '0.3'};">📊</button>
+                        <button class="trash-btn" data-click="removeCategory" data-id="${escapeHtml(c.id)}">🗑</button>
+                    </div>
                 </div>`;
 
             const incomeCats = dynamicCategories.filter(c => c.type === "income");
@@ -4106,6 +4118,22 @@
                 || `<p style="color:var(--text-muted); padding:8px 0; font-size:0.85rem;">No income categories yet.</p>`;
             document.getElementById("categoriesPageExpenseList").innerHTML = expenseCats.map(rowHtml).join("")
                 || `<p style="color:var(--text-muted); padding:8px 0; font-size:0.85rem;">No expense categories yet.</p>`;
+        }
+
+        // v72: flips whether transactions in this category are counted in the Net Savings Report's
+        // Surplus/Deficit or tallied separately as "Excluded from Report" (see renderSavingsStatement).
+        async function toggleCategoryExcludeFromSavings(id) {
+            const cat = dynamicCategories.find(c => c.id === id);
+            if (!cat) return;
+            const updated = { ...cat, excludeFromSavings: !cat.excludeFromSavings };
+            try {
+                await writeDB(STORES.CATEGORIES, updated);
+            } catch (err) {
+                alert("Could not update category: " + (err && err.message ? err.message : err));
+                return;
+            }
+            await syncAndLoadCategories();
+            await refreshAfterCategoryChange();
         }
 
         async function removeCategory(id) {
@@ -5902,9 +5930,18 @@
             const currentIncomeCategories = [...new Set([...dynamicCategories.filter(c => c.type === "income").map(c => c.name), "Salary", "Investments", "Freelance", "Other Income"])];
             const currentExpenseCategories = [...new Set([...dynamicCategories.filter(c => c.type === "expense").map(c => c.name), "Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"])];
 
+            // v72: categories flagged "Exclude from Net Savings Report" (Manage Categories) —
+            // their transactions are pulled out of incBaseTotal/expBaseTotal/catSummary below and
+            // tallied separately into excludedSummary/excludedNetTotal instead, so they don't move
+            // the Surplus/Deficit but still show up as their own total on this page.
+            const excludedCatNames = new Set(dynamicCategories.filter(c => c.excludeFromSavings).map(c => c.name));
+
             const catSummary = { income: {}, expense: {} };
             currentIncomeCategories.forEach(c => catSummary.income[c] = 0);
             currentExpenseCategories.forEach(c => catSummary.expense[c] = 0);
+
+            const excludedSummary = {};
+            let excludedNetTotal = 0;
 
             let incBaseTotal = 0, expBaseTotal = 0;
             txs.forEach(t => {
@@ -5912,10 +5949,22 @@
 
                 const tBase = convertTxAmountToBase(t, accounts);
                 if (t.type === "income") {
+                    if (excludedCatNames.has(t.cat)) {
+                        excludedSummary[t.cat] = excludedSummary[t.cat] || { value: 0, type: "income" };
+                        excludedSummary[t.cat].value += tBase;
+                        excludedNetTotal += tBase;
+                        return;
+                    }
                     incBaseTotal += tBase;
                     catSummary.income[t.cat] = (catSummary.income[t.cat] || 0) + tBase;
                 }
                 if (t.type === "expense") {
+                    if (excludedCatNames.has(t.cat)) {
+                        excludedSummary[t.cat] = excludedSummary[t.cat] || { value: 0, type: "expense" };
+                        excludedSummary[t.cat].value += tBase;
+                        excludedNetTotal -= tBase;
+                        return;
+                    }
                     expBaseTotal += tBase;
                     catSummary.expense[t.cat] = (catSummary.expense[t.cat] || 0) + tBase;
                 }
@@ -5955,6 +6004,34 @@
             document.getElementById("savingsSurplusLabel").textContent = statementDiff >= 0 ? "Surplus Margin (Savings):" : "Deficit (Shortfall Margin):";
             document.getElementById("savingsSurplusValue").textContent = formatCurrency(statementDiff, baseCurrency);
             document.getElementById("savingsSurplusValue").style.color = statementDiff >= 0 ? "var(--income-color)" : "var(--expense-color)";
+
+            // v72: "Excluded from Report" card — categories flagged excludeFromSavings (e.g.
+            // "Family" gifts), tallied but kept out of the Surplus/Deficit above. Hidden entirely
+            // when nothing's excluded so the page looks exactly like before for anyone not using
+            // the feature.
+            let excludedRowsHTML = "";
+            Object.keys(excludedSummary).sort((a, b) => a.localeCompare(b)).forEach(c => {
+                const entry = excludedSummary[c];
+                if (Math.abs(entry.value) < SAVINGS_ZERO_EPS) return;
+                const icon = getCategoryIcon(c, entry.type);
+                const sign = entry.type === "income" ? "+" : "-";
+                const color = entry.type === "income" ? "var(--income-color)" : "var(--expense-color)";
+                excludedRowsHTML += `
+                    <div class="statement-row" data-click="navigateToCategoryPage" data-category="${escapeHtml(c)}" data-back="savings">
+                        <strong>${icon} ${escapeHtml(c)}</strong>
+                        <span style="color:${color}; font-weight:700;">${sign}${formatCurrency(entry.value, baseCurrency)}</span>
+                    </div>
+                `;
+            });
+            const excludedCard = document.getElementById("savingsExcludedCard");
+            if (excludedRowsHTML) {
+                excludedCard.style.display = "";
+                document.getElementById("savingsExcludedRows").innerHTML = excludedRowsHTML;
+                document.getElementById("savingsExcludedTotal").textContent = formatCurrency(Math.abs(excludedNetTotal) < SAVINGS_ZERO_EPS ? 0 : excludedNetTotal, baseCurrency);
+                document.getElementById("savingsExcludedTotal").style.color = excludedNetTotal >= 0 ? "var(--income-color)" : "var(--expense-color)";
+            } else {
+                excludedCard.style.display = "none";
+            }
         }
 
         // --- SPENDING / INCOME BREAKDOWN PAGES (moved out of dashboard + Income Breakdown added, v32) ---
@@ -6559,6 +6636,7 @@
             editAccount: (el) => editAccount(el.dataset.id),
             removeAccount: (el) => removeAccount(el.dataset.id),
             removeCategory: (el) => removeCategory(el.dataset.id),
+            toggleCategoryExcludeFromSavings: (el) => toggleCategoryExcludeFromSavings(el.dataset.id),
             openResolveFdModal: (el) => openResolveFdModal(Number(el.dataset.id)),
             navigateToLedgerPage: (el) => navigateToLedgerPage(el.dataset.id, el.dataset.back || "workspace"),
             openImageViewer: (el, e) => openImageViewer(el.dataset.image, e),

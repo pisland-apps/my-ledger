@@ -1568,6 +1568,20 @@
                 <span id="savingsSurplusValue">0.00</span>
             </div>
         </div>
+
+        <!-- v72: categories flagged "Exclude from Net Savings Report" (Manage Categories) are left
+             out of the Income/Expense totals and Surplus above, and tallied here instead — e.g.
+             gifts to family that leave your account but shouldn't count as personal spending.
+             Hidden entirely when nothing is excluded. -->
+        <div class="statement-card" id="savingsExcludedCard" style="display:none; background:#f8fafc;">
+            <h4 style="margin-bottom:4px; color:var(--text-muted);">EXCLUDED FROM REPORT</h4>
+            <p style="font-size:0.7rem; color:var(--text-muted); margin-bottom:10px;">Not counted in the Surplus/Deficit above.</p>
+            <div id="savingsExcludedRows"></div>
+            <div class="statement-row" style="border-top:2px solid var(--border-color); margin-top:8px; padding-top:8px;">
+                <strong>Total Excluded</strong>
+                <span id="savingsExcludedTotal" style="color: var(--text-muted); font-weight:800;">0.00</span>
+            </div>
+        </div>
     </div>
 
     <!-- ================= PAGE: DATA SECURITY HUB (replaces sidebar "Data & Security" section) ================= -->
@@ -1905,6 +1919,18 @@
                 <div class="form-row" style="margin-bottom: 8px;">
                     <label>Selected Badge Icon: <span id="currentSelectedEmojiBadge" style="font-size:1.1rem; font-weight:bold;">🍔</span></label>
                     <input type="hidden" id="catSelectedEmoji" value="🍔">
+                </div>
+
+                <div class="form-row" style="margin-bottom: 8px;">
+                    <label style="display:flex; align-items:center; gap:8px; font-weight:600; cursor:pointer;">
+                        <input type="checkbox" id="catExcludeFromSavings" style="width:auto;">
+                        Exclude from Net Savings Report
+                    </label>
+                    <p style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">
+                        For money that leaves your account but isn't really "spending" — e.g. gifts to family.
+                        Transactions in this category are left out of the Surplus/Deficit calculation and
+                        shown as a separate total instead.
+                    </p>
                 </div>
 
                 <!-- Rich Emoji Directory Grid -->

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v72";
+        const APP_VERSION = "v73";
         const APP_VERSION_DATE = "2026-08-19";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -5549,6 +5549,12 @@
 
             let incBaseTotal = 0, expBaseTotal = 0;
             let catSummary = { income: {}, expense: {} };
+            // v73: categories flagged "Exclude from Net Savings Report" (Manage Categories) are
+            // left out of the dashboard's own Income/Expense/Savings banner totals too, so it
+            // matches the dedicated Net Savings Statement page rather than quietly disagreeing
+            // with it. catSummary below is intentionally left untouched — nothing on this page
+            // renders it, so there's nothing for the exclusion to affect there.
+            const excludedCatNamesForBanner = new Set(dynamicCategories.filter(c => c.excludeFromSavings).map(c => c.name));
             
             // Prime fallback and custom categories
             const currentIncomeCategories = [...new Set([...dynamicCategories.filter(c => c.type === "income").map(c => c.name), "Salary", "Investments", "Freelance", "Other Income"])];
@@ -5688,12 +5694,12 @@
 
                 if (withinPeriodFilter) {
                     if (t.type === "income") { 
-                        incBaseTotal += tBase; 
+                        if (!excludedCatNamesForBanner.has(t.cat)) incBaseTotal += tBase; 
                         if(catSummary.income[t.cat] !== undefined) catSummary.income[t.cat] += tBase;
                         else catSummary.income[t.cat] = tBase;
                     }
                     if (t.type === "expense") { 
-                        expBaseTotal += tBase; 
+                        if (!excludedCatNamesForBanner.has(t.cat)) expBaseTotal += tBase; 
                         if(catSummary.expense[t.cat] !== undefined) catSummary.expense[t.cat] += tBase;
                         else catSummary.expense[t.cat] = tBase;
                     }
@@ -6144,8 +6150,14 @@
             const chartType = document.getElementById("spendingChartType").value;
             const memberAccountIds = filterMember !== "all" ? accountIdsForMember(accounts, filterMember) : null;
 
+            // v73: categories flagged "Exclude from Net Savings Report" (Manage Categories) are
+            // pulled out of the chart/total below and tallied into their own card instead —
+            // matches the same treatment on the Net Savings Statement page.
+            const excludedCatNames = new Set(dynamicCategories.filter(c => c.excludeFromSavings).map(c => c.name));
+
             const catTotals = {};
-            let total = 0;
+            const excludedTotals = {};
+            let total = 0, excludedTotal = 0;
             txs.forEach(t => {
                 if (t.type !== "expense") return;
                 if (memberAccountIds && !memberAccountIds.has(t.src)) return;
@@ -6154,6 +6166,11 @@
                 if (filterY !== "all" && d.getFullYear().toString() !== filterY) return;
                 const tBase = convertTxAmountToBase(t, accounts);
                 const cat = t.cat || "Other Expenses";
+                if (excludedCatNames.has(cat)) {
+                    excludedTotals[cat] = (excludedTotals[cat] || 0) + tBase;
+                    excludedTotal += tBase;
+                    return;
+                }
                 catTotals[cat] = (catTotals[cat] || 0) + tBase;
                 total += tBase;
             });
@@ -6166,6 +6183,19 @@
             document.getElementById("spendingBreakdownTotal").textContent = formatCurrency(total, baseCurrency);
             renderBreakdownChart("spendingBreakdownChartWrap", chartType, entries, total, "expense");
             document.getElementById("spendingBreakdownList").innerHTML = buildBreakdownListHTML(entries, total, "expense");
+
+            const excludedEntries = Object.keys(excludedTotals)
+                .filter(c => excludedTotals[c] > 0)
+                .sort((a, b) => excludedTotals[b] - excludedTotals[a])
+                .map((c, i) => ({ label: c, value: excludedTotals[c], color: BREAKDOWN_CHART_COLORS[i % BREAKDOWN_CHART_COLORS.length] }));
+            const excludedCard = document.getElementById("spendingBreakdownExcludedCard");
+            if (excludedEntries.length) {
+                excludedCard.style.display = "";
+                document.getElementById("spendingBreakdownExcludedTotal").textContent = formatCurrency(excludedTotal, baseCurrency);
+                document.getElementById("spendingBreakdownExcludedList").innerHTML = buildBreakdownListHTML(excludedEntries, excludedTotal, "expense");
+            } else {
+                excludedCard.style.display = "none";
+            }
         }
 
         async function renderIncomeBreakdownPage() {
@@ -6179,8 +6209,11 @@
             const chartType = document.getElementById("incomeChartType").value;
             const memberAccountIds = filterMember !== "all" ? accountIdsForMember(accounts, filterMember) : null;
 
+            const excludedCatNames = new Set(dynamicCategories.filter(c => c.excludeFromSavings).map(c => c.name));
+
             const catTotals = {};
-            let total = 0;
+            const excludedTotals = {};
+            let total = 0, excludedTotal = 0;
             txs.forEach(t => {
                 if (t.type !== "income") return;
                 if (memberAccountIds && !memberAccountIds.has(t.src)) return;
@@ -6189,6 +6222,11 @@
                 if (filterY !== "all" && d.getFullYear().toString() !== filterY) return;
                 const tBase = convertTxAmountToBase(t, accounts);
                 const cat = t.cat || "Other Income";
+                if (excludedCatNames.has(cat)) {
+                    excludedTotals[cat] = (excludedTotals[cat] || 0) + tBase;
+                    excludedTotal += tBase;
+                    return;
+                }
                 catTotals[cat] = (catTotals[cat] || 0) + tBase;
                 total += tBase;
             });
@@ -6201,6 +6239,19 @@
             document.getElementById("incomeBreakdownTotal").textContent = formatCurrency(total, baseCurrency);
             renderBreakdownChart("incomeBreakdownChartWrap", chartType, entries, total, "income");
             document.getElementById("incomeBreakdownList").innerHTML = buildBreakdownListHTML(entries, total, "income");
+
+            const excludedEntries = Object.keys(excludedTotals)
+                .filter(c => excludedTotals[c] > 0)
+                .sort((a, b) => excludedTotals[b] - excludedTotals[a])
+                .map((c, i) => ({ label: c, value: excludedTotals[c], color: BREAKDOWN_CHART_COLORS[i % BREAKDOWN_CHART_COLORS.length] }));
+            const excludedCard = document.getElementById("incomeBreakdownExcludedCard");
+            if (excludedEntries.length) {
+                excludedCard.style.display = "";
+                document.getElementById("incomeBreakdownExcludedTotal").textContent = formatCurrency(excludedTotal, baseCurrency);
+                document.getElementById("incomeBreakdownExcludedList").innerHTML = buildBreakdownListHTML(excludedEntries, excludedTotal, "income");
+            } else {
+                excludedCard.style.display = "none";
+            }
         }
 
         // Generic year-filter populator (mirrors populateYearFilterOptions/populateSavingsYearFilterOptions)

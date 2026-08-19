@@ -1479,6 +1479,17 @@
             <div id="spendingBreakdownChartWrap"></div>
             <div id="spendingBreakdownList" style="display:flex; flex-direction:column; gap:8px; margin-top:10px;"></div>
         </div>
+
+        <!-- v73: categories flagged "Exclude from Net Savings Report" (Manage Categories) are left
+             out of the total/chart above and tallied here instead, matching the Net Savings
+             Statement page. Hidden entirely when nothing is excluded. -->
+        <div class="report-card" id="spendingBreakdownExcludedCard" style="display:none; background:#f8fafc; margin-top:10px;">
+            <div style="font-size:0.8rem; font-weight:700; color:var(--text-muted); margin-bottom:2px;">
+                Excluded from Report: <span id="spendingBreakdownExcludedTotal" style="color:var(--text-muted);">0.00</span>
+            </div>
+            <p style="font-size:0.7rem; color:var(--text-muted); margin-bottom:8px;">Not counted in Total Spending above.</p>
+            <div id="spendingBreakdownExcludedList" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
     </div>
 
     <!-- ================= PAGE: INCOME BREAKDOWN (new, v32) ================= -->
@@ -1524,6 +1535,16 @@
             </div>
             <div id="incomeBreakdownChartWrap"></div>
             <div id="incomeBreakdownList" style="display:flex; flex-direction:column; gap:8px; margin-top:10px;"></div>
+        </div>
+
+        <!-- v73: mirrors the Excluded card on the Spending Breakdown page above, for income-side
+             excluded categories (rare, but the toggle in Manage Categories isn't type-restricted). -->
+        <div class="report-card" id="incomeBreakdownExcludedCard" style="display:none; background:#f8fafc; margin-top:10px;">
+            <div style="font-size:0.8rem; font-weight:700; color:var(--text-muted); margin-bottom:2px;">
+                Excluded from Report: <span id="incomeBreakdownExcludedTotal" style="color:var(--text-muted);">0.00</span>
+            </div>
+            <p style="font-size:0.7rem; color:var(--text-muted); margin-bottom:8px;">Not counted in Total Income above.</p>
+            <div id="incomeBreakdownExcludedList" style="display:flex; flex-direction:column; gap:8px;"></div>
         </div>
     </div>
 

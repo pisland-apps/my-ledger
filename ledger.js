@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v68";
+        const APP_VERSION = "v69";
         const APP_VERSION_DATE = "2026-08-19";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -981,7 +981,7 @@
             if (!sel) return;
             const current = recentTxAccountFilter;
             sel.innerHTML = `<option value="all">All Accounts</option>` +
-                accounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a))}</option>`).join("");
+                accounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a, accounts))}</option>`).join("");
             sel.value = accounts.some(a => a.id === current) ? current : "all";
         }
 
@@ -1027,7 +1027,7 @@
                         <div class="item-left">
                             <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(t.cat || '')}]</span>
-                            <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${acc ? escapeHtml(acc.name) : "(deleted account)"}</span>
+                            <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}</span>
                         </div>
                         <div class="item-right">
                             <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(t.amount, t.currency)}</div>
@@ -1613,7 +1613,7 @@
         async function populateDefaultPaymentAccountSelect() {
             const accounts = await readAllDB(STORES.ACCOUNTS);
             const select = document.getElementById("defaultPaymentAccountSelect");
-            select.innerHTML = `<option value="">(None)</option>` + accounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a))} (${escapeHtml(a.currency || a.type)})</option>`).join("");
+            select.innerHTML = `<option value="">(None)</option>` + accounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a, accounts))} (${escapeHtml(a.currency || a.type)})</option>`).join("");
             select.value = accounts.some(a => a.id === defaultPaymentAccount) ? defaultPaymentAccount : "";
         }
 
@@ -1858,7 +1858,7 @@
             const candidates = accounts
                 .filter(a => a.id !== excludeId && (a.group || DEFAULT_ACCOUNT_GROUP) !== "Bank Loan")
                 .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-            sel.innerHTML = `<option value="">(None)</option>` + candidates.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)}</option>`).join("");
+            sel.innerHTML = `<option value="">(None)</option>` + candidates.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a, accounts))}</option>`).join("");
             sel.value = (preselectId && candidates.some(a => a.id === preselectId)) ? preselectId : "";
         }
 
@@ -2047,8 +2047,25 @@
             if (ids.length === 0) return "Unassigned";
             return ids.map(id => getMemberById(id)?.name || "Unknown").join(", ");
         }
-        function accountOptionLabel(a) {
-            return `${a.name} (${accountOwnerNamesText(a)})`;
+        // Bank Loan accounts (v50 linkedAccountId) can end up sharing BOTH the same name AND
+        // the same owner — e.g. two accounts named "HSBC Loan", both tagged to the same family
+        // member, one relating to Property A and the other to Property B. Owner alone doesn't
+        // disambiguate that case, but the Related Account usually does, so this appends
+        // " · Related: <name>" whenever a.linkedAccountId is set. Returns "" when there's
+        // nothing to add (including when the caller didn't pass the full accounts list — some
+        // call sites only have a filtered subset in scope, and guessing wrong would be worse
+        // than just omitting the suffix). Raw text, not HTML-escaped — same contract as
+        // accountOwnerNamesText, so callers escape the combined label themselves.
+        function accountRelatedSuffix(a, accounts) {
+            if (!a.linkedAccountId || !Array.isArray(accounts)) return "";
+            const linked = accounts.find(x => x.id === a.linkedAccountId);
+            return linked ? ` · Related: ${linked.name}` : "";
+        }
+        // v68: now takes the full accounts list (optional, for backward compat) so it can also
+        // append the Related Account suffix above — without it, two same-named+same-owner Bank
+        // Loan accounts were indistinguishable in every dropdown and list built from this label.
+        function accountOptionLabel(a, accounts) {
+            return `${a.name} (${accountOwnerNamesText(a)})${accountRelatedSuffix(a, accounts)}`;
         }
 
         function accountOwnerTagHTML(account) {
@@ -2200,7 +2217,7 @@
                 // in scope here.
                 const linkedAcc = a.linkedAccountId ? accounts.find(x => x.id === a.linkedAccountId) : null;
                 const linkedLine = linkedAcc
-                    ? `<br><span style="font-size:0.7rem; color:#92400e; font-weight:600;">🔗 Related: ${escapeHtml(linkedAcc.name)}</span>`
+                    ? `<br><span style="font-size:0.7rem; color:#92400e; font-weight:600;">🔗 Related: ${escapeHtml(accountOptionLabel(linkedAcc, accounts))}</span>`
                     : "";
 
                 // Real Estate (v53): flag when a property was explicitly excluded from the
@@ -2526,7 +2543,7 @@
             if (!account) { handleCurrencyActivityBackClick(); return; }
 
             document.getElementById("currencyActivityTitle").textContent = `${currency} Activity`;
-            document.getElementById("currencyActivityMeta").textContent = `${account.name} · ${currency}`;
+            document.getElementById("currencyActivityMeta").textContent = `${accountOptionLabel(account, accounts)} · ${currency}`;
 
             const basket = nativeBalances[accountId] || {};
             const balance = basket[currency] || 0;
@@ -2535,7 +2552,7 @@
             // Opening Balance entries deliberately leave src blank ("") — the funds originate
             // outside the app, not from a since-deleted account — so an empty id gets its own
             // label rather than being mistaken for a removed account record.
-            const accountName = id => { if (!id) return "(Opening Balance)"; const a = accounts.find(acc => acc.id === id); return a ? escapeHtml(a.name) : "(deleted account)"; };
+            const accountName = id => { if (!id) return "(Opening Balance)"; const a = accounts.find(acc => acc.id === id); return a ? escapeHtml(accountOptionLabel(a, accounts)) : "(deleted account)"; };
 
             const relevantTxs = txs
                 .filter(t => t.currency === currency && (t.src === accountId || t.dest === accountId))
@@ -2692,7 +2709,7 @@
             const accounts = await readAllDB(STORES.ACCOUNTS);
             const cashAccounts = accounts.filter(a => a.id !== accountId);
             const transferSel = document.getElementById("fundTxTransferAccount");
-            transferSel.innerHTML = cashAccounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a))}</option>`).join("");
+            transferSel.innerHTML = cashAccounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a, accounts))}</option>`).join("");
 
             document.getElementById("fundTxModalTitle").textContent = "Add Transaction";
             document.getElementById("fundTxId").value = "";
@@ -2738,7 +2755,7 @@
             const accounts = await readAllDB(STORES.ACCOUNTS);
             const cashAccounts = accounts.filter(a => a.id !== accountId);
             const transferSel = document.getElementById("fundTxTransferAccount");
-            transferSel.innerHTML = cashAccounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a))}</option>`).join("");
+            transferSel.innerHTML = cashAccounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a, accounts))}</option>`).join("");
 
             document.getElementById("fundTxType").value = tx.fundTxType;
             document.getElementById("fundTxDate").value = tx.date;
@@ -3911,7 +3928,7 @@
 
                 const linkedAcc = a.linkedAccountId ? accounts.find(x => x.id === a.linkedAccountId) : null;
                 const linkedLine = linkedAcc
-                    ? ` · <span style="color:#92400e; font-weight:600;">🔗 ${escapeHtml(linkedAcc.name)}</span>`
+                    ? ` · <span style="color:#92400e; font-weight:600;">🔗 ${escapeHtml(accountOptionLabel(linkedAcc, accounts))}</span>`
                     : "";
 
                 // Real Estate (v53): same "excluded from Net Worth" flag renderAccountsPage()
@@ -4203,7 +4220,11 @@
             accounts.forEach(a => {
                 const prefix = a.type === "fd" ? "🏦 " : a.type === "multi" ? "💱 " : a.type === "unittrust" ? "📊 " : "";
                 const currLabel = (a.type === "multi" || a.type === "fd" || a.type === "unittrust") ? "" : ` (${escapeHtml(a.currency)})`;
-                const ownerLabel = ` — ${escapeHtml(accountOwnerNamesText(a))}`;
+                // v68: owner alone can still leave two accounts looking identical (e.g. two
+                // "HSBC Loan" accounts under the same family member) — accountRelatedSuffix
+                // tacks on the Related Account too, when one's set, so this list stays
+                // unambiguous even for that case.
+                const ownerLabel = ` — ${escapeHtml(accountOwnerNamesText(a) + accountRelatedSuffix(a, accounts))}`;
                 srcSelect.innerHTML += `<option value="${escapeHtml(a.id)}">${prefix}${escapeHtml(a.name)}${currLabel}${ownerLabel}</option>`;
                 destSelect.innerHTML += `<option value="${escapeHtml(a.id)}">${prefix}${escapeHtml(a.name)}${currLabel}${ownerLabel}</option>`;
             });
@@ -4759,7 +4780,7 @@
 
             const refText = tx.fdReferenceNo ? ` · Ref: ${tx.fdReferenceNo}` : '';
             document.getElementById("resolveFdSummary").textContent =
-                `${formatCurrency(tx.amount, tx.currency)} placement in "${holdingAccount.name}"${refText}`;
+                `${formatCurrency(tx.amount, tx.currency)} placement in "${accountOptionLabel(holdingAccount, accounts)}"${refText}`;
             document.getElementById("resolveFdMeta").textContent =
                 `Commenced ${tx.fdStartDate} · ${tx.fdTenureMonths} months · ${tx.fdInterestRate}% p.a. · Matures ${tx.fdMaturityDate}`;
 
@@ -4773,7 +4794,7 @@
             const destOptions = accounts.map(a => {
                 const prefix = a.type === "fd" ? "🏦 " : a.type === "multi" ? "💱 " : a.type === "unittrust" ? "📊 " : "";
                 const currLabel = (a.type === "multi" || a.type === "fd" || a.type === "unittrust") ? "" : ` (${escapeHtml(a.currency)})`;
-                return `<option value="${escapeHtml(a.id)}">${prefix}${escapeHtml(a.name)}${currLabel} — ${escapeHtml(accountOwnerNamesText(a))}</option>`;
+                return `<option value="${escapeHtml(a.id)}">${prefix}${escapeHtml(a.name)}${currLabel} — ${escapeHtml(accountOwnerNamesText(a) + accountRelatedSuffix(a, accounts))}</option>`;
             }).join("");
             document.getElementById("resolveFdInterestDest").innerHTML = destOptions;
             document.getElementById("resolveFdWithdrawDest").innerHTML = destOptions;
@@ -5315,7 +5336,7 @@
                         : (daysLeft === 0 ? `matures today` : `matures in ${daysLeft} day${daysLeft === 1 ? '' : 's'} (${t.fdMaturityDate})`);
                     reminderHTML += `
                         <div data-click="openResolveFdModal" data-id="${escapeHtml(t.id)}" style="cursor:pointer; background:${bg}; border:1px solid ${border}; color:${textCol}; border-radius:12px; padding:12px 14px; margin-bottom:8px; font-size:0.8rem; font-weight:600; display:flex; justify-content:space-between; align-items:center;">
-                            <span>${overdue ? '⏰' : '🔔'} ${formatCurrency(t.amount, t.currency)} placement in "${escapeHtml(holdingAccount.name)}" ${label} — plan renewal or withdrawal.</span>
+                            <span>${overdue ? '⏰' : '🔔'} ${formatCurrency(t.amount, t.currency)} placement in "${escapeHtml(accountOptionLabel(holdingAccount, accounts))}" ${label} — plan renewal or withdrawal.</span>
                             <span style="font-size:1.1rem;">›</span>
                         </div>
                     `;
@@ -5481,7 +5502,8 @@
                 document.getElementById("ledgerTargetTitle").textContent = "Portfolio General Log";
                 document.getElementById("ledgerTargetEditBtn").style.display = "none";
             } else {
-                const currentActiveAccName = accounts.find(a => a.id === activeLedgerAccountView)?.name || "Vault";
+                const activeAcc = accounts.find(a => a.id === activeLedgerAccountView);
+                const currentActiveAccName = activeAcc ? accountOptionLabel(activeAcc, accounts) : "Vault";
                 document.getElementById("ledgerTargetTitle").textContent = `${currentActiveAccName} Activity`;
                 document.getElementById("ledgerTargetEditBtn").style.display = "inline-block";
             }
@@ -5715,7 +5737,7 @@
                 // src blank ("") — the funds originate outside the app, not from a since-deleted
                 // account — so an empty id is labelled distinctly from an id that actually points
                 // at a removed account record.
-                const accountName = id => { if (!id) return "(Opening Balance)"; const a = accounts.find(acc => acc.id === id); return a ? escapeHtml(a.name) : "(deleted account)"; };
+                const accountName = id => { if (!id) return "(Opening Balance)"; const a = accounts.find(acc => acc.id === id); return a ? escapeHtml(accountOptionLabel(a, accounts)) : "(deleted account)"; };
                 let accountText;
                 if (t.type === "transfer") {
                     accountText = `🏦 ${accountName(t.src)} → ${t.dest ? accountName(t.dest) : "(unknown)"}`;

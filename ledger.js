@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v73";
+        const APP_VERSION = "v74";
         const APP_VERSION_DATE = "2026-08-19";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -5671,24 +5671,24 @@
 
             let matchedCount = 0;
 
-            // The dashboard's month/year filter is meant to scope PERIOD-based reporting — the
-            // Total Income/Expenses stat boxes above, and the category/type breakdowns drilled into
-            // via navigateToCategoryPage()/navigateToDirectTypePage() (which were themselves built
-            // from that same filtered breakdown, so staying filtered there is consistent). It was
-            // also being applied to the per-ACCOUNT ledger view, which is wrong: that page's whole
-            // job is to show the complete history behind the account's balance (itself computed
-            // above from the FULL unfiltered transaction set), so filtering it by month/year meant
-            // the visible list and the balance could never be reconciled — a transaction dated
-            // outside the selected period still counted toward the balance but silently vanished
-            // from the list, with no indication anything was hidden. Viewing a specific account
-            // (activeLedgerAccountView !== "all") now always shows its full history regardless of
-            // the dashboard filter (scoped to one year at a time via the year nav above); category/
-            // type views keep the previous filtered behaviour.
+            // v74: the dashboard's own month/year filter is meant to scope PERIOD-based reporting
+            // on THIS page (the Total Income/Expenses stat boxes above). It used to also gate
+            // category/type drill-ins reached via navigateToCategoryPage()/navigateToDirectTypePage()
+            // — on the (now stale) assumption those always originated from a breakdown built with
+            // this same filter. They don't anymore: the Net Savings Statement and Spending/Income
+            // Breakdown pages each have their own independent year/month filters, completely
+            // decoupled from this one, so a category click from any of them was silently re-filtered
+            // by whatever this dashboard filter happened to be set to — with no indication anything
+            // was hidden, sometimes landing on "No matches found" for a category that clearly has
+            // transactions. Same root problem as the per-account view fix below: a drill-in's whole
+            // job is to show the complete history behind the number you clicked, so category/type
+            // views now always show full history too, exactly like the account view already does.
+            const showFullHistoryForThisView = showFullAccountHistory || activeCategoryView !== "all" || directTypeView !== "all";
 
             txs.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(t => {
                 const d = new Date(t.date);
                 const withinPeriodFilter = (filterM === "all" || d.getMonth().toString() === filterM) && (filterY === "all" || d.getFullYear().toString() === filterY);
-                if (!withinPeriodFilter && !showFullAccountHistory) return;
+                if (!withinPeriodFilter && !showFullHistoryForThisView) return;
 
                 const tBase = convertTxAmountToBase(t, accounts);
 

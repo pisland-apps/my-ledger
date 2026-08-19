@@ -1319,3 +1319,47 @@ and was silently dropped on import to a new device.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v65.
+
+## v66: Real Estate Type & Holding Period, Bank Loan Redraw Facility,
+floating "back to top" button
+
+- **Real Estate — Type**: a new dropdown (Residential / Commercial /
+  Land / Industrial) on any account grouped under "Real Estate".
+  Purely informational — doesn't affect any calculation. Stored as
+  `account.propertyType`.
+- **Real Estate — Holding Period Start Date**: a new date field, also
+  Real-Estate-only. The app computes "how long held" from this date to
+  today (e.g. "15y 10m") rather than storing a duration directly, so
+  it stays correct as time passes. Stored as `account.holdingStartDate`.
+- **Bank Loan — Redraw / Bank Withdrawal Facility**: a new checkbox on
+  any account grouped under "Bank Loan"; when ticked, reveals a manual
+  "Current Redraw Amount" + "As of Date" pair to key in straight off a
+  bank statement. This is manual-entry only — there's no automatic
+  calculation of an available redraw amount from transaction history,
+  since this app has no existing concept of which transactions count
+  as an over-payment vs. a redraw. Stored as `account.hasRedrawFacility`
+  / `account.redrawAmount` / `account.redrawAsOfDate`.
+- **Shown under the account name**: all of the above now appears as a
+  small line under the account name on the Accounts page, on a
+  member's own Accounts list, and on the account's own Activity page
+  (new banner, same spot as the existing "Related Account" banner).
+  One shared helper, `accountExtraInfoLine()`, builds this line so all
+  three surfaces stay in sync.
+- **New fields are ordinary account fields** — no IndexedDB schema
+  change, and they ride along automatically in backup export/import
+  (v65's `settings` addition was separate; these are on the account
+  record itself, in the `accounts` array that was already backed up).
+  A field is blanked out if the account is later re-grouped away from
+  Real Estate / Bank Loan, or (for the redraw fields) if the facility
+  checkbox is unticked while still a Bank Loan — so stale values don't
+  linger silently.
+- **Floating "back to top" button**: a small circular button, fixed
+  above the existing "+" FAB on the right edge, appears once a page
+  is scrolled down more than ~300px and smooth-scrolls back to the
+  top on tap. Global — lives outside every `.page` div, so it works
+  the same on every page (Ledger, Accounts, Dashboard, etc.) without
+  being wired up per-page.
+- Verified with `node --check` on both changed JS files.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v66.

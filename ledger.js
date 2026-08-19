@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v65";
-        const APP_VERSION_DATE = "2026-08-18";
+        const APP_VERSION = "v66";
+        const APP_VERSION_DATE = "2026-08-19";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
         // DOM — including #versionBadge and the lock overlay — already exists by this point).
@@ -1704,10 +1704,10 @@
         // Populates the Sub-Group select for whichever Group is currently chosen, and shows/hides
         // the row entirely when that Group has no configured sub-groups (see ACCOUNT_SUBGROUPS).
         // Also shows/hides + populates the Bank Loan "Related Account" select (see
-        // populateLinkedAccountSelect below) whenever the Group is switched to/from "Bank Loan",
-        // and the Real Estate "Include in Net Worth" select whenever it's switched to/from
-        // "Real Estate".
-        async function handleAccGroupChange(preselectSubgroup, preselectLinkedAccountId, preselectIncludeInNetWorth) {
+        // populateLinkedAccountSelect below) and the Redraw Facility checkbox whenever the Group
+        // is switched to/from "Bank Loan", and the Real Estate "Include in Net Worth"/Type/Holding
+        // Period fields whenever it's switched to/from "Real Estate".
+        async function handleAccGroupChange(preselectSubgroup, preselectLinkedAccountId, preselectIncludeInNetWorth, preselectPropertyType, preselectHoldingStartDate, preselectHasRedraw, preselectRedrawAmount, preselectRedrawAsOfDate) {
             const group = document.getElementById("newAccGroup").value;
             const list = subgroupsForGroup(group);
             const row = document.getElementById("newAccSubgroupRow");
@@ -1725,21 +1725,47 @@
             }
 
             const linkedRow = document.getElementById("newAccLinkedAccountRow");
+            const redrawFacilityRow = document.getElementById("newAccRedrawFacilityRow");
             if (group === "Bank Loan") {
                 linkedRow.style.display = "block";
                 await populateLinkedAccountSelect(preselectLinkedAccountId);
+                redrawFacilityRow.style.display = "block";
+                document.getElementById("newAccHasRedraw").checked = !!preselectHasRedraw;
+                document.getElementById("newAccRedrawAmount").value = preselectRedrawAmount || "";
+                document.getElementById("newAccRedrawAsOfDate").value = preselectRedrawAsOfDate || "";
+                toggleRedrawFacilityFields();
             } else {
                 linkedRow.style.display = "none";
                 document.getElementById("newAccLinkedAccount").innerHTML = "";
+                redrawFacilityRow.style.display = "none";
+                document.getElementById("newAccHasRedraw").checked = false;
+                document.getElementById("newAccRedrawDetailsRow").style.display = "none";
             }
 
             const netWorthRow = document.getElementById("newAccNetWorthRow");
+            const propertyTypeRow = document.getElementById("newAccPropertyTypeRow");
+            const holdingStartRow = document.getElementById("newAccHoldingStartRow");
             if (group === "Real Estate") {
                 netWorthRow.style.display = "block";
                 document.getElementById("newAccIncludeNetWorth").value = preselectIncludeInNetWorth === "no" ? "no" : "yes";
+                propertyTypeRow.style.display = "block";
+                document.getElementById("newAccPropertyType").value = preselectPropertyType || "";
+                holdingStartRow.style.display = "block";
+                document.getElementById("newAccHoldingStartDate").value = preselectHoldingStartDate || "";
             } else {
                 netWorthRow.style.display = "none";
+                propertyTypeRow.style.display = "none";
+                holdingStartRow.style.display = "none";
             }
+        }
+
+        // Wired to the "This loan has a Redraw / Bank Withdrawal facility" checkbox — shows/hides
+        // the Current Redraw Amount + As of Date fields underneath it. Kept as its own function
+        // (rather than inline) so handleAccGroupChange can also call it after pre-checking the
+        // box when opening the form to edit an existing loan.
+        function toggleRedrawFacilityFields() {
+            const checked = document.getElementById("newAccHasRedraw").checked;
+            document.getElementById("newAccRedrawDetailsRow").style.display = checked ? "grid" : "none";
         }
 
         // Fills the Bank Loan "Related Account" select with every OTHER account (excluding the
@@ -1791,7 +1817,24 @@
             if(!name) { alert("Please enter an account name."); return; }
 
             const group = document.getElementById("newAccGroup").value || DEFAULT_ACCOUNT_GROUP;
-            const record = { id, name, type, group, subgroup: document.getElementById("newAccSubgroup").value || "", linkedAccountId: (group === "Bank Loan" ? (document.getElementById("newAccLinkedAccount").value || null) : null), includeInNetWorth: (group === "Real Estate" ? (document.getElementById("newAccIncludeNetWorth").value !== "no") : true), memberIds: getCheckedAccountMemberIds() };
+            const record = {
+                id, name, type, group,
+                subgroup: document.getElementById("newAccSubgroup").value || "",
+                linkedAccountId: (group === "Bank Loan" ? (document.getElementById("newAccLinkedAccount").value || null) : null),
+                includeInNetWorth: (group === "Real Estate" ? (document.getElementById("newAccIncludeNetWorth").value !== "no") : true),
+                // Real Estate (v66): property Type + Holding Period Start Date — purely
+                // informational, cleared out when the account isn't (or is no longer) grouped
+                // under Real Estate so a re-grouped account doesn't carry stale values silently.
+                propertyType: (group === "Real Estate" ? (document.getElementById("newAccPropertyType").value || "") : ""),
+                holdingStartDate: (group === "Real Estate" ? (document.getElementById("newAccHoldingStartDate").value || "") : ""),
+                // Bank Loan (v66): manual Redraw / Bank Withdrawal facility amount — same
+                // clear-on-regroup treatment, and also cleared if the facility checkbox itself is
+                // unticked even while still a Bank Loan.
+                hasRedrawFacility: (group === "Bank Loan" && document.getElementById("newAccHasRedraw").checked),
+                redrawAmount: (group === "Bank Loan" && document.getElementById("newAccHasRedraw").checked) ? (parseFloat(document.getElementById("newAccRedrawAmount").value) || 0) : 0,
+                redrawAsOfDate: (group === "Bank Loan" && document.getElementById("newAccHasRedraw").checked) ? (document.getElementById("newAccRedrawAsOfDate").value || "") : "",
+                memberIds: getCheckedAccountMemberIds()
+            };
 
             if (type === "normal") {
                 const balInput = document.getElementById("newAccBal").value;
@@ -2088,6 +2131,8 @@
                     ? `<br><span style="font-size:0.7rem; color:#991b1b; font-weight:600;">🚫 Excluded from Net Worth</span>`
                     : "";
 
+                const extraInfoLine = accountExtraInfoLine(a);
+
                 // v62: subrows collapsed by default (see expandedAccountSubrows) — built into
                 // subrowsHtml first (before the main row, so the row can show a collapse/expand
                 // toggle only when there's actually something to collapse), then wrapped in one
@@ -2176,7 +2221,7 @@
                     <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="accounts">
                         <span>
                             <strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}
-                            <br>${accountOwnerTagHTML(a)}${linkedLine}${excludedLine}
+                            <br>${accountOwnerTagHTML(a)}${linkedLine}${excludedLine}${extraInfoLine}
                         </span>
                         <span style="display:flex; align-items:center; gap:6px;">
                             ${subrowToggleHTML}
@@ -2228,7 +2273,16 @@
             document.getElementById("editAccountId").value = account.id;
             document.getElementById("newAccName").value = account.name;
             document.getElementById("newAccGroup").value = account.group || DEFAULT_ACCOUNT_GROUP;
-            await handleAccGroupChange(account.subgroup || "", account.linkedAccountId || "", account.includeInNetWorth === false ? "no" : "yes");
+            await handleAccGroupChange(
+                account.subgroup || "",
+                account.linkedAccountId || "",
+                account.includeInNetWorth === false ? "no" : "yes",
+                account.propertyType || "",
+                account.holdingStartDate || "",
+                !!account.hasRedrawFacility,
+                account.redrawAmount || "",
+                account.redrawAsOfDate || ""
+            );
 
             setAccountTypeUI(account.type || "normal");
             if (!account.type || account.type === "normal") {
@@ -3054,6 +3108,43 @@
             return `${String(d.getDate()).padStart(2, "0")}-${months[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;
         }
 
+        // Real Estate (v66): "how long has this been held" computed from Holding Period Start
+        // Date to today — e.g. "15y 10m", or just "3m" for anything under a year. Returns "" for
+        // an unset/invalid/future date so callers can skip the line entirely.
+        function formatHoldingPeriod(startDateStr) {
+            if (!startDateStr) return "";
+            const start = new Date(startDateStr + "T00:00:00");
+            if (isNaN(start.getTime())) return "";
+            const now = new Date();
+            if (start > now) return "";
+            let years = now.getFullYear() - start.getFullYear();
+            let months = now.getMonth() - start.getMonth();
+            if (now.getDate() < start.getDate()) months--;
+            if (months < 0) { years--; months += 12; }
+            return years > 0 ? `${years}y ${months}m` : `${months}m`;
+        }
+
+        // Real Estate (v66): Property Type + Holding Period, or Bank Loan (v66): manual Redraw
+        // Facility amount — one short HTML line (or "" if nothing to show) meant to sit right
+        // under an account's name wherever it's listed. Shared by the Accounts page, a member's
+        // own Accounts list, and the account's own Activity page header banner so all three stay
+        // in sync automatically instead of drifting out of step with separately-written markup.
+        function accountExtraInfoLine(a) {
+            const group = a.group || DEFAULT_ACCOUNT_GROUP;
+            if (group === "Real Estate" && (a.propertyType || a.holdingStartDate)) {
+                const bits = [];
+                if (a.propertyType) bits.push(escapeHtml(a.propertyType));
+                const held = formatHoldingPeriod(a.holdingStartDate);
+                if (held) bits.push(`Held ${held}`);
+                return bits.length ? `<br><span style="font-size:0.7rem; color:#166534; font-weight:600;">🏷️ ${bits.join(" · ")}</span>` : "";
+            }
+            if (group === "Bank Loan" && a.hasRedrawFacility) {
+                const dateStr = a.redrawAsOfDate ? ` (as of ${formatNavHistoryDate(a.redrawAsOfDate)})` : "";
+                return `<br><span style="font-size:0.7rem; color:#0369a1; font-weight:600;">💰 Redraw Available: ${formatBalanceHTML(a.redrawAmount || 0, a.currency || baseCurrency)}${dateStr}</span>`;
+            }
+            return "";
+        }
+
         let navUpdateView = "card"; // "card" | "table" | "history" — which of the 3 views is shown
         let navUpdateFundsCache = []; // funds currently held (units > 0), across every account
 
@@ -3751,9 +3842,11 @@
                     ? ` · <span style="color:#991b1b; font-weight:600;">🚫 Excluded from Net Worth</span>`
                     : "";
 
+                const extraInfoLine = accountExtraInfoLine(a);
+
                 html += `
                     <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="member">
-                        <span><strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${escapeHtml(a.group || DEFAULT_ACCOUNT_GROUP)}</span>${linkedLine}${excludedLine}</span>
+                        <span><strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${escapeHtml(a.group || DEFAULT_ACCOUNT_GROUP)}</span>${linkedLine}${excludedLine}${extraInfoLine}</span>
                         <span style="color:var(--text-muted);">›</span>
                     </div>`;
             });
@@ -5248,6 +5341,24 @@
                 linkedBanner.style.display = "none";
             }
 
+            // Property Type/Holding Period or Redraw Facility banner (v66) — accountExtraInfoLine()
+            // already returns a "<br>..." prefixed line meant to sit under an account name, so the
+            // leading "<br>" is stripped here since this banner is its own standalone block, not a
+            // continuation of another line.
+            const extraInfoBanner = document.getElementById("ledgerExtraInfoBanner");
+            if (showFullAccountHistory) {
+                const viewingAcc = accounts.find(a => a.id === activeLedgerAccountView);
+                const infoHtml = viewingAcc ? accountExtraInfoLine(viewingAcc).replace(/^<br>/, "") : "";
+                if (infoHtml) {
+                    extraInfoBanner.innerHTML = infoHtml;
+                    extraInfoBanner.style.display = "block";
+                } else {
+                    extraInfoBanner.style.display = "none";
+                }
+            } else {
+                extraInfoBanner.style.display = "none";
+            }
+
             // Fund Holdings section (Unit Trust accounts only) — shown above the normal
             // transaction ledger list, which still displays every Buy/Sell/Dividend/Contribution
             // as an ordinary-looking entry (they ARE ordinary transfer/income transactions under
@@ -6360,6 +6471,7 @@
             navigateToNavUpdatePage: () => navigateToNavUpdatePage(),
             setNavUpdateView: (el) => setNavUpdateView(el),
             handleSaveAllNav: () => handleSaveAllNav(),
+            scrollToTop: () => scrollToTop(),
         };
 
         const CHANGE_ACTIONS = {
@@ -6386,6 +6498,7 @@
             handleRecentTxSettingChange: () => handleRecentTxSettingChange(),
             ledgerYearSelectChange: () => ledgerYearSelectChange(),
             handleAccGroupChange: () => handleAccGroupChange(),
+            toggleRedrawFacilityFields: () => toggleRedrawFacilityFields(),
             handleFundTxTypeChange: () => handleFundTxTypeChange(),
             handleFundTxFundChange: () => handleFundTxFundChange(),
         };
@@ -6424,6 +6537,23 @@
         });
 
         window.addEventListener("load", bootstrap);
+
+        // Floating "back to top" button (v66) — scrolls the page (this app scrolls at the
+        // document/window level, not an inner container) smoothly back to the top when tapped.
+        function scrollToTop() {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+
+        // Shows/hides the back-to-top button based on scroll position — hidden near the top of a
+        // page (nothing to scroll back up to), visible once scrolled down past a small threshold.
+        // Passive listener registered once at load time, independent of bootstrap() / page
+        // switches since the button itself lives outside every .page div.
+        function toggleBackToTopVisibility() {
+            const btn = document.getElementById("backToTopBtn");
+            if (!btn) return;
+            btn.classList.toggle("visible", window.scrollY > 300);
+        }
+        window.addEventListener("scroll", toggleBackToTopVisibility, { passive: true });
 
         // Register the Service Worker for offline support. Only works when served over http(s)
         // (e.g. GitHub Pages) — silently does nothing when opened as a local file:// page.

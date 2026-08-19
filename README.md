@@ -1363,3 +1363,37 @@ floating "back to top" button
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v66.
+
+## v67: "Fetch Live Rates" button — same source as Wealth Planner
+
+Previously, Ledger's Currency Settings had no way to pull live
+exchange rates — every rate had to be typed in by hand, which drifts
+out of accuracy over time and (more to the point) doesn't match
+whatever the companion Wealth Planner app shows, since that app *does*
+fetch live rates.
+
+- **New "🔄 Fetch Live Rates" button** in the Global Currency Settings
+  modal, right above the rate input fields. Calls the exact same
+  `https://open.er-api.com/v6/latest/{base}` endpoint the Wealth
+  Planner app's own "Fetch Live Rates" button already uses — so when
+  both are fetched around the same time, the two apps' rates agree
+  instead of drifting apart. No API key required.
+- Only fills the visible input fields (same UX as Wealth Planner's
+  version) — nothing is written to storage until "Save FX Values" is
+  tapped, so a bad fetch can't silently overwrite good manual rates.
+- **No inversion needed** in this app's fetch code (unlike Wealth
+  Planner's own, which stores rates the opposite way round): this
+  app's `fxRates[c]` already means "units of `c` per 1 base", which is
+  exactly what the API returns directly for the requested base — see
+  the comment on `fetchLiveFxRates()` for the arithmetic that confirms
+  this against `convertCurrency()`'s formula.
+- **CSP updated**: `connect-src` was `'self'` only (this app was fully
+  offline-first — no fetch/XHR calls at all until now). It's now
+  `'self' https://open.er-api.com`, matching the Wealth Planner app's
+  own CSP for the identical reason. This is the one and only outbound
+  network call anywhere in the app; everything else remains
+  IndexedDB-only.
+- Verified with `node --check`.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v67.

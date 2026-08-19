@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v66";
+        const APP_VERSION = "v67";
         const APP_VERSION_DATE = "2026-08-19";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -1452,6 +1452,7 @@
             baseSelect.innerHTML = Object.keys(fxRates).map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
             baseSelect.value = baseCurrency;
             renderFxRatesInputs();
+            document.getElementById("fetchFxRatesStatus").textContent = "";
             openModal("currencyModal");
         }
 
@@ -1477,6 +1478,7 @@
             fxRates[newBase] = 1.0;
             baseCurrency = newBase;
             renderFxRatesInputs();
+            document.getElementById("fetchFxRatesStatus").textContent = "";
         }
 
         async function saveFxRates() {
@@ -1504,6 +1506,51 @@
             document.getElementById("currentBasePill").textContent = baseCurrency;
             closeModal("currencyModal");
             renderApp();
+        }
+
+        // Fetch Live Rates (v67) — pulls today's rates from the same open.er-api.com source the
+        // Wealth Planner app's own "Fetch Live Rates" button uses, so both apps agree when
+        // fetched around the same time instead of drifting apart from separately-typed manual
+        // values. Only fills the visible input fields (matching Wealth Planner's own UX) — still
+        // requires "Save FX Values" below to actually apply. Uses the currently-selected base in
+        // the dropdown (which may not be saved yet), same as Wealth Planner's own version.
+        //
+        // No inversion needed here (unlike Wealth Planner's own fetch code, which stores rates in
+        // "1 curr = ? base" form): the API's data.rates[c] ("1 base = X units of c") already
+        // matches this app's own fxRates[c] storage convention ("units of c per 1 base") directly
+        // — confirmed against convertCurrency()'s formula, (amount / fxRates[fromCurr]) *
+        // fxRates[toCurr].
+        async function fetchLiveFxRates() {
+            const base = document.getElementById("baseCurrencySelect").value;
+            const others = Object.keys(fxRates).filter(c => c !== base);
+            const statusEl = document.getElementById("fetchFxRatesStatus");
+            const btn = document.getElementById("fetchFxRatesBtn");
+            if (others.length === 0) {
+                statusEl.textContent = "No other currencies configured — nothing to fetch.";
+                return;
+            }
+            btn.disabled = true;
+            statusEl.textContent = "Fetching latest rates…";
+            try {
+                const res = await fetch("https://open.er-api.com/v6/latest/" + encodeURIComponent(base));
+                if (!res.ok) throw new Error("Request failed (" + res.status + ")");
+                const data = await res.json();
+                if (data.result !== "success" || !data.rates) throw new Error("Unexpected response");
+                let filled = 0;
+                others.forEach(c => {
+                    const rate = data.rates[c];
+                    if (rate && rate > 0) {
+                        const input = document.getElementById(`fxRate-${c}`);
+                        if (input) { input.value = rate.toFixed(4); filled++; }
+                    }
+                });
+                const missed = others.length - filled;
+                statusEl.textContent = `✅ Filled ${filled} rate${filled !== 1 ? "s" : ""} as of ${data.time_last_update_utc || "just now"}.${missed > 0 ? ` ${missed} currenc${missed !== 1 ? "ies" : "y"} not found — enter manually.` : ""} Review and tap Save FX Values to apply.`;
+            } catch (err) {
+                statusEl.textContent = `⚠️ Could not fetch live rates (${err && err.message ? err.message : err}). Check your internet connection, or enter rates manually below.`;
+            } finally {
+                btn.disabled = false;
+            }
         }
 
         // --- ACCOUNTS MANAGER SETUP (WITH INTEGRATED EDITOR) ---
@@ -6472,6 +6519,7 @@
             setNavUpdateView: (el) => setNavUpdateView(el),
             handleSaveAllNav: () => handleSaveAllNav(),
             scrollToTop: () => scrollToTop(),
+            fetchLiveFxRates: () => fetchLiveFxRates(),
         };
 
         const CHANGE_ACTIONS = {

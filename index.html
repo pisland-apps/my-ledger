@@ -17,13 +17,16 @@
          - style-src 'self' 'unsafe-inline': left loose — this app uses inline style="..."
            attributes throughout for one-off layout tweaks. Migrating all of those to CSS
            classes was judged high-effort/low-value: CSS injection has a much smaller blast
-           radius than script injection, and connect-src below already blocks the network
+           radius than script injection, and connect-src below already limits the network
            requests that would make it useful to an attacker anyway.
          - img-src 'self' data:: receipt/transaction photos are stored as base64 data URLs
            in IndexedDB and displayed directly via <img src="data:...">; app icons are local.
-         - connect-src 'self': app makes no fetch/XHR calls (offline-first, IndexedDB only) —
-           kept as 'self' rather than 'none' so the Service Worker's own requests aren't
-           affected by this policy.
+         - connect-src 'self' https://open.er-api.com (v67): the app is otherwise offline-first
+           (IndexedDB only) — the one exception is the optional "Fetch Live Rates" button in
+           Currency Settings, which calls this single exchange-rate API (no key required, no
+           request body — just a GET of today's rates for a given base currency). Same API/host
+           the companion Wealth Planner app already calls for the same purpose, kept in sync here
+           deliberately so both apps' rates agree when fetched around the same time.
          - object-src/base-uri/form-action 'none': no plugins, no dynamic <base>, no real
            <form> submissions — safe to fully lock down.
          - frame-ancestors is intentionally NOT set here: it's ignored by browsers when
@@ -35,7 +38,7 @@
         style-src 'self' 'unsafe-inline';
         img-src 'self' data:;
         font-src 'self';
-        connect-src 'self';
+        connect-src 'self' https://open.er-api.com;
         worker-src 'self';
         manifest-src 'self';
         object-src 'none';
@@ -1685,6 +1688,12 @@
                 </select>
             </div>
             <p style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; margin-bottom: 8px; text-transform: uppercase;">Exchange Rates (Per 1 Base Unit)</p>
+            <!-- Fetch Live Rates (v67) — same open.er-api.com source as the Wealth Planner app's
+                 own "Fetch Live Rates" button, so both apps' rates agree when fetched around the
+                 same time instead of drifting apart from manually-typed values. Only fills the
+                 input fields below; still requires "Save FX Values" to actually apply. -->
+            <button type="button" id="fetchFxRatesBtn" data-click="fetchLiveFxRates" class="btn-util" style="width:100%; margin-bottom:10px;">🔄 Fetch Live Rates</button>
+            <p id="fetchFxRatesStatus" style="font-size:0.7rem; color:var(--text-muted); margin:-4px 0 10px; min-height:1em;"></p>
             <div id="fxRatesFormContainer"></div>
             <button type="button" data-click="saveFxRates" class="submit-btn" style="margin-top: 10px;">Save FX Values</button>
         </div>

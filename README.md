@@ -1397,3 +1397,36 @@ fetch live rates.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v67.
+
+## v68: Exchange rate rows now quote in whichever direction reads
+naturally
+
+Previously every row in Currency Settings was quoted as "1 {base} =
+{rate} {currency}" regardless of which currency was actually worth
+more — e.g. with MYR as base, USD showed as "1 MYR = 0.2464 USD",
+which is correct but not how anyone actually says it ("1 USD = 4.06
+MYR" reads naturally instead).
+
+- **Each row's direction is now decided per-currency**: a currency
+  worth MORE than 1 unit of the base (e.g. USD, EUR, GBP against MYR)
+  is now quoted as "1 {currency} = {rate} {base}"; a currency worth
+  LESS (e.g. KRW, JPY, THB against MYR) stays "1 {base} = {rate}
+  {currency}" — matching the screenshot example (1 USD = ** MYR / 1
+  MYR = *** KRW).
+- Purely a display change — `fxRates[curr]`'s stored convention
+  ("units of curr per 1 base") is untouched, and so is
+  `convertCurrency()`. Each input now carries a `data-mode` attribute
+  ("direct" or "inverted") recording which way that row is currently
+  showing its number; `saveFxRates()` reads it back to convert
+  whatever's on screen to the stored convention correctly regardless
+  of direction.
+- **Fetch Live Rates (v67) updated to match**: it now re-renders the
+  whole rate list from the freshly-fetched numbers (rather than just
+  overwriting each input's value in place), so every row's direction
+  is recalculated fresh against the new numbers too — a currency that
+  happens to cross the 1.0 threshold since the last fetch won't be
+  left showing the wrong direction.
+- Verified with `node --check`.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v68.

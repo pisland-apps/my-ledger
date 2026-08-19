@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v67";
+        const APP_VERSION = "v68";
         const APP_VERSION_DATE = "2026-08-19";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -1456,15 +1456,39 @@
             openModal("currencyModal");
         }
 
-        function renderFxRatesInputs() {
+        // Renders one row per non-base currency in `rates` (defaults to the saved fxRates when
+        // called with no argument — handleBaseCurrencyChange and the initial openCurrencyConfig()
+        // both rely on this default). v68: which side of "=" the base currency sits on now flips
+        // per row based on relative value, matching how people actually quote a pair — a currency
+        // worth MORE than 1 base unit (e.g. 1 USD = 4.20 MYR) is quoted as "1 {that currency} =",
+        // while one worth LESS (e.g. 1 MYR = 8.15 THB) stays "1 {base} =". Each input's data-mode
+        // ("direct" = value already IS fxRates[curr]; "inverted" = value is 1/fxRates[curr]) is
+        // read back by saveFxRates() to convert whatever's on screen back to the stored
+        // convention, so this is purely a display choice — storage/conversion math is unchanged.
+        function renderFxRatesInputs(rates) {
+            rates = rates || fxRates;
             let html = "";
-            Object.keys(fxRates).forEach(curr => {
+            Object.keys(rates).forEach(curr => {
                 if (curr === baseCurrency) return;
+                const perBase = rates[curr] / (rates[baseCurrency] || 1); // units of curr per 1 base
+                let leftLabel, rightLabel, mode, displayValue;
+                if (perBase < 1) {
+                    // Less than 1 unit of curr per base ⇒ 1 curr is worth MORE than 1 base unit.
+                    leftLabel = `1 ${curr} =`;
+                    rightLabel = baseCurrency;
+                    mode = "inverted";
+                    displayValue = 1 / perBase;
+                } else {
+                    leftLabel = `1 ${baseCurrency} =`;
+                    rightLabel = curr;
+                    mode = "direct";
+                    displayValue = perBase;
+                }
                 html += `
                     <div class="form-row" style="display: flex; align-items: center; gap: 8px;">
-                        <span style="width: 80px; font-weight:700; font-size:0.85rem;">1 ${baseCurrency} =</span>
-                        <input type="number" step="0.0001" id="fxRate-${curr}" value="${(fxRates[curr] / fxRates[baseCurrency]).toFixed(4)}" style="flex:1;">
-                        <span style="width: 50px; font-weight:700; font-size:0.85rem;">${curr}</span>
+                        <span style="width: 80px; font-weight:700; font-size:0.85rem;">${escapeHtml(leftLabel)}</span>
+                        <input type="number" step="0.0001" id="fxRate-${curr}" data-mode="${mode}" value="${displayValue.toFixed(4)}" style="flex:1;">
+                        <span style="width: 50px; font-weight:700; font-size:0.85rem;">${escapeHtml(rightLabel)}</span>
                     </div>
                 `;
             });
@@ -1491,7 +1515,11 @@
                         alert(`Please enter a valid exchange rate for ${curr}.`);
                         return;
                     }
-                    fxRates[curr] = val;
+                    // v68: the field may be showing either the direct value (fxRates[curr] itself)
+                    // or its reciprocal (see renderFxRatesInputs) — data-mode says which, so this
+                    // always converts back to the stored "units of curr per 1 base" convention
+                    // regardless of which way the row happened to be labeled on screen.
+                    fxRates[curr] = el.dataset.mode === "inverted" ? (1 / val) : val;
                 }
             }
 
@@ -1520,6 +1548,11 @@
         // matches this app's own fxRates[c] storage convention ("units of c per 1 base") directly
         // — confirmed against convertCurrency()'s formula, (amount / fxRates[fromCurr]) *
         // fxRates[toCurr].
+        //
+        // v68: re-renders the whole form from a merged {...fxRates, ...fetched} snapshot (instead
+        // of poking each input's .value directly) so every row's "1 X = Y Z" direction is
+        // recomputed fresh against the just-fetched numbers too, not left over from whatever
+        // direction the old stored rate happened to need.
         async function fetchLiveFxRates() {
             const base = document.getElementById("baseCurrencySelect").value;
             const others = Object.keys(fxRates).filter(c => c !== base);
@@ -1536,14 +1569,13 @@
                 if (!res.ok) throw new Error("Request failed (" + res.status + ")");
                 const data = await res.json();
                 if (data.result !== "success" || !data.rates) throw new Error("Unexpected response");
+                const merged = { ...fxRates, [base]: 1.0 };
                 let filled = 0;
                 others.forEach(c => {
                     const rate = data.rates[c];
-                    if (rate && rate > 0) {
-                        const input = document.getElementById(`fxRate-${c}`);
-                        if (input) { input.value = rate.toFixed(4); filled++; }
-                    }
+                    if (rate && rate > 0) { merged[c] = rate; filled++; }
                 });
+                renderFxRatesInputs(merged);
                 const missed = others.length - filled;
                 statusEl.textContent = `✅ Filled ${filled} rate${filled !== 1 ? "s" : ""} as of ${data.time_last_update_utc || "just now"}.${missed > 0 ? ` ${missed} currenc${missed !== 1 ? "ies" : "y"} not found — enter manually.` : ""} Review and tap Save FX Values to apply.`;
             } catch (err) {

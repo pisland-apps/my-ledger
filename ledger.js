@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v74";
+        const APP_VERSION = "v75";
         const APP_VERSION_DATE = "2026-08-19";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -980,6 +980,18 @@
         let recentTxAccountFilter = "all"; // "all" | accountId
         let recentTxCount = 5; // 1-14
 
+        // Dashboard "Accounts" widget settings (v75) — persisted via SETTINGS store, loaded in
+        // bootstrap(). Mirrors the Recent Transactions widget above, but instead of a type/account
+        // filter it's a fixed set of numbered slots, each pinned to one specific account (matching
+        // the per-slot account-picker layout the user referenced from another budgeting app) —
+        // pinnedAccountIds[i] is the account id for slot i, or "" if that slot is unset.
+        let pinnedAccountCount = 5; // 1-10
+        let pinnedAccountIds = []; // array of accountId | "", length === pinnedAccountCount
+
+        // "Net Worth by Member" collapse state (v75) — persisted via SETTINGS store, loaded in
+        // bootstrap(). Purely a display toggle; doesn't affect the totals shown elsewhere.
+        let memberNetWorthCollapsed = false;
+
         function populateRecentTxAccountSelect(accounts) {
             const sel = document.getElementById("recentTxAccountSelect");
             if (!sel) return;
@@ -1055,6 +1067,101 @@
             await writeDB(STORES.SETTINGS, { key: "recentTxAccountFilter", value: recentTxAccountFilter });
             await writeDB(STORES.SETTINGS, { key: "recentTxCount", value: recentTxCount });
             await renderApp();
+        }
+
+        function populatePinnedAccountCountSelect() {
+            const sel = document.getElementById("pinnedAccountCountSelect");
+            if (!sel || sel.options.length > 0) return;
+            for (let i = 1; i <= 10; i++) {
+                sel.innerHTML += `<option value="${i}">${i} item${i === 1 ? '' : 's'}</option>`;
+            }
+        }
+
+        function togglePinnedAccountsSettings() {
+            const panel = document.getElementById("pinnedAccountsSettingsPanel");
+            if (!panel) return;
+            panel.style.display = panel.style.display === "none" ? "flex" : "none";
+        }
+
+        // Builds one account-picker <select> per configured slot (1..pinnedAccountCount), each
+        // pre-selected to whichever account is currently pinned there — mirrors the reference
+        // screenshot's "Number of items shown" + one numbered dropdown per slot layout.
+        function renderPinnedAccountSlotSelects(accounts) {
+            const wrap = document.getElementById("pinnedAccountSlotSelects");
+            if (!wrap) return;
+            let html = "";
+            for (let i = 0; i < pinnedAccountCount; i++) {
+                const current = pinnedAccountIds[i] || "";
+                html += `
+                    <div class="form-row" style="margin-bottom:0;">
+                        <label>${i + 1}:</label>
+                        <select data-change="handlePinnedAccountSlotChange" data-slot="${i}">
+                            <option value="">(None)</option>
+                            ${accounts.map(a => `<option value="${escapeHtml(a.id)}" ${a.id === current ? "selected" : ""}>${escapeHtml(accountOptionLabel(a, accounts))}</option>`).join("")}
+                        </select>
+                    </div>
+                `;
+            }
+            wrap.innerHTML = html;
+        }
+
+        async function handlePinnedAccountCountChange() {
+            pinnedAccountCount = parseInt(document.getElementById("pinnedAccountCountSelect").value, 10) || 5;
+            // Trim or pad the pinned list to match the new count — existing picks in slots that
+            // still exist are preserved; slots beyond the new count are simply dropped (not
+            // deleted from anywhere else, they just stop being one of the numbered slots).
+            pinnedAccountIds = pinnedAccountIds.slice(0, pinnedAccountCount);
+            while (pinnedAccountIds.length < pinnedAccountCount) pinnedAccountIds.push("");
+            await writeDB(STORES.SETTINGS, { key: "pinnedAccountCount", value: pinnedAccountCount });
+            await writeDB(STORES.SETTINGS, { key: "pinnedAccountIds", value: pinnedAccountIds });
+            await renderApp();
+        }
+
+        async function handlePinnedAccountSlotChange(el) {
+            const slot = parseInt(el.dataset.slot, 10);
+            if (Number.isNaN(slot)) return;
+            while (pinnedAccountIds.length <= slot) pinnedAccountIds.push("");
+            pinnedAccountIds[slot] = el.value;
+            await writeDB(STORES.SETTINGS, { key: "pinnedAccountIds", value: pinnedAccountIds });
+            await renderApp();
+        }
+
+        // Draws the dashboard's "Accounts" widget — a fixed set of accounts pinned to specific
+        // numbered slots via the settings panel above it, in slot order. Slots left on "(None)"
+        // are just skipped rather than rendered as empty rows.
+        function renderPinnedAccountsWidget(accounts, nativeBalances) {
+            const list = document.getElementById("pinnedAccountsList");
+            if (!list) return;
+
+            populatePinnedAccountCountSelect();
+            const countSel = document.getElementById("pinnedAccountCountSelect");
+            if (countSel) countSel.value = String(pinnedAccountCount);
+            renderPinnedAccountSlotSelects(accounts);
+
+            const rows = pinnedAccountIds
+                .map(id => accounts.find(a => a.id === id))
+                .filter(Boolean);
+
+            if (rows.length === 0) {
+                list.innerHTML = `<p style="color:var(--text-muted); text-align:center; padding:16px 0; font-size:0.85rem;">No accounts pinned yet — tap ⚙ Settings above to choose some.</p>`;
+                return;
+            }
+
+            list.innerHTML = rows.map(a => {
+                const baseVal = accountBaseValue(a, nativeBalances);
+                const metaLine = accountOwnerNamesText(a) + accountRelatedSuffix(a, accounts);
+                return `
+                    <div class="ledger-item" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}">
+                        <div class="item-left">
+                            <span class="item-name">${escapeHtml(a.name)}</span>
+                            <span class="item-meta">${escapeHtml(metaLine)}</span>
+                        </div>
+                        <div class="item-right">
+                            <div class="item-value" style="font-weight:bold;">${formatBalanceHTML(baseVal, baseCurrency)}</div>
+                        </div>
+                    </div>
+                `;
+            }).join("");
         }
 
         function formatCurrency(amount, curr) {
@@ -3800,12 +3907,31 @@
             return { total, currencyTotals };
         }
 
+        // Flips the "Net Worth by Member" section between expanded/collapsed and persists the
+        // choice — purely a display preference, the underlying totals are unaffected.
+        async function toggleMemberNetWorthCollapse() {
+            memberNetWorthCollapsed = !memberNetWorthCollapsed;
+            await writeDB(STORES.SETTINGS, { key: "memberNetWorthCollapsed", value: memberNetWorthCollapsed });
+            applyMemberNetWorthCollapseState();
+        }
+
+        // Applies the current collapse state to the DOM without a full re-render — swaps the
+        // rows container's visibility and the ▾/▸ toggle icon. Safe to call even before the rows
+        // themselves have been populated yet.
+        function applyMemberNetWorthCollapseState() {
+            const wrap = document.getElementById("memberNetWorthRows");
+            const toggleBtn = document.getElementById("memberNetWorthCollapseToggle");
+            if (wrap) wrap.style.display = memberNetWorthCollapsed ? "none" : "";
+            if (toggleBtn) toggleBtn.textContent = memberNetWorthCollapsed ? "▸" : "▾";
+        }
+
         // Draws the dashboard's "Net Worth by Member" report: one row per member (solo-owned
         // accounts only), one row per distinct joint-owned account group, and — only if any exist
         // — a final "Unassigned" row so the breakdown always ties out to the grand total above it.
         function renderMemberNetWorthRows(accounts, nativeBalances) {
             const wrap = document.getElementById("memberNetWorthRows");
             if (!wrap) return;
+            applyMemberNetWorthCollapseState();
 
             if (membersCache.length === 0) {
                 wrap.innerHTML = `<p style="color:var(--text-muted); font-size:0.85rem;">No members yet — add one via Sidebar ▸ Manage Members to break this down by person.</p>`;
@@ -5345,6 +5471,7 @@
             // joint-owned account group, and — only if any exist — one row for unassigned accounts,
             // so the breakdown always ties out to the grand total above.
             renderMemberNetWorthRows(accounts, nativeBalances);
+            renderPinnedAccountsWidget(accounts, nativeBalances);
             renderRecentTransactionsWidget(accounts, txs);
 
             // --- Fixed Deposit maturity reminders ---
@@ -6355,6 +6482,15 @@
             const storedRecentTxCount = await readKeyDB("settings", "recentTxCount");
             if (storedRecentTxCount) recentTxCount = storedRecentTxCount.value || 5;
 
+            const storedPinnedCount = await readKeyDB("settings", "pinnedAccountCount");
+            if (storedPinnedCount) pinnedAccountCount = storedPinnedCount.value || 5;
+
+            const storedPinnedIds = await readKeyDB("settings", "pinnedAccountIds");
+            if (storedPinnedIds && Array.isArray(storedPinnedIds.value)) pinnedAccountIds = storedPinnedIds.value;
+
+            const storedMemberNwCollapsed = await readKeyDB("settings", "memberNetWorthCollapsed");
+            if (storedMemberNwCollapsed) memberNetWorthCollapsed = !!storedMemberNwCollapsed.value;
+
             const storedExpandedSubrows = await readKeyDB("settings", "expandedAccountSubrows");
             if (storedExpandedSubrows && Array.isArray(storedExpandedSubrows.value)) {
                 expandedAccountSubrows = new Set(storedExpandedSubrows.value);
@@ -6591,6 +6727,9 @@
                                 case "recentTxTypeFilter": recentTxTypeFilter = rec.value || "both"; break;
                                 case "recentTxAccountFilter": recentTxAccountFilter = rec.value || "all"; break;
                                 case "recentTxCount": recentTxCount = rec.value || 5; break;
+                                case "pinnedAccountCount": pinnedAccountCount = rec.value || 5; break;
+                                case "pinnedAccountIds": pinnedAccountIds = Array.isArray(rec.value) ? rec.value : []; break;
+                                case "memberNetWorthCollapsed": memberNetWorthCollapsed = !!rec.value; break;
                                 case "expandedAccountSubrows":
                                     expandedAccountSubrows = new Set(Array.isArray(rec.value) ? rec.value : []);
                                     break;
@@ -6649,6 +6788,8 @@
             editMember: (el) => editMember(el.dataset.id),
             openAddAccountForMember: () => openAddAccountForMember(),
             toggleRecentTxSettings: () => toggleRecentTxSettings(),
+            togglePinnedAccountsSettings: () => togglePinnedAccountsSettings(),
+            toggleMemberNetWorthCollapse: () => toggleMemberNetWorthCollapse(),
             selectMemberColor: (el) => selectMemberColor(el),
             toggleMemberPageCurrencyBreakdown: () => toggleMemberPageCurrencyBreakdown(),
             ledgerYearPrev: () => ledgerYearPrev(),
@@ -6738,6 +6879,8 @@
             renderIncomeBreakdownPage: () => renderIncomeBreakdownPage(),
             toggleTxTransferFx: () => toggleTxTransferFx(),
             handleRecentTxSettingChange: () => handleRecentTxSettingChange(),
+            handlePinnedAccountCountChange: () => handlePinnedAccountCountChange(),
+            handlePinnedAccountSlotChange: (el) => handlePinnedAccountSlotChange(el),
             ledgerYearSelectChange: () => ledgerYearSelectChange(),
             handleAccGroupChange: () => handleAccGroupChange(),
             toggleRedrawFacilityFields: () => toggleRedrawFacilityFields(),

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v70";
+        const APP_VERSION = "v71";
         const APP_VERSION_DATE = "2026-08-19";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -2055,15 +2055,19 @@
         // the same owner — e.g. two accounts named "HSBC Loan", both tagged to the same family
         // member, one relating to Property A and the other to Property B. Owner alone doesn't
         // disambiguate that case, but the Related Account usually does, so this appends
-        // " · Related: <name>" whenever a.linkedAccountId is set. Returns "" when there's
-        // nothing to add (including when the caller didn't pass the full accounts list — some
-        // call sites only have a filtered subset in scope, and guessing wrong would be worse
-        // than just omitting the suffix). Raw text, not HTML-escaped — same contract as
-        // accountOwnerNamesText, so callers escape the combined label themselves.
+        // " · <name>" whenever a.linkedAccountId is set. Returns "" when there's nothing to add
+        // (including when the caller didn't pass the full accounts list — some call sites only
+        // have a filtered subset in scope, and guessing wrong would be worse than just omitting
+        // the suffix). Raw text, not HTML-escaped — same contract as accountOwnerNamesText, so
+        // callers escape the combined label themselves.
+        // v71: dropped the "Related: " prefix (just "· <name>" now) — this suffix only ever
+        // shows up right next to the account's own name/owner, so the extra label was noise;
+        // the dedicated "🔗 Related Account: X" banner (Accounts page, Activity page) still
+        // spells it out in full since it's not sitting next to anything else there.
         function accountRelatedSuffix(a, accounts) {
             if (!a.linkedAccountId || !Array.isArray(accounts)) return "";
             const linked = accounts.find(x => x.id === a.linkedAccountId);
-            return linked ? ` · Related: ${linked.name}` : "";
+            return linked ? ` · ${linked.name}` : "";
         }
         // v68: now takes the full accounts list (optional, for backward compat) so it can also
         // append the Related Account suffix above — without it, two same-named+same-owner Bank
@@ -5507,7 +5511,10 @@
                 document.getElementById("ledgerTargetEditBtn").style.display = "none";
             } else {
                 const activeAcc = accounts.find(a => a.id === activeLedgerAccountView);
-                const currentActiveAccName = activeAcc ? accountOptionLabel(activeAcc, accounts) : "Vault";
+                // v71: name + owner only here, no Related-account suffix — the dedicated
+                // "🔗 Related Account: X" banner already shows that right below this title,
+                // so repeating it in the title itself was just noise (see Image 2 feedback).
+                const currentActiveAccName = activeAcc ? `${activeAcc.name} (${accountOwnerNamesText(activeAcc)})` : "Vault";
                 document.getElementById("ledgerTargetTitle").textContent = `${currentActiveAccName} Activity`;
                 document.getElementById("ledgerTargetEditBtn").style.display = "inline-block";
             }

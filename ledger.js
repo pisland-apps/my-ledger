@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v69";
+        const APP_VERSION = "v70";
         const APP_VERSION_DATE = "2026-08-19";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -34,7 +34,11 @@
         // Account grouping (v35) — every account belongs to one of these, used to sort/section
         // both the full Accounts page and a member's account list (group, then name). Accounts
         // saved before this existed default to "Bank/Cash" wherever a group is read.
-        const ACCOUNT_GROUPS = ["Bank/Cash", "Credit Card", "Investment", "Real Estate", "Bank Loan"];
+        // v70: added Account Payable / Account Receivable as their own groups (not subgroups of
+        // one combined group) — AP and AR move in opposite directions financially, so a single
+        // netted group total would be misleading; keeping them apart mirrors how Bank Loan is
+        // already kept apart from Bank/Cash.
+        const ACCOUNT_GROUPS = ["Bank/Cash", "Credit Card", "Investment", "Real Estate", "Bank Loan", "Account Payable", "Account Receivable"];
         const DEFAULT_ACCOUNT_GROUP = ACCOUNT_GROUPS[0];
 
         // Sub-groups (v39) — optional, per-Group breakdown so e.g. "Investment" can be split

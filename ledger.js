@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v80";
+        const APP_VERSION = "v81";
         const APP_VERSION_DATE = "2026-08-20";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -5079,6 +5079,14 @@
             const projectedInterest = tx.amount * (tx.fdInterestRate / 100) * (tx.fdTenureMonths / 12);
             document.getElementById("resolveFdInterest").value = projectedInterest.toFixed(2);
 
+            // v81: dates every transaction this modal creates (withdrawal/renewal/interest legs).
+            // Defaults to the placement's own maturity date rather than today — when a placement
+            // has sat overdue for a while before you get around to resolving it, the entries
+            // should reflect when the FD actually matured, not whatever day you happened to log
+            // into the app. Still fully editable for the (more common) case of resolving it
+            // right on/near maturity, or when the bank actually settled it on a different date.
+            document.getElementById("resolveFdResolutionDate").value = tx.fdMaturityDate || todayLocalStr();
+
             // Destination account pickers for both flows — any account except this same FD placement's
             // holding account makes sense as a target (though we don't hard-block picking it either).
             const destOptions = accounts.map(a => {
@@ -5198,7 +5206,8 @@
             if (isNaN(interest) || interest < 0) { alert("Please enter a valid interest amount (0 if none)."); return; }
 
             const action = document.getElementById("resolveFdAction").value;
-            const today = todayLocalStr();
+            const resolutionDate = document.getElementById("resolveFdResolutionDate").value;
+            if (!resolutionDate) { alert("Please select a resolution date."); return; }
             const refLabel = tx.fdReferenceNo ? `Ref: ${tx.fdReferenceNo}` : `#${tx.id}`;
 
             try {
@@ -5212,7 +5221,7 @@
                     await writeDB(STORES.TRANSACTIONS, {
                         type: "transfer", desc: `FD Withdrawal — Principal (${refLabel})`,
                         amount: tx.amount, src: holdingAccountId, dest: destId, currency: tx.currency,
-                        cat: "Fixed Deposit", date: today, image: null,
+                        cat: "Fixed Deposit", date: resolutionDate, image: null,
                         fdReferenceNo: tx.fdReferenceNo || null,
                         fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
                     });
@@ -5222,7 +5231,7 @@
                         await writeDB(STORES.TRANSACTIONS, {
                             type: "income", desc: `FD Interest Received (${refLabel})`,
                             amount: interest, src: destId, dest: "", currency: tx.currency,
-                            cat: "FD Interest Income", date: today, image: null,
+                            cat: "FD Interest Income", date: resolutionDate, image: null,
                             fdReferenceNo: tx.fdReferenceNo || null,
                             fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
                         });
@@ -5248,7 +5257,7 @@
                     await writeDB(STORES.TRANSACTIONS, {
                         type: "transfer", desc: `FD Placement Closed for Renewal (${refLabel})`,
                         amount: tx.amount, src: holdingAccountId, dest: "", currency: tx.currency,
-                        cat: "Fixed Deposit", date: today, image: null,
+                        cat: "Fixed Deposit", date: resolutionDate, image: null,
                         fdReferenceNo: tx.fdReferenceNo || null,
                         fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
                     });
@@ -5257,7 +5266,7 @@
                     await writeDB(STORES.TRANSACTIONS, {
                         type: "transfer", desc: `FD Renewal Placement`,
                         amount: newPrincipal, src: "", dest: holdingAccountId, currency: tx.currency,
-                        cat: "Fixed Deposit", date: today, image: null,
+                        cat: "Fixed Deposit", date: resolutionDate, image: null,
                         fdReferenceNo: newReference,
                         fdStartDate: newStart, fdTenureMonths: newTenure, fdInterestRate: newRate, fdMaturityDate: newMaturity
                     });
@@ -5268,7 +5277,7 @@
                         await writeDB(STORES.TRANSACTIONS, {
                             type: "income", desc: `FD Interest Received (${refLabel})`,
                             amount: interest, src: interestDestId, dest: "", currency: tx.currency,
-                            cat: "FD Interest Income", date: today, image: null,
+                            cat: "FD Interest Income", date: resolutionDate, image: null,
                             fdReferenceNo: tx.fdReferenceNo || null,
                             fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
                         });

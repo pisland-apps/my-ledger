@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v78";
+        const APP_VERSION = "v79";
         const APP_VERSION_DATE = "2026-08-20";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -752,7 +752,7 @@
             { name: "Divident EPF", type: "income", icon: "🏦" },
             { name: "EPF Contrib.(ER)", type: "income", icon: "🏦" },
             { name: "EPF Contrib.(EE)", type: "income", icon: "🏦" },
-            { name: "FD Interest", type: "income", icon: "🏦" },
+            { name: "FD Interest Income", type: "income", icon: "🏦" },
             { name: "Bank Interest", type: "income", icon: "💰" },
             { name: "Gift Received", type: "income", icon: "🎁" },
             { name: "Rebate", type: "income", icon: "💸" },
@@ -2412,13 +2412,27 @@
                                 ? `<span style="font-size:0.62rem; font-weight:700; color:#b91c1c; background:#fee2e2; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">⏰ Due</span>`
                                 : `<span style="font-size:0.62rem; font-weight:700; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">🟢 Active</span>`;
                             const refText = t.fdReferenceNo ? ` (${escapeHtml(t.fdReferenceNo)})` : '';
+                            // v78: an overdue placement gets its own "Resolve Maturity" button right on
+                            // this subrow — previously the only way in was the workspace's maturity
+                            // reminder banner, which only ever surfaces one overdue placement at a time.
+                            // Reuses the same openResolveFdModal action as that banner. No
+                            // stopPropagation needed: the click dispatcher resolves the nearest
+                            // [data-click] ancestor via closest(), so tapping this button fires only
+                            // its own action, never the parent row's openTransactionForm too — same
+                            // reasoning as the subrow-toggle-btn caret above.
+                            const resolveBtnHTML = isOverdue
+                                ? `<button type="button" data-click="openResolveFdModal" data-id="${escapeHtml(t.id)}" style="font-size:0.66rem; font-weight:700; color:#fff; background:#b91c1c; border:none; border-radius:6px; padding:5px 8px; white-space:nowrap; cursor:pointer;">⏰ Resolve Maturity</button>`
+                                : "";
                             return `
                                 <div class="config-item fund-subrow" style="cursor:pointer;" data-click="openTransactionForm" data-type="${escapeHtml(t.type)}" data-id="${escapeHtml(t.id)}">
                                     <span>
                                         Fixed Deposit Placement${refText}${statusBadge}
                                         <br><span style="color:var(--text-muted); font-weight:600;">${formatBalanceHTML(t.amount, t.currency)} · Matures ${escapeHtml(t.fdMaturityDate)}</span>
                                     </span>
-                                    <span style="color:var(--text-muted);">›</span>
+                                    <span style="display:flex; align-items:center; gap:6px;">
+                                        ${resolveBtnHTML}
+                                        <span style="color:var(--text-muted);">›</span>
+                                    </span>
                                 </div>`;
                         }).join("");
                     }
@@ -4352,6 +4366,7 @@
             }
             await syncAndLoadCategories();
             await migrateOthersCategoryRename();
+            await migrateFdInterestIncomeRename();
             await migrateStaleDestFieldCleanup();
             await migrateStaleCategoryOnTransfersCleanup();
         }
@@ -4368,6 +4383,24 @@
             for (const t of txs) {
                 if (t.cat === "Others" && (t.type === "income" || t.type === "expense")) {
                     t.cat = t.type === "income" ? "Other Income" : "Other Expenses";
+                    await writeDB(STORES.TRANSACTIONS, t);
+                }
+            }
+        }
+
+        // One-time migration: FD Interest Received transactions were previously saved under the
+        // literal category "Interest Income" — a name that was never actually added to
+        // DEFAULT_CATEGORIES, so it showed up in reports (Net Savings Statement, breakdowns) as
+        // an orphaned category invisible in Manage Categories. Renamed to "FD Interest Income"
+        // (now a real, manageable category) both here going forward and on existing records, so
+        // old and new FD interest entries land under the same category instead of splitting into
+        // two. Only touches the exact legacy value — never a category the user has since
+        // re-categorised away from it.
+        async function migrateFdInterestIncomeRename() {
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            for (const t of txs) {
+                if (t.cat === "Interest Income") {
+                    t.cat = "FD Interest Income";
                     await writeDB(STORES.TRANSACTIONS, t);
                 }
             }
@@ -5135,7 +5168,7 @@
                         await writeDB(STORES.TRANSACTIONS, {
                             type: "income", desc: `FD Interest Received (${refLabel})`,
                             amount: interest, src: destId, dest: "", currency: tx.currency,
-                            cat: "Interest Income", date: today, image: null,
+                            cat: "FD Interest Income", date: today, image: null,
                             fdReferenceNo: tx.fdReferenceNo || null,
                             fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
                         });
@@ -5181,7 +5214,7 @@
                         await writeDB(STORES.TRANSACTIONS, {
                             type: "income", desc: `FD Interest Received (${refLabel})`,
                             amount: interest, src: interestDestId, dest: "", currency: tx.currency,
-                            cat: "Interest Income", date: today, image: null,
+                            cat: "FD Interest Income", date: today, image: null,
                             fdReferenceNo: tx.fdReferenceNo || null,
                             fdStartDate: null, fdTenureMonths: null, fdInterestRate: null, fdMaturityDate: null
                         });
@@ -5976,7 +6009,7 @@
                 let fdStatusBadge = '';
                 if (t.fdMaturityDate) {
                     if (t.fdResolved) {
-                        fdStatusBadge = `<span style="font-size:0.62rem; font-weight:700; color:#64748b; background:#e2e8f0; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">✅ Closed</span>`;
+                        fdStatusBadge = `<span style="font-size:0.62rem; font-weight:700; color:#b91c1c; background:#e2e8f0; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">✅ Closed</span>`;
                     } else {
                         const isOverdue = new Date(t.fdMaturityDate + "T00:00:00").getTime() < new Date(new Date().toISOString().split("T")[0] + "T00:00:00").getTime();
                         fdStatusBadge = isOverdue

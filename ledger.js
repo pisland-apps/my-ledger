@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v86";
+        const APP_VERSION = "v87";
         const APP_VERSION_DATE = "2026-08-20";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -6471,19 +6471,26 @@
 
         // Fills a breakdown page's "Member" filter dropdown with every member. "All Members"
         // (default) includes everyone plus joint accounts; picking one member restricts to that
-        // member's solo-owned accounts only (joint accounts are excluded), per spec.
+        // member's solo-owned accounts only (joint accounts are excluded); "Joint" (v87) is the
+        // mirror image — restricts to accounts/funds with 2+ owners only, excluding every
+        // solo-owned account.
         function populateBreakdownMemberFilter(selectId) {
             const select = document.getElementById(selectId);
             const prevValue = select.value || "all";
             select.innerHTML = `<option value="all">All Members (everyone, incl. joint)</option>` +
+                `<option value="joint">Joint (2+ owners)</option>` +
                 membersCache.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join("");
-            select.value = membersCache.some(m => m.id === prevValue) ? prevValue : "all";
+            select.value = (prevValue === "joint" || membersCache.some(m => m.id === prevValue)) ? prevValue : "all";
         }
 
-        // Returns the set of account IDs solo-owned by a given member — used to scope the
-        // Spending/Income Breakdown pages when a specific member is selected.
-        function accountIdsForMember(accounts, memberId) {
-            return new Set(accounts.filter(a => Array.isArray(a.memberIds) && a.memberIds.length === 1 && a.memberIds[0] === memberId).map(a => a.id));
+        // Returns the set of account IDs matching a breakdown page's Member filter value: solo-
+        // owned by that member for a specific member id, 2+ owners for "joint". Caller only calls
+        // this when filterValue !== "all" (that case needs no restriction at all).
+        function accountIdsForMemberFilter(accounts, filterValue) {
+            if (filterValue === "joint") {
+                return new Set(accounts.filter(a => Array.isArray(a.memberIds) && a.memberIds.length > 1).map(a => a.id));
+            }
+            return new Set(accounts.filter(a => Array.isArray(a.memberIds) && a.memberIds.length === 1 && a.memberIds[0] === filterValue).map(a => a.id));
         }
 
         async function renderSpendingBreakdownPage() {
@@ -6495,7 +6502,7 @@
             const filterY = document.getElementById("spendingYearFilter").value;
             const filterMember = document.getElementById("spendingMemberFilter").value;
             const chartType = document.getElementById("spendingChartType").value;
-            const memberAccountIds = filterMember !== "all" ? accountIdsForMember(accounts, filterMember) : null;
+            const memberAccountIds = filterMember !== "all" ? accountIdsForMemberFilter(accounts, filterMember) : null;
 
             // v73: categories flagged "Exclude from Net Savings Report" (Manage Categories) are
             // pulled out of the chart/total below and tallied into their own card instead —
@@ -6554,7 +6561,7 @@
             const filterY = document.getElementById("incomeYearFilter").value;
             const filterMember = document.getElementById("incomeMemberFilter").value;
             const chartType = document.getElementById("incomeChartType").value;
-            const memberAccountIds = filterMember !== "all" ? accountIdsForMember(accounts, filterMember) : null;
+            const memberAccountIds = filterMember !== "all" ? accountIdsForMemberFilter(accounts, filterMember) : null;
 
             const excludedCatNames = new Set(dynamicCategories.filter(c => c.excludeFromSavings).map(c => c.name));
 
@@ -6652,12 +6659,14 @@
             return { invested, recovered };
         }
 
-        // Solo-owned funds only when a specific member is picked — mirrors accountIdsForMember's
+        // Solo-owned funds only when a specific member is picked — mirrors accountIdsForMemberFilter's
         // "solo only, joint excluded" convention already used by the Spending/Income Breakdown
         // member filter, so this report's filter behaves the same way a user already expects.
+        // "joint" (v87) mirrors it back the other way — only funds with 2+ owners.
         function fundMatchesMemberFilter(fund, memberId) {
             if (memberId === "all") return true;
             const ids = Array.isArray(fund.ownerMemberIds) ? fund.ownerMemberIds : [];
+            if (memberId === "joint") return ids.length > 1;
             return ids.length === 1 && ids[0] === memberId;
         }
 

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v79";
+        const APP_VERSION = "v80";
         const APP_VERSION_DATE = "2026-08-20";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -104,6 +104,33 @@
             return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
                 "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
             })[ch]);
+        }
+
+        // v80: formats a Date object as a "YYYY-MM-DD" calendar-date string using its LOCAL
+        // year/month/day components. This exists because `date.toISOString().split("T")[0]`
+        // (used throughout the FD maturity-date math) silently shifts the date for anyone in a
+        // UTC+ timezone (e.g. Malaysia, UTC+8): a Date built from local midnight, once run
+        // through toISOString(), gets re-expressed in UTC — which is still the *previous*
+        // calendar day at that hour — so the maturity date it prints ends up one day earlier
+        // than the commencing date + tenure actually works out to. Every FD maturity calculation
+        // (opening-balance placement rows, the Add/Edit Transaction FD fields, and the Resolve
+        // Maturity renewal form) now goes through this instead.
+        function localDateStr(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, "0");
+            const d = String(date.getDate()).padStart(2, "0");
+            return `${y}-${m}-${d}`;
+        }
+
+        // v80: same fix as localDateStr(), for "today". `new Date().toISOString().split("T")[0]`
+        // (the pattern used everywhere in this file for "today's date") reads the CURRENT INSTANT
+        // back out in UTC, not the browser's local calendar date — for anyone in a UTC+ timezone
+        // (e.g. Malaysia, UTC+8) that's still "yesterday" in UTC terms for the first ~8 hours of
+        // every local day, which threw off the FD overdue/reminder check, default dates on new
+        // entries, and the maturity-vs-commence comparison during Resolve Maturity. Use this
+        // instead everywhere "today" means "today where the user is sitting".
+        function todayLocalStr() {
+            return localDateStr(new Date());
         }
 
         /* ================= APP LOCK: PBKDF2 + AES-GCM (Web Crypto) ================= */
@@ -1821,7 +1848,7 @@
             fdOpeningRowCounter++;
             const rowId = `fdrow_${fdOpeningRowCounter}`;
             const currencyOptions = Object.keys(fxRates).map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
-            const today = new Date().toISOString().split("T")[0];
+            const today = todayLocalStr();
 
             const row = document.createElement("div");
             row.id = rowId;
@@ -1884,7 +1911,7 @@
             const start = new Date(startVal + "T00:00:00");
             const maturity = new Date(start);
             maturity.setMonth(maturity.getMonth() + tenure);
-            const maturityStr = maturity.toISOString().split("T")[0];
+            const maturityStr = localDateStr(maturity);
             row.querySelector(".fd-row-maturity").value = maturityStr;
 
             const principal = parseFloat(row.querySelector(".fd-row-amount").value) || 0;
@@ -2047,7 +2074,7 @@
             // Collect opening-balance / opening-placement rows BEFORE writing anything, so we can
             // validate everything up front and avoid creating an account with a half-seeded state.
             let openingTransactions = [];
-            const todayStr = new Date().toISOString().split("T")[0];
+            const todayStr = todayLocalStr();
 
             if (isNewAccount && type === "multi") {
                 const rows = Array.from(document.getElementById("multiOpeningRows").children);
@@ -2407,7 +2434,7 @@
                     const placements = (fdPlacementsByAccountId[a.id] || []).slice().sort((x, y) => new Date(y.date) - new Date(x.date));
                     if (placements.length > 0) {
                         subrowsHtml += placements.map(t => {
-                            const isOverdue = new Date(t.fdMaturityDate + "T00:00:00").getTime() < new Date(new Date().toISOString().split("T")[0] + "T00:00:00").getTime();
+                            const isOverdue = new Date(t.fdMaturityDate + "T00:00:00").getTime() < new Date(todayLocalStr() + "T00:00:00").getTime();
                             const statusBadge = isOverdue
                                 ? `<span style="font-size:0.62rem; font-weight:700; color:#b91c1c; background:#fee2e2; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">⏰ Due</span>`
                                 : `<span style="font-size:0.62rem; font-weight:700; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">🟢 Active</span>`;
@@ -2750,6 +2777,33 @@
             }
         }
 
+        // Same idea as refreshFundActivityPageIfVisible, for the Currency Activity page (a
+        // Multi-Currency account's own per-currency transaction list).
+        async function refreshCurrencyActivityPageIfVisible() {
+            if (!document.getElementById("page-currencyactivity").classList.contains("hidden")) {
+                await renderCurrencyActivityPage();
+            }
+        }
+
+        // v80: general-purpose refresh for anything that can touch a Fixed Deposit placement's
+        // status — saving/editing a transaction, deleting one, or resolving an FD's maturity
+        // (renew/withdraw). renderApp() alone keeps the dashboard reminder banner and the
+        // per-account Activity page (page-ledger, rendered inline inside renderApp) current, but
+        // it does NOT re-run renderAccountsPage() — a separate function — so the Accounts page's
+        // own FD placement subrows (active/due badge, amount, maturity date; added v56) kept
+        // showing stale data until the user navigated away and back. Also covers the Fund/
+        // Currency Activity pages for the same reason, since a transaction edit/delete can affect
+        // those too. Mirrors the existing refreshAfterAccountChange() pattern used for account
+        // create/edit/delete.
+        async function refreshAfterTransactionChange() {
+            await renderApp();
+            if (!document.getElementById("page-accounts").classList.contains("hidden")) {
+                await renderAccountsPage();
+            }
+            await refreshFundActivityPageIfVisible();
+            await refreshCurrencyActivityPageIfVisible();
+        }
+
         function openAddFundModal() {
             const accountId = activeLedgerAccountView;
             if (accountId === "all") return;
@@ -2857,7 +2911,7 @@
             document.getElementById("fundTxModalTitle").textContent = "Add Transaction";
             document.getElementById("fundTxId").value = "";
             document.getElementById("fundTxType").value = "buy";
-            document.getElementById("fundTxDate").value = new Date().toISOString().split("T")[0];
+            document.getElementById("fundTxDate").value = todayLocalStr();
             document.getElementById("fundTxUnits").value = "";
             document.getElementById("fundTxPrice").value = "";
             document.getElementById("fundTxTotal").value = "";
@@ -3427,7 +3481,7 @@
                 .sort((a, b) => a.name.localeCompare(b.name));
 
             const dateInput = document.getElementById("navUpdateDate");
-            if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0, 10);
+            if (dateInput && !dateInput.value) dateInput.value = todayLocalStr();
 
             renderNavUpdateCardView();
             renderNavUpdateTableView();
@@ -4548,7 +4602,7 @@
             } else {
                 document.getElementById("txId").value = "";
                 document.getElementById("txType").value = type;
-                document.getElementById("txDate").value = new Date().toISOString().split('T')[0];
+                document.getElementById("txDate").value = todayLocalStr();
                 document.getElementById("txDesc").value = "";
                 document.getElementById("txAmount").value = "";
 
@@ -4750,7 +4804,7 @@
             wrap.style.display = showFd ? "block" : "none";
 
             if (showFd && !document.getElementById("txFdStartDate").value) {
-                document.getElementById("txFdStartDate").value = document.getElementById("txDate").value || new Date().toISOString().split("T")[0];
+                document.getElementById("txFdStartDate").value = document.getElementById("txDate").value || todayLocalStr();
                 recalcTxFdMaturity();
             }
 
@@ -4815,7 +4869,7 @@
             const start = new Date(startVal + "T00:00:00");
             const maturity = new Date(start);
             maturity.setMonth(maturity.getMonth() + tenure);
-            const maturityStr = maturity.toISOString().split("T")[0];
+            const maturityStr = localDateStr(maturity);
             document.getElementById("txFdMaturityDate").value = maturityStr;
 
             const principal = parseFloat(document.getElementById("txAmount").value) || 0;
@@ -5101,7 +5155,7 @@
             const start = new Date(startVal + "T00:00:00");
             const maturity = new Date(start);
             maturity.setMonth(maturity.getMonth() + tenure);
-            const maturityStr = maturity.toISOString().split("T")[0];
+            const maturityStr = localDateStr(maturity);
             document.getElementById("resolveFdNewMaturity").value = maturityStr;
 
             const txId = parseInt(document.getElementById("resolveFdTxId").value);
@@ -5144,7 +5198,7 @@
             if (isNaN(interest) || interest < 0) { alert("Please enter a valid interest amount (0 if none)."); return; }
 
             const action = document.getElementById("resolveFdAction").value;
-            const today = new Date().toISOString().split("T")[0];
+            const today = todayLocalStr();
             const refLabel = tx.fdReferenceNo ? `Ref: ${tx.fdReferenceNo}` : `#${tx.id}`;
 
             try {
@@ -5230,7 +5284,7 @@
             }
 
             closeModal("resolveFdModal");
-            renderApp();
+            await refreshAfterTransactionChange();
         }
 
         // Direct Mobile Save execution avoiding forms issues
@@ -5362,7 +5416,7 @@
                 return;
             }
             closeModal("txModal");
-            renderApp();
+            await refreshAfterTransactionChange();
         }
 
         // Delete button inside the "Edit Ledger Entry" modal itself — the ledger list no longer
@@ -5383,7 +5437,7 @@
                 return;
             }
             closeModal("txModal");
-            renderApp();
+            await refreshAfterTransactionChange();
         }
 
         // Populates the Year filter with only years that actually have a transaction, plus the
@@ -5566,7 +5620,7 @@
             // account itself — an FD account can hold several tranches, each maturing separately.
             // Placements the user has already renewed or withdrawn are flagged fdResolved and
             // dropped from this scan so the reminder clears once acted upon.
-            const todayMs = new Date(new Date().toISOString().split("T")[0] + "T00:00:00").getTime();
+            const todayMs = new Date(todayLocalStr() + "T00:00:00").getTime();
             const MS_PER_DAY = 86400000;
             let reminderHTML = "";
             txs.filter(t => t.fdMaturityDate && !t.fdResolved).forEach(t => {
@@ -6011,7 +6065,7 @@
                     if (t.fdResolved) {
                         fdStatusBadge = `<span style="font-size:0.62rem; font-weight:700; color:#b91c1c; background:#e2e8f0; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">✅ Closed</span>`;
                     } else {
-                        const isOverdue = new Date(t.fdMaturityDate + "T00:00:00").getTime() < new Date(new Date().toISOString().split("T")[0] + "T00:00:00").getTime();
+                        const isOverdue = new Date(t.fdMaturityDate + "T00:00:00").getTime() < new Date(todayLocalStr() + "T00:00:00").getTime();
                         fdStatusBadge = isOverdue
                             ? `<span style="font-size:0.62rem; font-weight:700; color:#b91c1c; background:#fee2e2; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">⏰ Due</span>`
                             : `<span style="font-size:0.62rem; font-weight:700; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">🟢 Active</span>`;
@@ -6815,7 +6869,7 @@
             const blob = new Blob([JSON.stringify(outputPayload)], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
-            a.href = url; a.download = `ledger_backup_${new Date().toISOString().split('T')[0]}${filenameSuffix}.json`;
+            a.href = url; a.download = `ledger_backup_${todayLocalStr()}${filenameSuffix}.json`;
             a.click(); URL.revokeObjectURL(url);
         }
 

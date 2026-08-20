@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v81";
+        const APP_VERSION = "v82";
         const APP_VERSION_DATE = "2026-08-20";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -838,6 +838,7 @@
             "epf contrib.(er)": "🏦",
             "epf contrib.(ee)": "🏦",
             "fd interest": "🏦",
+            "fd interest income": "🏦",
             "bank interest": "💰",
             "gift received": "🎁",
             "rebate": "💸",
@@ -4562,7 +4563,18 @@
                 }
 
                 const currentCats = dynamicCategories.filter(c => c.type === tx.type).map(c => c.name);
-                const fallbackGroup = tx.type === "income" ? ["Salary", "Investments", "Freelance", "Other Income"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
+                // v82: previously a hand-picked 4/7-name list that only covered the very original
+                // starter set (Salary/Investments/Freelance/Other Income, etc.) — anything added to
+                // DEFAULT_CATEGORIES since (FD Interest Income, EPF Contrib.(ER)/(EE), Dividend
+                // ASNB, etc.) wasn't in it, so if that category's own record was ever missing,
+                // renamed, or deleted, it silently disappeared from this dropdown with no way to
+                // pick it back for re-categorising an entry. Now unioned with the full
+                // DEFAULT_CATEGORIES list (kept alongside the original legacy names rather than
+                // replacing them, in case an older install still relies on one of those) so every
+                // built-in category is always selectable here regardless of what's actually
+                // persisted in the Categories store.
+                const legacyFallback = tx.type === "income" ? ["Salary", "Investments", "Freelance", "Other Income"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
+                const fallbackGroup = [...legacyFallback, ...DEFAULT_CATEGORIES.filter(c => c.type === tx.type).map(c => c.name)];
                 
                 // Transfers have no category at all (the Category row is hidden for them below) —
                 // skip populating options entirely rather than leaving the <select> holding
@@ -4631,7 +4643,11 @@
                 }
 
                 const currentCats = dynamicCategories.filter(c => c.type === type).map(c => c.name);
-                const fallbackGroup = type === "income" ? ["Salary", "Investments", "Freelance", "Other Income"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
+                // v82: see matching comment on the "edit entry" branch above — unioned with
+                // DEFAULT_CATEGORIES (kept alongside the legacy names) so every built-in category
+                // is always offered here too.
+                const legacyFallback = type === "income" ? ["Salary", "Investments", "Freelance", "Other Income"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
+                const fallbackGroup = [...legacyFallback, ...DEFAULT_CATEGORIES.filter(c => c.type === type).map(c => c.name)];
                 
                 // Transfers have no category (the Category row is hidden for them just above) — skip
                 // populating the <select> entirely for them. Previously this always populated it

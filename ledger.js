@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v84";
+        const APP_VERSION = "v85";
         const APP_VERSION_DATE = "2026-08-20";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -695,6 +695,14 @@
         // Active exploration navigation states
         let activeLedgerAccountView = "all";
         let activeCategoryView = "all";
+        // v85: when a category page is reached from a page that has its own year/month filter
+        // (Net Savings Statement, Spending/Income Breakdown), these carry that filter's value
+        // along so the category page shows only that period instead of every transaction ever
+        // logged under the category. "all" means unfiltered (e.g. reached some other way).
+        // Deliberately separate from the dashboard's own month/year filter — see the v74 comment
+        // in renderApp() for why category drill-ins must never silently inherit that one.
+        let categoryDrillYear = "all";
+        let categoryDrillMonth = "all";
         let directTypeView = "all"; 
         // Per-account "Account Activity" year navigation (v33) — which year is currently shown,
         // and the sorted list of years that actually have a transaction for that account (used to
@@ -1295,6 +1303,8 @@
             workspaceScrollY = window.scrollY;
             activeLedgerAccountView = accountId;
             activeCategoryView = "all";
+            categoryDrillYear = "all";
+            categoryDrillMonth = "all";
             directTypeView = "all";
             accountLedgerYear = "__fresh__"; // fresh account view — default to its latest year with data
             ledgerBackToPage = backTarget;
@@ -1345,9 +1355,11 @@
             openTransactionForm(el.dataset.type, null, presetAccountId);
         }
 
-        function navigateToCategoryPage(categoryName, backTarget = "workspace") {
+        function navigateToCategoryPage(categoryName, backTarget = "workspace", year = "all", month = "all") {
             if (backTarget === "workspace") workspaceScrollY = window.scrollY;
             activeCategoryView = categoryName;
+            categoryDrillYear = year;
+            categoryDrillMonth = month;
             activeLedgerAccountView = "all";
             directTypeView = "all";
             ledgerBackToPage = backTarget;
@@ -1363,6 +1375,8 @@
             directTypeView = type;
             activeLedgerAccountView = "all";
             activeCategoryView = "all";
+            categoryDrillYear = "all";
+            categoryDrillMonth = "all";
             ledgerBackToPage = "workspace";
             ledgerRenderLimit = LEDGER_PAGE_SIZE;
             showPage("page-ledger");
@@ -5836,7 +5850,12 @@
             // Compute structural titles
             if (activeCategoryView !== "all") {
                 const icon = getCategoryIcon(activeCategoryView);
-                document.getElementById("ledgerTargetTitle").textContent = `${icon} ${activeCategoryView.toUpperCase()}`;
+                const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                let periodSuffix = "";
+                if (categoryDrillMonth !== "all" && categoryDrillYear !== "all") periodSuffix = ` · ${monthNames[parseInt(categoryDrillMonth)]} ${categoryDrillYear}`;
+                else if (categoryDrillYear !== "all") periodSuffix = ` · ${categoryDrillYear}`;
+                else if (categoryDrillMonth !== "all") periodSuffix = ` · ${monthNames[parseInt(categoryDrillMonth)]} (All Years)`;
+                document.getElementById("ledgerTargetTitle").textContent = `${icon} ${activeCategoryView.toUpperCase()}${periodSuffix}`;
                 document.getElementById("ledgerTargetEditBtn").style.display = "none";
             } else if (directTypeView !== "all") {
                 document.getElementById("ledgerTargetTitle").textContent = `All ${directTypeView.charAt(0).toUpperCase() + directTypeView.slice(1)} Log`;
@@ -6019,7 +6038,13 @@
 
                 let isBound = false;
                 if (activeCategoryView !== "all") {
-                    isBound = t.cat === activeCategoryView;
+                    // v85: categoryDrillYear/Month carry the year/month filter that was active on
+                    // the page this category was clicked from (Net Savings Statement, Spending/
+                    // Income Breakdown) — "all" when not set, so a category reached any other way
+                    // still shows its complete history exactly as before.
+                    isBound = t.cat === activeCategoryView
+                        && (categoryDrillYear === "all" || d.getFullYear().toString() === categoryDrillYear)
+                        && (categoryDrillMonth === "all" || d.getMonth().toString() === categoryDrillMonth);
                 } else if (directTypeView !== "all") {
                     isBound = t.type === directTypeView;
                 } else if (activeLedgerAccountView !== "all") {
@@ -6289,7 +6314,7 @@
                 if (Math.abs(val) < SAVINGS_ZERO_EPS) return;
                 const icon = getCategoryIcon(c, "income");
                 incRowsHTML += `
-                    <div class="statement-row" data-click="navigateToCategoryPage" data-category="${escapeHtml(c)}" data-back="savings">
+                    <div class="statement-row" data-click="navigateToCategoryPage" data-category="${escapeHtml(c)}" data-back="savings" data-year="${escapeHtml(filterY)}">
                         <strong>${icon} ${escapeHtml(c)}</strong>
                         <span style="color: var(--income-color); font-weight:700;">+${formatCurrency(val, baseCurrency)}</span>
                     </div>
@@ -6304,7 +6329,7 @@
                 if (Math.abs(val) < SAVINGS_ZERO_EPS) return;
                 const icon = getCategoryIcon(c, "expense");
                 expRowsHTML += `
-                    <div class="statement-row" data-click="navigateToCategoryPage" data-category="${escapeHtml(c)}" data-back="savings">
+                    <div class="statement-row" data-click="navigateToCategoryPage" data-category="${escapeHtml(c)}" data-back="savings" data-year="${escapeHtml(filterY)}">
                         <strong>${icon} ${escapeHtml(c)}</strong>
                         <span style="color: var(--expense-color); font-weight:700;">-${formatCurrency(val, baseCurrency)}</span>
                     </div>
@@ -6330,7 +6355,7 @@
                 const sign = entry.type === "income" ? "+" : "-";
                 const color = entry.type === "income" ? "var(--income-color)" : "var(--expense-color)";
                 excludedRowsHTML += `
-                    <div class="statement-row" data-click="navigateToCategoryPage" data-category="${escapeHtml(c)}" data-back="savings">
+                    <div class="statement-row" data-click="navigateToCategoryPage" data-category="${escapeHtml(c)}" data-back="savings" data-year="${escapeHtml(filterY)}">
                         <strong>${icon} ${escapeHtml(c)}</strong>
                         <span style="color:${color}; font-weight:700;">${sign}${formatCurrency(entry.value, baseCurrency)}</span>
                     </div>
@@ -6354,13 +6379,13 @@
 
         // Builds the shared "List" view (category rows with a % progress bar) — the same markup
         // the old dashboard Spending Breakdown used, now reused by both breakdown pages.
-        function buildBreakdownListHTML(entries, total, type) {
+        function buildBreakdownListHTML(entries, total, type, year = "all", month = "all") {
             if (entries.length === 0) return '<p style="font-size: 0.75rem; text-align: center; color: var(--text-muted);">Nothing categorised yet.</p>';
             return entries.map(e => {
                 const pct = total > 0 ? ((e.value / total) * 100).toFixed(0) : 0;
                 const icon = getCategoryIcon(e.label, type);
                 return `
-                    <div class="category-row-item" data-click="navigateToCategoryPage" data-category="${escapeHtml(e.label)}" style="font-size:0.75rem; margin-top:4px;">
+                    <div class="category-row-item" data-click="navigateToCategoryPage" data-category="${escapeHtml(e.label)}" data-year="${escapeHtml(year)}" data-month="${escapeHtml(month)}" style="font-size:0.75rem; margin-top:4px;">
                         <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
                             <strong>${icon} ${escapeHtml(e.label.toUpperCase())}</strong>
                             <span>${formatCurrency(e.value, baseCurrency)} (${pct}%)</span>
@@ -6489,7 +6514,7 @@
 
             document.getElementById("spendingBreakdownTotal").textContent = formatCurrency(total, baseCurrency);
             renderBreakdownChart("spendingBreakdownChartWrap", chartType, entries, total, "expense");
-            document.getElementById("spendingBreakdownList").innerHTML = buildBreakdownListHTML(entries, total, "expense");
+            document.getElementById("spendingBreakdownList").innerHTML = buildBreakdownListHTML(entries, total, "expense", filterY, filterM);
 
             const excludedEntries = Object.keys(excludedTotals)
                 .filter(c => excludedTotals[c] > 0)
@@ -6499,7 +6524,7 @@
             if (excludedEntries.length) {
                 excludedCard.style.display = "";
                 document.getElementById("spendingBreakdownExcludedTotal").textContent = formatCurrency(excludedTotal, baseCurrency);
-                document.getElementById("spendingBreakdownExcludedList").innerHTML = buildBreakdownListHTML(excludedEntries, excludedTotal, "expense");
+                document.getElementById("spendingBreakdownExcludedList").innerHTML = buildBreakdownListHTML(excludedEntries, excludedTotal, "expense", filterY, filterM);
             } else {
                 excludedCard.style.display = "none";
             }
@@ -6545,7 +6570,7 @@
 
             document.getElementById("incomeBreakdownTotal").textContent = formatCurrency(total, baseCurrency);
             renderBreakdownChart("incomeBreakdownChartWrap", chartType, entries, total, "income");
-            document.getElementById("incomeBreakdownList").innerHTML = buildBreakdownListHTML(entries, total, "income");
+            document.getElementById("incomeBreakdownList").innerHTML = buildBreakdownListHTML(entries, total, "income", filterY, filterM);
 
             const excludedEntries = Object.keys(excludedTotals)
                 .filter(c => excludedTotals[c] > 0)
@@ -6555,7 +6580,7 @@
             if (excludedEntries.length) {
                 excludedCard.style.display = "";
                 document.getElementById("incomeBreakdownExcludedTotal").textContent = formatCurrency(excludedTotal, baseCurrency);
-                document.getElementById("incomeBreakdownExcludedList").innerHTML = buildBreakdownListHTML(excludedEntries, excludedTotal, "income");
+                document.getElementById("incomeBreakdownExcludedList").innerHTML = buildBreakdownListHTML(excludedEntries, excludedTotal, "income", filterY, filterM);
             } else {
                 excludedCard.style.display = "none";
             }
@@ -7159,7 +7184,7 @@
             navigateToLedgerPage: (el) => navigateToLedgerPage(el.dataset.id, el.dataset.back || "workspace"),
             openImageViewer: (el, e) => openImageViewer(el.dataset.image, e),
             deleteTxFromEditModal: () => deleteTxFromEditModal(),
-            navigateToCategoryPage: (el) => navigateToCategoryPage(el.dataset.category, el.dataset.back || "workspace"),
+            navigateToCategoryPage: (el) => navigateToCategoryPage(el.dataset.category, el.dataset.back || "workspace", el.dataset.year || "all", el.dataset.month || "all"),
             numpadDigit: (el) => numpadDigit(el.dataset.digit),
             numpadBackspace: () => numpadBackspace(),
             numpadClear: () => numpadClear(),

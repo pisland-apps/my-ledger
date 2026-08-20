@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v83";
+        const APP_VERSION = "v84";
         const APP_VERSION_DATE = "2026-08-20";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -4507,8 +4507,18 @@
             const currSelect = document.getElementById("txCurrency"); currSelect.innerHTML = "";
             const catSelect = document.getElementById("txCategory"); catSelect.innerHTML = "";
 
-            Object.keys(fxRates).forEach(c => { currSelect.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`; });
-            accounts.forEach(a => {
+            // v84: currency options previously listed in Object.keys(fxRates) insertion order
+            // (whatever order currencies were first added to Currency Settings in — not
+            // alphabetical, and unrelated to which one is the Base currency), and nothing
+            // afterward selected a default for a brand-new entry, so the browser just defaulted
+            // to whichever currency happened to land first in that order (e.g. USD) instead of
+            // the account holder's actual Base currency (MYR). Sorted alphabetically for a
+            // predictable list, and the "Account / To Account" dropdowns are sorted by
+            // group-then-name (matching the Accounts page, via the shared
+            // sortAccountsByGroupThenName()) instead of raw IndexedDB read order.
+            Object.keys(fxRates).sort((a, b) => a.localeCompare(b)).forEach(c => { currSelect.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`; });
+            const sortedAccountsForTxForm = sortAccountsByGroupThenName(accounts);
+            sortedAccountsForTxForm.forEach(a => {
                 const prefix = a.type === "fd" ? "🏦 " : a.type === "multi" ? "💱 " : a.type === "unittrust" ? "📊 " : "";
                 const currLabel = (a.type === "multi" || a.type === "fd" || a.type === "unittrust") ? "" : ` (${escapeHtml(a.currency)})`;
                 // v68: owner alone can still leave two accounts looking identical (e.g. two
@@ -4519,6 +4529,10 @@
                 srcSelect.innerHTML += `<option value="${escapeHtml(a.id)}">${prefix}${escapeHtml(a.name)}${currLabel}${ownerLabel}</option>`;
                 destSelect.innerHTML += `<option value="${escapeHtml(a.id)}">${prefix}${escapeHtml(a.name)}${currLabel}${ownerLabel}</option>`;
             });
+            if (existingTxId === null && fxRates[baseCurrency] !== undefined) {
+                currSelect.value = baseCurrency;
+            }
+
 
             if (existingTxId !== null) {
                 const txs = await readAllDB(STORES.TRANSACTIONS);

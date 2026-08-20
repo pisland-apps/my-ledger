@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v82";
+        const APP_VERSION = "v83";
         const APP_VERSION_DATE = "2026-08-20";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -7235,6 +7235,23 @@
             const action = INPUT_ACTIONS[el.dataset.input];
             if (action) action(el, e);
         });
+
+        // v83: number inputs (Amount, Interest Rate, Tenure, etc.) silently change value when the
+        // mouse wheel/trackpad scrolls over them WHILE FOCUSED — this is standard browser behavior
+        // for <input type="number">, not a bug in this app's code, but it's a well-known footgun:
+        // type a value into a field near the top of a long form (e.g. Amount in the Add/Edit
+        // Transaction modal), then scroll the page down to reach fields further below, and if the
+        // cursor happens to pass over that still-focused number field while scrolling, each wheel
+        // notch nudges the value by one `step` — e.g. 3 notches over a step="0.01" field quietly
+        // turns 50000.00 into 49999.97. Fixed by blurring any number input the instant a wheel
+        // event reaches it; this does not block the page scroll itself (no preventDefault), it
+        // just stops that scroll from being interpreted as a value change.
+        document.addEventListener("wheel", () => {
+            const active = document.activeElement;
+            if (active && active.tagName === "INPUT" && active.type === "number") {
+                active.blur();
+            }
+        }, { passive: true });
 
         window.addEventListener("load", bootstrap);
 

@@ -1089,7 +1089,7 @@
                 <button class="currency-pill" data-click="openCurrencyConfig">
                     Base: <span id="currentBasePill">USD</span> ⚙
                 </button>
-                <button class="lock-btn-header" title="Export &amp; Import" aria-label="Export and Import" data-click="sidebarGo" data-target="backup">💾</button>
+                <button class="lock-btn-header" title="Export &amp; Import" aria-label="Export and Import" data-click="navigateToBackupPageFromDashboard">💾</button>
                 <button class="lock-btn-header" title="Lock app now" data-click="lockAppNow">🔒</button>
             </div>
         </header>
@@ -1346,7 +1346,7 @@
     <!-- ================= PAGE 6: BACKUP & RESTORE ================= -->
     <div id="page-backup" class="page hidden">
         <div class="nav-header">
-            <button class="back-btn" data-click="navigateToDataSecurityPage">&larr; Back</button>
+            <button class="back-btn" data-click="handleBackupBackClick">&larr; Back</button>
             <div>
                 <h3 style="font-weight:800; font-size:1.2rem;">Backup &amp; Restore</h3>
                 <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Export &amp; import your data</p>

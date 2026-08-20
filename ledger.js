@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v85";
+        const APP_VERSION = "v86";
         const APP_VERSION_DATE = "2026-08-20";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -711,6 +711,14 @@
         let accountLedgerYear = "__fresh__"; // "__fresh__" = not yet initialized for this account view; null = user explicitly chose "All Years"; a number = one specific year
         let accountLedgerYearsCache = [];
         let ledgerBackToPage = "workspace"; 
+
+        // v86: which page the Backup & Restore page's Back button should return to — set by
+        // navigateToBackupPage()'s optional param. "datasecurity" (the default, matching the
+        // pre-v86 behavior) when reached via the Data Security hub's own "Backup & Restore" row;
+        // "workspace" when reached via the dashboard header's 💾 shortcut, which used to always
+        // land back on the Data Security hub regardless — a page the user may never have actually
+        // visited — forcing a second Back tap to actually get back to the dashboard.
+        let backupBackToPage = "datasecurity";
 
         // Fund's own Activity page (v48) — mirrors an account's Activity page, but scoped to one
         // fund's Buy/Sell/Dividend/Contribution transactions only.
@@ -1427,12 +1435,18 @@
             await renderCategoriesPage();
         }
 
-        function navigateToBackupPage() {
+        function navigateToBackupPage(backTarget = "datasecurity") {
             workspaceScrollY = window.scrollY;
+            backupBackToPage = backTarget;
             showPage("page-backup");
             window.scrollTo(0, 0);
             pushVirtualState("backup");
             calculateStorageMetrics();
+        }
+
+        function handleBackupBackClick() {
+            if (backupBackToPage === "workspace") navigateToWorkspace();
+            else navigateToDataSecurityPage();
         }
 
         // "All Transactions" — used to be a sidebar item, now a bottom-of-dashboard button (v34).
@@ -2172,6 +2186,7 @@
             }
 
             resetAccountForm();
+            closeModal("accountsModal");
             await refreshAfterAccountChange();
         }
 
@@ -7125,6 +7140,8 @@
             navigateToAccountsPage: () => navigateToAccountsPage(),
             navigateToCategoriesPage: () => navigateToCategoriesPage(),
             navigateToBackupPage: () => navigateToBackupPage(),
+            navigateToBackupPageFromDashboard: () => navigateToBackupPage("workspace"),
+            handleBackupBackClick: () => handleBackupBackClick(),
             navigateToAllLedgerPage: () => navigateToAllLedgerPage(),
             navigateToDataSecurityPage: () => navigateToDataSecurityPage(),
             navigateToMembersPage: () => navigateToMembersPage(),

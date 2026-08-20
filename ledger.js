@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v77";
+        const APP_VERSION = "v78";
         const APP_VERSION_DATE = "2026-08-20";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -871,6 +871,7 @@
             const databasePage = document.getElementById("page-database");
             const spendingBreakdownPage = document.getElementById("page-spending-breakdown");
             const incomeBreakdownPage = document.getElementById("page-income-breakdown");
+            const portfolioReportPage = document.getElementById("page-portfolio-report");
             const navUpdatePage = document.getElementById("page-navupdate");
             const dataSecurityPage = document.getElementById("page-datasecurity");
             const membersPage = document.getElementById("page-members");
@@ -897,6 +898,7 @@
                 !databasePage.classList.contains("hidden") ||
                 !spendingBreakdownPage.classList.contains("hidden") ||
                 !incomeBreakdownPage.classList.contains("hidden") ||
+                !portfolioReportPage.classList.contains("hidden") ||
                 !navUpdatePage.classList.contains("hidden") ||
                 !dataSecurityPage.classList.contains("hidden")
             ) {
@@ -1250,7 +1252,7 @@
         // --- SPA NAVIGATION PIPELINE ---
         // Every top-level page div's id — used by showPage() to hide all but the target,
         // so adding a new page never risks leaving a stale one visible underneath.
-        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-accounts", "page-categories", "page-backup", "page-autolock", "page-database", "page-spending-breakdown", "page-income-breakdown", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity"];
+        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-accounts", "page-categories", "page-backup", "page-autolock", "page-database", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity"];
         function showPage(id) {
             APP_PAGE_IDS.forEach(p => {
                 const el = document.getElementById(p);
@@ -1497,6 +1499,7 @@
             const databaseHidden = document.getElementById("page-database").classList.contains("hidden");
             const spendingHidden = document.getElementById("page-spending-breakdown").classList.contains("hidden");
             const incomeHidden = document.getElementById("page-income-breakdown").classList.contains("hidden");
+            const portfolioReportHidden = document.getElementById("page-portfolio-report").classList.contains("hidden");
             const navUpdateHidden = document.getElementById("page-navupdate").classList.contains("hidden");
             let target = null;
             if (!savingsHidden) target = "savings";
@@ -1507,6 +1510,7 @@
             else if (!databaseHidden) target = "database";
             else if (!spendingHidden) target = "spending-breakdown";
             else if (!incomeHidden) target = "income-breakdown";
+            else if (!portfolioReportHidden) target = "portfolio-report";
             else if (!navUpdateHidden) target = "navupdate";
             else if (!ledgerHidden) {
                 const isUnfiltered = activeLedgerAccountView === "all" && activeCategoryView === "all" && directTypeView === "all";
@@ -1535,6 +1539,7 @@
             else if (target === "database") navigateToDatabasePage();
             else if (target === "spending-breakdown") navigateToSpendingBreakdownPage();
             else if (target === "income-breakdown") navigateToIncomeBreakdownPage();
+            else if (target === "portfolio-report") navigateToPortfolioReportPage();
             else if (target === "lock") lockAppNow();
         }
 
@@ -2550,7 +2555,13 @@
             const fundId = typeof el === "string" ? el : el.dataset.id;
             workspaceScrollY = window.scrollY;
             activeFundActivityId = fundId;
-            fundActivityBackToPage = activeLedgerAccountView !== "all" ? "ledger" : "accounts";
+            // v78: rows in the Unit Trust Portfolio Report link here too — send Back to that
+            // report instead of misrouting to Ledger/Accounts when that's where the tap came from.
+            if (!document.getElementById("page-portfolio-report").classList.contains("hidden")) {
+                fundActivityBackToPage = "portfolio-report";
+            } else {
+                fundActivityBackToPage = activeLedgerAccountView !== "all" ? "ledger" : "accounts";
+            }
             showPage("page-fundactivity");
             window.scrollTo(0, 0);
             pushVirtualState("fundactivity");
@@ -2561,6 +2572,9 @@
             if (fundActivityBackToPage === "ledger") {
                 showPage("page-ledger");
                 await renderApp();
+            } else if (fundActivityBackToPage === "portfolio-report") {
+                showPage("page-portfolio-report");
+                await renderPortfolioReportPage();
             } else {
                 showPage("page-accounts");
                 await renderAccountsPage();
@@ -6450,6 +6464,144 @@
             }
         }
 
+        // --- UNIT TRUST PORTFOLIO REPORT (new, v78) ---
+        // Rolls up every live fund across every "unittrust" account into one report — the
+        // per-account Fund Holdings table (renderFundHoldingsTable, on an account's Activity
+        // page) only ever shows a single account's funds, so there was previously no page
+        // that answered "how is my investment portfolio doing" across the whole ledger.
+        //
+        // Reuses the exact same Invested/Recovered/P&L formula as that table: Buy is the only
+        // thing that counts as "Invested" (cost basis); Sell and Dividend (Cheque Payout) are
+        // folded into `recovered` and combined into P/L instead of being subtracted from
+        // Invested, so Return % stays stable across partial sells. See the full rationale on
+        // computeInvested() inside renderFundHoldingsTable — deliberately duplicated here
+        // rather than shared, so a future change to the per-account table can't silently alter
+        // this report's numbers (or vice versa) without both being touched on purpose.
+        function computePortfolioFundPL(fundTxs) {
+            let invested = 0, recovered = 0;
+            fundTxs.forEach(t => {
+                if (t.fundTxType === "buy") invested += t.amount;
+                else if (t.fundTxType === "sell" || t.fundTxType === "dividend_payout") recovered += t.amount;
+            });
+            return { invested, recovered };
+        }
+
+        // Solo-owned funds only when a specific member is picked — mirrors accountIdsForMember's
+        // "solo only, joint excluded" convention already used by the Spending/Income Breakdown
+        // member filter, so this report's filter behaves the same way a user already expects.
+        function fundMatchesMemberFilter(fund, memberId) {
+            if (memberId === "all") return true;
+            const ids = Array.isArray(fund.ownerMemberIds) ? fund.ownerMemberIds : [];
+            return ids.length === 1 && ids[0] === memberId;
+        }
+
+        async function renderPortfolioReportPage() {
+            const [accounts, funds, allTxs] = await Promise.all([
+                readAllDB(STORES.ACCOUNTS),
+                readAllDB(STORES.FUNDS),
+                readAllDB(STORES.TRANSACTIONS)
+            ]);
+
+            populateBreakdownMemberFilter("portfolioMemberFilter");
+            const filterMember = document.getElementById("portfolioMemberFilter").value;
+            document.getElementById("portfolioBaseCurrLabel").textContent = baseCurrency;
+
+            const unitTrustAccountIds = new Set(accounts.filter(a => a.type === "unittrust").map(a => a.id));
+            const liveFunds = funds.filter(f => unitTrustAccountIds.has(f.accountId) && fundMatchesMemberFilter(f, filterMember));
+
+            const fundTxsByFundId = {};
+            allTxs.forEach(t => {
+                if (t.fundId) (fundTxsByFundId[t.fundId] = fundTxsByFundId[t.fundId] || []).push(t);
+            });
+
+            let totalValueBase = 0, totalInvestedBase = 0, totalPlBase = 0;
+            const rowsByAccount = {};
+
+            liveFunds.forEach(f => {
+                const fundTxs = (fundTxsByFundId[f.id] || []).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+                const { invested, recovered } = computePortfolioFundPL(fundTxs);
+                const value = (f.units || 0) * (f.currentNav || 0);
+                const pl = value + recovered - invested; // total return: unrealised + already-recovered cash, minus principal ever put in
+                const returnPct = invested > 0 ? (pl / invested) * 100 : 0;
+                const ownerLabel = accountOwnerNamesText({ memberIds: f.ownerMemberIds });
+                const plColor = pl >= 0 ? "var(--income-color)" : "var(--expense-color)";
+
+                totalValueBase += convertCurrency(value, f.currency, baseCurrency);
+                totalInvestedBase += convertCurrency(invested, f.currency, baseCurrency);
+                totalPlBase += convertCurrency(pl, f.currency, baseCurrency);
+
+                const acc = accounts.find(a => a.id === f.accountId);
+                const accName = acc ? acc.name : "(unknown account)";
+                (rowsByAccount[accName] = rowsByAccount[accName] || []).push(`
+                    <tr style="cursor:pointer;" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}">
+                        <td style="padding:8px 10px;">
+                            <strong>${escapeHtml(f.name)}</strong><br>
+                            <span style="font-size:0.68rem; color:var(--text-muted);">${escapeHtml(f.code || "")}</span><br>
+                            <span style="font-size:0.68rem; color:var(--primary); font-weight:700;">${escapeHtml(ownerLabel)}</span>
+                        </td>
+                        <td style="padding:8px 10px; text-align:right;"><strong>${formatCurrency(value, f.currency)}</strong></td>
+                        <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested, f.currency)}</td>
+                        <td style="padding:8px 10px; text-align:right; color:${plColor}; font-weight:700;">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)}</td>
+                        <td style="padding:8px 10px; text-align:right; color:${plColor};">${returnPct.toFixed(2)}%</td>
+                    </tr>`);
+            });
+
+            document.getElementById("portfolioValueTotal").textContent = formatCurrency(totalValueBase, baseCurrency);
+            document.getElementById("portfolioInvestedTotal").textContent = formatCurrency(totalInvestedBase, baseCurrency);
+            const totalReturnPctBase = totalInvestedBase > 0 ? (totalPlBase / totalInvestedBase) * 100 : 0;
+
+            const plBox = document.getElementById("portfolioPlBox");
+            const returnBox = document.getElementById("portfolioReturnBox");
+            const c = totalPlBase >= 0
+                ? { bg: "#f0fdf4", border: "#bbf7d0", text: "#15803d" }
+                : { bg: "#fef2f2", border: "#fecaca", text: "#b91c1c" };
+            plBox.style.background = c.bg; plBox.style.border = `1px solid ${c.border}`;
+            returnBox.style.background = c.bg; returnBox.style.border = `1px solid ${c.border}`;
+            document.getElementById("portfolioPlTotal").style.color = c.text;
+            document.getElementById("portfolioReturnTotal").style.color = c.text;
+            document.getElementById("portfolioPlTotal").textContent = (totalPlBase >= 0 ? "+" : "") + formatCurrency(totalPlBase, baseCurrency);
+            document.getElementById("portfolioReturnTotal").textContent = totalReturnPctBase.toFixed(2) + "%";
+
+            const detailWrap = document.getElementById("portfolioDetailWrap");
+            const accNames = Object.keys(rowsByAccount).sort();
+            if (accNames.length === 0) {
+                detailWrap.innerHTML = '<p style="padding:12px 4px; text-align:center; color:var(--text-muted); font-size:0.8rem;">No unit trust funds match this filter.</p>';
+                return;
+            }
+            // Grouped by account (rather than one flat list) since the whole point of this report
+            // is spanning multiple Unit Trust accounts — a flat list would make it hard to tell
+            // which account each fund actually sits under.
+            detailWrap.innerHTML = accNames.map(accName => `
+                <div style="margin-bottom:14px;">
+                    <div style="font-size:0.72rem; font-weight:800; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">📊 ${escapeHtml(accName)}</div>
+                    <table style="width:100%; border-collapse:collapse; font-size:0.78rem; white-space:nowrap;">
+                        <thead>
+                            <tr style="text-align:left; color:var(--text-muted); font-size:0.68rem; text-transform:uppercase;">
+                                <th style="padding:6px 10px;">Fund</th>
+                                <th style="padding:6px 10px; text-align:right;">Value</th>
+                                <th style="padding:6px 10px; text-align:right;">Invested</th>
+                                <th style="padding:6px 10px; text-align:right;">P/L</th>
+                                <th style="padding:6px 10px; text-align:right;">Return</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsByAccount[accName].join("")}</tbody>
+                    </table>
+                </div>`).join("");
+        }
+
+        // Detail table starts collapsed — a portfolio spanning several accounts/funds can get
+        // long, and the summary tiles above already answer the headline question. Same
+        // collapse/expand pattern as the sidebar's account-type shortcuts list.
+        function togglePortfolioDetail() {
+            const wrap = document.getElementById("portfolioDetailWrap");
+            const btn = document.getElementById("portfolioDetailToggle");
+            const expanded = wrap.style.display !== "none";
+            wrap.style.display = expanded ? "none" : "";
+            btn.textContent = expanded ? "▸" : "▾";
+            btn.title = expanded ? "Expand fund detail" : "Collapse fund detail";
+            btn.setAttribute("aria-label", btn.title);
+        }
+
         function navigateToSpendingBreakdownPage() {
             workspaceScrollY = window.scrollY;
             showPage("page-spending-breakdown");
@@ -6464,6 +6616,14 @@
             window.scrollTo(0, 0);
             pushVirtualState("income-breakdown");
             renderIncomeBreakdownPage();
+        }
+
+        function navigateToPortfolioReportPage() {
+            workspaceScrollY = window.scrollY;
+            showPage("page-portfolio-report");
+            window.scrollTo(0, 0);
+            pushVirtualState("portfolio-report");
+            renderPortfolioReportPage();
         }
 
         function navigateToAutoLockPage() {
@@ -6882,6 +7042,8 @@
             openAddFundTxModalForActiveFund: () => openAddFundTxModalForActiveFund(),
             editFund: (el) => editFund(el.dataset.id),
             navigateToFundActivityPage: (el) => navigateToFundActivityPage(el),
+            navigateToPortfolioReportPage: () => navigateToPortfolioReportPage(),
+            togglePortfolioDetail: () => togglePortfolioDetail(),
             handleFundActivityBackClick: () => handleFundActivityBackClick(),
             editFundFromActivityHeader: () => editFundFromActivityHeader(),
             navigateToCurrencyActivityPage: (el) => navigateToCurrencyActivityPage(el),
@@ -6917,6 +7079,7 @@
             recalcTxManualFxPreview: () => recalcTxManualFxPreview(),
             renderSpendingBreakdownPage: () => renderSpendingBreakdownPage(),
             renderIncomeBreakdownPage: () => renderIncomeBreakdownPage(),
+            renderPortfolioReportPage: () => renderPortfolioReportPage(),
             toggleTxTransferFx: () => toggleTxTransferFx(),
             handleRecentTxSettingChange: () => handleRecentTxSettingChange(),
             handlePinnedAccountCountChange: () => handlePinnedAccountCountChange(),

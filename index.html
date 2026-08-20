@@ -1016,6 +1016,9 @@
             <button class="sidebar-item" data-click="sidebarGo" data-target="income-breakdown">
                 <span class="sidebar-item-icon">📈</span> Income Breakdown
             </button>
+            <button class="sidebar-item" data-click="sidebarGo" data-target="portfolio-report">
+                <span class="sidebar-item-icon">🧺</span> Unit Trust Portfolio
+            </button>
 
             <div class="sidebar-divider"></div>
             <div class="sidebar-section-label">Members</div>
@@ -1593,6 +1596,62 @@
                 <span id="savingsExcludedTotal" style="color: var(--text-muted); font-weight:800;">0.00</span>
             </div>
         </div>
+    </div>
+
+    <!-- ================= PAGE: UNIT TRUST PORTFOLIO REPORT (new, v78) =================
+         Rolls up every live fund across every Unit Trust account into one report — the
+         per-account Fund Holdings table (Activity page) only ever shows one account at a
+         time, so this is the only place to see a true portfolio-wide total. Reuses the
+         same Invested/Recovered/P&L formula as that table (see computeInvested() there);
+         values are converted to base currency for the summary tiles, native currency is
+         kept in the per-fund detail rows below. -->
+    <div id="page-portfolio-report" class="page hidden">
+        <div class="nav-header">
+            <button class="back-btn" data-click="navigateToWorkspace">&larr; Back</button>
+            <div>
+                <h3 style="font-weight:800; font-size:1.2rem;">Unit Trust Portfolio</h3>
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">All funds, across every Unit Trust account</p>
+            </div>
+        </div>
+
+        <div class="form-row" style="margin-bottom:14px;">
+            <label>Member</label>
+            <select id="portfolioMemberFilter" class="form-input" data-change="renderPortfolioReportPage">
+                <option value="all">All Members (everyone, incl. joint)</option>
+            </select>
+        </div>
+
+        <div class="report-card">
+            <div class="report-summary-grid">
+                <div class="stat-box income">
+                    <span class="stat-title" style="color:#166534;">Portfolio Value</span>
+                    <div class="stat-amount" id="portfolioValueTotal" style="color:#15803d;">0.00</div>
+                </div>
+                <div class="stat-box" style="background:#f5f3ff; border:1px solid #ddd6fe;">
+                    <span class="stat-title" style="color:#5b21b6;">Total Invested</span>
+                    <div class="stat-amount" id="portfolioInvestedTotal" style="color:#6d28d9;">0.00</div>
+                </div>
+            </div>
+            <div class="report-summary-grid" style="margin-bottom:0;">
+                <div class="stat-box" id="portfolioPlBox">
+                    <span class="stat-title">Profit / Loss</span>
+                    <div class="stat-amount" id="portfolioPlTotal">0.00</div>
+                </div>
+                <div class="stat-box" id="portfolioReturnBox">
+                    <span class="stat-title">Return</span>
+                    <div class="stat-amount" id="portfolioReturnTotal">0.00%</div>
+                </div>
+            </div>
+            <p style="font-size:0.68rem; color:var(--text-muted); margin-top:8px; margin-bottom:0;">
+                Value, Invested, P/L and Return above are converted to <span id="portfolioBaseCurrLabel">base currency</span> so funds in different currencies can be totalled together.
+            </p>
+        </div>
+
+        <div class="section-header">
+            <span class="section-title">Fund Detail</span>
+            <button type="button" class="subrow-toggle-btn" id="portfolioDetailToggle" data-click="togglePortfolioDetail" aria-label="Expand fund detail" title="Expand fund detail">▸</button>
+        </div>
+        <div class="report-card" id="portfolioDetailWrap" style="display:none; overflow-x:auto;"></div>
     </div>
 
     <!-- ================= PAGE: DATA SECURITY HUB (replaces sidebar "Data & Security" section) ================= -->

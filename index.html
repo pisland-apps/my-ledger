@@ -1037,6 +1037,9 @@
             <button class="sidebar-item" data-click="sidebarGo" data-target="portfolio-report">
                 <span class="sidebar-item-icon">🧺</span> Unit Trust Portfolio
             </button>
+            <button class="sidebar-item" data-click="sidebarGo" data-target="owner-networth-report">
+                <span class="sidebar-item-icon">🏛️</span> Financial Assets vs Real Estate
+            </button>
 
             <div class="sidebar-divider"></div>
             <div class="sidebar-section-label">Members</div>
@@ -1670,6 +1673,26 @@
             <button type="button" class="subrow-toggle-btn" id="portfolioDetailToggle" data-click="togglePortfolioDetail" aria-label="Expand fund detail" title="Expand fund detail">▸</button>
         </div>
         <div class="report-card" id="portfolioDetailWrap" style="display:none; overflow-x:auto;"></div>
+    </div>
+
+    <!-- ================= PAGE: OWNER NET WORTH SPLIT REPORT (Financial Assets vs Real Estate) ================= -->
+    <div id="page-owner-networth-report" class="page hidden">
+        <div class="nav-header">
+            <button class="back-btn" data-click="navigateToWorkspace">&larr; Back</button>
+            <div>
+                <h3 style="font-weight:800; font-size:1.2rem;">Financial Assets vs Real Estate</h3>
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Net worth split by owner, converted to <span id="ownerNetWorthBaseCurrLabel">base currency</span></p>
+            </div>
+        </div>
+
+        <div class="report-card" id="ownerNetWorthTableWrap" style="overflow-x:auto;"></div>
+
+        <p style="font-size:0.68rem; color:var(--text-muted); margin-top:10px;">
+            Financial Assets = every account except those grouped under Real Estate (Bank/Cash,
+            Credit Card, Investment, Bank Loan, Account Payable/Receivable, etc.). A property
+            marked "Excluded from Net Worth" is left out of both columns, same as everywhere
+            else in the app.
+        </p>
     </div>
 
     <!-- ================= PAGE: DATA SECURITY HUB (replaces sidebar "Data & Security" section) ================= -->

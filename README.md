@@ -1625,3 +1625,47 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v104.
+
+## v105: "Salary", "Investments", "Freelance" converted from legacy
+fallback names into real, editable category records
+
+Previously these three names only existed as a hardcoded legacy
+fallback list inside `buildCategoryOptionsHTML()` (and mirrored in a
+couple of report-page category lists) — they appeared in every income
+category dropdown so old transactions using them still displayed
+correctly, but had no actual record in the Categories store, so the
+Categories page had nothing to show, edit, or re-icon for them.
+
+- Added all three to `DEFAULT_CATEGORIES` (`Salary` 💼, `Investments`
+  📈, `Freelance` 💻 — same icons the fallback list was already
+  showing, so nothing visually changes for existing transactions).
+  `ensureDefaultCategories()` (idempotent, runs every launch) will
+  auto-create each one as soon as it doesn't find an existing category
+  of that name — same mechanism that seeds every other starter
+  category, so no manual per-device setup and no schema/version bump.
+- Once created, each becomes a normal, manageable entry on the
+  Categories page (rename, re-icon, delete) like any other category.
+  Old transactions tagged "Salary"/"Investments"/"Freelance" are
+  matched by name string, so they line up with the new records
+  automatically — no data migration needed.
+- The hardcoded legacy-fallback list itself (`legacyFallback` in
+  `buildCategoryOptionsHTML()`, and its duplicates in the two
+  breakdown-report functions) was deliberately left in place rather
+  than removed: it's still what keeps a *renamed-away-from* or
+  *deleted* legacy category name from vanishing out of old
+  transactions' dropdowns, and the option-builder already de-dupes
+  against real records (a name "covered" by a real category record is
+  skipped in the leftover-fallback pass), so there's no double entry
+  now that real records exist.
+- **"Other Income" was intentionally left as-is** — it's the app's
+  protected implicit income fallback (`handleCreateCategoryMobile()`
+  explicitly blocks creating a category literally named "Other
+  Income"/"Other Expenses"), not a legacy leftover like the other
+  three, so it stays a placeholder by design.
+- No IndexedDB schema/version changes, no export/import format
+  changes. Verified with `node --check` plus the data-click/data-change/
+  data-input ↔ handler and `getElementById` ↔ element-id
+  cross-reference scripts (0 missing, 0 dupes).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v105.

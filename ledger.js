@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v104";
+        const APP_VERSION = "v105";
         const APP_VERSION_DATE = "2026-08-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -840,6 +840,9 @@
         // for how parentId gets resolved from this name at seed time. Entries with no `parent`
         // are Main Categories (top-level, same as every pre-v101 entry).
         const DEFAULT_CATEGORIES = [
+            { name: "Salary", type: "income", icon: "💼" },
+            { name: "Investments", type: "income", icon: "📈" },
+            { name: "Freelance", type: "income", icon: "💻" },
             { name: "Dividend ASNB", type: "income", icon: "📈" },
             { name: "Divident EPF", type: "income", icon: "🏦" },
             { name: "EPF Contrib.(ER)", type: "income", icon: "🏦" },

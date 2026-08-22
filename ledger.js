@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v89";
+        const APP_VERSION = "v90";
         const APP_VERSION_DATE = "2026-08-21";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -4897,21 +4897,92 @@
             } else if (val === "⌫") {
                 calcPadExpr = calcPadExpr.slice(0, -1);
             } else if (val === "=") {
-                try {
-                    const sanitized = calcPadExpr.replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
-                    // Only digits/operators/dot/space allowed — this is a plain arithmetic
-                    // calculator, not a general expression evaluator, and the input is the user's
-                    // own typing (via these fixed buttons), not external data.
-                    if (!/^[0-9+\-*/.\s]*$/.test(sanitized) || sanitized.trim() === "") { return; }
-                    const result = Function('"use strict"; return (' + sanitized + ')')();
-                    if (typeof result === "number" && isFinite(result)) {
-                        calcPadExpr = String(Math.round(result * 100) / 100);
-                    }
-                } catch (e) { /* invalid expression — leave display as-is */ }
+                const sanitized = calcPadExpr.replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
+                // Only digits/operators/dot/space allowed — this is a plain arithmetic
+                // calculator, not a general expression evaluator, and the input is the user's
+                // own typing (via these fixed buttons), not external data.
+                if (!/^[0-9+\-*/.\s]*$/.test(sanitized) || sanitized.trim() === "") { return; }
+                const result = evalCalcExpression(sanitized);
+                if (typeof result === "number" && isFinite(result)) {
+                    calcPadExpr = String(Math.round(result * 100) / 100);
+                }
+                // else: invalid expression (e.g. divide by zero, trailing operator) — leave display as-is
             } else {
                 calcPadExpr += val;
             }
             updateCalcPadDisplay();
+        }
+
+        // Evaluates a plain arithmetic string (digits, + - * / ., no parentheses) WITHOUT
+        // Function()/eval — this app's CSP is script-src 'self' with no 'unsafe-eval', so any
+        // Function()-based "quick eval" is silently blocked by the browser and throws, which a
+        // wrapping try/catch swallows: the exact "press '=', nothing happens" symptom this
+        // replaced. Standard * / before + - precedence, two passes over hand-tokenized input;
+        // returns null (not NaN/undefined) on anything malformed so the caller's isFinite check
+        // cleanly rejects it and leaves the display untouched, same as the old catch-and-ignore.
+        function evalCalcExpression(sanitized) {
+            const tokens = [];
+            let i = 0;
+            while (i < sanitized.length) {
+                const c = sanitized[i];
+                if (/\s/.test(c)) { i++; continue; }
+                if (/[0-9.]/.test(c)) {
+                    let num = c; i++;
+                    while (i < sanitized.length && /[0-9.]/.test(sanitized[i])) { num += sanitized[i]; i++; }
+                    // Reject "9.5.5" etc rather than let parseFloat quietly drop the tail.
+                    if ((num.match(/\./g) || []).length > 1) return null;
+                    const n = parseFloat(num);
+                    if (isNaN(n)) return null;
+                    tokens.push({ type: "num", value: n });
+                } else if ("+-*/".includes(c)) {
+                    tokens.push({ type: "op", value: c });
+                    i++;
+                } else {
+                    return null;
+                }
+            }
+            if (tokens.length === 0) return null;
+
+            // Fold unary +/- (leading, or right after another operator) into the following number.
+            const folded = [];
+            for (let j = 0; j < tokens.length; j++) {
+                const t = tokens[j];
+                if (t.type === "op" && (t.value === "+" || t.value === "-") &&
+                    (folded.length === 0 || folded[folded.length - 1].type === "op")) {
+                    const next = tokens[j + 1];
+                    if (!next || next.type !== "num") return null;
+                    folded.push({ type: "num", value: t.value === "-" ? -next.value : next.value });
+                    j++;
+                } else {
+                    folded.push(t);
+                }
+            }
+            if (folded.length === 0 || folded[0].type !== "num") return null;
+
+            // Pass 1: resolve * and / left-to-right.
+            const pass1 = [folded[0]];
+            for (let j = 1; j < folded.length; j += 2) {
+                const op = folded[j];
+                const num = folded[j + 1];
+                if (!op || !num || op.type !== "op" || num.type !== "num") return null;
+                if (op.value === "*" || op.value === "/") {
+                    if (op.value === "/" && num.value === 0) return null;
+                    const prev = pass1.pop();
+                    pass1.push({ type: "num", value: op.value === "*" ? prev.value * num.value : prev.value / num.value });
+                } else {
+                    pass1.push(op, num);
+                }
+            }
+
+            // Pass 2: resolve + and - left-to-right.
+            let result = pass1[0].value;
+            for (let j = 1; j < pass1.length; j += 2) {
+                const op = pass1[j];
+                const num = pass1[j + 1];
+                if (!op || !num) return null;
+                result = op.value === "+" ? result + num.value : result - num.value;
+            }
+            return result;
         }
 
         function calcPadApply() {

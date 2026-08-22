@@ -1524,3 +1524,29 @@ implemented.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v88.
+
+## v90: Calculator "=" fixed (was silently doing nothing)
+
+Root cause: the calculator's `=` handler used `Function('"use strict";
+return (' + sanitized + ')')()` to evaluate the typed expression. This
+app's CSP is `script-src 'self'` with no `unsafe-eval`, so the browser
+silently blocks any `Function()`/`eval()`-style call — it throws, and the
+surrounding `try/catch` swallowed the error, so tapping `=` just did
+nothing with no visible sign why. Digits, `C`, and `⌫` all worked fine
+since they never went through that code path.
+
+Fixed by replacing the eval-based evaluation with a small hand-written
+tokenizer + two-pass evaluator (`evalCalcExpression()` in `ledger.js`) —
+standard `* /` before `+ -` precedence, unary minus supported, no
+parentheses (the keypad has none). Returns `null` on anything malformed
+(trailing operator, divide-by-zero, a stray second decimal point) rather
+than `NaN`, so the existing `isFinite()` check in `calcPadPress()` still
+cleanly leaves the display untouched on bad input — same visible
+behavior as before, just without the eval dependency. **Do not "fix"
+this by adding `'unsafe-eval'` to the CSP** — that reopens exactly the
+class of risk the CSP hardening on this app family was meant to close;
+any future calculator/expression feature here should extend
+`evalCalcExpression()` rather than reach for `Function()`/`eval()`.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v90.

@@ -821,6 +821,15 @@
         input, select.form-input { width: 100%; padding: 12px; border: 1.5px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; background: #f8fafc; height: 44px; }
         .submit-btn { background: var(--primary); color: white; border: none; padding: 14px; border-radius: 10px; width: 100%; font-weight: 700; cursor: pointer; font-size: 0.9rem; margin-top: 10px; }
         .submit-btn:active { opacity: 0.9; transform: scale(0.99); }
+        .calc-btn { flex-shrink:0; width: 44px; height: 44px; border-radius: 8px; border: 1.5px solid var(--border-color); background: #f8fafc; font-size: 1.1rem; cursor: pointer; }
+        .calc-btn:active { background: #eef2ff; }
+        .split-row { display:flex; gap:6px; align-items:flex-end; margin-bottom: 10px; }
+        .split-row select.form-input { margin: 0; }
+        .calc-key { height: 48px; border-radius: 8px; border: none; background: #f1f5f9; font-size: 1.05rem; font-weight: 700; cursor: pointer; color: var(--text-main); }
+        .calc-key:active { opacity: 0.8; }
+        .calc-key-op { background: #e0e7ff; color: var(--primary); }
+        .option-menu-btn { display:flex; align-items:center; padding: 14px; border-radius: 10px; border: none; background: #f1f5f9; color: var(--text-main); font-weight: 700; font-size: 0.88rem; cursor: pointer; text-align: left; width: 100%; }
+        .option-menu-btn:active { opacity: 0.85; }
         .config-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
         .config-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: #f8fafc; border-radius: 8px; border: 1px solid var(--border-color); }
         /* Fund holding listed under its Unit Trust account row on the Accounts page — indented,
@@ -2022,11 +2031,34 @@
             <div>
                 <input type="hidden" id="txId">
                 <input type="hidden" id="txType">
-                <div class="form-row" id="txDescRow"><label>Description</label><input type="text" id="txDesc" required></div>
                 <div class="form-row-inline">
-                    <div><label>Amount</label><input type="number" id="txAmount" step="0.01" required data-input="recalcTxFdMaturity"></div>
+                    <div>
+                        <label>Amount</label>
+                        <div style="display:flex; gap:6px;">
+                            <input type="number" id="txAmount" step="0.01" inputmode="decimal" required data-input="recalcTxFdMaturity" style="flex:1;">
+                            <button type="button" class="calc-btn" data-click="openCalcPadFor" data-target="txAmount" title="Calculator / Numpad">🧮</button>
+                        </div>
+                    </div>
                     <div><label>Currency</label><select id="txCurrency" class="form-input" data-change="recalcTxFdMaturity"></select></div>
                 </div>
+
+                <div class="form-row" id="categoryRow"><label>Category</label><select id="txCategory" class="form-input"></select></div>
+
+                <!-- Split Expenses (v88) — only offered for a brand-new Income/Expense entry (not
+                     Transfer, not while editing an existing record — see openTxSplitAddRow() /
+                     handleTransactionSubmitMobile() for why editing is out of scope). Each added
+                     row is its own Category + Amount pair; on save every row becomes its own
+                     transaction record sharing a splitGroupId, so nothing about how existing
+                     reports/balances aggregate a normal transaction needs to change. -->
+                <div id="txSplitWrap" style="display:none;">
+                    <div id="txSplitRows"></div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin:6px 0 12px; font-size:0.82rem; font-weight:700; color:var(--text-main);">
+                        <span>Split Total</span>
+                        <span id="txSplitTotalDisplay">—</span>
+                    </div>
+                    <button type="button" class="submit-btn" style="background:#eef2ff; color:var(--primary); margin-top:0; margin-bottom:12px;" data-click="addTxSplitRow">➕ Split into another category</button>
+                </div>
+
                 <div class="form-row" id="srcAccRow"><label id="srcAccLabel">Account</label><select id="srcAccount" class="form-input" data-change="syncTransactionCurrency"></select></div>
                 <div class="form-row" id="destAccRow" style="display:none;"><label>To Account</label><select id="destAccount" class="form-input" data-change="syncTransactionCurrency"></select></div>
 
@@ -2083,7 +2115,6 @@
                     <p id="txManualFxAutoHint" style="font-size:0.7rem; color:var(--text-muted); margin:0;"></p>
                 </div>
 
-                <div class="form-row" id="categoryRow"><label>Category</label><select id="txCategory" class="form-input"></select></div>
                 <div class="form-row"><label>Date</label><input type="date" id="txDate" required></div>
 
                 <!-- Fixed Deposit placement terms — shown only when this entry deposits funds into an FD account -->
@@ -2126,6 +2157,19 @@
                     <p id="txFdMaturityPreview" style="font-size:0.72rem; color:#6d28d9; margin-top:2px;"></p>
                 </div>
 
+                <div class="form-row" id="txDescRow"><label>Description</label><input type="text" id="txDesc" required></div>
+                <div class="form-row"><label id="txPayeeLabel">To (Optional)</label><input type="text" id="txPayee" placeholder="e.g. merchant or contact name"></div>
+                <div class="form-row"><label>Notes (Optional)</label><input type="text" id="txNotes"></div>
+                <div class="form-row">
+                    <div class="toggle-switch-row">
+                        <span class="toggle-switch-label">Checked</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="txChecked">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
                 <div class="form-row">
                     <label>Receipt / Photo (optional)</label>
                     <div style="display:flex; gap:8px;">
@@ -2144,6 +2188,86 @@
 
                 <button type="button" data-click="handleTransactionSubmitMobile" id="txSubmitBtn" class="submit-btn">Commit Entry</button>
                 <button type="button" data-click="deleteTxFromEditModal" id="txDeleteBtn" class="submit-btn" style="display:none; margin-top:10px; background:#fee2e2; color:var(--expense-color);">🗑 Delete Entry</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Calculator / Numpad — opened from the 🧮 button beside any Amount field in the
+         transaction form (main amount or a split row). Basic arithmetic entry doubles as an
+         on-screen numpad; typing directly into the field still opens the OS's own numeric
+         keyboard via inputmode="decimal" on that field. -->
+    <div class="modal" id="calcPadModal" style="z-index:1500;">
+        <div class="modal-sheet" style="max-width:320px; padding:16px;">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                <h3 style="font-weight:800;">Calculator</h3>
+                <button data-click="closeModal" data-modal="calcPadModal" style="background:none; border:none; font-size:1.5rem; padding:8px;">&times;</button>
+            </div>
+            <div id="calcPadDisplay" style="background:#f8fafc; border:1.5px solid var(--border-color); border-radius:8px; padding:14px; text-align:right; font-size:1.4rem; font-weight:700; margin-bottom:10px; min-height:28px; word-break:break-all;">0</div>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px;">
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val="C" style="grid-column:span 2;">C</button>
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val="⌫">⌫</button>
+                <button type="button" class="calc-key calc-key-op" data-click="calcPadPress" data-val="÷">÷</button>
+
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val="7">7</button>
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val="8">8</button>
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val="9">9</button>
+                <button type="button" class="calc-key calc-key-op" data-click="calcPadPress" data-val="×">×</button>
+
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val="4">4</button>
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val="5">5</button>
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val="6">6</button>
+                <button type="button" class="calc-key calc-key-op" data-click="calcPadPress" data-val="−">−</button>
+
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val="1">1</button>
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val="2">2</button>
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val="3">3</button>
+                <button type="button" class="calc-key calc-key-op" data-click="calcPadPress" data-val="+">+</button>
+
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val="0" style="grid-column:span 2;">0</button>
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val=".">.</button>
+                <button type="button" class="calc-key" data-click="calcPadPress" data-val="=" style="background:var(--primary); color:white;">=</button>
+            </div>
+            <button type="button" class="submit-btn" data-click="calcPadApply">Use This Value</button>
+        </div>
+    </div>
+
+    <!-- MODAL: Transaction Quick View — tapping a ledger row opens this instead of jumping
+         straight into the edit form, so a glance/CHECKED-toggle/duplicate/refund/delete doesn't
+         require entering the full editor. "Edit transaction" in the Options menu still opens the
+         normal txModal unchanged. -->
+    <div class="modal" id="txQuickViewModal">
+        <div class="modal-sheet" style="max-width:380px; padding:0; overflow:hidden;">
+            <div id="txQuickViewHeader" style="padding:20px; color:white;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <span id="txQuickViewAmount" style="font-size:1.5rem; font-weight:800;"></span>
+                    <span id="txQuickViewDate" style="font-size:0.8rem; opacity:0.9; margin-top:4px;"></span>
+                </div>
+            </div>
+            <div style="padding:20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                    <span id="txQuickViewDesc" style="font-weight:800; font-size:1rem;"></span>
+                    <button type="button" data-click="openTxOptionsMenu" title="More options" style="background:#eef2ff; border:none; width:34px; height:34px; border-radius:8px; font-weight:900; cursor:pointer; font-size:1.1rem; color:var(--primary);">⋮</button>
+                </div>
+                <div id="txQuickViewDetails" style="font-size:0.85rem; line-height:2; color:var(--text-main); margin-bottom:16px;"></div>
+                <button type="button" id="txQuickViewCheckedBtn" data-click="toggleTxCheckedFromQuickView" class="submit-btn" style="margin-top:0;"></button>
+                <button type="button" data-click="closeModal" data-modal="txQuickViewModal" class="submit-btn" style="background:#e2e8f0; color:var(--text-main);">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Options popover (Duplicate / Edit / Refund / Delete) reached from the ⋮ button
+         on the Quick View above. -->
+    <div class="modal" id="txOptionsModal" style="z-index:1400;">
+        <div class="modal-sheet" style="max-width:320px;">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                <h3 style="font-weight:800;">Options</h3>
+                <button data-click="closeTxOptionsMenu" style="background:none; border:none; font-size:1.5rem; padding:8px;">&times;</button>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <button type="button" class="option-menu-btn" data-click="duplicateTransactionFromOptions">📂 &nbsp;Duplicate transaction</button>
+                <button type="button" class="option-menu-btn" data-click="editTransactionFromOptions">✏️ &nbsp;Edit transaction</button>
+                <button type="button" id="txOptionsRefundBtn" class="option-menu-btn" data-click="openRefundFromOptions">↩️ &nbsp;Refund</button>
+                <button type="button" class="option-menu-btn" style="background:#fee2e2; color:var(--expense-color);" data-click="deleteTransactionFromOptions">🗑 &nbsp;Delete transaction</button>
             </div>
         </div>
     </div>

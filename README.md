@@ -1430,3 +1430,97 @@ MYR" reads naturally instead).
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v68.
+
+## v88: Reworked entry form (Category above Account, Notes/To/From,
+Checked toggle), Split Expenses, Calculator/Numpad, and a Transaction
+Quick View with Duplicate/Edit/Refund/Delete
+
+Requested via a set of reference screenshots from another ledger app;
+implemented as follows.
+
+- **Entry form reordered**: Category now sits above Account (previously
+  the other way round). Description moved to the bottom of the form,
+  and two new optional fields sit next to it: **To/From** (a
+  payee/counterparty field — labelled "From" for Income, "To"
+  otherwise) and **Notes** (free text). Both save as `t.payee`/
+  `t.notes`, `null` when left blank so existing code checking either
+  field for truthiness is unaffected.
+- **Checked toggle**: every transaction now carries `t.checked`
+  (default `false` for a new entry). A small ✅ badge overlays the
+  category icon on any checked row. Meant for reconciling entries
+  against a bank/credit-card statement — purely a display flag, no
+  effect on any balance or report total.
+- **Transaction Quick View**: tapping a ledger row now opens a compact
+  summary (amount, account, category, To/From, Notes, a Checked
+  toggle button) instead of jumping straight into the full edit form.
+  A ⋮ button opens an **Options** menu — Duplicate transaction / Edit
+  transaction / Refund / Delete transaction — mirroring the reference
+  screenshots. "Edit transaction" opens the same edit form as before;
+  nothing about editing itself changed. Fund-linked transactions
+  (Buy/Sell/Dividend/Contribution) skip Quick View entirely and go
+  straight to their existing dedicated editor, since Checked/Refund/
+  Duplicate don't apply to them.
+  - New history-stack handling: Options is a layer over Quick View
+    sharing its one pushed state rather than pushing a second (see
+    `openTxOptionsMenu()`), and a new `closeModalAndThen()` helper
+    properly waits for a modal's close to actually complete (its real
+    `popstate` event) before pushing the next one — Edit/Duplicate/
+    Refund all use it — so the back-button stack never drifts out of
+    sync with what's visibly open, which a naive
+    `closeModal(); closeModal(); openModal();` chain would have
+    caused (each `closeModal()` triggers an async `history.back()`, so
+    two in a row plus an immediate `pushState()` would race).
+- **Split Expenses**: a "➕ Split into another category" button (shown
+  only for a brand-new Income/Expense entry — not Transfers, not while
+  editing) adds Category+Amount row pairs with their own `[-]` to
+  remove, and a live Split Total. On save, each row becomes its own
+  ordinary transaction record (same account/date/desc/payee/notes/
+  checked state) sharing a generated `splitGroupId` purely for
+  traceability — every existing balance/report calculation already
+  handles a normal transaction correctly, so nothing about how they
+  aggregate needed to change.
+- **Calculator / Numpad**: a 🧮 button beside every Amount field (main
+  and split rows) opens a small popup calculator (`+ − × ÷ =`, doubling
+  as an on-screen numpad); `inputmode="decimal"` on the fields
+  themselves also brings up the OS's own numeric keyboard when tapped
+  directly. The popup only evaluates a strictly digit/operator-only
+  string (regex-checked before `Function(...)`) — it's a fixed-button
+  calculator, not a general expression evaluator.
+- **Refund**: "Refund" in Quick View → Options (expense entries only)
+  opens a new Income entry pre-filled from the original expense, with
+  Category **forced** to the exact same category (the Income category
+  dropdown is replaced with a single locked option) — this is what
+  lets it "reduce the expense" rather than "count as income": the
+  saved record is tagged `isRefund: true, refundOf: <original id>`,
+  and:
+  - `computeAccountBalances()` needs **no change** — crediting the
+    account back is exactly what an ordinary Income record already
+    does.
+  - The dashboard, Net Savings Statement, and Spending Breakdown pages
+    each special-case `isRefund` to subtract it from the matching
+    expense category's total instead of adding it to income (see the
+    `isRefund` branches added to each — they key strictly off `t.cat`
+    matching the original expense's category, which is why the
+    category is force-locked on the refund's own entry above).
+  - The Income Breakdown page excludes `isRefund` entries outright, so
+    they never appear as income there.
+  - A refund row displays as an ordinary green Income entry (with a
+    small "↩️ Refund" badge) everywhere else, e.g. the dashboard's
+    recent-transactions widget — only the aggregation totals above
+    treat it specially.
+- Verified with `node --check` plus a script cross-referencing every
+  `data-click`/`data-change`/`data-input` attribute in `index.html`
+  against `CLICK_ACTIONS`/`CHANGE_ACTIONS`/`INPUT_ACTIONS`, and every
+  `getElementById(...)` call against actual element ids — all clean.
+
+**Known scope limits, by design** (flagged rather than silently
+dropped): Split Expenses is new-entry-only, not available when editing
+an existing transaction or for Transfers. The calculator is a plain
+arithmetic popup, not a fully custom on-screen numpad widget — mobile's
+native numeric keyboard (via `inputmode="decimal"`) handles direct
+typing. A refund's "residual/remaining balance" preview shown live
+during entry (as in one of the reference screenshots) was not
+implemented.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v88.

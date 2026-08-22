@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v87";
-        const APP_VERSION_DATE = "2026-08-20";
+        const APP_VERSION = "v88";
+        const APP_VERSION_DATE = "2026-08-21";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
         // DOM — including #versionBadge and the lock overlay — already exists by this point).
@@ -743,6 +743,20 @@
         // Holds the compressed base64 image (if any) currently attached in the open transaction form.
         let currentTxImageData = null;
 
+        // v88: Transaction Quick View / Options / Refund / Split state.
+        // Which transaction id the Quick View modal is currently showing — set by openTxQuickView(),
+        // read by the toggle-checked/options/duplicate/refund/delete actions reached from it.
+        let activeQuickViewTxId = null;
+        // When set, the next handleTransactionSubmitMobile() save is tagged as a refund of this
+        // transaction id (isRefund:true, refundOf:<id>) instead of an ordinary income entry — set by
+        // openRefundFromOptions(), cleared on every openTransactionForm() call and after saving.
+        let pendingRefundOf = null;
+        // Calculator/numpad popup — which input field "Use This Value" writes back into.
+        let calcPadTargetId = null;
+        let calcPadExpr = "";
+        // Split Expenses — incrementing counter for unique split-row DOM ids within one form session.
+        let txSplitRowCounter = 0;
+
         // Default currency set (v39) — the 10 currencies the user actually holds. Rates are
         // approximate starting points only (per 1 MYR) — the user edits real values via
         // Currency Settings ▸ Save FX Values; this just avoids a blank/wrong first run.
@@ -895,7 +909,7 @@
                 return;
             }
 
-            const activeModals = ["txModal", "accountsModal", "currencyModal", "categoriesModal", "imageViewerModal", "resolveFdModal", "memberModal", "fundModal", "fundTxModal"];
+            const activeModals = ["txModal", "accountsModal", "currencyModal", "categoriesModal", "imageViewerModal", "resolveFdModal", "memberModal", "fundModal", "fundTxModal", "txQuickViewModal", "txOptionsModal", "calcPadModal"];
             let modalClosed = false;
             activeModals.forEach(id => {
                 const modal = document.getElementById(id);
@@ -1085,7 +1099,7 @@
                 const iconBadge = getCategoryIcon(t.cat, t.type);
                 const acc = accounts.find(a => a.id === t.src);
                 return `
-                    <div class="ledger-item" data-click="openTransactionForm" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
+                    <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
                             <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(t.cat || '')}]</span>
@@ -2772,7 +2786,7 @@
                 const referenceText = t.fdReferenceNo ? ` · Ref: ${escapeHtml(t.fdReferenceNo)}` : '';
 
                 return `
-                    <div class="ledger-item" data-click="openTransactionForm" data-type="${escapeHtml(t.type)}" data-id="${escapeHtml(t.id)}">
+                    <div class="ledger-item" data-click="openTxQuickView" data-type="${escapeHtml(t.type)}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
                             <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}</span>
                             <span class="item-meta">${escapeHtml(t.date)} [${escapeHtml(t.cat || 'Transfer')}]${referenceText}</span>
@@ -4531,6 +4545,13 @@
             const accounts = await readAllDB(STORES.ACCOUNTS);
             if(accounts.length === 0) { alert("Add an account first!"); return; }
 
+            // v88: every open of this form starts from a clean slate for the Refund/Split/Category-
+            // lock state a prior Quick View action (Refund, Duplicate) may have left behind — a form
+            // opened normally (the "+" buttons, editing a row) must never silently inherit those.
+            pendingRefundOf = null;
+            document.getElementById("txCategory").disabled = false;
+            resetTxSplitRows();
+
             const srcSelect = document.getElementById("srcAccount"); srcSelect.innerHTML = "";
             const destSelect = document.getElementById("destAccount"); destSelect.innerHTML = "";
             const currSelect = document.getElementById("txCurrency"); currSelect.innerHTML = "";
@@ -4584,6 +4605,14 @@
                 document.getElementById("srcAccount").value = tx.src;
                 document.getElementById("destAccount").value = tx.dest || "";
                 document.getElementById("txDate").value = tx.date;
+                document.getElementById("txPayee").value = tx.payee || "";
+                document.getElementById("txPayeeLabel").textContent = tx.type === "income" ? "From (Optional)" : "To (Optional)";
+                document.getElementById("txNotes").value = tx.notes || "";
+                document.getElementById("txChecked").checked = !!tx.checked;
+                // Split Expenses is a new-entry-only affordance (see the comment on #txSplitWrap in
+                // index.html) — an existing record, split or not, is always edited as the single row
+                // it already is.
+                document.getElementById("txSplitWrap").style.display = "none";
 
                 document.getElementById("txManualFxToggle").checked = !!tx.manualFxRate;
                 document.getElementById("txManualFxRate").value = tx.manualFxRate || "";
@@ -4660,6 +4689,12 @@
                 document.getElementById("txDate").value = todayLocalStr();
                 document.getElementById("txDesc").value = "";
                 document.getElementById("txAmount").value = "";
+                document.getElementById("txPayee").value = "";
+                document.getElementById("txPayeeLabel").textContent = type === "income" ? "From (Optional)" : "To (Optional)";
+                document.getElementById("txNotes").value = "";
+                document.getElementById("txChecked").checked = false;
+                // Split Expenses only makes sense for a brand-new Income/Expense entry.
+                document.getElementById("txSplitWrap").style.display = (type === "transfer") ? "none" : "block";
 
                 // Pre-select the user's default payment account, if one is set and still exists —
                 // new entries only, never when editing (handled above via tx.src). A preset
@@ -4744,6 +4779,130 @@
             }
 
             openModal("txModal");
+        }
+
+        // --- SPLIT EXPENSES (v88) ---
+        // A split row is its own Category + Amount pair, added via the "➕ Split into another
+        // category" button and removable via its own [-]. On save, if any split rows exist,
+        // handleTransactionSubmitMobile() writes the main row PLUS every split row as separate,
+        // ordinary transaction records (same account/date/desc/notes/payee/checked state) sharing
+        // a generated splitGroupId — so nothing about how the rest of the app aggregates a normal
+        // transaction (account balances, category totals, reports) needs to know split rows exist
+        // at all. Only offered for a brand-new Income/Expense entry — see openTransactionForm().
+
+        function resetTxSplitRows() {
+            document.getElementById("txSplitRows").innerHTML = "";
+            txSplitRowCounter = 0;
+            recalcTxSplitTotal();
+        }
+
+        function buildSplitCategoryOptionsHTML(type) {
+            const currentCats = dynamicCategories.filter(c => c.type === type).map(c => c.name);
+            const legacyFallback = type === "income" ? ["Salary", "Investments", "Freelance", "Other Income"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
+            const fallbackGroup = [...legacyFallback, ...DEFAULT_CATEGORIES.filter(c => c.type === type).map(c => c.name)];
+            const uniqueMerged = [...new Set([...currentCats, ...fallbackGroup])].sort((a, b) => a.localeCompare(b));
+            return uniqueMerged.map(c => `<option value="${escapeHtml(c)}">${getCategoryIcon(c, type)} ${escapeHtml(c)}</option>`).join("");
+        }
+
+        function addTxSplitRow() {
+            const type = document.getElementById("txType").value;
+            if (type === "transfer") return;
+            txSplitRowCounter++;
+            const rowId = `txSplitRow_${txSplitRowCounter}`;
+            const row = document.createElement("div");
+            row.className = "split-row";
+            row.id = rowId;
+            row.innerHTML = `
+                <select class="form-input tx-split-cat" style="flex:1.2;">${buildSplitCategoryOptionsHTML(type)}</select>
+                <input type="number" class="tx-split-amt" step="0.01" inputmode="decimal" placeholder="Amount" style="flex:1;" data-input="recalcTxSplitTotal">
+                <button type="button" class="calc-btn" data-click="openCalcPadFor" data-target="${rowId}_amt" title="Calculator / Numpad">🧮</button>
+                <button type="button" class="calc-btn" data-click="removeTxSplitRow" data-row-id="${rowId}" title="Remove" style="color:var(--expense-color);">−</button>
+            `;
+            document.getElementById("txSplitRows").appendChild(row);
+            row.querySelector(".tx-split-amt").id = `${rowId}_amt`;
+            recalcTxSplitTotal();
+        }
+
+        function removeTxSplitRow(el) {
+            const rowId = el.dataset.rowId;
+            const row = document.getElementById(rowId);
+            if (row) row.remove();
+            recalcTxSplitTotal();
+        }
+
+        function recalcTxSplitTotal() {
+            const mainAmt = parseFloat(document.getElementById("txAmount").value) || 0;
+            let splitTotal = mainAmt;
+            document.querySelectorAll("#txSplitRows .tx-split-amt").forEach(inp => {
+                splitTotal += parseFloat(inp.value) || 0;
+            });
+            const currency = document.getElementById("txCurrency").value || baseCurrency;
+            const display = document.getElementById("txSplitTotalDisplay");
+            if (display) display.textContent = formatCurrency(splitTotal, currency);
+        }
+
+        // Collects every split row into [{cat, amount}] — rows with no category or a non-positive
+        // amount are skipped rather than blocking save, since a half-filled row the user is still
+        // typing into shouldn't stop the main entry from being saved.
+        function collectTxSplitRows() {
+            const rows = [];
+            document.querySelectorAll("#txSplitRows .split-row").forEach(rowEl => {
+                const cat = rowEl.querySelector(".tx-split-cat").value;
+                const amt = parseFloat(rowEl.querySelector(".tx-split-amt").value);
+                if (cat && !isNaN(amt) && amt > 0) rows.push({ cat, amount: amt });
+            });
+            return rows;
+        }
+
+        // --- CALCULATOR / NUMPAD (v88) ---
+        function openCalcPad(el) {
+            calcPadTargetId = el.dataset.target;
+            const targetInput = document.getElementById(calcPadTargetId);
+            const existing = targetInput ? targetInput.value : "";
+            calcPadExpr = (existing && !isNaN(parseFloat(existing))) ? String(existing) : "";
+            updateCalcPadDisplay();
+            openModal("calcPadModal");
+        }
+
+        function updateCalcPadDisplay() {
+            document.getElementById("calcPadDisplay").textContent = calcPadExpr || "0";
+        }
+
+        function calcPadPress(el) {
+            const val = el.dataset.val;
+            if (val === "C") {
+                calcPadExpr = "";
+            } else if (val === "⌫") {
+                calcPadExpr = calcPadExpr.slice(0, -1);
+            } else if (val === "=") {
+                try {
+                    const sanitized = calcPadExpr.replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
+                    // Only digits/operators/dot/space allowed — this is a plain arithmetic
+                    // calculator, not a general expression evaluator, and the input is the user's
+                    // own typing (via these fixed buttons), not external data.
+                    if (!/^[0-9+\-*/.\s]*$/.test(sanitized) || sanitized.trim() === "") { return; }
+                    const result = Function('"use strict"; return (' + sanitized + ')')();
+                    if (typeof result === "number" && isFinite(result)) {
+                        calcPadExpr = String(Math.round(result * 100) / 100);
+                    }
+                } catch (e) { /* invalid expression — leave display as-is */ }
+            } else {
+                calcPadExpr += val;
+            }
+            updateCalcPadDisplay();
+        }
+
+        function calcPadApply() {
+            if (calcPadTargetId) {
+                const num = parseFloat(calcPadExpr);
+                const input = document.getElementById(calcPadTargetId);
+                if (input && !isNaN(num)) {
+                    input.value = num;
+                    input.dispatchEvent(new Event("input", { bubbles: true }));
+                    input.dispatchEvent(new Event("change", { bubbles: true }));
+                }
+            }
+            closeModal("calcPadModal");
         }
 
         // --- RECEIPT / PHOTO ATTACHMENT ---
@@ -5432,6 +5591,11 @@
                 cat: document.getElementById("txType").value === "transfer" ? preservedTransferCat : document.getElementById("txCategory").value,
                 date: dateVal,
                 image: currentTxImageData || null,
+                // v88: To/From (payee) and free-text Notes — optional on every type, blank stored as
+                // null (not "") so existing code that checks `t.notes` truthy keeps working unchanged.
+                payee: document.getElementById("txPayee").value.trim() || null,
+                notes: document.getElementById("txNotes").value.trim() || null,
+                checked: document.getElementById("txChecked").checked,
                 fdReferenceNo: null,
                 fdStartDate: null,
                 fdTenureMonths: null,
@@ -5449,6 +5613,19 @@
                 // the app renders, as before (see computeAccountBalances()/applyToAccountBalance()).
                 destAmount: transferDestAmountOverride
             };
+
+            // v88: Refund — set only by openRefundFromOptions(), which opens this same form as a
+            // plain Income entry with the category locked to the original expense's category.
+            // Tagging it here (rather than a separate save path) means it inherits every other
+            // field/validation above for free; renderApp()/renderSavingsStatement()/the Spending
+            // & Income Breakdown pages special-case isRefund so it reduces the original expense
+            // category instead of counting as income (see those functions), while
+            // computeAccountBalances() needs no change at all — crediting the account back is
+            // exactly what an ordinary income record already does.
+            if (pendingRefundOf !== null && record.type === "income") {
+                record.isRefund = true;
+                record.refundOf = pendingRefundOf;
+            }
 
             const fdFieldsVisible = document.getElementById("txFdFieldsWrap").style.display !== "none";
             if (fdFieldsVisible) {
@@ -5474,8 +5651,34 @@
                 record.id = parseInt(txIdInput);
             }
 
+            // v88: Split Expenses — only reachable for a brand-new Income/Expense entry (the
+            // #txSplitWrap UI is hidden for Transfers and for any edit — see openTransactionForm()
+            // and index.html's comment on #txSplitWrap), so this never fires for an edit or a
+            // Transfer even if stale rows were somehow left in the DOM. Each split row becomes its
+            // own ordinary transaction record — same account/date/desc/payee/notes/checked as the
+            // main row above, just its own category+amount — sharing a generated splitGroupId
+            // purely for traceability. Because every row is a completely normal record, every
+            // existing balance/report calculation already handles it correctly with no changes.
+            const isNewEntry = txIdInput === "";
+            const splitEligible = isNewEntry && (record.type === "income" || record.type === "expense");
+            const splitRows = splitEligible ? collectTxSplitRows() : [];
+
             try {
-                await writeDB(STORES.TRANSACTIONS, record);
+                if (splitRows.length > 0) {
+                    const splitGroupId = "split_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
+                    record.splitGroupId = splitGroupId;
+                    await writeDB(STORES.TRANSACTIONS, record);
+                    for (const row of splitRows) {
+                        const extraRecord = Object.assign({}, record, { cat: row.cat, amount: row.amount, splitGroupId });
+                        delete extraRecord.id;
+                        // Only the first (main) row in a split carries the receipt photo, if any —
+                        // attaching the same image to every split part would be misleading.
+                        extraRecord.image = null;
+                        await writeDB(STORES.TRANSACTIONS, extraRecord);
+                    }
+                } else {
+                    await writeDB(STORES.TRANSACTIONS, record);
+                }
             } catch (err) {
                 const msg = (err && err.name === "QuotaExceededError")
                     ? "Not enough storage space to save this photo. Try removing the image or freeing up space."
@@ -5483,6 +5686,7 @@
                 alert(msg);
                 return;
             }
+            pendingRefundOf = null;
             closeModal("txModal");
             await refreshAfterTransactionChange();
         }
@@ -5494,18 +5698,242 @@
         async function deleteTxFromEditModal() {
             const txIdInput = document.getElementById("txId").value;
             if (!txIdInput) return;
+            const ok = await deleteTransactionById(parseInt(txIdInput), /* alreadyConfirmed */ false, /* skipModalClose */ true);
+            if (ok) closeModal("txModal");
+        }
 
-            const ok = await customConfirm("Delete this transaction item?");
-            if (!ok) return;
-
+        // Shared delete-by-id, used by the Edit modal's own Delete button above and by "Delete
+        // transaction" in the Quick View Options menu (deleteTransactionFromOptions()). Confirms
+        // first unless the caller already did (the Options menu path shows its own confirm-free
+        // flow through customConfirm here too, so alreadyConfirmed is currently always false —
+        // kept as a parameter in case a future caller has already confirmed some other way).
+        async function deleteTransactionById(id, alreadyConfirmed = false, skipModalClose = false) {
+            if (!id) return false;
+            if (!alreadyConfirmed) {
+                const ok = await customConfirm("Delete this transaction item?");
+                if (!ok) return false;
+            }
             try {
-                await deleteDB(STORES.TRANSACTIONS, parseInt(txIdInput));
+                await deleteDB(STORES.TRANSACTIONS, id);
             } catch (err) {
                 alert("Could not delete transaction: " + (err && err.message ? err.message : err));
+                return false;
+            }
+            if (!skipModalClose) closeModal("txModal");
+            await refreshAfterTransactionChange();
+            return true;
+        }
+
+        // --- TRANSACTION QUICK VIEW / OPTIONS (v88) ---
+        // Tapping a ledger row opens this Quick View instead of jumping straight into the full
+        // Edit form — a glance at the amount/account/payee/notes, a one-tap Checked toggle
+        // (matching a credit-card-style "tally against statement" workflow), and a ⋮ menu for
+        // Duplicate / Edit / Refund / Delete. "Edit transaction" from that menu still opens the
+        // exact same txModal as before; nothing about editing itself changed.
+        async function openTxQuickView(el) {
+            const id = Number(el.dataset.id);
+            if (!id) return;
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const tx = txs.find(t => t.id === id);
+            if (!tx) return;
+            // Fund transactions (Buy/Sell/Dividend/Contribution) keep a linked fund's unit balance
+            // in sync and already have their own dedicated editor — Quick View doesn't apply to
+            // them (no Checked/Refund/Duplicate concept for a fund-linked row), so fall straight
+            // through to the normal edit flow exactly as tapping used to do everywhere.
+            if (tx.fundId) {
+                await openTransactionForm(tx.type, id);
                 return;
             }
-            closeModal("txModal");
+
+            activeQuickViewTxId = id;
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const accountName = accId => { if (!accId) return "(Opening Balance)"; const a = accounts.find(acc => acc.id === accId); return a ? escapeHtml(accountOptionLabel(a, accounts)) : "(deleted account)"; };
+
+            let headerColor, sgn;
+            if (tx.type === "income") { headerColor = "var(--income-color)"; sgn = "+"; }
+            else if (tx.type === "expense") { headerColor = "var(--expense-color)"; sgn = "-"; }
+            else { headerColor = "var(--primary)"; sgn = "🔄"; }
+
+            document.getElementById("txQuickViewHeader").style.background = headerColor;
+            document.getElementById("txQuickViewAmount").textContent = `${sgn}${formatCurrency(tx.amount, tx.currency)}`;
+            document.getElementById("txQuickViewDate").textContent = tx.date;
+
+            const icon = tx.type === "transfer" ? "🔄" : getCategoryIcon(tx.cat, tx.type);
+            document.getElementById("txQuickViewDesc").textContent = `${icon} ${tx.desc}`;
+
+            let destLine = "";
+            if (tx.type === "transfer") {
+                destLine = `<div>To Account: ${tx.dest ? accountName(tx.dest) : "(unknown)"}</div>`;
+            }
+            const payeeLabel = tx.type === "income" ? "From" : "To";
+            const refundLine = tx.isRefund ? `<div style="color:var(--income-color); font-weight:700;">↩️ Refund entry</div>` : "";
+
+            document.getElementById("txQuickViewDetails").innerHTML = `
+                <div>Account: ${accountName(tx.src)}</div>
+                ${destLine}
+                ${tx.cat ? `<div>Category: ${escapeHtml(tx.cat)}</div>` : ""}
+                <div>${payeeLabel}: ${tx.payee ? escapeHtml(tx.payee) : "-"}</div>
+                <div>Notes: ${tx.notes ? escapeHtml(tx.notes) : "-"}</div>
+                ${refundLine}
+            `;
+
+            updateTxQuickViewCheckedBtn(!!tx.checked);
+            // Refund only makes sense for an ordinary expense — not for a Transfer, not for
+            // another refund (no "refund of a refund"), and not for Income.
+            document.getElementById("txOptionsRefundBtn").style.display = (tx.type === "expense" && !tx.isRefund) ? "flex" : "none";
+
+            openModal("txQuickViewModal");
+        }
+
+        function updateTxQuickViewCheckedBtn(isChecked) {
+            const btn = document.getElementById("txQuickViewCheckedBtn");
+            if (!btn) return;
+            if (isChecked) {
+                btn.textContent = "✅ CHECKED — tap to unmark";
+                btn.style.background = "#dcfce7";
+                btn.style.color = "#15803d";
+            } else {
+                btn.textContent = "☐ Mark as Checked";
+                btn.style.background = "#e2e8f0";
+                btn.style.color = "var(--text-main)";
+            }
+        }
+
+        async function toggleTxCheckedFromQuickView() {
+            if (!activeQuickViewTxId) return;
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const tx = txs.find(t => t.id === activeQuickViewTxId);
+            if (!tx) return;
+            tx.checked = !tx.checked;
+            await writeDB(STORES.TRANSACTIONS, tx);
+            closeModal("txQuickViewModal");
             await refreshAfterTransactionChange();
+        }
+
+        // Options is a layer on top of Quick View, not its own navigable step — it shares Quick
+        // View's single pushed history entry (see openModal()/pushVirtualState()) rather than
+        // pushing a second one. A single back-press (or closeModal("txQuickViewModal") call)
+        // pops that one entry and the popstate handler's own forEach already clears every
+        // currently-active modal in one shot, so Options disappears along with Quick View either
+        // way. Pushing a second entry here would instead leave a "phantom" extra history step
+        // behind every time this menu is used to jump into Edit/Duplicate/Refund below — see
+        // closeModalAndThen() for why that matters.
+        function openTxOptionsMenu() {
+            document.getElementById("txOptionsModal").classList.add("active");
+        }
+
+        // Dismisses just the Options submenu, back to Quick View underneath — not a history
+        // navigation (see the comment on openTxOptionsMenu() above for why Options doesn't have
+        // its own history entry), so this only ever removes its own "active" class.
+        function closeTxOptionsMenu() {
+            document.getElementById("txOptionsModal").classList.remove("active");
+        }
+
+        // Used only when a Quick View/Options action needs to hand off into a freshly-opened
+        // txModal (Edit / Duplicate / Refund below). A plain closeModal() + openModal() pair
+        // would race: closeModal()'s history.back() doesn't take effect until its popstate event
+        // fires on a later tick, but openModal()'s pushState() runs immediately — so the new
+        // entry would land before the pop actually happened, leaving the browser's back-stack
+        // permanently one step longer than the visible modal stack every time this runs. Waiting
+        // for the real popstate event before pushing the next state keeps the two in lockstep.
+        function closeModalAndThen(id, then) {
+            const onPop = () => {
+                window.removeEventListener("popstate", onPop);
+                then();
+            };
+            window.addEventListener("popstate", onPop);
+            closeModal(id);
+        }
+
+
+        function editTransactionFromOptions() {
+            const id = activeQuickViewTxId;
+            closeModalAndThen("txQuickViewModal", async () => {
+                if (!id) return;
+                const txs = await readAllDB(STORES.TRANSACTIONS);
+                const tx = txs.find(t => t.id === id);
+                if (!tx) return;
+                await openTransactionForm(tx.type, id);
+            });
+        }
+
+        // Opens a brand-new entry of the same type, pre-filled from the tapped transaction —
+        // everything except the id (so it saves as a new record) and the Checked state (a
+        // duplicate is, by definition, not yet reconciled against a statement).
+        function duplicateTransactionFromOptions() {
+            const id = activeQuickViewTxId;
+            closeModalAndThen("txQuickViewModal", async () => {
+                if (!id) return;
+                const txs = await readAllDB(STORES.TRANSACTIONS);
+                const tx = txs.find(t => t.id === id);
+                if (!tx || tx.fundId) return;
+
+                await openTransactionForm(tx.type, null);
+                document.getElementById("txDesc").value = tx.desc;
+                document.getElementById("txAmount").value = tx.amount;
+                document.getElementById("txCurrency").value = tx.currency;
+                document.getElementById("srcAccount").value = tx.src || "";
+                if (tx.type === "transfer") {
+                    document.getElementById("destAccount").value = tx.dest || "";
+                } else {
+                    document.getElementById("txCategory").value = tx.cat || "";
+                }
+                document.getElementById("txPayee").value = tx.payee || "";
+                document.getElementById("txNotes").value = tx.notes || "";
+                document.getElementById("txDate").value = tx.date;
+                document.getElementById("txChecked").checked = false;
+                syncTransactionCurrency();
+                document.getElementById("txModalTitle").textContent = "Duplicate Entry";
+            });
+        }
+
+        async function deleteTransactionFromOptions() {
+            const id = activeQuickViewTxId;
+            closeModal("txQuickViewModal");
+            if (!id) return;
+            await deleteTransactionById(id);
+        }
+
+        // Opens a new Income entry, pre-filled from the tapped expense and locked to its exact
+        // category — the category is forced (not just pre-selected) because the Income category
+        // dropdown otherwise only ever lists Income categories, and the Spending/Income Breakdown
+        // + Net Savings Statement + dashboard totals all key their refund offset off `t.cat`
+        // matching the original expense's category exactly (see the isRefund handling in
+        // renderApp()/renderSavingsStatement()/renderSpendingBreakdownPage()/
+        // renderIncomeBreakdownPage()). pendingRefundOf (read by handleTransactionSubmitMobile) is
+        // the actual flag that makes this save as a refund rather than an ordinary Income entry.
+        function openRefundFromOptions() {
+            const id = activeQuickViewTxId;
+            closeModalAndThen("txQuickViewModal", async () => {
+                if (!id) return;
+                const txs = await readAllDB(STORES.TRANSACTIONS);
+                const tx = txs.find(t => t.id === id);
+                if (!tx || tx.type !== "expense") return;
+
+                await openTransactionForm("income", null);
+                document.getElementById("txDesc").value = `Refund: ${tx.desc}`;
+                document.getElementById("txAmount").value = tx.amount;
+                document.getElementById("txCurrency").value = tx.currency;
+                document.getElementById("srcAccount").value = tx.src || "";
+
+                const catSelect = document.getElementById("txCategory");
+                const catName = tx.cat || "Other Expenses";
+                const icon = getCategoryIcon(catName, "expense");
+                catSelect.innerHTML = `<option value="${escapeHtml(catName)}">${icon} ${escapeHtml(catName)}</option>`;
+                catSelect.value = catName;
+                catSelect.disabled = true;
+
+                document.getElementById("txDate").value = todayLocalStr();
+                document.getElementById("txSplitWrap").style.display = "none";
+                syncTransactionCurrency();
+
+                document.getElementById("txModalTitle").textContent = `Refund: ${tx.desc}`;
+                document.getElementById("txSubmitBtn").textContent = "Save Refund";
+
+                // Set last — openTransactionForm() itself resets pendingRefundOf to null on
+                // every call, so this has to happen after it returns, not before.
+                pendingRefundOf = id;
+            });
         }
 
         // Populates the Year filter with only years that actually have a transaction, plus the
@@ -6034,7 +6462,17 @@
                 const tBase = convertTxAmountToBase(t, accounts);
 
                 if (withinPeriodFilter) {
-                    if (t.type === "income") { 
+                    if (t.type === "income" && t.isRefund) {
+                        // v88: a refund is credited back to its account like any Income record
+                        // (that part needs no special-casing — see applyToAccountBalance() above),
+                        // but per-spec it must NOT count as income, and instead reduce the expense
+                        // total of the category it refunds. refundOf/openRefundFromOptions() force
+                        // t.cat to match the original expense's category exactly, so this simply
+                        // subtracts from that category the same way an expense would add to it.
+                        if (!excludedCatNamesForBanner.has(t.cat)) expBaseTotal -= tBase;
+                        if (catSummary.expense[t.cat] !== undefined) catSummary.expense[t.cat] -= tBase;
+                        else catSummary.expense[t.cat] = -tBase;
+                    } else if (t.type === "income") {
                         if (!excludedCatNamesForBanner.has(t.cat)) incBaseTotal += tBase; 
                         if(catSummary.income[t.cat] !== undefined) catSummary.income[t.cat] += tBase;
                         else catSummary.income[t.cat] = tBase;
@@ -6089,6 +6527,15 @@
 
                 const sub = t.currency !== baseCurrency ? `<span class="converted-subtext">≈ ${formatCurrency(tBase, baseCurrency)}</span>` : '';
                 const iconBadge = t.type === "transfer" ? "🔄" : getCategoryIcon(t.cat, t.type);
+                // v88: a small ✅ overlay on the category icon flags a transaction the user has
+                // already reconciled against a bank/card statement (see the Checked toggle in
+                // Quick View / the entry form) — purely a visual cue, no effect on any total.
+                const checkedIconHTML = t.checked
+                    ? `<span title="Checked" style="display:inline-block; position:relative; margin-right:2px;">${iconBadge}<span style="position:absolute; bottom:-4px; right:-6px; font-size:0.6rem; background:#15803d; color:white; border-radius:50%; width:13px; height:13px; line-height:13px; text-align:center;">✓</span></span>`
+                    : iconBadge;
+                const refundBadge = t.isRefund
+                    ? `<span style="font-size:0.62rem; font-weight:700; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">↩️ Refund</span>`
+                    : '';
                 const receiptBadge = t.image
                     ? `<span data-click="openImageViewer" data-image="${escapeHtml(t.image)}" style="cursor:pointer; margin-left:4px;" title="View attached photo">📎</span>`
                     : '';
@@ -6152,9 +6599,9 @@
                 }
 
                 ledgerHTML += `
-                    <div class="ledger-item" data-click="openTransactionForm" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
+                    <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
-                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}</span>
+                            <span class="item-name">${checkedIconHTML} ${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}${refundBadge}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(t.cat || 'Transfer')}]${referenceText}${maturityText}${receiptBadge}</span>
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">${accountText}</span>
                         </div>
@@ -6301,6 +6748,21 @@
                 if (filterY !== "all" && new Date(t.date).getFullYear().toString() !== filterY) return;
 
                 const tBase = convertTxAmountToBase(t, accounts);
+                if (t.type === "income" && t.isRefund) {
+                    // v88: refund — reduces the original expense category (matched via t.cat, see
+                    // openRefundFromOptions()) instead of counting as income. Still respects the
+                    // same "exclude from savings" category setting an ordinary expense in that
+                    // category would.
+                    if (excludedCatNames.has(t.cat)) {
+                        excludedSummary[t.cat] = excludedSummary[t.cat] || { value: 0, type: "expense" };
+                        excludedSummary[t.cat].value -= tBase;
+                        excludedNetTotal += tBase;
+                        return;
+                    }
+                    expBaseTotal -= tBase;
+                    catSummary.expense[t.cat] = (catSummary.expense[t.cat] || 0) - tBase;
+                    return;
+                }
                 if (t.type === "income") {
                     if (excludedCatNames.has(t.cat)) {
                         excludedSummary[t.cat] = excludedSummary[t.cat] || { value: 0, type: "income" };
@@ -6513,20 +6975,26 @@
             const excludedTotals = {};
             let total = 0, excludedTotal = 0;
             txs.forEach(t => {
-                if (t.type !== "expense") return;
+                // v88: a refund (income-type, isRefund:true) is folded into this same Spending
+                // Breakdown — as a negative contribution to the category it refunds — instead of
+                // being excluded outright, so a fully-refunded category correctly nets to zero/
+                // disappears from the chart rather than still showing the original full spend.
+                const isRefundCredit = t.type === "income" && t.isRefund;
+                if (t.type !== "expense" && !isRefundCredit) return;
                 if (memberAccountIds && !memberAccountIds.has(t.src)) return;
                 const d = new Date(t.date);
                 if (filterM !== "all" && d.getMonth().toString() !== filterM) return;
                 if (filterY !== "all" && d.getFullYear().toString() !== filterY) return;
                 const tBase = convertTxAmountToBase(t, accounts);
+                const signedBase = isRefundCredit ? -tBase : tBase;
                 const cat = t.cat || "Other Expenses";
                 if (excludedCatNames.has(cat)) {
-                    excludedTotals[cat] = (excludedTotals[cat] || 0) + tBase;
-                    excludedTotal += tBase;
+                    excludedTotals[cat] = (excludedTotals[cat] || 0) + signedBase;
+                    excludedTotal += signedBase;
                     return;
                 }
-                catTotals[cat] = (catTotals[cat] || 0) + tBase;
-                total += tBase;
+                catTotals[cat] = (catTotals[cat] || 0) + signedBase;
+                total += signedBase;
             });
 
             const entries = Object.keys(catTotals)
@@ -6570,6 +7038,10 @@
             let total = 0, excludedTotal = 0;
             txs.forEach(t => {
                 if (t.type !== "income") return;
+                // v88: a refund is credited to the account like income, but per-spec must not
+                // count as income anywhere — see the isRefund handling in
+                // renderSpendingBreakdownPage()/renderApp()/renderSavingsStatement().
+                if (t.isRefund) return;
                 if (memberAccountIds && !memberAccountIds.has(t.src)) return;
                 const d = new Date(t.date);
                 if (filterM !== "all" && d.getMonth().toString() !== filterM) return;
@@ -7234,6 +7706,20 @@
             handleSaveAllNav: () => handleSaveAllNav(),
             scrollToTop: () => scrollToTop(),
             fetchLiveFxRates: () => fetchLiveFxRates(),
+            // v88: split expenses, calculator/numpad, transaction quick view/options/refund.
+            addTxSplitRow: () => addTxSplitRow(),
+            removeTxSplitRow: (el) => removeTxSplitRow(el),
+            openCalcPadFor: (el) => openCalcPad(el),
+            calcPadPress: (el) => calcPadPress(el),
+            calcPadApply: () => calcPadApply(),
+            openTxQuickView: (el) => openTxQuickView(el),
+            toggleTxCheckedFromQuickView: () => toggleTxCheckedFromQuickView(),
+            openTxOptionsMenu: () => openTxOptionsMenu(),
+            closeTxOptionsMenu: () => closeTxOptionsMenu(),
+            editTransactionFromOptions: () => editTransactionFromOptions(),
+            duplicateTransactionFromOptions: () => duplicateTransactionFromOptions(),
+            deleteTransactionFromOptions: () => deleteTransactionFromOptions(),
+            openRefundFromOptions: () => openRefundFromOptions(),
         };
 
         const CHANGE_ACTIONS = {
@@ -7242,7 +7728,7 @@
             handleExportEncryptToggleChange: () => handleExportEncryptToggleChange(),
             handleBiometricToggleChange: () => handleBiometricToggleChange(),
             handleBaseCurrencyChange: () => handleBaseCurrencyChange(),
-            recalcTxFdMaturity: () => recalcTxFdMaturity(),
+            recalcTxFdMaturity: () => { recalcTxFdMaturity(); recalcTxSplitTotal(); },
             syncTransactionCurrency: () => syncTransactionCurrency(),
             handleTxImageSelected: (el, e) => handleTxImageSelected(e),
             recalcResolveFdMaturity: () => recalcResolveFdMaturity(),
@@ -7269,7 +7755,7 @@
         };
 
         const INPUT_ACTIONS = {
-            recalcTxFdMaturity: () => { recalcTxFdMaturity(); syncTransferFxOnAmountChange(); },
+            recalcTxFdMaturity: () => { recalcTxFdMaturity(); syncTransferFxOnAmountChange(); recalcTxSplitTotal(); },
             recalcResolveFdMaturity: () => recalcResolveFdMaturity(),
             recalcFdOpeningRowMaturity: (el) => recalcFdOpeningRowMaturity(el.dataset.rowId),
             recalcTxManualFxPreview: () => recalcTxManualFxPreview(),
@@ -7278,6 +7764,7 @@
             recalcFundTxTotal: () => recalcFundTxTotal(),
             recalcFundTxPriceFromTotal: () => recalcFundTxPriceFromTotal(),
             handleNavPriceInput: (el) => handleNavPriceInput(el),
+            recalcTxSplitTotal: () => recalcTxSplitTotal(),
         };
 
         document.addEventListener("click", (e) => {

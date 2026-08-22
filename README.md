@@ -1669,3 +1669,62 @@ Categories page had nothing to show, edit, or re-icon for them.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v105.
+
+## v106: Salary Entry — 4th quick-entry button, EPF (Malaysia) / CPF
+(Singapore) split
+
+- **New "💰 Salary" quick-entry button** on the dashboard, alongside
+  Income/Expense/Transfer (`.actions-bar` is now a 4-column grid;
+  `.btn-salary` uses a new `--salary-color` (#d97706) CSS variable).
+  Opens a dedicated `salaryModal`.
+- **Salary Entry modal**: Member (filters both account dropdowns to
+  that person's solo-owned accounts — `populateSalaryAccountSelects()`
+  mirrors `filterAccountsByOwnership`'s "member" mode, joint accounts
+  excluded from a single member's filtered view, same convention as
+  the Spending/Income Breakdown member filter), Date, Scheme
+  (None / EPF (Malaysia) / CPF (Singapore)), Description (auto-fills
+  "<Month> <Year> Salary", editable), Bank Account, an EPF/CPF Account
+  row (shown only when a scheme is picked — label switches between
+  "EPF / KWSP Account" and "CPF Account"), Gross Salary, and
+  Employee (EE) / Employer (ER) amount fields (shown only when a
+  scheme is picked). A live preview box mirrors the reference design
+  (Gross Salary → Bank Account, → EPF/CPF (EE), → EPF/CPF (ER)),
+  recalculating on every keystroke via `recalcSalaryPreview()`.
+- **On Save** (`handleSaveSalaryRecord()`), writes 1–3 ordinary Income
+  transactions — no new transaction "kind", same philosophy as Split
+  Expenses/Fund transactions:
+  - Bank leg (Gross − EE) → Bank Account, category "Salary"
+  - EE leg (if scheme picked and EE > 0) → EPF/CPF Account, category
+    "EPF Contrib.(EE)" / "CPF Contrib.(EE)"
+  - ER leg (if scheme picked and ER > 0) → EPF/CPF Account, category
+    "EPF Contrib.(ER)" / "CPF Contrib.(ER)" — purely additive, never
+    subtracted from the Bank leg, since an employer's contribution
+    never touches the employee's actual pay
+  All three share a generated `salaryGroupId`, purely for
+  traceability (same pattern as Split Expenses' `splitGroupId`) —
+  every existing balance/report calculation already handles a plain
+  Income record correctly, so nothing downstream needed to change.
+- **New categories**: `CPF Contrib.(EE)` / `CPF Contrib.(ER)` added to
+  `DEFAULT_CATEGORIES` (auto-provisioned via the existing idempotent
+  `ensureDefaultCategories()`) and `fallbackIcons`, alongside the
+  pre-existing `EPF Contrib.(EE)` / `EPF Contrib.(ER)`.
+- **New account sub-group**: `"CPF"` added to `ACCOUNT_SUBGROUPS`
+  under `"Investment"` (next to `"KWSP"`) — this is data-driven, so it
+  automatically picks up a matching sidebar shortcut
+  (`accountTypeShortcutList()`) and Add/Edit Account Sub-Group option
+  with no other code changes.
+- CPF is intentionally the "simple" model per user decision — one
+  combined CPF account/leg per EE and ER, not a further OA/SA/MA
+  split. Both schemes enter EE/ER as exact typed amounts (not
+  percentages), matching the reference screenshot.
+- No IndexedDB schema/version changes (`salaryGroupId` is just a new
+  optional field on transaction records, like `splitGroupId` before
+  it — `undefined`/`null` for all existing data). No export/import
+  format changes — the new transactions are ordinary rows already
+  covered by the existing backup bundle. Verified with `node --check`
+  plus the data-click/data-change/data-input ↔ handler and
+  `getElementById` ↔ element-id cross-reference scripts (0 missing,
+  0 dupes).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v106.

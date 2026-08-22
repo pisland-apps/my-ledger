@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v91";
+        const APP_VERSION = "v92";
         const APP_VERSION_DATE = "2026-08-22";
 
         // Runs immediately as this script executes (it's the last element in <body>, so the
@@ -5718,10 +5718,15 @@
             // — otherwise a routine edit (e.g. fixing a typo in the description) would silently
             // strip that tag.
             let preservedTransferCat = null;
-            if (txIdInput !== "" && document.getElementById("txType").value === "transfer") {
+            // v92: also look up the existing record (regardless of type) so an edit can carry its
+            // splitGroupId forward — see the record.splitGroupId assignment below.
+            let existingTxForEdit = null;
+            if (txIdInput !== "") {
                 const existingTxs = await readAllDB(STORES.TRANSACTIONS);
-                const existingTx = existingTxs.find(t => t.id === parseInt(txIdInput));
-                if (existingTx && existingTx.cat === "Fixed Deposit") preservedTransferCat = "Fixed Deposit";
+                existingTxForEdit = existingTxs.find(t => t.id === parseInt(txIdInput)) || null;
+                if (document.getElementById("txType").value === "transfer" && existingTxForEdit && existingTxForEdit.cat === "Fixed Deposit") {
+                    preservedTransferCat = "Fixed Deposit";
+                }
             }
 
             const record = {
@@ -5763,7 +5768,14 @@
                 // between two "normal" accounts with different currencies. null means "auto":
                 // the destination account is credited via a live currency conversion each time
                 // the app renders, as before (see computeAccountBalances()/applyToAccountBalance()).
-                destAmount: transferDestAmountOverride
+                destAmount: transferDestAmountOverride,
+                // v92 fix: writeDB() does a full put() that replaces the entire stored record, so
+                // an edit that omitted this field was silently stripping splitGroupId off of split
+                // parts, ungrouping them into standalone transactions the moment they were edited
+                // (this record object never set splitGroupId at all before v92). Carry the
+                // existing value forward on every edit; stays undefined for a brand-new entry,
+                // where the split-save branch below assigns its own freshly generated one anyway.
+                splitGroupId: existingTxForEdit ? existingTxForEdit.splitGroupId : undefined
             };
 
             // v88: Refund — set only by openRefundFromOptions(), which opens this same form as a

@@ -1995,3 +1995,52 @@ silently discarding the explicit Default Receive Account setting.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v113.
+
+## v114: fixed a latent bug — renaming a seeded default category (e.g.
+"Rental Income" → "Rental Income -Warehouse") would have silently
+recreated a duplicate under the old name on next launch
+
+Reported via screenshot: "Rental Income" appeared in the Default
+Income Category dropdown but not on the Categories management page.
+Explanation, same underlying mechanism as the original Freelance/
+Investments/Salary case earlier in this project: "Rental Income" is
+one of the literal names baked into `DEFAULT_CATEGORIES`, and
+`buildCategoryOptionsHTML()`'s dropdown always includes every
+`DEFAULT_CATEGORIES` name as a legacy/fallback option even when no
+real category record matches it by that exact name anymore — which,
+here, is exactly what happened: the user's real category (still the
+very same record, same id) had been renamed to "Rental Income
+-Warehouse", so nothing in Categories is literally named "Rental
+Income" anymore, yet the dropdown still shows it as an unmatched
+leftover option (harmless on its own — it's just there so any old
+transaction still filed under the literal string "Rental Income"
+keeps a dropdown entry to display against).
+
+- **The actually risky part, now fixed**: `ensureDefaultCategories()`
+  (idempotent, runs every launch) previously matched an existing
+  category purely by **current name** — so the moment "Rental Income"
+  no longer matched by name (because the user renamed it), the next
+  launch would treat it as "missing" and silently insert a brand-new
+  duplicate `cat_rental_income` category, re-fragmenting the user's
+  transaction history across two "Rental Income"-ish categories they
+  never asked for.
+- **Fix**: the missing-category check now also matches by the
+  **deterministic id** a `DEFAULT_CATEGORIES` entry would have been
+  seeded with (`slugify(c.name)`) — since renaming a category via Edit
+  Category keeps its original `id`, checking the id (not just the
+  current name) correctly recognizes "this default was already seeded
+  once, just renamed since" and skips re-inserting it. This
+  generalizes the same protection the existing one-off
+  `legacyBeting`/`legacyRentingExpenses` migrations already used
+  (matching by id, not name) to **every** `DEFAULT_CATEGORIES` entry,
+  present or future — no new one-time migration needed each time a
+  user renames a starter category.
+- No IndexedDB schema/version changes — matching-logic fix only, and
+  nothing to undo: since the duplicate hadn't actually been created
+  yet (this instance was caught before a reload), there's no cleanup
+  needed for existing data. Verified with `node --check` plus the
+  data-click/data-change/data-input ↔ handler and `getElementById` ↔
+  element-id cross-reference scripts (0 missing, 0 dupes).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v114.

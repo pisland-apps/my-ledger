@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v113";
+        const APP_VERSION = "v114";
         const APP_VERSION_DATE = "2026-08-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -4797,10 +4797,21 @@
                 }
             }
 
-            const existingNames = new Set(existing.map(c => c.name.toLowerCase().trim()));
-            const missing = DEFAULT_CATEGORIES.filter(c => !existingNames.has(c.name.toLowerCase()));
-
             const slugify = s => "cat_" + s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+
+            // Matched by EITHER current name OR the deterministic id a DEFAULT_CATEGORIES entry
+            // would have been seeded with (slugify(c.name)) — not name alone. Name-only matching
+            // meant renaming a seeded category away from its original DEFAULT_CATEGORIES name
+            // (e.g. "Rental Income" → "Rental Income -Warehouse") made it look "missing" on the
+            // very next launch, silently recreating a duplicate under the old name — exactly the
+            // kind of unwanted resurrection the id-based "legacyBeting"/"legacyRentingExpenses"
+            // migrations above were already special-cased to prevent, just for those two specific
+            // renames. Checking the seeded id generalizes that protection to every
+            // DEFAULT_CATEGORIES entry, present or future, without needing a new one-time
+            // migration each time a user renames one.
+            const existingIds = new Set(existing.map(c => c.id));
+            const existingNames = new Set(existing.map(c => c.name.toLowerCase().trim()));
+            const missing = DEFAULT_CATEGORIES.filter(c => !existingNames.has(c.name.toLowerCase()) && !existingIds.has(slugify(c.name)));
 
             // v101: two passes so a Subcategory's `parent` name (see DEFAULT_CATEGORIES comment)
             // can always be resolved to an id — Main Categories first (any entry with no `parent`,

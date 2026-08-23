@@ -1889,3 +1889,35 @@ tap the transaction → Edit → change Category by hand).
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v110.
+
+## v111: fixed — Salary Entry's Category field wasn't showing "Salary"'s
+Subcategories (e.g. "Salary -VF"/"Salary -RS")
+
+Root cause, confirmed against `buildCategoryOptionsHTML()`: it only
+groups a Subcategory under its Main Category when the Subcategory's
+own name is present in the caller-supplied `namesToInclude` list (this
+is what lets a renamed/deleted category still show up correctly on
+its own existing transaction elsewhere in the app). v110 passed a
+literal `["Salary"]` as that list — covering the Main Category itself,
+but not any of its Subcategories — so every Subcategory got silently
+filtered out of the dropdown, leaving "Salary" rendered as a single
+flat option with nothing nested under it (see screenshot: the same
+dropdown that correctly showed "Salary" → "Salary (General)"/
+"Salary -RS"/"Salary -VF" on the ordinary Edit Ledger Entry form
+showed no Subcategories at all here).
+
+- **Fix**: `openSalaryEntryForm()` now passes every existing income
+  category name (`dynamicCategories.filter(c => c.type === "income")
+  .map(c => c.name)`) as `namesToInclude` — the exact same convention
+  the main transaction form's own Category select already uses via
+  its `currentCats` variable — so `buildCategoryOptionsHTML()` now
+  correctly includes every Subcategory that exists, not just Main
+  Categories.
+- No IndexedDB schema/version changes — one-line fix to which names
+  get passed into an existing, unchanged builder function. Verified
+  with `node --check` plus the data-click/data-change/data-input ↔
+  handler and `getElementById` ↔ element-id cross-reference scripts
+  (0 missing, 0 dupes).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v111.

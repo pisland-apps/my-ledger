@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v119";
+        const APP_VERSION = "v120";
         const APP_VERSION_DATE = "2026-08-23";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -873,6 +873,8 @@
             { name: "Insurance", type: "expense", icon: "🛡️" },
             { name: "Medical", type: "expense", icon: "🏥" },
             { name: "Unknown", type: "expense", icon: "❓" },
+            { name: "Groceries & Household", type: "expense", icon: "🧺" },
+            { name: "Professional Fees", type: "expense", icon: "📋" },
             { name: "Rental Expenses", type: "expense", icon: "🏠" },
             // Vehicle Expenses (Main) + its Subcategories
             { name: "Vehicle Expenses", type: "expense", icon: "🚗" },
@@ -894,11 +896,12 @@
         // Dynamic Rich Catalog of Preset Icons grouped logically
         const emojiDirectory = {
             "Money & Fin.": ["💵", "💰", "💳", "📈", "📉", "🪙", "💎", "💸"],
-            "Food & Dining": ["🍔", "🍜", "🍕", "☕", "🍺", "🍏", "🍣", "🍩"],
+            "Food & Dining": ["🍔", "🍜", "🍕", "☕", "🍺", "🍏", "🍣", "🍩", "🍷", "🧺"],
             "Transport": ["🚗", "🚌", "🚆", "✈️", "🚲", "⛽", "🚕", "🚢"],
             "Home & Living": ["🏠", "🔌", "📡", "🛋️", "🧹", "💧", "📦", "🔑"],
-            "Life & Leisure": ["🎬", "🎮", "⚽", "🏖️", "🛒", "👕", "🎁", "💊"],
-            "Income & Business": ["🏢", "💼", "💻", "🛠️", "🤝", "🏡", "🎓", "👑"]
+            "Life & Leisure": ["🎬", "🎮", "⚽", "🏖️", "🛒", "👕", "🎁", "💊", "🎭"],
+            "Income & Business": ["🏢", "💼", "💻", "🛠️", "🤝", "🏡", "🎓", "👑", "📋"],
+            "Family & Pets": ["👨‍👩‍👧‍👦", "🐹", "🐄", "🐶", "🐱"]
         };
 
         // Fallback default system icons if not found
@@ -947,7 +950,9 @@
             "personal care / grooming": "💇",
             "insurance": "🛡️",
             "medical": "🏥",
-            "unknown": "❓"
+            "unknown": "❓",
+            "groceries & household": "🧺",
+            "professional fees": "📋"
         };
 
         // Helper to retrieve correct category icon safely

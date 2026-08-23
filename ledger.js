@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v118";
+        const APP_VERSION = "v119";
         const APP_VERSION_DATE = "2026-08-23";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1449,6 +1449,19 @@
         function closeModal(id) { 
             const el = document.getElementById(id);
             if (el && el.classList.contains("active")) {
+                // The Accounts modal's × button is a generic data-click="closeModal" handler,
+                // unlike the Save Changes / Delete Account buttons inside that same form, which
+                // both already call resetAccountForm() themselves before closeModal() to clear
+                // editAccountId first. Without that, clicking × while mid-edit went straight to
+                // history.back() with editAccountId still set — the popstate listener's
+                // edit-account branch (above) intercepts that back-navigation and just resets the
+                // form to "Create New Account" mode (a deliberate cancel-first safety net for the
+                // hardware/gesture back button) instead of closing, so the × silently did nothing
+                // visible and needed a second click. Clearing it here first, matching the
+                // Save/Delete convention, makes × close in one click regardless of edit state.
+                if (id === "accountsModal" && document.getElementById("editAccountId").value !== "") {
+                    resetAccountForm();
+                }
                 const idx = modalStack.lastIndexOf(id);
                 if (idx !== -1 && idx !== modalStack.length - 1) {
                     modalStack.splice(idx + 1);

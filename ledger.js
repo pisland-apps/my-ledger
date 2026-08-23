@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v112";
+        const APP_VERSION = "v113";
         const APP_VERSION_DATE = "2026-08-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -6206,23 +6206,32 @@
         // Re-picking a Member never narrows either dropdown (see populateSalaryAccountSelects) —
         // it only nudges the two selects toward a sensible default for that person, so the full
         // account list (including joint accounts) stays reachable either way: Bank Account
-        // defaults to their own solely-owned Bank/Cash account if one exists; EPF/CPF Account
-        // defaults to any account under the Investment group's KWSP or CPF sub-group they're an
-        // owner of (solo OR joint, since a household's EPF/CPF pot is sometimes filed jointly).
-        // Left alone (no default change) when no match is found — "All Members" or a member with
-        // no matching account never overwrites whatever the user already picked by hand.
+        // defaults to their own solely-owned Bank/Cash account if one exists (but ONLY when no
+        // Default Receive Account is configured — see below); EPF/CPF Account defaults to any
+        // account under the Investment group's KWSP or CPF sub-group they're an owner of (solo
+        // OR joint, since a household's EPF/CPF pot is sometimes filed jointly). Left alone (no
+        // default change) when no match is found — "All Members" or a member with no matching
+        // account never overwrites whatever the user already picked by hand.
         async function handleSalaryMemberChange() {
             const memberId = document.getElementById("salaryMemberSelect").value;
             if (memberId === "all") return;
             const accounts = await readAllDB(STORES.ACCOUNTS);
 
-            const soloBank = accounts.find(a =>
-                Array.isArray(a.memberIds) && a.memberIds.length === 1 && a.memberIds[0] === memberId &&
-                (a.group || DEFAULT_ACCOUNT_GROUP) === "Bank/Cash"
-            );
-            if (soloBank) {
-                document.getElementById("salaryBankAccount").value = soloBank.id;
-                syncAccountPickerButtonText("salaryBankAccount");
+            // Default Receive Account is an explicit, deliberate setting (Sidebar ▸ Accounts) —
+            // it should win over this per-member guess, not get silently overwritten by it.
+            // openSalaryEntryForm() already applies it once when the modal opens (while Member is
+            // still "All Members"); this only re-nudges Bank Account toward the member's own solo
+            // account when there's no Default Receive Account configured to defer to instead.
+            const hasDefaultReceive = defaultReceiveAccount && accounts.some(a => a.id === defaultReceiveAccount);
+            if (!hasDefaultReceive) {
+                const soloBank = accounts.find(a =>
+                    Array.isArray(a.memberIds) && a.memberIds.length === 1 && a.memberIds[0] === memberId &&
+                    (a.group || DEFAULT_ACCOUNT_GROUP) === "Bank/Cash"
+                );
+                if (soloBank) {
+                    document.getElementById("salaryBankAccount").value = soloBank.id;
+                    syncAccountPickerButtonText("salaryBankAccount");
+                }
             }
 
             const contribAcc = accounts.find(a =>

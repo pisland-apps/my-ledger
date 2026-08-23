@@ -1964,3 +1964,34 @@ into.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v112.
+
+## v113: fixed — Salary Entry's Default Receive Account was getting
+overwritten the moment a specific Member was picked
+
+Reported via screenshots: with Member = "All Members", Bank Account
+correctly defaulted to the configured Default Receive Account (PBB
+Current A/c). But switching Member to "LIM VF" immediately overwrote
+it with that member's own solo Bank/Cash account (RHB Current A/c) —
+silently discarding the explicit Default Receive Account setting.
+
+- **Root cause**: `handleSalaryMemberChange()`'s per-member
+  smart-default (added in v107, to help someone bank into their own
+  solo account when no shared default was configured) ran
+  unconditionally, with no awareness of Default Receive Account
+  (added later, in v112) — so it always overwrote whatever
+  `openSalaryEntryForm()` had just defaulted Bank Account to.
+- **Fix**: the per-member solo-account guess is now only applied
+  when Default Receive Account is NOT configured (or points at an
+  account that no longer exists). Default Receive Account — an
+  explicit, deliberate setting on the Accounts page — now always
+  wins over the member-specific guess, exactly matching how it
+  already behaves with Member left on "All Members". The EPF/CPF
+  Account per-member default is unaffected — that one has no
+  Default-Account-style setting to defer to.
+- No IndexedDB schema/version changes — pure default-selection logic
+  fix. Verified with `node --check` plus the data-click/data-change/
+  data-input ↔ handler and `getElementById` ↔ element-id
+  cross-reference scripts (0 missing, 0 dupes).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v113.

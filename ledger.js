@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v114";
-        const APP_VERSION_DATE = "2026-08-22";
+        const APP_VERSION = "v115";
+        const APP_VERSION_DATE = "2026-08-23";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -1490,6 +1490,93 @@
             // Keeps the sidebar's active-item highlight correct even when it's persistently
             // visible (desktop/tablet) rather than only refreshed on drawer-open (mobile).
             updateSidebarActiveState();
+        }
+
+        // Human-readable title for whichever page is currently on screen — used for the printed
+        // document's own header line and as the browser tab/PDF filename while printing. Pages
+        // with a dynamic on-screen heading (an account's Ledger, a Fund's Activity, a Member's
+        // page, etc.) read that heading straight off the DOM so the printed title always matches
+        // what the user was actually looking at, instead of a generic page-type label.
+        function getActivePageTitle(pageId) {
+            switch (pageId) {
+                case "page-workspace": return "Dashboard — Net Worth Overview";
+                case "page-ledger": return document.getElementById("ledgerTargetTitle")?.textContent || "Account Ledger";
+                case "page-fundactivity": return document.getElementById("fundActivityTitle")?.textContent || "Fund Activity";
+                case "page-currencyactivity": return document.getElementById("currencyActivityTitle")?.textContent || "Currency Activity";
+                case "page-accounts": return "Financial Accounts";
+                case "page-categories": return "Categories";
+                case "page-backup": return "Export & Import";
+                case "page-autolock": return "Auto-Lock Settings";
+                case "page-database": return "Database";
+                case "page-spending-breakdown": return "Spending Breakdown";
+                case "page-income-breakdown": return "Income Breakdown";
+                case "page-savings": return "Savings Statement";
+                case "page-portfolio-report": return "Unit Trust Portfolio";
+                case "page-owner-networth-report": return "Financial Assets vs Real Estate";
+                case "page-datasecurity": return "Settings";
+                case "page-navupdate": return "Daily NAV Update";
+                case "page-members": return "Manage Members";
+                case "page-member": return document.getElementById("memberPageTitle")?.textContent || "Member";
+                default: return "Ledger";
+            }
+        }
+
+        // Prints (or "Save as PDF"s) whichever page is currently visible. Works the same way on
+        // every page in the app — there's no per-page print button/logic, just this one entry
+        // point wired to the single floating 🖨 button that's present everywhere (see
+        // .print-fab-btn in index.html) — the @media print CSS block does the work of hiding
+        // chrome and showing only the active .page.
+        async function printCurrentApp() {
+            const activePageId = APP_PAGE_IDS.find(id => {
+                const el = document.getElementById(id);
+                return el && !el.classList.contains("hidden");
+            });
+            if (!activePageId) { window.print(); return; }
+
+            const activeEl = document.getElementById(activePageId);
+            const title = getActivePageTitle(activePageId);
+
+            // The Ledger page paginates long transaction histories behind a "Load more" button
+            // (ledgerRenderLimit) so scrolling stays fast on a phone — but a printed statement
+            // should include everything, not just whatever happened to be loaded on screen yet.
+            // Temporarily lift that limit for the print, then restore it afterwards so normal
+            // on-screen scrolling/pagination behavior is unaffected.
+            const liftedLedgerLimit = (activePageId === "page-ledger" && ledgerRenderLimit < Infinity);
+            if (liftedLedgerLimit) {
+                ledgerRenderLimit = Infinity;
+                await renderApp();
+            }
+
+            const header = document.createElement("div");
+            header.id = "printHeader";
+            header.innerHTML = `
+                <div class="print-header-title">💰 My Ledger</div>
+                <div class="print-header-sub">${escapeHtml(title)} · Printed ${new Date().toLocaleString()}</div>
+            `;
+            activeEl.prepend(header);
+
+            const prevDocTitle = document.title;
+            document.title = `Ledger - ${title}`;
+
+            let cleanedUp = false;
+            const cleanup = () => {
+                if (cleanedUp) return;
+                cleanedUp = true;
+                clearTimeout(fallbackTimer);
+                header.remove();
+                document.title = prevDocTitle;
+                if (liftedLedgerLimit) {
+                    ledgerRenderLimit = LEDGER_PAGE_SIZE;
+                    renderApp();
+                }
+            };
+            // afterprint covers both "Print" and "Cancel" in every modern browser, but a
+            // fallback timeout guards against the rare browser that never fires it (some older
+            // WebViews) so the temporary header/title/expanded list can't get stuck.
+            window.addEventListener("afterprint", cleanup, { once: true });
+            const fallbackTimer = setTimeout(cleanup, 60000);
+
+            window.print();
         }
 
         function navigateToLedgerPage(accountId, backTarget = "workspace") {
@@ -8765,6 +8852,7 @@
             selectAccountPickerOption: (el) => selectAccountPickerOption(el),
             openSalaryEntryForm: () => openSalaryEntryForm(),
             handleSaveSalaryRecord: () => handleSaveSalaryRecord(),
+            printCurrentApp: () => printCurrentApp(),
         };
 
         const CHANGE_ACTIONS = {

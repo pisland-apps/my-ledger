@@ -1921,3 +1921,46 @@ showed no Subcategories at all here).
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v111.
+
+## v112: new "Default Receive Account" setting — applies to both the
+ordinary Income form and Salary Entry's Bank Account
+
+Previously "Default Payment Account" pre-selected the account field
+on every new transaction type (Income, Expense, and Transfer's "from"
+side) — not just Expenses, despite the name. That meant incoming
+money (Income entries, and Salary Entry's Bank Account) always
+defaulted to whatever account was set up for outgoing spending, which
+often isn't the same account a household actually receives salary
+into.
+
+- **New "Default Receive Account" selector** on the Accounts page,
+  right below Default Payment Account — same style/behavior
+  (`populateDefaultReceiveAccountSelect()`/`saveDefaultReceiveAccount()`
+  mirror the existing Default Payment Account functions exactly), and
+  hidden alongside it whenever a sidebar shortcut narrows the Accounts
+  list to one group/sub-group (same convention as v62's
+  `defaultPaymentAccountSection`/`Row` hiding).
+- **Ordinary Income form**: `openTransactionForm()`'s pre-select logic
+  now picks Default Receive Account for `type === "income"`, and keeps
+  using Default Payment Account for Expense and Transfer's "from"
+  side — a one-line branch (`type === "income" ? defaultReceiveAccount
+  : defaultPaymentAccount`) instead of always using the payment one.
+- **Salary Entry's Bank Account** now defaults to Default Receive
+  Account when the modal opens (Member starts on "All Members", so
+  this is the only default in play at that point) — picking a
+  specific Member afterward can still nudge it further via the
+  existing member-specific smart-default from v107.
+- **New setting persisted** as `defaultReceiveAccount` in the SETTINGS
+  store (same `{key, value}` shape as every other preference here) —
+  loaded on bootstrap, and already covered by the full-SETTINGS-store
+  backup/restore dump from v65 with no format change; only the
+  restore-side switch needed a new `case` to update the in-memory
+  variable when importing an older backup that predates this setting
+  (harmlessly absent — restores fine without it, just no default).
+- No IndexedDB schema/version bump — a new key in an existing
+  key/value store. Verified with `node --check` plus the data-click/
+  data-change/data-input ↔ handler and `getElementById` ↔ element-id
+  cross-reference scripts (0 missing, 0 dupes).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v112.

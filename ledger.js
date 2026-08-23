@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v111";
+        const APP_VERSION = "v112";
         const APP_VERSION_DATE = "2026-08-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -832,6 +832,7 @@
         // Account pre-selected in the "Account" field whenever a NEW transaction entry is opened
         // (never applied when editing). Stored in the SETTINGS store, "" means no default set.
         let defaultPaymentAccount = "";
+        let defaultReceiveAccount = "";
 
         // Built-in starter categories (auto-provisioned if missing; user can still
         // rename/remove via the Categories manager same as any custom category).
@@ -1968,7 +1969,8 @@
         }
 
         // Fills the Default Payment Account dropdown with every account, and selects whatever is
-        // currently saved as the default.
+        // currently saved as the default. Used to pre-select the account field on new Expense
+        // and Transfer (from-side) entries — see openTransactionForm().
         async function populateDefaultPaymentAccountSelect() {
             const accounts = await readAllDB(STORES.ACCOUNTS);
             const select = document.getElementById("defaultPaymentAccountSelect");
@@ -1979,6 +1981,24 @@
         async function saveDefaultPaymentAccount() {
             defaultPaymentAccount = document.getElementById("defaultPaymentAccountSelect").value;
             await writeDB(STORES.SETTINGS, { key: "defaultPaymentAccount", value: defaultPaymentAccount });
+        }
+
+        // Same idea as populateDefaultPaymentAccountSelect(), but for money coming IN — used to
+        // pre-select the account field on new Income entries (see openTransactionForm()) and the
+        // Bank Account field in Salary Entry (see openSalaryEntryForm()). Kept as a separate
+        // setting from Default Payment Account since a household very often routes outgoing
+        // spending and incoming salary through different accounts on purpose (e.g. a joint
+        // account for salary/bills, a personal account for discretionary spending).
+        async function populateDefaultReceiveAccountSelect() {
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const select = document.getElementById("defaultReceiveAccountSelect");
+            select.innerHTML = `<option value="">(None)</option>` + accounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a, accounts))} (${escapeHtml(a.currency || a.type)})</option>`).join("");
+            select.value = accounts.some(a => a.id === defaultReceiveAccount) ? defaultReceiveAccount : "";
+        }
+
+        async function saveDefaultReceiveAccount() {
+            defaultReceiveAccount = document.getElementById("defaultReceiveAccountSelect").value;
+            await writeDB(STORES.SETTINGS, { key: "defaultReceiveAccount", value: defaultReceiveAccount });
         }
 
         let multiOpeningRowCounter = 0;
@@ -2456,6 +2476,7 @@
 
         async function renderAccountsPage() {
             await populateDefaultPaymentAccountSelect();
+            await populateDefaultReceiveAccountSelect();
             const { accounts, txs, nativeBalances } = await computeAccountBalances();
             // Fetched once up front (not per-account inside the loop below) and grouped by
             // accountId, so each Unit Trust account row can list its individual fund holdings
@@ -2498,6 +2519,8 @@
             // unconditionally at the top of every Accounts view.
             document.getElementById("defaultPaymentAccountSection").classList.toggle("hidden", !!filter);
             document.getElementById("defaultPaymentAccountRow").classList.toggle("hidden", !!filter);
+            document.getElementById("defaultReceiveAccountSection").classList.toggle("hidden", !!filter);
+            document.getElementById("defaultReceiveAccountRow").classList.toggle("hidden", !!filter);
 
             let html = "";
             let lastGroup = null;
@@ -5011,12 +5034,17 @@
                 // Split Expenses only makes sense for a brand-new Income/Expense entry.
                 document.getElementById("txSplitWrap").style.display = (type === "transfer") ? "none" : "block";
 
-                // Pre-select the user's default payment account, if one is set and still exists —
-                // new entries only, never when editing (handled above via tx.src). A preset
-                // account passed in (e.g. opening this form via the "+" FAB on that account's own
-                // Activity page — see quickAddChooseType()) takes priority over the stored default.
-                if (defaultPaymentAccount && accounts.some(a => a.id === defaultPaymentAccount)) {
-                    srcSelect.value = defaultPaymentAccount;
+                // Pre-select the user's default account, if one is set and still exists — new
+                // entries only, never when editing (handled above via tx.src). Income uses
+                // Default Receive Account; Expense and Transfer's "from" side use Default
+                // Payment Account — kept as two separate settings since a household very often
+                // routes outgoing spending and incoming salary through different accounts on
+                // purpose. A preset account passed in (e.g. opening this form via the "+" FAB on
+                // that account's own Activity page — see quickAddChooseType()) takes priority
+                // over either stored default.
+                const defaultSrcAccount = type === "income" ? defaultReceiveAccount : defaultPaymentAccount;
+                if (defaultSrcAccount && accounts.some(a => a.id === defaultSrcAccount)) {
+                    srcSelect.value = defaultSrcAccount;
                 }
                 if (presetSrcAccountId && accounts.some(a => a.id === presetSrcAccountId)) {
                     srcSelect.value = presetSrcAccountId;
@@ -6137,6 +6165,15 @@
             catSelect.value = "Salary";
 
             populateSalaryAccountSelects(accounts);
+            // Bank Account defaults to Default Receive Account, if one is set and still exists —
+            // same setting the ordinary Income form now also defaults to (see openTransactionForm()).
+            // Member defaults to "All Members" when the form first opens, so this is the only
+            // default in play at this point; picking a specific Member afterward may still nudge
+            // it further via handleSalaryMemberChange()'s own smart-default logic.
+            if (defaultReceiveAccount && accounts.some(a => a.id === defaultReceiveAccount)) {
+                document.getElementById("salaryBankAccount").value = defaultReceiveAccount;
+                syncAccountPickerButtonText("salaryBankAccount");
+            }
             handleSalarySchemeChange();
             recalcSalaryPreview();
             openModal("salaryModal");
@@ -8294,6 +8331,9 @@
             const storedDefaultPaymentAcc = await readKeyDB("settings", "defaultPaymentAccount");
             if (storedDefaultPaymentAcc) defaultPaymentAccount = storedDefaultPaymentAcc.value || "";
 
+            const storedDefaultReceiveAcc = await readKeyDB("settings", "defaultReceiveAccount");
+            if (storedDefaultReceiveAcc) defaultReceiveAccount = storedDefaultReceiveAcc.value || "";
+
             const storedRecentTxType = await readKeyDB("settings", "recentTxTypeFilter");
             if (storedRecentTxType) recentTxTypeFilter = storedRecentTxType.value || "both";
 
@@ -8369,10 +8409,10 @@
                 funds: await readAllDB(STORES.FUNDS),
                 navHistory: await readAllDB(STORES.NAV_HISTORY),
                 // v65: full SETTINGS store dump ({key,value} rows — defaultPaymentAccount,
-                // defaultIncomeCategory, defaultExpenseCategory, recentTx* widget filters,
-                // expandedAccountSubrows, plus baseCurrency/fxRates which are also kept below as
-                // their own top-level fields for backward compatibility with older backups/import
-                // code that reads them directly off the bundle).
+                // defaultReceiveAccount, defaultIncomeCategory, defaultExpenseCategory, recentTx*
+                // widget filters, expandedAccountSubrows, plus baseCurrency/fxRates which are
+                // also kept below as their own top-level fields for backward compatibility with
+                // older backups/import code that reads them directly off the bundle).
                 settings: await readAllDB(STORES.SETTINGS),
                 baseCurrency: baseCurrency,
                 fxRates: fxRates
@@ -8543,6 +8583,7 @@
                             await writeDB(STORES.SETTINGS, rec);
                             switch (rec.key) {
                                 case "defaultPaymentAccount": defaultPaymentAccount = rec.value || ""; break;
+                                case "defaultReceiveAccount": defaultReceiveAccount = rec.value || ""; break;
                                 case "defaultIncomeCategory": defaultIncomeCategory = rec.value || ""; break;
                                 case "defaultExpenseCategory": defaultExpenseCategory = rec.value || ""; break;
                                 case "recentTxTypeFilter": recentTxTypeFilter = rec.value || "both"; break;
@@ -8720,6 +8761,7 @@
             handleAutoLockChange: () => handleAutoLockChange(),
             saveDefaultCategories: () => saveDefaultCategories(),
             saveDefaultPaymentAccount: () => saveDefaultPaymentAccount(),
+            saveDefaultReceiveAccount: () => saveDefaultReceiveAccount(),
             toggleTxFdDescMode: () => toggleTxFdDescMode(),
             resetSavingsPageAndRender: () => renderSavingsStatement(),
             toggleTxManualFx: () => toggleTxManualFx(),

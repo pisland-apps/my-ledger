@@ -1850,3 +1850,42 @@ illegible on a phone and not controllable from CSS.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v109.
+
+## v110: Salary Entry — new Category field (pick a Salary Subcategory
+directly, e.g. "Salary -VF")
+
+Reported via screenshots: the Bank leg was always hardcoded to save
+under the plain "Salary" category, with no way to pick one of the
+user's own Subcategories (e.g. "Salary -VF" / "Salary -RS", created to
+track each spouse's salary separately) at entry time — forcing a
+manual re-categorize of every saved entry afterward (Ledger →
+tap the transaction → Edit → change Category by hand).
+
+- **New "Category" field** in the Salary Entry modal, right after
+  Bank Account. Uses the exact same `buildCategoryOptionsHTML()`
+  builder the main Income/Expense/Transfer form's own Category select
+  uses — so it lists every income category exactly like that form
+  does (Main Categories with Subcategories grouped under an
+  `<optgroup>`, "Salary (General)" as the parent's own option, plus
+  every Subcategory like "Salary -VF"/"Salary -RS" alongside it).
+  Defaults to "Salary" when the modal opens, but any income category
+  can be picked directly, not just something under Salary.
+- **The Bank leg is now saved with whatever Category is selected**,
+  instead of the hardcoded literal `"Salary"` string. The EE/ER legs
+  are unaffected — those still follow the Scheme selector
+  ("EPF Contrib.(EE)"/"(ER)" or "CPF Contrib.(EE)"/"(ER)"), since
+  there's no per-member EPF/CPF Subcategory need reported yet.
+- Left deliberately manual rather than auto-matched to the selected
+  Member — Subcategory naming conventions vary too much (initials vs.
+  full name vs. nicknames) for a safe automatic guess, so this
+  mirrors how the ordinary Income form's own Category field already
+  behaves: always a plain, explicit pick.
+- No IndexedDB schema/version changes — `cat` was already a plain
+  string field on every transaction record; this only changes what
+  value the Salary Entry form puts there, and only for the Bank leg.
+  Verified with `node --check` plus the data-click/data-change/
+  data-input ↔ handler and `getElementById` ↔ element-id
+  cross-reference scripts (0 missing, 0 dupes).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v110.

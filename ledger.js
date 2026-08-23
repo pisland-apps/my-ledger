@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v109";
+        const APP_VERSION = "v110";
         const APP_VERSION_DATE = "2026-08-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -6132,6 +6132,10 @@
             currSelect.innerHTML = Object.keys(fxRates).sort((a, b) => a.localeCompare(b)).map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
             currSelect.value = baseCurrency;
 
+            const catSelect = document.getElementById("salaryCategory");
+            catSelect.innerHTML = buildCategoryOptionsHTML("income", ["Salary"]);
+            catSelect.value = "Salary";
+
             populateSalaryAccountSelects(accounts);
             handleSalarySchemeChange();
             recalcSalaryPreview();
@@ -6260,10 +6264,14 @@
         // computeAccountBalances() already converts a transaction's currency into its account's
         // own currency at the live FX rate when they differ, same as every other Income/Expense
         // entry in the app, so a currency mismatch here is handled exactly like anywhere else.
+        // The Bank leg's category comes from the Category select (defaults to "Salary", but any
+        // of its Subcategories — e.g. a per-member "Salary -VF" — can be picked directly here
+        // instead of having to manually re-categorize the transaction afterward).
         async function handleSaveSalaryRecord() {
             const date = document.getElementById("salaryDate").value;
             const desc = document.getElementById("salaryDesc").value.trim();
             const bankAccountId = document.getElementById("salaryBankAccount").value;
+            const category = document.getElementById("salaryCategory").value;
             const scheme = document.getElementById("salaryScheme").value;
             const hasScheme = scheme === "epf" || scheme === "cpf";
             const contribAccountId = document.getElementById("salaryContribAccount").value;
@@ -6275,6 +6283,7 @@
             if (!date) { alert("Please select a date."); return; }
             if (!desc) { alert("Please enter a description."); return; }
             if (!bankAccountId) { alert("Please select a Bank Account."); return; }
+            if (!category) { alert("Please select a Category."); return; }
             if (isNaN(gross) || gross <= 0) { alert("Please enter a valid Gross Salary greater than zero."); return; }
             if (hasScheme && !contribAccountId) { alert("Please select an EPF/CPF Account, or switch Scheme to \"None\"."); return; }
             if (ee < 0 || er < 0) { alert("EE/ER amounts can't be negative."); return; }
@@ -6292,7 +6301,7 @@
             try {
                 if (netAmount > 0) {
                     await writeDB(STORES.TRANSACTIONS, Object.assign({}, baseRecord, {
-                        amount: netAmount, src: bankAccountId, cat: "Salary"
+                        amount: netAmount, src: bankAccountId, cat: category
                     }));
                 }
                 if (hasScheme && ee > 0) {

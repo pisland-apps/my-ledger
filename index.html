@@ -2784,8 +2784,26 @@
 
     <!-- MODAL: Generalized attachment viewer — images render directly, PDFs render page-by-page
          onto <canvas> via vendored pdf.js (see openAttachment() in ledger.js). Replaces the old
-         single-image imageViewerModal as of v121. -->
-    <div class="modal" id="attachmentViewerModal" style="background:rgba(0,0,0,0.85);">
+         single-image imageViewerModal as of v121.
+         z-index:1600 (v121 bugfix): openAttachment() can be reached while attachmentViewerModal
+         opens NESTED on top of an already-active modal — either txAttachmentsPickerModal (multi-
+         attachment badge) or txQuickViewModal (Quick View's inline attachment list) — and every
+         .modal shares the same base z-index:1000, so without an explicit override the LATER
+         modal in this file's source order paints on top regardless of which one actually opened
+         more recently. That silently put the still-open picker/Quick View IN FRONT of the newly-
+         opened viewer, which (a) looked broken and (b) led people to close the picker out of
+         modalStack order — tripping closeModal()'s "trim stale entries above id" branch, which
+         truncates the JS modalStack bookkeeping without removing the DOM "active" class the trimmed
+         modal still had, permanently desyncing it from the real browser history stack for the rest
+         of the session (every further Close began consuming one extra real history entry, and
+         enough of those eventually navigates out of the app entirely). Matches the app's existing
+         convention for this exact situation — see calcPadModal's own z-index:1500 override a few
+         hundred lines up, opened on top of txModal the same way. Picked one step higher (1600)
+         since the attachment viewer can itself be reached from ON TOP of calcPadModal's own
+         context in principle (both hang off txModal); no functional harm either way since the two
+         are never open simultaneously today, but higher keeps the ordering unambiguous if that
+         ever changes. -->
+    <div class="modal" id="attachmentViewerModal" style="background:rgba(0,0,0,0.85); z-index:1600;">
         <div class="modal-sheet" style="max-width:95vw; max-height:88vh; overflow-y:auto; background:white; border-radius:14px; padding:16px;">
             <p id="attachmentViewerTitle" style="font-size:0.85rem; font-weight:700; margin-bottom:10px; word-break:break-all;"></p>
             <div id="attachmentViewerBody" style="max-width:80vw;"></div>
@@ -2797,7 +2815,10 @@
     </div>
 
     <!-- MODAL: Attachment picker — shown when a ledger row's 📎 badge has more than one
-         attachment; tapping an entry opens it in attachmentViewerModal above. -->
+         attachment; tapping an entry closes this first, then opens attachmentViewerModal above
+         (see openAttachmentFromPicker() — deliberately closes rather than nests, unlike Quick
+         View's own inline attachment list). Base z-index:1000 is fine here: this is only ever
+         opened from the plain ledger list (nothing else active underneath it). -->
     <div class="modal" id="txAttachmentsPickerModal">
         <div class="modal-sheet" style="max-width:340px;">
             <p style="font-size:0.85rem; font-weight:700; margin-bottom:10px;">Attachments</p>

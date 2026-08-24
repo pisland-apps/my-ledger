@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v121";
+        const APP_VERSION = "v122";
         const APP_VERSION_DATE = "2026-08-24";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -5762,6 +5762,35 @@
         function openAttachmentFromPicker(el) {
             const idx = parseInt(el.dataset.idx, 10);
             const att = txAttachmentsPickerCurrent[idx];
+            if (!att) return;
+            // v121 bugfix: this used to call openAttachment(att) directly, leaving
+            // txAttachmentsPickerModal "active" underneath the newly-opened attachmentViewerModal
+            // (both stayed in modalStack, correctly LIFO-ordered) — that part was fine. The actual
+            // bug was visual: without an elevated z-index, the viewer rendered BEHIND the picker
+            // (later modals in DOM source paint on top when z-index ties, and the picker happens
+            // to sit later in index.html), so the picker looked like it was blocking the photo/PDF.
+            // That led people to close the picker FIRST (out of stack order) — which hit closeModal's
+            // "trim stale entries above id" branch: it truncated the JS modalStack array down to the
+            // picker without ever removing the viewer's own "active" class, permanently desyncing
+            // modalStack from the real browser history stack for the rest of the session (every
+            // Close after that popped one real history entry too many, eventually navigating out of
+            // the app entirely). attachmentViewerModal's z-index is now set above every other modal
+            // (see index.html) so this out-of-order close can't be triggered by the visual bug
+            // anymore — but since the picker is a disposable "which one?" dialog with nothing to
+            // return to, it's also just closed outright before opening the viewer, same idiom used
+            // throughout the app for "close A, then open B" (see closeModalAndThen and its other
+            // call sites, e.g. editTransactionFromOptions). Contrast with openAttachmentFromQuickView
+            // below, which deliberately does NOT close its parent modal first.
+            closeModalAndThen("txAttachmentsPickerModal", () => openAttachment(att));
+        }
+
+        // Used by the inline attachment list rendered directly inside txQuickViewModal (see
+        // openTxQuickView()) — unlike openAttachmentFromPicker above, Quick View is a real
+        // transaction-detail screen worth returning to, so it's deliberately left open/active
+        // underneath: closing the viewer here should land back on Quick View, not the ledger list.
+        function openAttachmentFromQuickView(el) {
+            const idx = parseInt(el.dataset.idx, 10);
+            const att = txAttachmentsPickerCurrent[idx];
             if (att) openAttachment(att);
         }
 
@@ -6938,6 +6967,34 @@
                 `).join("")
                 : "";
 
+            // v121 fix: attachments were only reachable via the small 📎 badge on the ledger
+            // list row (easy to miss/mis-tap) — surfaced here in Quick View too, since tapping
+            // the row itself (opening this modal) is the primary way people open a transaction.
+            // On a split group, only the representative/main row carries attachments (see the
+            // v88/v91 comments on saveTransactionSubmit() and the list-row renderer), so `tx`
+            // here already has the right ones regardless of splitInfo.
+            let quickViewAtts = Array.isArray(tx.attachments) ? tx.attachments : [];
+            if (quickViewAtts.length === 0 && tx.image) {
+                quickViewAtts = [{ name: "Receipt.jpg", mime: "image/jpeg", data: tx.image }];
+            }
+            txAttachmentsPickerCurrent = quickViewAtts; // reused by openAttachmentFromQuickView() below
+            const attachmentsHTML = quickViewAtts.length ? `
+                <div style="margin-top:4px;">
+                    <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-bottom:6px;">Attachments</div>
+                    <div style="display:flex; flex-direction:column; gap:6px;">
+                        ${quickViewAtts.map((att, idx) => `
+                            <div class="tx-att-item" data-click="openAttachmentFromQuickView" data-idx="${idx}" style="display:flex; align-items:center; gap:8px; background:#f8fafc; border:1px solid var(--border-color); border-radius:8px; padding:6px 8px; cursor:pointer;">
+                                <div style="width:32px; height:32px; border-radius:6px; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#e2e8f0; font-size:1rem;">
+                                    ${att.thumb || ((att.mime || "").startsWith("image/") && att.data) ? `<img src="${att.thumb || att.data}" alt="" style="width:100%; height:100%; object-fit:cover;">` : ((att.mime || "").startsWith("image/") ? "🖼️" : "📄")}
+                                </div>
+                                <div style="flex:1; min-width:0; font-size:0.78rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(att.name || "Attachment")}</div>
+                                <span style="font-size:0.7rem; color:var(--text-muted); flex-shrink:0;">View ›</span>
+                            </div>
+                        `).join("")}
+                    </div>
+                </div>
+            ` : "";
+
             document.getElementById("txQuickViewDetails").innerHTML = `
                 ${splitBreakdownHTML}
                 <div>Account: ${accountName(tx.src)}</div>
@@ -6945,6 +7002,7 @@
                 ${(!splitInfo && tx.cat) ? `<div>Category: ${escapeHtml(tx.cat)}</div>` : ""}
                 <div>Notes: ${tx.notes ? escapeHtml(tx.notes) : "-"}</div>
                 ${refundLine}
+                ${attachmentsHTML}
             `;
 
             updateTxQuickViewCheckedBtn(!!tx.checked);
@@ -9179,6 +9237,7 @@
             removeTempTxAttachment: (el) => removeTempTxAttachment(el),
             openTxAttachmentsBadge: (el, e) => openTxAttachmentsBadge(el, e),
             openAttachmentFromPicker: (el) => openAttachmentFromPicker(el),
+            openAttachmentFromQuickView: (el) => openAttachmentFromQuickView(el),
             handleTransactionSubmitMobile: () => handleTransactionSubmitMobile(),
             confirmResolveFd: () => confirmResolveFd(),
             loadMoreLedgerRows: () => { ledgerRenderLimit += LEDGER_PAGE_SIZE; renderApp(); },

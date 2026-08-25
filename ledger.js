@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v129";
+        const APP_VERSION = "v130";
         const APP_VERSION_DATE = "2026-08-25";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2540,6 +2540,7 @@
             const isEditing = document.getElementById("editAccountId").value !== "";
             document.getElementById("editAccountId").value = "";
             document.getElementById("newAccName").value = "";
+            document.getElementById("newAccRef").value = "";
             document.getElementById("newAccGroup").value = DEFAULT_ACCOUNT_GROUP;
             handleAccGroupChange();
             document.getElementById("newAccBal").value = "0";
@@ -2571,6 +2572,7 @@
             const isNewAccount = document.getElementById("editAccountId").value === "";
             const id = document.getElementById("editAccountId").value || "acc_" + Date.now();
             const name = document.getElementById("newAccName").value.trim();
+            const accountRef = document.getElementById("newAccRef").value.trim();
             const type = document.getElementById("newAccType").value;
 
             if(!name) { alert("Please enter an account name."); return; }
@@ -2578,6 +2580,11 @@
             const group = document.getElementById("newAccGroup").value || DEFAULT_ACCOUNT_GROUP;
             const record = {
                 id, name, type, group,
+                // Account No. / Ref (v130): purely informational free-text, independent of
+                // group/type — unlike propertyType/hasRedrawFacility below, this is NOT cleared
+                // when the account is re-grouped, since a bank account number doesn't stop being
+                // true just because the account got moved to a different Group/Sub-Group.
+                accountRef: accountRef,
                 subgroup: document.getElementById("newAccSubgroup").value || "",
                 linkedAccountId: (group === "Bank Loan" ? (document.getElementById("newAccLinkedAccount").value || null) : null),
                 includeInNetWorth: (group === "Real Estate" ? (document.getElementById("newAccIncludeNetWorth").value !== "no") : true),
@@ -3095,6 +3102,7 @@
 
             document.getElementById("editAccountId").value = account.id;
             document.getElementById("newAccName").value = account.name;
+            document.getElementById("newAccRef").value = account.accountRef || "";
             document.getElementById("newAccGroup").value = account.group || DEFAULT_ACCOUNT_GROUP;
             await handleAccGroupChange(
                 account.subgroup || "",
@@ -4094,6 +4102,11 @@
         // in sync automatically instead of drifting out of step with separately-written markup.
         function accountExtraInfoLine(a, nativeBalances) {
             const group = a.group || DEFAULT_ACCOUNT_GROUP;
+            // Account No. / Ref (v130): plain informational text, independent of group/type, so
+            // it's built separately here and prepended ahead of whichever type-specific line (if
+            // any) applies below, rather than living inside one of those mutually-exclusive
+            // branches.
+            const refLine = a.accountRef ? `<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${escapeHtml(a.accountRef)}</span>` : "";
             if (a.type === "creditcard" && (a.creditLimit || a.statementDay || a.paymentDueDay)) {
                 const bits = [];
                 if (a.creditLimit) bits.push(`Limit ${formatBalanceHTML(a.creditLimit, a.currency || baseCurrency)}`);
@@ -4110,20 +4123,20 @@
                     const available = Math.max(0, a.creditLimit - ccAmountDueForAvail);
                     bits.push(`Available ${formatBalanceHTML(available, a.currency || baseCurrency)}`);
                 }
-                return bits.length ? `<br><span style="font-size:0.7rem; color:#9d174d; font-weight:600;">💳 ${bits.join(" · ")}</span>` : "";
+                return refLine + (bits.length ? `<br><span style="font-size:0.7rem; color:#9d174d; font-weight:600;">💳 ${bits.join(" · ")}</span>` : "");
             }
             if (group === "Real Estate" && (a.propertyType || a.holdingStartDate)) {
                 const bits = [];
                 if (a.propertyType) bits.push(escapeHtml(a.propertyType));
                 const held = formatHoldingPeriod(a.holdingStartDate);
                 if (held) bits.push(`Held ${held}`);
-                return bits.length ? `<br><span style="font-size:0.7rem; color:#166534; font-weight:600;">🏷️ ${bits.join(" · ")}</span>` : "";
+                return refLine + (bits.length ? `<br><span style="font-size:0.7rem; color:#166534; font-weight:600;">🏷️ ${bits.join(" · ")}</span>` : "");
             }
             if (group === "Bank Loan" && a.hasRedrawFacility) {
                 const dateStr = a.redrawAsOfDate ? ` (as of ${formatNavHistoryDate(a.redrawAsOfDate)})` : "";
-                return `<br><span style="font-size:0.7rem; color:#0369a1; font-weight:600;">💰 Redraw Available: ${formatBalanceHTML(a.redrawAmount || 0, a.currency || baseCurrency)}${dateStr}</span>`;
+                return refLine + `<br><span style="font-size:0.7rem; color:#0369a1; font-weight:600;">💰 Redraw Available: ${formatBalanceHTML(a.redrawAmount || 0, a.currency || baseCurrency)}${dateStr}</span>`;
             }
-            return "";
+            return refLine;
         }
 
         let navUpdateView = "card"; // "card" | "table" | "history" — which of the 3 views is shown

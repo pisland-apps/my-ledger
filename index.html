@@ -2056,6 +2056,16 @@
                     <input type="text" id="newAccName" placeholder="e.g. DBS Bank, Cash Wallet" required>
                 </div>
 
+                <!-- Account No. / Ref (v130): purely informational, optional — shown in small
+                     text under the account name wherever it's listed (see accountExtraInfoLine
+                     in ledger.js), same treatment as Real Estate's Property Type. Any account
+                     type/group can have one; not cleared on re-grouping since it isn't tied to a
+                     specific group the way propertyType/redraw are. -->
+                <div class="form-row">
+                    <label>Account No. / Ref <span style="text-transform:none; font-weight:600; color:var(--text-muted);">(optional)</span></label>
+                    <input type="text" id="newAccRef" placeholder="e.g. 038-68-02838-0">
+                </div>
+
                 <div class="form-row">
                     <label>Group</label>
                     <select id="newAccGroup" class="form-input" data-change="handleAccGroupChange">

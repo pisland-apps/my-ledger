@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v130";
-        const APP_VERSION_DATE = "2026-08-25";
+        const APP_VERSION = "v131";
+        const APP_VERSION_DATE = "2026-08-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -2460,7 +2460,7 @@
         // populateLinkedAccountSelect below) and the Redraw Facility checkbox whenever the Group
         // is switched to/from "Bank Loan", and the Real Estate "Include in Net Worth"/Type/Holding
         // Period fields whenever it's switched to/from "Real Estate".
-        async function handleAccGroupChange(preselectSubgroup, preselectLinkedAccountId, preselectIncludeInNetWorth, preselectPropertyType, preselectHoldingStartDate, preselectHasRedraw, preselectRedrawAmount, preselectRedrawAsOfDate) {
+        async function handleAccGroupChange(preselectSubgroup, preselectLinkedAccountId, preselectIncludeInNetWorth, preselectPropertyType, preselectHoldingStartDate, preselectHasRedraw, preselectRedrawAmount, preselectRedrawAsOfDate, preselectTenureType, preselectLeaseTermYears, preselectLeaseExpiryDate) {
             const group = document.getElementById("newAccGroup").value;
             const list = subgroupsForGroup(group);
             const row = document.getElementById("newAccSubgroupRow");
@@ -2498,6 +2498,7 @@
             const netWorthRow = document.getElementById("newAccNetWorthRow");
             const propertyTypeRow = document.getElementById("newAccPropertyTypeRow");
             const holdingStartRow = document.getElementById("newAccHoldingStartRow");
+            const tenureRow = document.getElementById("newAccTenureRow");
             if (group === "Real Estate") {
                 netWorthRow.style.display = "block";
                 document.getElementById("newAccIncludeNetWorth").value = preselectIncludeInNetWorth === "no" ? "no" : "yes";
@@ -2505,11 +2506,29 @@
                 document.getElementById("newAccPropertyType").value = preselectPropertyType || "";
                 holdingStartRow.style.display = "block";
                 document.getElementById("newAccHoldingStartDate").value = preselectHoldingStartDate || "";
+                tenureRow.style.display = "block";
+                document.getElementById("newAccTenure").value = preselectTenureType || "";
+                document.getElementById("newAccLeaseTermYears").value = preselectLeaseTermYears || "";
+                document.getElementById("newAccLeaseExpiryDate").value = preselectLeaseExpiryDate || "";
+                toggleLeaseFields();
             } else {
                 netWorthRow.style.display = "none";
                 propertyTypeRow.style.display = "none";
                 holdingStartRow.style.display = "none";
+                tenureRow.style.display = "none";
+                document.getElementById("newAccLeaseTermRow").style.display = "none";
+                document.getElementById("newAccLeaseExpiryRow").style.display = "none";
             }
+        }
+
+        // Wired to the Tenure select's onchange, and also called after pre-filling it when
+        // opening the form to edit an existing property (mirrors toggleRedrawFacilityFields
+        // below) — shows Lease Term/Lease Expiry only when Tenure = "Leasehold"; a Freehold
+        // property has no expiry, so those fields (and any values in them) don't apply.
+        function toggleLeaseFields() {
+            const isLeasehold = document.getElementById("newAccTenure").value === "Leasehold";
+            document.getElementById("newAccLeaseTermRow").style.display = isLeasehold ? "block" : "none";
+            document.getElementById("newAccLeaseExpiryRow").style.display = isLeasehold ? "block" : "none";
         }
 
         // Wired to the "This loan has a Redraw / Bank Withdrawal facility" checkbox — shows/hides
@@ -2593,6 +2612,13 @@
                 // under Real Estate so a re-grouped account doesn't carry stale values silently.
                 propertyType: (group === "Real Estate" ? (document.getElementById("newAccPropertyType").value || "") : ""),
                 holdingStartDate: (group === "Real Estate" ? (document.getElementById("newAccHoldingStartDate").value || "") : ""),
+                // Real Estate (v131): Tenure (Freehold/Leasehold) + Lease Term/Expiry — same
+                // clear-on-regroup treatment as propertyType/holdingStartDate above. Lease
+                // Term/Expiry are additionally cleared whenever Tenure isn't "Leasehold" (even
+                // while still Real Estate), same pattern as Bank Loan's redraw fields below.
+                tenureType: (group === "Real Estate" ? (document.getElementById("newAccTenure").value || "") : ""),
+                leaseTermYears: (group === "Real Estate" && document.getElementById("newAccTenure").value === "Leasehold") ? (parseInt(document.getElementById("newAccLeaseTermYears").value, 10) || 0) : 0,
+                leaseExpiryDate: (group === "Real Estate" && document.getElementById("newAccTenure").value === "Leasehold") ? (document.getElementById("newAccLeaseExpiryDate").value || "") : "",
                 // Bank Loan (v66): manual Redraw / Bank Withdrawal facility amount — same
                 // clear-on-regroup treatment, and also cleared if the facility checkbox itself is
                 // unticked even while still a Bank Loan.
@@ -3112,7 +3138,10 @@
                 account.holdingStartDate || "",
                 !!account.hasRedrawFacility,
                 account.redrawAmount || "",
-                account.redrawAsOfDate || ""
+                account.redrawAsOfDate || "",
+                account.tenureType || "",
+                account.leaseTermYears || "",
+                account.leaseExpiryDate || ""
             );
 
             setAccountTypeUI(account.type || "normal");
@@ -4095,6 +4124,40 @@
             return years > 0 ? `${years}y ${months}m` : `${months}m`;
         }
 
+        // Real Estate (v131): "how long until the lease runs out" computed from Lease Expiry to
+        // today — e.g. "62y 3m remaining", or "Expired" for a past date. Mirrors
+        // formatHoldingPeriod above but counts down instead of up. Returns "" for an unset/invalid
+        // date so callers can skip the line entirely.
+        function formatYearsRemaining(expiryDateStr) {
+            if (!expiryDateStr) return "";
+            const expiry = new Date(expiryDateStr + "T00:00:00");
+            if (isNaN(expiry.getTime())) return "";
+            const now = new Date();
+            if (expiry <= now) return "Expired";
+            let years = expiry.getFullYear() - now.getFullYear();
+            let months = expiry.getMonth() - now.getMonth();
+            if (expiry.getDate() < now.getDate()) months--;
+            if (months < 0) { years--; months += 12; }
+            return years > 0 ? `${years}y ${months}m remaining` : `${months}m remaining`;
+        }
+
+        // Real Estate (v131): Tenure line — "**-year Leasehold · Expiry <date> · <n>y <n>m
+        // remaining" or plain "Freehold". Factored out of accountExtraInfoLine so it can be
+        // appended after the Type/Holding Period line (a property may have either set without
+        // the other) instead of the two being mutually exclusive.
+        function realEstateTenureLine(a) {
+            const bits = [];
+            if (a.tenureType === "Leasehold") {
+                bits.push(a.leaseTermYears ? `${a.leaseTermYears}-year Leasehold` : "Leasehold");
+                if (a.leaseExpiryDate) bits.push(`Expiry ${formatNavHistoryDate(a.leaseExpiryDate)}`);
+                const remaining = formatYearsRemaining(a.leaseExpiryDate);
+                if (remaining) bits.push(remaining);
+            } else {
+                bits.push("Freehold");
+            }
+            return `<br><span style="font-size:0.7rem; color:#9a3412; font-weight:600;">📜 ${bits.join(" · ")}</span>`;
+        }
+
         // Real Estate (v66): Property Type + Holding Period, or Bank Loan (v66): manual Redraw
         // Facility amount — one short HTML line (or "" if nothing to show) meant to sit right
         // under an account's name wherever it's listed. Shared by the Accounts page, a member's
@@ -4130,7 +4193,11 @@
                 if (a.propertyType) bits.push(escapeHtml(a.propertyType));
                 const held = formatHoldingPeriod(a.holdingStartDate);
                 if (held) bits.push(`Held ${held}`);
-                return refLine + (bits.length ? `<br><span style="font-size:0.7rem; color:#166534; font-weight:600;">🏷️ ${bits.join(" · ")}</span>` : "");
+                const typeLine = bits.length ? `<br><span style="font-size:0.7rem; color:#166534; font-weight:600;">🏷️ ${bits.join(" · ")}</span>` : "";
+                return refLine + typeLine + realEstateTenureLine(a);
+            }
+            if (group === "Real Estate" && a.tenureType) {
+                return refLine + realEstateTenureLine(a);
             }
             if (group === "Bank Loan" && a.hasRedrawFacility) {
                 const dateStr = a.redrawAsOfDate ? ` (as of ${formatNavHistoryDate(a.redrawAsOfDate)})` : "";
@@ -9601,6 +9668,7 @@
             ledgerYearSelectChange: () => ledgerYearSelectChange(),
             handleAccGroupChange: () => handleAccGroupChange(),
             toggleRedrawFacilityFields: () => toggleRedrawFacilityFields(),
+            toggleLeaseFields: () => toggleLeaseFields(),
             handleFundTxTypeChange: () => handleFundTxTypeChange(),
             handleFundTxFundChange: () => handleFundTxFundChange(),
             onCategoryFormTypeChange: () => populateCategoryParentSelect(),

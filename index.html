@@ -2127,6 +2127,28 @@
                     <input type="date" id="newAccHoldingStartDate">
                 </div>
 
+                <!-- Real Estate (v131): Tenure — Freehold or Leasehold. Leasehold additionally
+                     shows Lease Term (years, e.g. 99) and Lease Expiry date; Years Remaining is
+                     computed live from Lease Expiry (not stored) the same way "Held" is computed
+                     from Holding Period Start Date above, so it never goes stale. Shown only when
+                     Group = "Real Estate". -->
+                <div class="form-row" id="newAccTenureRow" style="display:none;">
+                    <label>Tenure</label>
+                    <select id="newAccTenure" class="form-input" data-change="toggleLeaseFields">
+                        <option value="">(Not set)</option>
+                        <option value="Freehold">Freehold</option>
+                        <option value="Leasehold">Leasehold</option>
+                    </select>
+                </div>
+                <div class="form-row" id="newAccLeaseTermRow" style="display:none;">
+                    <label>Lease Term (years) <span style="text-transform:none; font-weight:600; color:var(--text-muted);">(e.g. 60, 99, 999)</span></label>
+                    <input type="number" id="newAccLeaseTermYears" class="form-input" min="1" step="1" inputmode="numeric" placeholder="e.g. 99">
+                </div>
+                <div class="form-row" id="newAccLeaseExpiryRow" style="display:none;">
+                    <label>Lease Expiry</label>
+                    <input type="date" id="newAccLeaseExpiryDate">
+                </div>
+
                 <!-- Bank Loan (v66): loans with a redraw / bank-withdrawal facility can have the
                      currently available redraw amount keyed in manually from the latest bank
                      statement — shown only when Group = "Bank Loan" AND the facility checkbox

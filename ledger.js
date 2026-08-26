@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v139";
+        const APP_VERSION = "v140";
         const APP_VERSION_DATE = "2026-08-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7164,7 +7164,9 @@
         // total shown in the preview but never passes through the EE/ER split (see
         // recalcSalaryPreview()/handleSaveSalaryRecord()); each non-zero amount is saved as its
         // own Income leg straight to the Bank Account under its own category (seeded as
-        // Subcategories of "Salary" in DEFAULT_CATEGORIES).
+        // Subcategories of "Salary" in DEFAULT_CATEGORIES). v140 added an optional "Backpay
+        // Note" free-text field (shown once Backpay > 0) saved into the Backpay leg's own
+        // `notes` field only — the other three allowance legs still save notes: null.
         async function openSalaryEntryForm() {
             const accounts = await readAllDB(STORES.ACCOUNTS);
             if (accounts.length === 0) { alert("Add an account first!"); return; }
@@ -7187,6 +7189,8 @@
             document.getElementById("salaryHandphoneClaim").value = "";
             document.getElementById("salaryOverseasAllowance").value = "";
             document.getElementById("salaryBackpay").value = "";
+            document.getElementById("salaryBackpayNote").value = "";
+            document.getElementById("salaryBackpayNoteRow").style.display = "none";
 
             const currSelect = document.getElementById("salaryCurrency");
             currSelect.innerHTML = Object.keys(fxRates).sort((a, b) => a.localeCompare(b)).map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
@@ -7376,6 +7380,11 @@
             document.getElementById("salaryPreviewHandphone").textContent = formatCurrency(handphone, currency);
             document.getElementById("salaryPreviewOverseas").textContent = formatCurrency(overseas, currency);
             document.getElementById("salaryPreviewBackpay").textContent = formatCurrency(backpay, currency);
+
+            // Backpay Note only makes sense once there's a Backpay amount to attach it to —
+            // hidden (not cleared) when Backpay drops back to 0, so re-entering an amount
+            // restores whatever note was already typed.
+            document.getElementById("salaryBackpayNoteRow").style.display = backpay > 0 ? "block" : "none";
         }
 
         // Saves 1–3 ordinary Income transactions (Bank leg always; EE/ER legs only when a
@@ -7406,6 +7415,7 @@
             const handphone = parseFloat(document.getElementById("salaryHandphoneClaim").value) || 0;
             const overseas = parseFloat(document.getElementById("salaryOverseasAllowance").value) || 0;
             const backpay = parseFloat(document.getElementById("salaryBackpay").value) || 0;
+            const backpayNote = document.getElementById("salaryBackpayNote").value.trim() || null;
 
             if (!date) { alert("Please select a date."); return; }
             if (!desc) { alert("Please enter a description."); return; }
@@ -7449,15 +7459,15 @@
                     }));
                 }
                 const allowanceLegs = [
-                    { amount: housing, cat: "Housing Allowance" },
-                    { amount: handphone, cat: "Handphone Claim" },
-                    { amount: overseas, cat: "Overseas Allowance" },
-                    { amount: backpay, cat: "Backpay" }
+                    { amount: housing, cat: "Housing Allowance", notes: null },
+                    { amount: handphone, cat: "Handphone Claim", notes: null },
+                    { amount: overseas, cat: "Overseas Allowance", notes: null },
+                    { amount: backpay, cat: "Backpay", notes: backpayNote }
                 ];
                 for (const leg of allowanceLegs) {
                     if (leg.amount > 0) {
                         await writeDB(STORES.TRANSACTIONS, Object.assign({}, baseRecord, {
-                            amount: leg.amount, src: bankAccountId, cat: leg.cat
+                            amount: leg.amount, src: bankAccountId, cat: leg.cat, notes: leg.notes
                         }));
                     }
                 }

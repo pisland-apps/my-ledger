@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v132";
+        const APP_VERSION = "v133";
         const APP_VERSION_DATE = "2026-08-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1108,6 +1108,7 @@
             const incomeBreakdownPage = document.getElementById("page-income-breakdown");
             const portfolioReportPage = document.getElementById("page-portfolio-report");
             const ownerNetWorthReportPage = document.getElementById("page-owner-networth-report");
+            const currencyReportPage = document.getElementById("page-currency-report");
             const navUpdatePage = document.getElementById("page-navupdate");
             const dataSecurityPage = document.getElementById("page-datasecurity");
             const membersPage = document.getElementById("page-members");
@@ -1136,6 +1137,7 @@
                 !incomeBreakdownPage.classList.contains("hidden") ||
                 !portfolioReportPage.classList.contains("hidden") ||
                 !ownerNetWorthReportPage.classList.contains("hidden") ||
+                !currencyReportPage.classList.contains("hidden") ||
                 !navUpdatePage.classList.contains("hidden") ||
                 !dataSecurityPage.classList.contains("hidden")
             ) {
@@ -1540,7 +1542,7 @@
         // --- SPA NAVIGATION PIPELINE ---
         // Every top-level page div's id — used by showPage() to hide all but the target,
         // so adding a new page never risks leaving a stale one visible underneath.
-        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-accounts", "page-categories", "page-backup", "page-autolock", "page-database", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity"];
+        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-accounts", "page-categories", "page-backup", "page-autolock", "page-database", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity"];
         function showPage(id) {
             APP_PAGE_IDS.forEach(p => {
                 const el = document.getElementById(p);
@@ -1572,6 +1574,7 @@
                 case "page-savings": return "Savings Statement";
                 case "page-portfolio-report": return "Unit Trust Portfolio";
                 case "page-owner-networth-report": return "Financial Assets vs Real Estate";
+                case "page-currency-report": return "Net Worth by Currency";
                 case "page-datasecurity": return "Settings";
                 case "page-navupdate": return "Daily NAV Update";
                 case "page-members": return "Manage Members";
@@ -1607,6 +1610,9 @@
                     break;
                 case "page-portfolio-report":
                     parts = [selectedText("portfolioMemberFilter")];
+                    break;
+                case "page-currency-report":
+                    parts = [selectedText("currencyReportMemberFilter")];
                     break;
                 default:
                     return null;
@@ -1979,6 +1985,7 @@
             const incomeHidden = document.getElementById("page-income-breakdown").classList.contains("hidden");
             const portfolioReportHidden = document.getElementById("page-portfolio-report").classList.contains("hidden");
             const ownerNetWorthReportHidden = document.getElementById("page-owner-networth-report").classList.contains("hidden");
+            const currencyReportHidden = document.getElementById("page-currency-report").classList.contains("hidden");
             const navUpdateHidden = document.getElementById("page-navupdate").classList.contains("hidden");
             let target = null;
             if (!savingsHidden) target = "savings";
@@ -1991,6 +1998,7 @@
             else if (!incomeHidden) target = "income-breakdown";
             else if (!portfolioReportHidden) target = "portfolio-report";
             else if (!ownerNetWorthReportHidden) target = "owner-networth-report";
+            else if (!currencyReportHidden) target = "currency-report";
             else if (!navUpdateHidden) target = "navupdate";
             else if (!ledgerHidden) {
                 const isUnfiltered = activeLedgerAccountView === "all" && activeCategoryView === "all" && directTypeView === "all";
@@ -2021,6 +2029,7 @@
             else if (target === "income-breakdown") navigateToIncomeBreakdownPage();
             else if (target === "portfolio-report") navigateToPortfolioReportPage();
             else if (target === "owner-networth-report") navigateToOwnerNetWorthReportPage();
+            else if (target === "currency-report") navigateToCurrencyReportPage();
             else if (target === "lock") lockAppNow();
         }
 
@@ -4752,6 +4761,38 @@
                 if ((a.group || DEFAULT_ACCOUNT_GROUP) === "Real Estate") realEstate += val;
             });
             return { financial: total - realEstate, realEstate, total };
+        }
+
+        // Splits a subset of accounts into { byCurrency: { CODE: { financial, realEstate } },
+        // totalBase } for the "Net Worth by Currency" report (v132) — the currency-pivoted
+        // sibling of summarizeOwnerAssetSplit just above. Each currency's financial/realEstate
+        // figures are native (unconverted) amounts; totalBase is the one converted figure, used
+        // only for the Grand Total row and % of Net Worth column. Same includeInNetWorth opt-out
+        // and Real Estate group-based split as summarizeOwnerAssetSplit, so a currency row here
+        // always reconciles against that report's Real Estate total for the same account subset.
+        function summarizeCurrencySplit(accountsSubset, nativeBalances) {
+            const byCurrency = {};
+            let totalBase = 0;
+            const bump = (curr, amt, isRealEstate) => {
+                if (!byCurrency[curr]) byCurrency[curr] = { financial: 0, realEstate: 0 };
+                if (isRealEstate) byCurrency[curr].realEstate += amt;
+                else byCurrency[curr].financial += amt;
+            };
+            accountsSubset.forEach(a => {
+                if (a.includeInNetWorth === false) return;
+                const isRealEstate = (a.group || DEFAULT_ACCOUNT_GROUP) === "Real Estate";
+                if (a.type === "multi" || a.type === "fd" || a.type === "unittrust") {
+                    Object.entries(nativeBalances[a.id] || {}).forEach(([curr, amt]) => {
+                        totalBase += convertCurrency(amt, curr, baseCurrency);
+                        bump(curr, amt, isRealEstate);
+                    });
+                } else {
+                    const amt = nativeBalances[a.id] || 0;
+                    totalBase += convertCurrency(amt, a.currency, baseCurrency);
+                    bump(a.currency, amt, isRealEstate);
+                }
+            });
+            return { byCurrency, totalBase };
         }
 
         // Sums a subset of accounts into { total (in baseCurrency), currencyTotals { CODE: nativeAmt } }
@@ -9157,6 +9198,93 @@
             renderOwnerNetWorthReportPage();
         }
 
+        // --- NET WORTH BY CURRENCY REPORT (v132) ---
+        // Currency-pivoted sibling of the Owner report above: one row per currency actually held
+        // (native, unconverted Financial Assets / Real Estate / Total), a ≈ Base Currency column
+        // and % of Net Worth for comparison, plus a Grand Total row. Optional Member filter
+        // (same "all" / "joint" / one member convention as Spending/Income Breakdown and the
+        // Unit Trust Portfolio report) narrows the account subset before summing.
+        async function renderCurrencyReportPage() {
+            const { accounts, nativeBalances } = await computeAccountBalances();
+            populateBreakdownMemberFilter("currencyReportMemberFilter");
+            const filterMember = document.getElementById("currencyReportMemberFilter").value;
+            document.getElementById("currencyReportBaseCurrLabel").textContent = baseCurrency;
+
+            const subset = filterMember !== "all"
+                ? (() => { const ids = accountIdsForMemberFilter(accounts, filterMember); return accounts.filter(a => ids.has(a.id)); })()
+                : accounts;
+
+            const { byCurrency, totalBase: grandTotal } = summarizeCurrencySplit(subset, nativeBalances);
+            const pctOf = (base) => grandTotal !== 0 ? ((base / grandTotal) * 100).toFixed(1) + "%" : "—";
+
+            const wrap = document.getElementById("currencyReportTableWrap");
+            const codes = Object.keys(byCurrency);
+            if (codes.length === 0) {
+                wrap.innerHTML = `<p style="color:var(--text-muted); font-size:0.85rem; text-align:center; padding:24px 0;">No accounts to report on yet.</p>`;
+                return;
+            }
+
+            // Sorted by base-currency-equivalent value, largest holding first — same convention
+            // as the member currency-chip breakdown (renderMemberPage) rather than alphabetical,
+            // so the currency you actually hold the most of leads the table.
+            const sortedCodes = codes
+                .map(code => {
+                    const { financial, realEstate } = byCurrency[code];
+                    const base = convertCurrency(financial + realEstate, code, baseCurrency);
+                    return { code, financial, realEstate, base };
+                })
+                .sort((a, b) => b.base - a.base);
+
+            let rows = "";
+            let gFinancialBase = 0, gRealEstateBase = 0;
+            sortedCodes.forEach(({ code, financial, realEstate, base }) => {
+                gFinancialBase += convertCurrency(financial, code, baseCurrency);
+                gRealEstateBase += convertCurrency(realEstate, code, baseCurrency);
+                rows += `
+                    <tr>
+                        <td style="padding:8px 10px;"><strong>${escapeHtml(code)}</strong></td>
+                        <td style="padding:8px 10px; text-align:right;">${formatBalanceHTML(financial, code)}</td>
+                        <td style="padding:8px 10px; text-align:right;">${formatBalanceHTML(realEstate, code)}</td>
+                        <td style="padding:8px 10px; text-align:right;"><strong>${formatBalanceHTML(financial + realEstate, code)}</strong></td>
+                        <td style="padding:8px 10px; text-align:right; color:var(--text-muted);">≈ ${formatBalanceHTML(base, baseCurrency)}</td>
+                        <td style="padding:8px 10px; text-align:right;">${pctOf(base)}</td>
+                    </tr>`;
+            });
+
+            wrap.innerHTML = `
+                <table style="width:100%; border-collapse:collapse; font-size:0.78rem; white-space:nowrap;">
+                    <thead>
+                        <tr style="text-align:left; color:var(--text-muted); font-size:0.68rem; text-transform:uppercase;">
+                            <th style="padding:6px 10px;">Currency</th>
+                            <th style="padding:6px 10px; text-align:right;">Financial Assets</th>
+                            <th style="padding:6px 10px; text-align:right;">Real Estate</th>
+                            <th style="padding:6px 10px; text-align:right;">Total</th>
+                            <th style="padding:6px 10px; text-align:right;">≈ ${escapeHtml(baseCurrency)}</th>
+                            <th style="padding:6px 10px; text-align:right;">% of Net Worth</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                    <tfoot>
+                        <tr style="border-top:2px solid var(--border-color); font-weight:800;">
+                            <td style="padding:8px 10px;">Grand Total</td>
+                            <td style="padding:8px 10px; text-align:right;">${formatBalanceHTML(gFinancialBase, baseCurrency)}</td>
+                            <td style="padding:8px 10px; text-align:right;">${formatBalanceHTML(gRealEstateBase, baseCurrency)}</td>
+                            <td style="padding:8px 10px; text-align:right;">${formatBalanceHTML(grandTotal, baseCurrency)}</td>
+                            <td style="padding:8px 10px; text-align:right;">—</td>
+                            <td style="padding:8px 10px; text-align:right;">100.0%</td>
+                        </tr>
+                    </tfoot>
+                </table>`;
+        }
+
+        function navigateToCurrencyReportPage() {
+            workspaceScrollY = window.scrollY;
+            showPage("page-currency-report");
+            window.scrollTo(0, 0);
+            pushVirtualState("currency-report");
+            renderCurrencyReportPage();
+        }
+
         function navigateToAutoLockPage() {
             workspaceScrollY = window.scrollY;
             showPage("page-autolock");
@@ -9661,6 +9789,7 @@
             renderSpendingBreakdownPage: () => renderSpendingBreakdownPage(),
             renderIncomeBreakdownPage: () => renderIncomeBreakdownPage(),
             renderPortfolioReportPage: () => renderPortfolioReportPage(),
+            renderCurrencyReportPage: () => renderCurrencyReportPage(),
             toggleTxTransferFx: () => toggleTxTransferFx(),
             handleRecentTxSettingChange: () => handleRecentTxSettingChange(),
             handlePinnedAccountCountChange: () => handlePinnedAccountCountChange(),

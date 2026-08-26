@@ -1188,6 +1188,9 @@
             <button class="sidebar-item" data-click="sidebarGo" data-target="owner-networth-report">
                 <span class="sidebar-item-icon">🏛️</span> Financial Assets vs Real Estate
             </button>
+            <button class="sidebar-item" data-click="sidebarGo" data-target="currency-report">
+                <span class="sidebar-item-icon">🌐</span> Net Worth by Currency
+            </button>
 
             <div class="sidebar-divider"></div>
             <div class="sidebar-section-label">Members</div>
@@ -1859,6 +1862,39 @@
             Credit Card, Investment, Bank Loan, Account Payable/Receivable, etc.). A property
             marked "Excluded from Net Worth" is left out of both columns, same as everywhere
             else in the app.
+        </p>
+    </div>
+
+    <!-- ================= PAGE: NET WORTH BY CURRENCY REPORT (v132) ================= -->
+    <!-- Same table shape as the Owner report above, pivoted the other way: one row per currency
+         actually held (native amounts, no conversion, except the "≈ Base Currency" column and
+         grand total which convert for comparison), split Financial Assets / Real Estate the same
+         way the owner report splits by group. Answers "how much do I have in MYR vs SGD",
+         independent of which member owns it (unless the Member filter narrows it down). -->
+    <div id="page-currency-report" class="page hidden">
+        <div class="nav-header">
+            <button class="back-btn" data-click="navigateToWorkspace">&larr; Back</button>
+            <div>
+                <h3 style="font-weight:800; font-size:1.2rem;">Net Worth by Currency</h3>
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">What you hold in each currency, native amounts</p>
+            </div>
+        </div>
+
+        <div class="form-row print-filter-row" style="margin-bottom:14px;">
+            <label>Member</label>
+            <select id="currencyReportMemberFilter" class="form-input" data-change="renderCurrencyReportPage">
+                <option value="all">All Members (everyone, incl. joint)</option>
+            </select>
+        </div>
+
+        <div class="report-card" id="currencyReportTableWrap" style="overflow-x:auto;"></div>
+
+        <p style="font-size:0.68rem; color:var(--text-muted); margin-top:10px;">
+            Amounts in each currency row are native (unconverted) — the ≈ column and Grand Total
+            convert to <span id="currencyReportBaseCurrLabel">base currency</span> just for
+            comparison. Financial Assets / Real Estate splits the same way as the "Financial
+            Assets vs Real Estate" report. A property marked "Excluded from Net Worth" is left
+            out entirely, same as everywhere else in the app.
         </p>
     </div>
 

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v135";
+        const APP_VERSION = "v136";
         const APP_VERSION_DATE = "2026-08-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -134,6 +134,39 @@
             return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
                 "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
             })[ch]);
+        }
+
+        // Deterministic color per currency code (v136) — so the same currency always looks the
+        // same wherever a currency badge/chip appears (Accounts list, Member page account list,
+        // Member page currency-held chips, the Net Worth by Currency report), instead of every
+        // currency sharing one plain gray badge. A handful of currencies get hand-picked colors;
+        // any other code (added later, e.g. a new account in a currency not in this list) falls
+        // back to a hash-picked slot from the same palette, so it still gets a stable, readable
+        // color rather than reverting to gray.
+        const CURRENCY_BADGE_COLORS = {
+            MYR: { bg: "#dbeafe", fg: "#1e40af" },
+            SGD: { bg: "#fee2e2", fg: "#b91c1c" },
+            USD: { bg: "#dcfce7", fg: "#166534" },
+            EUR: { bg: "#e0e7ff", fg: "#3730a3" },
+            GBP: { bg: "#ede9fe", fg: "#6d28d9" },
+            JPY: { bg: "#fae8ff", fg: "#86198f" },
+            AUD: { bg: "#ffedd5", fg: "#9a3412" },
+            HKD: { bg: "#ccfbf1", fg: "#0f766e" },
+            CNY: { bg: "#fef3c7", fg: "#92400e" },
+            THB: { bg: "#ecfccb", fg: "#3f6212" },
+            IDR: { bg: "#cffafe", fg: "#155e75" },
+            INR: { bg: "#ffe4e6", fg: "#9f1239" },
+        };
+        const CURRENCY_BADGE_FALLBACK_PALETTE = Object.values(CURRENCY_BADGE_COLORS);
+        function currencyBadgeColor(code) {
+            if (CURRENCY_BADGE_COLORS[code]) return CURRENCY_BADGE_COLORS[code];
+            let hash = 0;
+            for (let i = 0; i < code.length; i++) hash = (hash * 31 + code.charCodeAt(i)) >>> 0;
+            return CURRENCY_BADGE_FALLBACK_PALETTE[hash % CURRENCY_BADGE_FALLBACK_PALETTE.length];
+        }
+        function currencyBadgeHTML(code) {
+            const { bg, fg } = currencyBadgeColor(code);
+            return `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:${bg}; color:${fg}; font-weight:bold;">${escapeHtml(code)}</span>`;
         }
 
         // v80: formats a Date object as a "YYYY-MM-DD" calendar-date string using its LOCAL
@@ -3073,7 +3106,7 @@
                             ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#fef3c7; color:#92400e; font-weight:bold;">Unit Trust</span>`
                             : a.type === "creditcard"
                                 ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#fce7f3; color:#9d174d; font-weight:bold;">Credit Card</span>`
-                                : `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e2e8f0; color:var(--text-muted); font-weight:bold;">${escapeHtml(a.currency)}</span>`;
+                                : currencyBadgeHTML(a.currency);
 
                 const baseVal = accountBaseValue(a, nativeBalances);
 
@@ -5084,7 +5117,7 @@
                 .sort((a, b) => b[1] - a[1])
                 .map(([curr, amt]) => `
                     <div class="currency-total-chip">
-                        <div class="cur-code">${escapeHtml(curr)}</div>
+                        <div class="cur-code" style="color:${currencyBadgeColor(curr).fg};">${escapeHtml(curr)}</div>
                         <div class="cur-amt">${formatBalanceHTML(amt, curr)}</div>
                     </div>
                 `).join("");
@@ -5099,7 +5132,7 @@
                             ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#fef3c7; color:#92400e; font-weight:bold;">Unit Trust</span>`
                             : a.type === "creditcard"
                                 ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#fce7f3; color:#9d174d; font-weight:bold;">Credit Card</span>`
-                                : `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e2e8f0; color:var(--text-muted); font-weight:bold;">${escapeHtml(a.currency)}</span>`;
+                                : currencyBadgeHTML(a.currency);
 
                 let balSummary;
                 if (a.type === "multi") {
@@ -9386,7 +9419,7 @@
                 gRealEstateBase += convertCurrency(realEstate, code, baseCurrency);
                 rows += `
                     <tr>
-                        <td style="padding:8px 10px;"><strong>${escapeHtml(code)}</strong></td>
+                        <td style="padding:8px 10px;">${currencyBadgeHTML(code)}</td>
                         <td style="padding:8px 10px; text-align:right;">${formatBalanceHTML(financial, code)}</td>
                         <td style="padding:8px 10px; text-align:right;">${formatBalanceHTML(realEstate, code)}</td>
                         <td style="padding:8px 10px; text-align:right;"><strong>${formatBalanceHTML(financial + realEstate, code)}</strong></td>

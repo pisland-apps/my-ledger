@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v138";
+        const APP_VERSION = "v139";
         const APP_VERSION_DATE = "2026-08-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7206,7 +7206,7 @@
                 document.getElementById("salaryBankAccount").value = defaultReceiveAccount;
                 syncAccountPickerButtonText("salaryBankAccount");
             }
-            handleSalarySchemeChange();
+            await handleSalarySchemeChange();
             recalcSalaryPreview();
             openModal("salaryModal");
         }
@@ -7240,10 +7240,12 @@
         // account list (including joint accounts) stays reachable either way: Bank Account
         // defaults to their own solely-owned Bank/Cash account if one exists (but ONLY when no
         // Default Receive Account is configured — see below); EPF/CPF Account defaults to any
-        // account under the Investment group's KWSP or CPF sub-group they're an owner of (solo
-        // OR joint, since a household's EPF/CPF pot is sometimes filed jointly). Left alone (no
-        // default change) when no match is found — "All Members" or a member with no matching
-        // account never overwrites whatever the user already picked by hand.
+        // account under the Investment group's KWSP or CPF sub-group they're an owner of, matching
+        // whichever subgroup the currently-selected Scheme calls for (see
+        // updateContribAccountDefault() below) — solo OR joint, since a household's EPF/CPF pot is
+        // sometimes filed jointly. Left alone (no default change) when no match is found — "All
+        // Members" or a member with no matching account never overwrites whatever the user already
+        // picked by hand.
         async function handleSalaryMemberChange() {
             const memberId = document.getElementById("salaryMemberSelect").value;
             if (memberId === "all") return;
@@ -7266,9 +7268,26 @@
                 }
             }
 
+            updateContribAccountDefault(accounts, memberId);
+        }
+
+        // Shared by handleSalaryMemberChange() (member just picked) and handleSalarySchemeChange()
+        // (scheme just picked/changed) — whichever fires later "wins" the default, matching how a
+        // user actually fills the form in either order. Matches the EPF/CPF Account dropdown to an
+        // Investment-group account under the subgroup the CURRENT Scheme calls for specifically
+        // (KWSP for "epf", CPF for "cpf") rather than either subgroup — previously this matched
+        // "KWSP or CPF" regardless of Scheme, so a member with both a KWSP and a CPF account could
+        // land on the wrong one depending on which happened to come first in account order (e.g.
+        // Scheme = CPF (Singapore) but the KWSP (MYR) account stayed selected). No-ops when Scheme
+        // is "none" (no subgroup to match) or Member is still "All Members" (memberId undefined).
+        function updateContribAccountDefault(accounts, memberId) {
+            if (!memberId || memberId === "all") return;
+            const scheme = document.getElementById("salaryScheme").value;
+            const wantSubgroup = scheme === "epf" ? "KWSP" : scheme === "cpf" ? "CPF" : null;
+            if (!wantSubgroup) return;
             const contribAcc = accounts.find(a =>
                 Array.isArray(a.memberIds) && a.memberIds.includes(memberId) &&
-                (a.group || DEFAULT_ACCOUNT_GROUP) === "Investment" && (a.subgroup === "KWSP" || a.subgroup === "CPF")
+                (a.group || DEFAULT_ACCOUNT_GROUP) === "Investment" && a.subgroup === wantSubgroup
             );
             if (contribAcc) {
                 document.getElementById("salaryContribAccount").value = contribAcc.id;
@@ -7282,7 +7301,7 @@
         // Also auto-sets the Currency selector to each scheme's natural currency (MYR for EPF,
         // SGD for CPF) — a plain "Salary" (no scheme) leaves whatever currency was already
         // chosen alone, since there's no single natural currency to default it to.
-        function handleSalarySchemeChange() {
+        async function handleSalarySchemeChange() {
             const scheme = document.getElementById("salaryScheme").value;
             const isEpf = scheme === "epf";
             const isCpf = scheme === "cpf";
@@ -7302,6 +7321,12 @@
             const currSelect = document.getElementById("salaryCurrency");
             const schemeCurrency = isEpf ? "MYR" : isCpf ? "SGD" : null;
             if (schemeCurrency && fxRates[schemeCurrency] !== undefined) currSelect.value = schemeCurrency;
+
+            if (hasScheme) {
+                const memberId = document.getElementById("salaryMemberSelect").value;
+                const accounts = await readAllDB(STORES.ACCOUNTS);
+                updateContribAccountDefault(accounts, memberId);
+            }
 
             recalcSalaryPreview();
         }

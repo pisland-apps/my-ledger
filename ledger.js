@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v137";
+        const APP_VERSION = "v138";
         const APP_VERSION_DATE = "2026-08-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1051,6 +1051,10 @@
         // are Main Categories (top-level, same as every pre-v101 entry).
         const DEFAULT_CATEGORIES = [
             { name: "Salary", type: "income", icon: "💼" },
+            { name: "Housing Allowance", type: "income", icon: "🏠", parent: "Salary" },
+            { name: "Handphone Claim", type: "income", icon: "📱", parent: "Salary" },
+            { name: "Overseas Allowance", type: "income", icon: "✈️", parent: "Salary" },
+            { name: "Backpay", type: "income", icon: "🕒", parent: "Salary" },
             { name: "Investments", type: "income", icon: "📈" },
             { name: "Freelance", type: "income", icon: "💻" },
             { name: "Dividend ASNB", type: "income", icon: "📈" },
@@ -7155,6 +7159,12 @@
         // description (editable), scheme defaulted to "none", and both account dropdowns
         // listing every account (sorted group-then-name, owner shown per accountOptionLabel) —
         // same convention as the ordinary Income/Expense/Transfer form's own account pickers.
+        // v138 added four fixed, always-visible optional allowance fields (Housing Allowance,
+        // Handphone Claim, Overseas Allowance, Backpay) — each folds into the "Gross Salary"
+        // total shown in the preview but never passes through the EE/ER split (see
+        // recalcSalaryPreview()/handleSaveSalaryRecord()); each non-zero amount is saved as its
+        // own Income leg straight to the Bank Account under its own category (seeded as
+        // Subcategories of "Salary" in DEFAULT_CATEGORIES).
         async function openSalaryEntryForm() {
             const accounts = await readAllDB(STORES.ACCOUNTS);
             if (accounts.length === 0) { alert("Add an account first!"); return; }
@@ -7173,6 +7183,10 @@
             document.getElementById("salaryGross").value = "";
             document.getElementById("salaryEEAmount").value = "";
             document.getElementById("salaryERAmount").value = "";
+            document.getElementById("salaryHousingAllowance").value = "";
+            document.getElementById("salaryHandphoneClaim").value = "";
+            document.getElementById("salaryOverseasAllowance").value = "";
+            document.getElementById("salaryBackpay").value = "";
 
             const currSelect = document.getElementById("salaryCurrency");
             currSelect.innerHTML = Object.keys(fxRates).sort((a, b) => a.localeCompare(b)).map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
@@ -7297,26 +7311,46 @@
         }
 
         // Live preview box (mirrors the reference screenshot's "Gross → Bank + EPF" breakdown):
-        // Bank leg = Gross − EE (EE never appears twice — it's deducted from gross, not on top
-        // of it); the ER leg is purely additive, shown only when > 0, and never subtracted from
-        // the Bank leg since the employer's contribution never touches the employee's pay. Every
-        // figure is formatted in the currently selected Currency (RM for MYR, S$ for SGD, etc.)
-        // so the preview reads the same as whatever currency the saved legs will actually use.
+        // Bank leg = (base Gross − EE) + allowances — EE never appears twice (deducted from
+        // gross, not on top of it), and allowances are added straight into the Bank leg without
+        // ever passing through the EE/ER split (Housing/Handphone/Overseas/Backpay aren't
+        // statutory-deductible). The "Gross Salary" total line shown up top is base + all four
+        // allowances combined, so the preview reads as one true gross-pay figure even though only
+        // the base portion actually goes through the EPF/CPF split below it. The ER leg is purely
+        // additive, shown only when > 0, and never subtracted from the Bank leg since the
+        // employer's contribution never touches the employee's pay. Every figure is formatted in
+        // the currently selected Currency (RM for MYR, S$ for SGD, etc.) so the preview reads the
+        // same as whatever currency the saved legs will actually use.
         function recalcSalaryPreview() {
             const scheme = document.getElementById("salaryScheme").value;
             const hasScheme = scheme === "epf" || scheme === "cpf";
             const currency = document.getElementById("salaryCurrency").value;
-            const gross = parseFloat(document.getElementById("salaryGross").value) || 0;
+            const baseGross = parseFloat(document.getElementById("salaryGross").value) || 0;
             const ee = hasScheme ? (parseFloat(document.getElementById("salaryEEAmount").value) || 0) : 0;
             const er = hasScheme ? (parseFloat(document.getElementById("salaryERAmount").value) || 0) : 0;
-            const net = gross - ee;
+            const housing = parseFloat(document.getElementById("salaryHousingAllowance").value) || 0;
+            const handphone = parseFloat(document.getElementById("salaryHandphoneClaim").value) || 0;
+            const overseas = parseFloat(document.getElementById("salaryOverseasAllowance").value) || 0;
+            const backpay = parseFloat(document.getElementById("salaryBackpay").value) || 0;
+            const allowanceTotal = housing + handphone + overseas + backpay;
+            const totalGross = baseGross + allowanceTotal;
+            const net = (baseGross - ee) + allowanceTotal;
 
-            document.getElementById("salaryPreviewGross").textContent = formatCurrency(gross, currency);
+            document.getElementById("salaryPreviewGross").textContent = formatCurrency(totalGross, currency);
             document.getElementById("salaryPreviewNet").textContent = formatCurrency(net, currency);
             document.getElementById("salaryPreviewEERow").style.display = (hasScheme && ee > 0) ? "flex" : "none";
             document.getElementById("salaryPreviewERRow").style.display = (hasScheme && er > 0) ? "flex" : "none";
             document.getElementById("salaryPreviewEE").textContent = formatCurrency(ee, currency);
             document.getElementById("salaryPreviewER").textContent = formatCurrency(er, currency);
+
+            document.getElementById("salaryPreviewHousingRow").style.display = housing > 0 ? "flex" : "none";
+            document.getElementById("salaryPreviewHandphoneRow").style.display = handphone > 0 ? "flex" : "none";
+            document.getElementById("salaryPreviewOverseasRow").style.display = overseas > 0 ? "flex" : "none";
+            document.getElementById("salaryPreviewBackpayRow").style.display = backpay > 0 ? "flex" : "none";
+            document.getElementById("salaryPreviewHousing").textContent = formatCurrency(housing, currency);
+            document.getElementById("salaryPreviewHandphone").textContent = formatCurrency(handphone, currency);
+            document.getElementById("salaryPreviewOverseas").textContent = formatCurrency(overseas, currency);
+            document.getElementById("salaryPreviewBackpay").textContent = formatCurrency(backpay, currency);
         }
 
         // Saves 1–3 ordinary Income transactions (Bank leg always; EE/ER legs only when a
@@ -7343,6 +7377,10 @@
             const gross = parseFloat(document.getElementById("salaryGross").value);
             const ee = hasScheme ? (parseFloat(document.getElementById("salaryEEAmount").value) || 0) : 0;
             const er = hasScheme ? (parseFloat(document.getElementById("salaryERAmount").value) || 0) : 0;
+            const housing = parseFloat(document.getElementById("salaryHousingAllowance").value) || 0;
+            const handphone = parseFloat(document.getElementById("salaryHandphoneClaim").value) || 0;
+            const overseas = parseFloat(document.getElementById("salaryOverseasAllowance").value) || 0;
+            const backpay = parseFloat(document.getElementById("salaryBackpay").value) || 0;
 
             if (!date) { alert("Please select a date."); return; }
             if (!desc) { alert("Please enter a description."); return; }
@@ -7352,7 +7390,12 @@
             if (hasScheme && !contribAccountId) { alert("Please select an EPF/CPF Account, or switch Scheme to \"None\"."); return; }
             if (ee < 0 || er < 0) { alert("EE/ER amounts can't be negative."); return; }
             if (ee > gross) { alert("EE contribution can't be greater than Gross Salary."); return; }
+            if (housing < 0 || handphone < 0 || overseas < 0 || backpay < 0) { alert("Allowance amounts can't be negative."); return; }
 
+            // Housing/Handphone/Overseas/Backpay are additive allowances that never pass through
+            // the EE/ER split (see recalcSalaryPreview()) — each is its own Income leg, in its
+            // own category, straight to the Bank Account. The base salary's Net leg (Gross − EE)
+            // is unaffected by their presence.
             const netAmount = gross - ee;
             const salaryGroupId = "salary_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
 
@@ -7379,6 +7422,19 @@
                         amount: er, src: contribAccountId,
                         cat: scheme === "epf" ? "EPF Contrib.(ER)" : "CPF Contrib.(ER)"
                     }));
+                }
+                const allowanceLegs = [
+                    { amount: housing, cat: "Housing Allowance" },
+                    { amount: handphone, cat: "Handphone Claim" },
+                    { amount: overseas, cat: "Overseas Allowance" },
+                    { amount: backpay, cat: "Backpay" }
+                ];
+                for (const leg of allowanceLegs) {
+                    if (leg.amount > 0) {
+                        await writeDB(STORES.TRANSACTIONS, Object.assign({}, baseRecord, {
+                            amount: leg.amount, src: bankAccountId, cat: leg.cat
+                        }));
+                    }
                 }
             } catch (err) {
                 alert("Could not save salary record: " + (err && err.message ? err.message : err));

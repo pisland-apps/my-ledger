@@ -2849,6 +2849,28 @@
                 <input type="number" id="salaryGross" step="0.01" min="0" inputmode="decimal" placeholder="0.00" data-input="recalcSalaryPreview">
             </div>
 
+            <div class="form-row-inline">
+                <div>
+                    <label>🏠 Housing Allowance</label>
+                    <input type="number" id="salaryHousingAllowance" step="0.01" min="0" inputmode="decimal" placeholder="0.00" data-input="recalcSalaryPreview">
+                </div>
+                <div>
+                    <label>📱 Handphone Claim</label>
+                    <input type="number" id="salaryHandphoneClaim" step="0.01" min="0" inputmode="decimal" placeholder="0.00" data-input="recalcSalaryPreview">
+                </div>
+            </div>
+
+            <div class="form-row-inline">
+                <div>
+                    <label>✈️ Overseas Allowance</label>
+                    <input type="number" id="salaryOverseasAllowance" step="0.01" min="0" inputmode="decimal" placeholder="0.00" data-input="recalcSalaryPreview">
+                </div>
+                <div>
+                    <label>🕒 Backpay</label>
+                    <input type="number" id="salaryBackpay" step="0.01" min="0" inputmode="decimal" placeholder="0.00" data-input="recalcSalaryPreview">
+                </div>
+            </div>
+
             <div class="form-row-inline" id="salaryContribRow" style="display:none;">
                 <div>
                     <label id="salaryEELabel">EPF Employee (EE)</label>
@@ -2864,6 +2886,22 @@
                 <div style="display:flex; justify-content:space-between; padding-bottom:8px; margin-bottom:8px; border-bottom:1px dashed var(--border-color);">
                     <span style="color:var(--text-muted);">Gross Salary</span>
                     <strong id="salaryPreviewGross">0.00</strong>
+                </div>
+                <div id="salaryPreviewHousingRow" style="display:none; justify-content:space-between; align-items:center; margin-bottom:4px; padding-left:12px;">
+                    <span style="font-size:0.78rem; color:var(--text-muted);">🏠 Housing Allowance</span>
+                    <span id="salaryPreviewHousing" style="font-size:0.85rem;">0.00</span>
+                </div>
+                <div id="salaryPreviewHandphoneRow" style="display:none; justify-content:space-between; align-items:center; margin-bottom:4px; padding-left:12px;">
+                    <span style="font-size:0.78rem; color:var(--text-muted);">📱 Handphone Claim</span>
+                    <span id="salaryPreviewHandphone" style="font-size:0.85rem;">0.00</span>
+                </div>
+                <div id="salaryPreviewOverseasRow" style="display:none; justify-content:space-between; align-items:center; margin-bottom:4px; padding-left:12px;">
+                    <span style="font-size:0.78rem; color:var(--text-muted);">✈️ Overseas Allowance</span>
+                    <span id="salaryPreviewOverseas" style="font-size:0.85rem;">0.00</span>
+                </div>
+                <div id="salaryPreviewBackpayRow" style="display:none; justify-content:space-between; align-items:center; margin-bottom:6px; padding-left:12px;">
+                    <span style="font-size:0.78rem; color:var(--text-muted);">🕒 Backpay</span>
+                    <span id="salaryPreviewBackpay" style="font-size:0.85rem;">0.00</span>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                     <span style="font-size:0.85rem;"><span style="color:#3b82f6;">●</span> → Bank Account</span>

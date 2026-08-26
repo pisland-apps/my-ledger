@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v140";
+        const APP_VERSION = "v141";
         const APP_VERSION_DATE = "2026-08-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7739,11 +7739,20 @@
                     ${opt.value === currentVal ? '<span style="color:var(--primary); font-weight:900; margin-left:8px; flex:0 0 auto;">✓</span>' : ""}
                 </button>
             `).join("");
-            document.getElementById("accountPickerModal").classList.add("active");
+            // Uses the shared openModal() (see "NATIVE ROUTING CORE" above) so this picker pushes
+            // its own history entry and joins modalStack like every other modal. Previously this
+            // just toggled the "active" class directly, with no history entry of its own — so the
+            // hardware/gesture back button had nothing belonging to this picker to pop and fell
+            // through to whatever history entry was next (often none), exiting the app instead of
+            // just closing the picker.
+            openModal("accountPickerModal");
         }
 
         function closeAccountPicker() {
-            document.getElementById("accountPickerModal").classList.remove("active");
+            // See openAccountPicker() above — closing goes through the shared closeModal(), which
+            // triggers history.back() and lets the popstate handler remove "active" in lockstep,
+            // matching how every other modal opens/closes.
+            closeModal("accountPickerModal");
         }
 
         function selectAccountPickerOption(el) {

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v136";
+        const APP_VERSION = "v137";
         const APP_VERSION_DATE = "2026-08-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2514,12 +2514,22 @@
             } else if (type === "multi") {
                 multiBtn.style.background = "var(--transfer-color)"; multiBtn.style.color = "white";
                 hint.textContent = "Holds separate currency balances under one account name — e.g. \"Bank A\" with its own SGD and MYR balances side by side, never mixed together.";
-                // Opening balances only make sense when creating a brand-new account — for an
-                // existing account, use the normal Income/Transfer entry to add funds instead.
-                if (!isEditing) {
-                    multiWrap.style.display = "block";
-                    if (document.getElementById("multiOpeningRows").children.length === 0) addMultiCurrencyRow();
-                }
+                // v137: this block used to be hidden entirely once editing (an existing account
+                // had no way to add a brand-new currency leg from this form at all) on the theory
+                // that adding funds to an existing account should go through a normal Income/
+                // Transfer entry instead — true, but not obvious, and the create-flow's "+ Add
+                // Currency" affordance is the more natural place to reach for it. Now shown for
+                // both: any filled row becomes the exact same "Opening Balance" transfer this
+                // form already creates for a brand-new account (src blank, dest this account) —
+                // for an existing account, that's simply funds you're bringing into tracking now,
+                // dated today, same reasoning as when the account was first created. Editing
+                // starts with zero rows (no auto-added empty one) since there's nothing to
+                // pre-fill, and the label is reworded so it doesn't read as a required setup step.
+                multiWrap.style.display = "block";
+                document.getElementById("multiOpeningWrapLabel").textContent = isEditing
+                    ? "Add Another Currency (optional)"
+                    : "Opening Balances (optional)";
+                if (!isEditing && document.getElementById("multiOpeningRows").children.length === 0) addMultiCurrencyRow();
             } else if (type === "fd") {
                 fdBtn.style.background = "var(--transfer-color)"; fdBtn.style.color = "white";
                 hint.textContent = "Just choose the type and name — currency, principal, tenure, rate, and maturity date are captured per placement below (or later, whenever you transfer funds in).";
@@ -2842,7 +2852,14 @@
             let openingTransactions = [];
             const todayStr = todayLocalStr();
 
-            if (isNewAccount && type === "multi") {
+            // v137: was `isNewAccount && type === "multi"` — the rows are now shown (and can be
+            // filled) for an existing multi-currency account too (see setAccountTypeUI above), so
+            // this must process them regardless of isNewAccount. Each becomes an ordinary
+            // "Opening Balance" transfer into the account, exactly like manually creating one via
+            // Income/Transfer entry — dated today for an existing account rather than the
+            // account's original creation date, since that's genuinely when these funds are being
+            // brought into tracking.
+            if (type === "multi") {
                 const rows = Array.from(document.getElementById("multiOpeningRows").children);
                 for (const row of rows) {
                     const amount = parseFloat(row.querySelector(".multi-row-amount").value);
@@ -2918,7 +2935,7 @@
                     }
                 }
                 if (failedCount.n > 0) {
-                    alert(`Account created, but ${failedCount.n} opening balance/placement entr${failedCount.n === 1 ? 'y' : 'ies'} could not be saved. You can add them manually via Income entries.`);
+                    alert(`Account ${isNewAccount ? "created" : "saved"}, but ${failedCount.n} opening balance/placement entr${failedCount.n === 1 ? 'y' : 'ies'} could not be saved. You can add them manually via Income entries.`);
                 }
             }
 

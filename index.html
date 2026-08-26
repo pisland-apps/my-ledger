@@ -1554,6 +1554,9 @@
                 <span class="toggle-slider"></span>
             </label>
         </div>
+        <div class="util-row">
+            <button class="btn-util" data-click="openChangePasscodeModal">🔑 Change Passcode</button>
+        </div>
 
         <div class="section-header">
             <span class="section-title">Export &amp; Import</span>
@@ -3000,6 +3003,35 @@
                 <button type="button" id="backupPasscodeCancelBtn" class="submit-btn" style="background:#e2e8f0; color:var(--text-main); margin-top:0;">Cancel</button>
                 <button type="button" id="backupPasscodeOkBtn" class="submit-btn" style="background:var(--primary); margin-top:0;">Decrypt</button>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Change Passcode (v134) — re-derives the app's encryption key from a new passcode
+         and re-encrypts every stored record under it. Current passcode is re-verified against
+         the stored verifier (not just trusted from the in-memory session) before anything is
+         touched, since the app being unlocked doesn't by itself prove the person holding the
+         device knows the passcode. -->
+    <div class="modal" id="changePasscodeModal">
+        <div class="modal-sheet" style="max-width: 360px;">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                <h3 style="font-weight: 800;">Change Passcode</h3>
+                <button data-click="closeModal" data-modal="changePasscodeModal" style="background:none; border:none; font-size: 1.5rem; padding: 8px;">&times;</button>
+            </div>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">Your data is re-encrypted with the new passcode. This can take a moment on a large ledger — don't close the app while it's running.</p>
+            <div id="changePasscodeError" style="color:var(--expense-color); font-size:0.8rem; font-weight:700; margin-bottom:8px; min-height:1em;"></div>
+            <div class="form-row">
+                <label>Current Passcode</label>
+                <input type="password" id="changePasscodeCurrentInput" class="form-input" autocomplete="off" placeholder="Current passcode">
+            </div>
+            <div class="form-row">
+                <label>New Passcode</label>
+                <input type="password" id="changePasscodeNewInput" class="form-input" autocomplete="off" placeholder="New passcode (min 4 characters)">
+            </div>
+            <div class="form-row">
+                <label>Confirm New Passcode</label>
+                <input type="password" id="changePasscodeConfirmInput" class="form-input" autocomplete="off" placeholder="Confirm new passcode">
+            </div>
+            <button type="button" id="changePasscodeSubmitBtn" data-click="handleChangePasscodeSubmit" class="submit-btn" style="background: var(--transfer-color);">Change Passcode</button>
         </div>
     </div>
 

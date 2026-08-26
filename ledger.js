@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v133";
+        const APP_VERSION = "v134";
         const APP_VERSION_DATE = "2026-08-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -408,6 +408,100 @@
             appKey = null;
             currentPasscode = null;
             location.reload();
+        }
+
+        // Re-encrypts every record in every store under a new AES-GCM key — the bulk-data half of
+        // Change Passcode. Every store is fully read (decrypted under whichever key is currently
+        // in `appKey`, i.e. the OLD one) before `appKey` is swapped to the new one, then every
+        // record is written back (encryptRecord() inside writeDB() picks up the new global
+        // `appKey` automatically). Reading everything up front, then swapping once, then writing
+        // everything — never interleaved — avoids a partial state where some stores are already
+        // readable only with the new key while others still need the old one.
+        async function reencryptAllStoresWithKey(newKey) {
+            const snapshots = {};
+            for (const storeName of Object.values(STORES)) {
+                snapshots[storeName] = await readAllDB(storeName);
+            }
+            appKey = newKey;
+            for (const storeName of Object.values(STORES)) {
+                for (const rec of snapshots[storeName]) {
+                    await writeDB(storeName, rec);
+                }
+            }
+        }
+
+        function openChangePasscodeModal() {
+            document.getElementById("changePasscodeCurrentInput").value = "";
+            document.getElementById("changePasscodeNewInput").value = "";
+            document.getElementById("changePasscodeConfirmInput").value = "";
+            document.getElementById("changePasscodeError").textContent = "";
+            openModal("changePasscodeModal");
+        }
+
+        async function handleChangePasscodeSubmit() {
+            const curVal = document.getElementById("changePasscodeCurrentInput").value;
+            const newVal = document.getElementById("changePasscodeNewInput").value;
+            const confirmVal = document.getElementById("changePasscodeConfirmInput").value;
+            const errEl = document.getElementById("changePasscodeError");
+            const submitBtn = document.getElementById("changePasscodeSubmitBtn");
+            errEl.textContent = "";
+
+            if (!curVal) { errEl.textContent = "Enter your current passcode."; return; }
+            if (!newVal || newVal.length < 4) { errEl.textContent = "New passcode must be at least 4 characters."; return; }
+            if (newVal !== confirmVal) { errEl.textContent = "New passcodes do not match."; return; }
+            if (newVal === curVal) { errEl.textContent = "New passcode must be different from the current one."; return; }
+
+            const cfg = getLockConfig();
+            if (!cfg) { errEl.textContent = "No passcode is set up yet."; return; }
+
+            // Verify the CURRENT passcode against the stored verifier — never trust the
+            // in-memory `currentPasscode` session variable alone here. The app being unlocked
+            // only proves someone unlocked it at some point this session, not that whoever is
+            // tapping "Change Passcode" right now actually knows the passcode (e.g. it was left
+            // unlocked and picked up by someone else).
+            try {
+                const curKey = await deriveKeyFromPasscode(curVal, cfg.salt, cfg.iterations);
+                const check = await aesDecryptString(curKey, cfg.verifierIv, cfg.verifierData);
+                if (check !== VERIFIER_PLAINTEXT) throw new Error("mismatch");
+            } catch (err) {
+                errEl.textContent = "Current passcode is incorrect.";
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Re-encrypting your data…";
+            try {
+                const newSalt = crypto.getRandomValues(new Uint8Array(16));
+                const newSaltB64 = bufToB64(newSalt);
+                const newKey = await deriveKeyFromPasscode(newVal, newSaltB64, PBKDF2_ITERATIONS);
+
+                await reencryptAllStoresWithKey(newKey);
+
+                const verifier = await aesEncryptString(newKey, VERIFIER_PLAINTEXT);
+                saveLockConfig({ salt: newSaltB64, iterations: PBKDF2_ITERATIONS, verifierIv: verifier.iv, verifierData: verifier.data });
+                currentPasscode = newVal;
+
+                // Biometric unlock wraps the OLD passcode text with a PRF-derived key (see
+                // enableBiometricUnlock above) — that wrapped value is now stale, since unlocking
+                // with it would try the old passcode against the new lock config and fail the
+                // verifier check. Rather than leave a broken enrollment that silently fails on
+                // next use, drop it and tell the user to re-enable it if they want it back — same
+                // "fail clean, re-enroll" approach this app already uses for stale biometric
+                // records (see attemptBiometricUnlock's v1-record handling).
+                const hadBiometric = !!(await getBiometricRecord());
+                if (hadBiometric) await disableBiometricUnlock().catch(() => {});
+
+                closeModal("changePasscodeModal");
+                alert(hadBiometric
+                    ? "Passcode changed. Biometric quick unlock was turned off — you can re-enable it from Backup & Restore."
+                    : "Passcode changed successfully.");
+            } catch (err) {
+                console.error("[ledger] change passcode failed", err);
+                errEl.textContent = "Something went wrong changing your passcode. Please try again.";
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Change Passcode";
+            }
         }
 
         /* ================= IDLE AUTO-LOCK ================= */
@@ -9644,6 +9738,8 @@
             handleSetupPasscodeSubmit: () => handleSetupPasscodeSubmit(),
             handleUnlockSubmit: () => handleUnlockSubmit(),
             handleForgotPasscode: () => handleForgotPasscode(),
+            openChangePasscodeModal: () => openChangePasscodeModal(),
+            handleChangePasscodeSubmit: () => handleChangePasscodeSubmit(),
             openCurrencyConfig: () => openCurrencyConfig(),
             lockAppNow: () => lockAppNow(),
             navigateToSavingsPage: () => navigateToSavingsPage(),

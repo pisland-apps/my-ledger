@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v143";
+        const APP_VERSION = "v144";
         const APP_VERSION_DATE = "2026-08-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1264,9 +1264,20 @@
         }
 
         window.addEventListener("popstate", (event) => {
+            // v143 fix: this used to call resetAccountForm() and return here, which reset the
+            // Add/Edit Account form to blank "Create New Account" state but left the modal's
+            // "active" class in place AND re-pushed a fresh history entry for it (see
+            // resetAccountForm's own pushVirtualState call). That meant one hardware/gesture
+            // back press while editing an account never actually closed anything — it just
+            // showed the same modal reset to blank (matching the × button's old "needs two
+            // clicks" bug, documented in closeModal() below) — while quietly consuming and
+            // replacing a history entry. A second back press then closed the modal for real,
+            // but by then the JS history stack and the real back stack were a step out of
+            // sync, so instead of landing on the account's Activity page, the app exited.
+            // Clearing the edit state here (without the re-push) and falling through to the
+            // normal modal-close logic below closes it in one press, exactly like × does.
             if (document.getElementById("editAccountId").value !== "") {
-                resetAccountForm();
-                return;
+                resetAccountForm(/* skipHistoryPush */ true);
             }
 
             // v88 fix: previously this scanned every known modal id and removed "active" from
@@ -2765,7 +2776,7 @@
             sel.value = (preselectId && candidates.some(a => a.id === preselectId)) ? preselectId : "";
         }
 
-        function resetAccountForm() {
+        function resetAccountForm(skipHistoryPush) {
             const isEditing = document.getElementById("editAccountId").value !== "";
             document.getElementById("editAccountId").value = "";
             document.getElementById("newAccName").value = "";
@@ -2791,7 +2802,7 @@
 
             setAccountTypeUI("normal");
 
-            if (isEditing) {
+            if (isEditing && !skipHistoryPush) {
                 pushVirtualState("accountsModal");
             }
         }

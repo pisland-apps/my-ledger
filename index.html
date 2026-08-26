@@ -1209,8 +1209,8 @@
                 <h2>Set an App Passcode</h2>
                 <p class="lock-sub">Your data will be encrypted on this device with a key derived from this passcode (PBKDF2 + AES-GCM). There is no password recovery — if you forget it, your data cannot be decrypted.</p>
                 <div id="lockError"></div>
-                <input type="password" id="setupPasscodeInput" placeholder="Create passcode (min 4 characters)" autocomplete="new-password" inputmode="text">
-                <input type="password" id="setupPasscodeConfirmInput" placeholder="Confirm passcode" autocomplete="new-password" inputmode="text">
+                <input type="password" id="setupPasscodeInput" placeholder="Create passcode (min 4 characters)" autocomplete="off" inputmode="text">
+                <input type="password" id="setupPasscodeConfirmInput" placeholder="Confirm passcode" autocomplete="off" inputmode="text">
                 <button type="button" class="lock-submit-btn" data-click="handleSetupPasscodeSubmit">Create &amp; Continue</button>
             </div>
 
@@ -1221,7 +1221,7 @@
                 <p class="lock-sub">This ledger is locked. Enter your passcode to decrypt and continue.</p>
                 <button type="button" class="lock-submit-btn" id="biometricUnlockBtn" style="display:none; background:#0f172a; margin-bottom:12px;">🫆 Unlock with Biometrics</button>
                 <div id="lockError2"></div>
-                <input type="password" id="unlockPasscodeInput" placeholder="Passcode" autocomplete="current-password" inputmode="text">
+                <input type="password" id="unlockPasscodeInput" placeholder="Passcode" autocomplete="off" inputmode="text">
                 <div class="numpad-grid" id="unlockNumpad">
                     <button type="button" class="numpad-btn" data-click="numpadDigit" data-digit="1">1</button>
                     <button type="button" class="numpad-btn" data-click="numpadDigit" data-digit="2">2</button>
@@ -2959,7 +2959,7 @@
         <div class="modal-sheet" style="max-width: 340px;">
             <p style="font-size:0.9rem; line-height:1.5; margin-bottom:12px; font-weight:700;">This backup is encrypted. Enter its passcode to restore it.</p>
             <div id="backupPasscodeError" style="color:var(--expense-color); font-size:0.8rem; font-weight:700; margin-bottom:8px; min-height:1em;"></div>
-            <input type="password" id="backupPasscodeInput" class="form-input" placeholder="Backup passcode" style="width:100%; margin-bottom:14px;">
+            <input type="password" id="backupPasscodeInput" class="form-input" autocomplete="off" placeholder="Backup passcode" style="width:100%; margin-bottom:14px;">
             <div style="display:flex; gap:10px;">
                 <button type="button" id="backupPasscodeCancelBtn" class="submit-btn" style="background:#e2e8f0; color:var(--text-main); margin-top:0;">Cancel</button>
                 <button type="button" id="backupPasscodeOkBtn" class="submit-btn" style="background:var(--primary); margin-top:0;">Decrypt</button>

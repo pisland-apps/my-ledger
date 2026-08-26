@@ -1931,6 +1931,10 @@
                 <span>🔒 <strong>Lock App Now</strong></span>
                 <span style="color:var(--text-muted);">›</span>
             </div>
+            <div class="config-item" style="cursor:pointer;" data-click="openResetAppDataModal">
+                <span style="color:var(--expense-color);">🗑️ <strong>Reset App Data</strong></span>
+                <span style="color:var(--text-muted);">›</span>
+            </div>
         </div>
     </div>
 
@@ -3032,6 +3036,33 @@
                 <input type="password" id="changePasscodeConfirmInput" class="form-input" autocomplete="off" placeholder="Confirm new passcode">
             </div>
             <button type="button" id="changePasscodeSubmitBtn" data-click="handleChangePasscodeSubmit" class="submit-btn" style="background: var(--transfer-color);">Change Passcode</button>
+        </div>
+    </div>
+
+    <!-- MODAL: Reset App Data (v135) — reachable from Setting (in addition to the lock screen's
+         own "Forgot passcode? Reset app data" link, which stays double-confirm-only since someone
+         who's genuinely forgotten their passcode can't type it). This entry point is reachable
+         while already unlocked, so it requires typing the current passcode AND re-typing it to
+         confirm — a much stronger accidental-tap guard than two OK/Cancel dialogs, since a typo
+         or a slipped tap can't accidentally erase everything. A final confirm dialog still runs
+         after the passcode check passes, matching the lock screen's own two-step convention. -->
+    <div class="modal" id="resetAppDataModal">
+        <div class="modal-sheet" style="max-width: 360px;">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                <h3 style="font-weight: 800; color:var(--expense-color);">⚠️ Reset App Data</h3>
+                <button data-click="closeModal" data-modal="resetAppDataModal" style="background:none; border:none; font-size: 1.5rem; padding: 8px;">&times;</button>
+            </div>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:14px;">This permanently erases ALL data in this app on this device — accounts, transactions, categories, everything. There is no recovery. Enter your passcode twice to confirm.</p>
+            <div id="resetAppDataError" style="color:var(--expense-color); font-size:0.8rem; font-weight:700; margin-bottom:8px; min-height:1em;"></div>
+            <div class="form-row">
+                <label>Passcode</label>
+                <input type="password" id="resetAppDataPasscodeInput" class="form-input" autocomplete="off" placeholder="Enter your passcode">
+            </div>
+            <div class="form-row">
+                <label>Confirm Passcode</label>
+                <input type="password" id="resetAppDataConfirmInput" class="form-input" autocomplete="off" placeholder="Re-enter your passcode">
+            </div>
+            <button type="button" id="resetAppDataSubmitBtn" data-click="handleResetAppDataSubmit" class="submit-btn" style="background:var(--expense-color);">🗑️ Erase Everything</button>
         </div>
     </div>
 

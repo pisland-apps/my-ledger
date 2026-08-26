@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v134";
+        const APP_VERSION = "v135";
         const APP_VERSION_DATE = "2026-08-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -504,6 +504,48 @@
             }
         }
 
+        function openResetAppDataModal() {
+            document.getElementById("resetAppDataPasscodeInput").value = "";
+            document.getElementById("resetAppDataConfirmInput").value = "";
+            document.getElementById("resetAppDataError").textContent = "";
+            openModal("resetAppDataModal");
+        }
+
+        // Reset App Data, reached from Setting (already-unlocked context) — deliberately stricter
+        // than the lock screen's own "Forgot passcode? Reset app data" link: that one is for
+        // someone who genuinely can't remember their passcode, so it can only ask two OK/Cancel
+        // questions. Here the passcode is known (the app is unlocked), so requiring it to be
+        // typed AND re-typed is a real, typo-proof accidental-tap guard rather than a dialog that
+        // can be reflexively clicked through. A final confirm dialog still runs after the
+        // passcode check passes, matching the lock screen's own two-step convention.
+        async function handleResetAppDataSubmit() {
+            const p1 = document.getElementById("resetAppDataPasscodeInput").value;
+            const p2 = document.getElementById("resetAppDataConfirmInput").value;
+            const errEl = document.getElementById("resetAppDataError");
+            errEl.textContent = "";
+
+            if (!p1) { errEl.textContent = "Enter your passcode."; return; }
+            if (p1 !== p2) { errEl.textContent = "Passcodes do not match."; return; }
+
+            const cfg = getLockConfig();
+            if (!cfg) { errEl.textContent = "No passcode is set up."; return; }
+
+            try {
+                const key = await deriveKeyFromPasscode(p1, cfg.salt, cfg.iterations);
+                const check = await aesDecryptString(key, cfg.verifierIv, cfg.verifierData);
+                if (check !== VERIFIER_PLAINTEXT) throw new Error("mismatch");
+            } catch (err) {
+                errEl.textContent = "Incorrect passcode.";
+                return;
+            }
+
+            const finalConfirm = await customConfirm("This will permanently erase ALL data in this app on this device — accounts, transactions, categories, everything. This cannot be undone. Continue?");
+            if (!finalConfirm) return;
+
+            closeModal("resetAppDataModal");
+            performFullAppDataReset();
+        }
+
         /* ================= IDLE AUTO-LOCK ================= */
         // Locks the app automatically after a period of no user activity — selectable via the
         // ⏱️ dropdown in the header (Never/1/5/15/30 min, default 15). The setting itself isn't
@@ -559,15 +601,23 @@
             }, { passive: true });
         });
 
+        // Actually erases everything — shared by the lock screen's "Forgot passcode? Reset app
+        // data" link (handleForgotPasscode, below) and the Setting page's "Reset App Data" flow
+        // (handleResetAppDataSubmit, further down). Each caller does its own confirmation UI
+        // first; by the time this runs, the decision is final.
+        function performFullAppDataReset() {
+            localStorage.removeItem(LOCK_CONFIG_KEY);
+            try { indexedDB.deleteDatabase(DB_NAME); } catch (err) {}
+            try { indexedDB.deleteDatabase(SECURITY_DB_NAME); } catch (err) {}
+            location.reload();
+        }
+
         async function handleForgotPasscode() {
             const step1 = await customConfirm("There is no passcode recovery. Resetting will permanently erase ALL data stored in this app on this device (accounts, transactions, categories). Continue?");
             if (!step1) return;
             const step2 = await customConfirm("Are you absolutely sure? This cannot be undone.");
             if (!step2) return;
-            localStorage.removeItem(LOCK_CONFIG_KEY);
-            try { indexedDB.deleteDatabase(DB_NAME); } catch (err) {}
-            try { indexedDB.deleteDatabase(SECURITY_DB_NAME); } catch (err) {}
-            location.reload();
+            performFullAppDataReset();
         }
 
         /* ================= BIOMETRIC QUICK UNLOCK (WebAuthn platform authenticator, PRF) =================
@@ -9740,6 +9790,8 @@
             handleForgotPasscode: () => handleForgotPasscode(),
             openChangePasscodeModal: () => openChangePasscodeModal(),
             handleChangePasscodeSubmit: () => handleChangePasscodeSubmit(),
+            openResetAppDataModal: () => openResetAppDataModal(),
+            handleResetAppDataSubmit: () => handleResetAppDataSubmit(),
             openCurrencyConfig: () => openCurrencyConfig(),
             lockAppNow: () => lockAppNow(),
             navigateToSavingsPage: () => navigateToSavingsPage(),

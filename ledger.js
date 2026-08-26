@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v141";
+        const APP_VERSION = "v142";
         const APP_VERSION_DATE = "2026-08-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -986,6 +986,16 @@
         // currently populated for — set by openAccountPicker(), read by selectAccountPickerOption()
         // when the user taps a row.
         let accountPickerTargetSelectId = null;
+        // v141: type-ahead state for the Account picker modal — restores the letter-key "jump to
+        // next option starting with R" behaviour a native <select> gives for free on desktop/PC,
+        // which the picker's plain list of <button> rows doesn't get automatically (see the
+        // ACCOUNT PICKER TYPE-AHEAD listener below). accountPickerTypeaheadChar is the single
+        // character currently being cycled through matches for; accountPickerTypeaheadIndex is the
+        // index (within the full match list for that character) most recently focused, so the next
+        // press of the same key advances to the next match instead of restarting from the first.
+        let accountPickerTypeaheadChar = "";
+        let accountPickerTypeaheadIndex = -1;
+        let accountPickerTypeaheadTimer = null;
         // Calculator/numpad popup — which input field "Use This Value" writes back into.
         let calcPadTargetId = null;
         let calcPadExpr = "";
@@ -7731,6 +7741,11 @@
             const select = document.getElementById(selectId);
             if (!select) return;
             accountPickerTargetSelectId = selectId;
+            // Fresh type-ahead state each time the picker opens, so leftover "R" cycling position
+            // from a previous picker session (e.g. a different account field) doesn't carry over.
+            accountPickerTypeaheadChar = "";
+            accountPickerTypeaheadIndex = -1;
+            clearTimeout(accountPickerTypeaheadTimer);
             document.getElementById("accountPickerTitle").textContent = el.dataset.title || "Select Account";
             const currentVal = select.value;
             document.getElementById("accountPickerList").innerHTML = Array.from(select.options).map(opt => `
@@ -7782,6 +7797,49 @@
             const opt = select.options[select.selectedIndex];
             btnText.textContent = opt ? opt.textContent : "Select account";
         }
+
+        // v141: PC keyboard type-ahead for the Account picker — a native <select> lets you press
+        // "R" to jump to the first option starting with R, press "R" again to jump to the next one,
+        // and so on. Swapping the native dropdown for a plain list of <button> rows (see the
+        // ACCOUNT PICKER comment above openAccountPicker()) dropped that for-free browser behaviour
+        // along with the oversized-font problem it was meant to fix, so it's reimplemented here:
+        // one document-level keydown listener (same registration pattern as the passcode Enter
+        // listener near the top of the file), gated on the picker actually being open, that finds
+        // every row whose label starts with the pressed letter and focus()es the next one in that
+        // subset each time the same letter is pressed again, resetting after a pause or a different
+        // letter — matching the native select's own type-ahead timeout behaviour.
+        document.addEventListener("keydown", (e) => {
+            const modal = document.getElementById("accountPickerModal");
+            if (!modal || !modal.classList.contains("active")) return;
+            // Single printable character only, no modifier combos — so Ctrl+R / Cmd+R (reload)
+            // and similar browser/OS shortcuts keep working normally while the picker is open.
+            if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+            const buttons = Array.from(document.querySelectorAll("#accountPickerList .option-menu-btn"));
+            if (buttons.length === 0) return;
+            const char = e.key.toLowerCase();
+            const matches = buttons.filter((btn) => {
+                const label = btn.querySelector("span");
+                return label && label.textContent.trim().toLowerCase().startsWith(char);
+            });
+            if (matches.length === 0) return;
+            e.preventDefault();
+            clearTimeout(accountPickerTypeaheadTimer);
+            if (char === accountPickerTypeaheadChar) {
+                accountPickerTypeaheadIndex = (accountPickerTypeaheadIndex + 1) % matches.length;
+            } else {
+                accountPickerTypeaheadChar = char;
+                accountPickerTypeaheadIndex = 0;
+            }
+            // Native selects reset the typed search after a short pause of no typing — same idea
+            // here, so pressing "R" again a while later restarts from the first R instead of
+            // continuing to advance.
+            accountPickerTypeaheadTimer = setTimeout(() => {
+                accountPickerTypeaheadChar = "";
+                accountPickerTypeaheadIndex = -1;
+            }, 800);
+            matches[accountPickerTypeaheadIndex].focus();
+            matches[accountPickerTypeaheadIndex].scrollIntoView({ block: "nearest" });
+        });
 
         // Dismisses just the Options submenu, back to Quick View underneath — not a history
         // navigation (see the comment on openTxOptionsMenu() above for why Options doesn't have

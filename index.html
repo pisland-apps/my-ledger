@@ -1017,8 +1017,23 @@
         .submit-btn:active { opacity: 0.9; transform: scale(0.99); }
         .calc-btn { flex-shrink:0; width: 44px; height: 44px; border-radius: 8px; border: 1.5px solid var(--border-color); background: #f8fafc; font-size: 1.1rem; cursor: pointer; display:flex; align-items:center; justify-content:center; padding:0; box-sizing:border-box; }
         .calc-btn:active { background: #eef2ff; }
-        .split-row { border:1.5px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:12px; background:var(--card-bg); }
+        /* v150: unified Amount+Category "entry card" — used for BOTH the main entry (wraps
+           #txMainEntryCard, always visible) and every dynamically-added Split Expenses row
+           (addTxSplitRow() in ledger.js), so the main entry and its splits render as identical,
+           consistent cards instead of two different layouts (see the "make main & split rows
+           the same style" reference screenshots). Each card is Amount on top, then a Category
+           line (icon avatar + picker button, plus a Remove button on split rows only) below. */
+        .split-row { border:1.5px solid var(--border-color); border-radius:14px; padding:12px; margin-bottom:10px; background:var(--card-bg); }
         .split-row select.form-input { margin: 0; }
+        .split-amt-line { display:flex; gap:6px; }
+        .split-row-catline { display:flex; align-items:center; gap:8px; margin-top:10px; }
+        .split-cat-icon { flex:0 0 auto; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.05rem; background:#eef2ff; }
+        .split-row-catline button.account-picker-btn { flex:1 1 auto !important; width:auto !important; min-width:0; margin:0; }
+        .split-remove-btn { flex:0 0 auto; width:32px; height:32px; border-radius:50%; border:none; background:#fee2e2; color:var(--expense-color); font-size:1.05rem; font-weight:800; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; line-height:1; }
+        .split-remove-btn:active { opacity:0.8; }
+        .split-total-row { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:2px 0 12px; }
+        .split-add-btn { flex:0 0 auto; width:40px; height:40px; border-radius:50%; border:none; background:var(--primary); color:#fff; font-size:1.4rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; line-height:1; box-shadow:0 2px 6px rgba(0,0,0,0.18); }
+        .split-add-btn:active { opacity:0.85; transform:scale(0.97); }
         .calc-key { height: 48px; border-radius: 8px; border: none; background: #f1f5f9; font-size: 1.05rem; font-weight: 700; cursor: pointer; color: var(--text-main); }
         .calc-key:active { opacity: 0.8; }
         .calc-key-op { background: #e0e7ff; color: var(--primary); }
@@ -2541,9 +2556,17 @@
             <div style="flex:1 1 auto; min-height:0; overflow-y:auto; padding:16px 20px;">
                 <input type="hidden" id="txId">
                 <input type="hidden" id="txType">
-                <div class="form-row">
+                <!-- v150: Amount + Category redesigned as one unified "entry card" (see the
+                     .split-row CSS comment above) — a category icon avatar sits beside the picker
+                     button, so this main entry now uses the exact same layout/markup pattern as
+                     every Split Expenses row added below it (addTxSplitRow() in ledger.js), instead
+                     of two visually different sections. Category still opens the same custom popup
+                     as Account/To Account (openAccountPicker() in ledger.js) — same reasoning as
+                     before (illegible native-<select> option text on Android), plus Main
+                     Category/Subcategory grouping. -->
+                <div class="split-row" id="txMainEntryCard">
                     <label>Amount</label>
-                    <div style="display:flex; gap:6px;">
+                    <div class="split-amt-line">
                         <input type="number" id="txAmount" step="0.01" inputmode="decimal" required data-input="recalcTxFdMaturity" style="flex:1;">
                         <button type="button" class="calc-btn" data-click="openCalcPadFor" data-target="txAmount" title="Calculator / Numpad"><svg width="36" height="36" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
                             <rect x="3" y="3" width="30" height="30" rx="8" fill="#475569"/>
@@ -2556,46 +2579,42 @@
                             <path d="M27 28.7h7M27 32.3h7" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round"/>
                         </svg></button>
                     </div>
-                </div>
-
-                <!-- v142: category now opens the same custom popup as Account/To Account (see the
-                     account-picker-btn CSS comment above and openAccountPicker() in ledger.js),
-                     instead of the native <select> popup — same reasoning (illegible Android
-                     system-size option text), plus it now groups Main Category/Subcategory the
-                     same way the modal shows the list rather than an <optgroup>'s browser-default
-                     rendering. -->
-                <div class="form-row" id="categoryRow">
-                    <label>Category</label>
-                    <button type="button" id="txCategoryBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="txCategory" data-title="Select Category">
-                        <span id="txCategoryBtnText">Select category</span><span class="account-picker-chevron">▾</span>
-                    </button>
+                    <div class="split-row-catline" id="categoryRow">
+                        <span class="split-cat-icon" id="txCategoryIcon">🏷️</span>
+                        <button type="button" id="txCategoryBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="txCategory" data-title="Select Category">
+                            <span id="txCategoryBtnText">Select category</span><span class="account-picker-chevron">▾</span>
+                        </button>
+                    </div>
                     <select id="txCategory" style="display:none;"></select>
                 </div>
 
                 <!-- Split Expenses (v88) — only offered for a brand-new Income/Expense entry (not
                      Transfer, not while editing an existing record — see openTxSplitAddRow() /
                      handleTransactionSubmitMobile() for why editing is out of scope). Each added
-                     row is its own Category + Amount pair; on save every row becomes its own
-                     transaction record sharing a splitGroupId, so nothing about how existing
-                     reports/balances aggregate a normal transaction needs to change. -->
+                     row is its own Category + Amount pair, rendered as the same .split-row card as
+                     #txMainEntryCard above (see addTxSplitRow() in ledger.js) plus its own Remove
+                     button; on save every row becomes its own transaction record sharing a
+                     generated splitGroupId, so nothing about how existing reports/balances
+                     aggregate a normal transaction needs to change. v150: the old full-width
+                     "➕ Split into another category" button is now a compact round + button next
+                     to Split Total, matching the reference screenshots. -->
                 <div id="txSplitWrap" style="display:none;">
                     <div id="txSplitRows"></div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin:6px 0 12px; font-size:0.82rem; font-weight:700; color:var(--text-main);">
-                        <span>Split Total</span>
-                        <span id="txSplitTotalDisplay">—</span>
+                    <div class="split-total-row">
+                        <span style="font-size:0.82rem; font-weight:700; color:var(--text-main);">Split Total: <span id="txSplitTotalDisplay">—</span></span>
+                        <button type="button" class="split-add-btn" data-click="addTxSplitRow" title="Split into another category">+</button>
                     </div>
-                    <button type="button" class="submit-btn" style="background:#eef2ff; color:var(--primary); margin-top:0; margin-bottom:12px;" data-click="addTxSplitRow">➕ Split into another category</button>
                 </div>
 
                 <div class="form-row" id="srcAccRow">
-                    <label id="srcAccLabel">Account</label>
+                    <label id="srcAccLabel">🏦 Account</label>
                     <button type="button" id="srcAccountBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="srcAccount" data-title="Select Account">
                         <span id="srcAccountBtnText">Select account</span><span class="account-picker-chevron">▾</span>
                     </button>
                     <select id="srcAccount" style="display:none;" data-change="syncTransactionCurrency"></select>
                 </div>
                 <div class="form-row" id="destAccRow" style="display:none;">
-                    <label>To Account</label>
+                    <label>🏦 To Account</label>
                     <button type="button" id="destAccountBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="destAccount" data-title="Select Destination Account">
                         <span id="destAccountBtnText">Select account</span><span class="account-picker-chevron">▾</span>
                     </button>
@@ -2655,7 +2674,7 @@
                     <p id="txManualFxAutoHint" style="font-size:0.7rem; color:var(--text-muted); margin:0;"></p>
                 </div>
 
-                <div class="form-row"><label>Date</label><input type="date" id="txDate" required></div>
+                <div class="form-row"><label>📅 Date</label><input type="date" id="txDate" required></div>
 
                 <!-- Fixed Deposit placement terms — shown only when this entry deposits funds into an FD account -->
                 <div id="txFdFieldsWrap" style="display:none; background:#faf5ff; border:1px solid #ede9fe; border-radius:10px; padding:10px; margin-bottom:10px;">
@@ -2697,8 +2716,8 @@
                     <p id="txFdMaturityPreview" style="font-size:0.72rem; color:#6d28d9; margin-top:2px;"></p>
                 </div>
 
-                <div class="form-row" id="txDescRow"><label>Description</label><input type="text" id="txDesc" required></div>
-                <div class="form-row"><label>Notes (Optional)</label><input type="text" id="txNotes"></div>
+                <div class="form-row" id="txDescRow"><label>👤 Description</label><input type="text" id="txDesc" required></div>
+                <div class="form-row"><label>📝 Notes (Optional)</label><input type="text" id="txNotes"></div>
                 <div class="form-row">
                     <div class="toggle-switch-row">
                         <span class="toggle-switch-label">Checked</span>

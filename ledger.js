@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v150";
+        const APP_VERSION = "v151";
         const APP_VERSION_DATE = "2026-08-27";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -5989,7 +5989,7 @@
                 
                 document.getElementById("txCategory").value = tx.cat || "";
                 document.getElementById("destAccRow").style.display = tx.type === "transfer" ? "block" : "none";
-                document.getElementById("categoryRow").style.display = tx.type === "transfer" ? "none" : "block";
+                document.getElementById("categoryRow").style.display = tx.type === "transfer" ? "none" : "flex";
 
                 document.getElementById("txModalTitle").textContent = "Edit Ledger Entry";
                 document.getElementById("txSubmitBtn").textContent = "Save Changes";
@@ -6046,7 +6046,7 @@
                 }
 
                 document.getElementById("destAccRow").style.display = type === "transfer" ? "block" : "none";
-                document.getElementById("categoryRow").style.display = type === "transfer" ? "none" : "block";
+                document.getElementById("categoryRow").style.display = type === "transfer" ? "none" : "flex";
 
                 // "To Account" is a single <select> shared across every time the transaction modal
                 // is opened. It's only reset here (not on every open) because without it, a value
@@ -6150,30 +6150,40 @@
             if (type === "transfer") return;
             txSplitRowCounter++;
             const rowId = `txSplitRow_${txSplitRowCounter}`;
+            const catSelectId = `${rowId}_cat`;
             const row = document.createElement("div");
             row.className = "split-row";
             row.id = rowId;
-            // v98: restyled to match the main Amount/Category block above it (full-width Category
-            // select, then a full-width Amount field with its own calculator button) instead of the
-            // old single cramped row — see the "SPLIT STYLE MAKE SAME AS ABOVE" request. The Remove
-            // control moves up next to the Category label since there's no longer a trailing slot
-            // for it alongside Amount.
+            // v150: rebuilt to reuse the exact same markup pattern as #txMainEntryCard (Amount on
+            // top, then an icon-avatar + picker-button Category line below) instead of a
+            // differently-styled block, so every split row now looks identical to the main entry
+            // and to every other split row — see the "make main & split rows the same style"
+            // reference screenshots. Category swaps from a plain visible <select> to the same
+            // hidden-<select>-plus-picker-button pattern txCategory/srcAccount use (openAccountPicker()
+            // is generic over any select id via data-select, so this "just works" for a dynamically
+            // added row too), which is what gives it the same font size/look as the main entry
+            // instead of the OS's own oversized native dropdown. Remove is now a small round − button
+            // trailing the Category line, matching the reference's compact per-row remove control.
             row.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <label style="margin-bottom:4px;">Category</label>
-                    <button type="button" data-click="removeTxSplitRow" data-row-id="${rowId}" title="Remove this split" style="background:none; border:none; color:var(--expense-color); font-weight:700; font-size:0.78rem; padding:4px 2px; cursor:pointer;">− Remove</button>
+                <label>Amount</label>
+                <div class="split-amt-line">
+                    <input type="number" class="tx-split-amt" step="0.01" inputmode="decimal" placeholder="Amount" style="flex:1;" data-input="recalcTxSplitTotal">
+                    <button type="button" class="calc-btn" data-click="openCalcPadFor" data-target="${rowId}_amt" title="Calculator / Numpad">${CALC_ICON_SVG}</button>
                 </div>
-                <select class="form-input tx-split-cat">${buildSplitCategoryOptionsHTML(type)}</select>
-                <div style="margin-top:10px;">
-                    <label>Amount</label>
-                    <div style="display:flex; gap:6px;">
-                        <input type="number" class="tx-split-amt" step="0.01" inputmode="decimal" placeholder="Amount" style="flex:1;" data-input="recalcTxSplitTotal">
-                        <button type="button" class="calc-btn" data-click="openCalcPadFor" data-target="${rowId}_amt" title="Calculator / Numpad">${CALC_ICON_SVG}</button>
-                    </div>
+                <div class="split-row-catline">
+                    <span class="split-cat-icon" id="${catSelectId}Icon">🏷️</span>
+                    <button type="button" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="${catSelectId}" data-title="Select Category">
+                        <span id="${catSelectId}BtnText">Select category</span><span class="account-picker-chevron">▾</span>
+                    </button>
+                    <button type="button" class="split-remove-btn" data-click="removeTxSplitRow" data-row-id="${rowId}" title="Remove this split">−</button>
                 </div>
+                <select class="form-input tx-split-cat" id="${catSelectId}" style="display:none;">${buildSplitCategoryOptionsHTML(type)}</select>
             `;
             document.getElementById("txSplitRows").appendChild(row);
             row.querySelector(".tx-split-amt").id = `${rowId}_amt`;
+            // Initializes the new row's picker-button text + icon avatar from whatever its hidden
+            // <select> defaulted to (its first option), same as the main Category field does.
+            syncAccountPickerButtonText(catSelectId);
             recalcTxSplitTotal();
         }
 
@@ -8045,6 +8055,30 @@
             // field too — this only ever shows when a picker <select> has no options selected at
             // all (e.g. txCategory while Transfer is chosen, whose Category row is hidden anyway).
             btnText.textContent = opt ? opt.textContent : "Select...";
+            // v150: keeps a category picker's icon avatar (the small colored circle beside the
+            // button — see the .split-cat-icon CSS comment) in sync with whichever category is
+            // currently selected. Only category pickers have a "<selectId>Icon" element in the DOM
+            // (txCategory / each split row's <rowId>_cat), so this is a no-op for Account pickers.
+            const iconEl = document.getElementById(selectId + "Icon");
+            if (iconEl) {
+                const typeEl = document.getElementById("txType");
+                const type = (typeEl && typeEl.value === "income") ? "income" : "expense";
+                const catName = select.value;
+                iconEl.textContent = catName ? getCategoryIcon(catName, type) : "🏷️";
+                iconEl.style.background = catName ? getCategoryAvatarColor(catName) : "#eef2ff";
+            }
+        }
+
+        // v150: deterministic pastel background for a category's icon avatar circle, so different
+        // categories are visually distinguishable at a glance (matching the reference screenshots'
+        // colored icon circles) without needing a per-category color stored anywhere — same name
+        // always maps to the same palette color.
+        const CATEGORY_AVATAR_PALETTE = ["#fee2e2", "#ffedd5", "#fef9c3", "#dcfce7", "#d1fae5", "#cffafe", "#dbeafe", "#e0e7ff", "#ede9fe", "#fce7f3"];
+        function getCategoryAvatarColor(name) {
+            if (!name) return "#eef2ff";
+            let hash = 0;
+            for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+            return CATEGORY_AVATAR_PALETTE[hash % CATEGORY_AVATAR_PALETTE.length];
         }
 
         // v141: PC keyboard type-ahead for the Account picker — a native <select> lets you press

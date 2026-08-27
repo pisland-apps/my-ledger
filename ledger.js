@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v148";
+        const APP_VERSION = "v149";
         const APP_VERSION_DATE = "2026-08-27";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -910,7 +910,12 @@
         // in renderApp() for why category drill-ins must never silently inherit that one.
         let categoryDrillYear = "all";
         let categoryDrillMonth = "all";
-        let directTypeView = "all"; 
+        let directTypeView = "all";
+        // v148: month scope + one-shot year override the report card's "Total" row uses to carry
+        // its selected period onto the Savings Statement — see navigateToSavingsPage() and
+        // populateSavingsYearFilterOptions().
+        let savingsFilterMonth = "all";
+        let pendingSavingsYearOverride = null;
         // Per-account "Account Activity" year navigation (v33) — which year is currently shown,
         // and the sorted list of years that actually have a transaction for that account (used to
         // skip empty years when paging with the </> controls). Reset whenever a fresh account view
@@ -2028,13 +2033,19 @@
             renderApp();
         }
 
-        function navigateToDirectTypePage(type) {
+        // v148: year/month args let a click carry the report card tile's own selected period
+        // into the Income/Expense log (see renderReportCardTile's data-click wiring below) —
+        // reuses the same categoryDrillYear/Month mechanism the category drill-ins already use,
+        // since a page can only ever be scoped by one of activeCategoryView or directTypeView at
+        // a time. Both default to "all" so every other existing caller (Spending/Income
+        // Breakdown, etc.) keeps showing full history exactly as before.
+        function navigateToDirectTypePage(type, year = "all", month = "all") {
             workspaceScrollY = window.scrollY;
             directTypeView = type;
             activeLedgerAccountView = "all";
             activeCategoryView = "all";
-            categoryDrillYear = "all";
-            categoryDrillMonth = "all";
+            categoryDrillYear = year;
+            categoryDrillMonth = month;
             ledgerBackToPage = "workspace";
             ledgerRenderLimit = LEDGER_PAGE_SIZE;
             showPage("page-ledger");
@@ -2043,12 +2054,27 @@
             renderApp();
         }
 
-        function navigateToSavingsPage() {
+        // v148: yearOverride/month let the report card's "Total" row carry its own selected
+        // period onto the Savings Statement. yearOverride defaults to null (not "all") so a plain
+        // sidebar visit — which calls this with no args — keeps the statement's own year filter
+        // exactly as the user last left it; passing a real value (or explicit "all") forces the
+        // Year select to that value instead. savingsFilterMonth defaults back to "all" on every
+        // call so the month scope never lingers into an unrelated visit.
+        function navigateToSavingsPage(yearOverride = null, month = "all") {
             workspaceScrollY = window.scrollY;
+            savingsFilterMonth = month;
+            if (yearOverride !== null) pendingSavingsYearOverride = yearOverride;
             showPage("page-savings");
             window.scrollTo(0,0);
             pushVirtualState("savings");
             renderApp();
+        }
+
+        // Clears just the report-card-driven month scope on the Savings Statement, leaving the
+        // page's own Year filter as-is — the small "Clear" link shown next to the period badge.
+        function clearSavingsMonthScope() {
+            savingsFilterMonth = "all";
+            renderSavingsStatement();
         }
 
         // --- FINANCIAL REPORT CARD (v147) ---
@@ -2106,6 +2132,36 @@
                 else if (t.type === "expense") expense += tBase;
             });
             return { income, expense, label };
+        }
+
+        // v148: converts a tile's period key into the {year, month} args navigateToDirectTypePage/
+        // navigateToSavingsPage expect (year as a full-year string or "all"; month as a 0-indexed
+        // string or "all") — so clicking Income/Expense/Total on a report card tile carries that
+        // exact tile's selected period into the log/statement it opens, instead of always showing
+        // full history regardless of what the tile was scoped to.
+        function getReportCardDrillArgs(periodKey) {
+            const { start } = getReportCardPeriodRange(periodKey);
+            const startDate = new Date(start);
+            if (periodKey === "thisMonth" || periodKey === "lastMonth") {
+                return { year: startDate.getFullYear().toString(), month: startDate.getMonth().toString() };
+            }
+            // "thisYear" / "lastYear" (and the fallback for any unrecognised value)
+            return { year: startDate.getFullYear().toString(), month: "all" };
+        }
+
+        // Data-click handlers for the report card tiles' Income/Expense/Total rows (index.html) —
+        // read which tile (cardNum) and which of its own period selects was chosen, then hand off
+        // to the real navigation functions with that period attached.
+        function reportCardClickDirectType(el) {
+            const period = el.dataset.cardnum === "1" ? reportCardPeriod1 : reportCardPeriod2;
+            const { year, month } = getReportCardDrillArgs(period);
+            navigateToDirectTypePage(el.dataset.type, year, month);
+        }
+
+        function reportCardClickTotal(el) {
+            const period = el.dataset.cardnum === "1" ? reportCardPeriod1 : reportCardPeriod2;
+            const { year, month } = getReportCardDrillArgs(period);
+            navigateToSavingsPage(year, month);
         }
 
         function populateReportCardPeriodSelect(selectId, currentValue) {
@@ -8550,7 +8606,15 @@
                 document.getElementById("ledgerTargetTitle").textContent = `${icon} ${activeCategoryView.toUpperCase()}${periodSuffix}`;
                 document.getElementById("ledgerTargetEditBtn").style.display = "none";
             } else if (directTypeView !== "all") {
-                document.getElementById("ledgerTargetTitle").textContent = `All ${directTypeView.charAt(0).toUpperCase() + directTypeView.slice(1)} Log`;
+                // v148: same period-suffix treatment as the category branch above, for the report
+                // card's Income/Expense clicks (categoryDrillYear/Month "all" when reached any
+                // other way, so this reads exactly as before for those).
+                const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                let periodSuffix = "";
+                if (categoryDrillMonth !== "all" && categoryDrillYear !== "all") periodSuffix = ` · ${monthNames[parseInt(categoryDrillMonth)]} ${categoryDrillYear}`;
+                else if (categoryDrillYear !== "all") periodSuffix = ` · ${categoryDrillYear}`;
+                else if (categoryDrillMonth !== "all") periodSuffix = ` · ${monthNames[parseInt(categoryDrillMonth)]} (All Years)`;
+                document.getElementById("ledgerTargetTitle").textContent = `All ${directTypeView.charAt(0).toUpperCase() + directTypeView.slice(1)} Log${periodSuffix}`;
                 document.getElementById("ledgerTargetEditBtn").style.display = "none";
             } else if (activeLedgerAccountView === "all") {
                 document.getElementById("ledgerTargetTitle").textContent = "Portfolio General Log";
@@ -8694,6 +8758,14 @@
                 // with per-currency summary rows further down instead.
                 if (isMultiCurrencyAccountView) return;
 
+                // v148: was missing entirely — every branch below that checks a year/month filter
+                // (categoryDrillYear/Month, portfolioLedgerYear) reads `d`, but nothing declared
+                // it in this scope, so any drill-in that actually set one of those to a real value
+                // (e.g. clicking a category from a year-filtered Savings Statement) threw
+                // "d is not defined" and silently broke this render. Needed now regardless, since
+                // the report card's Income/Expense/Total clicks (below) rely on the same check.
+                const d = new Date(t.date);
+
                 let isBound = false;
                 if (activeCategoryView !== "all") {
                     // v85: categoryDrillYear/Month carry the year/month filter that was active on
@@ -8704,7 +8776,12 @@
                         && (categoryDrillYear === "all" || d.getFullYear().toString() === categoryDrillYear)
                         && (categoryDrillMonth === "all" || d.getMonth().toString() === categoryDrillMonth);
                 } else if (directTypeView !== "all") {
-                    isBound = t.type === directTypeView;
+                    // v148: categoryDrillYear/Month also carry the report card tile's period here
+                    // (see navigateToDirectTypePage) — "all" when reached any other way, so every
+                    // other existing Income/Expense drill-in still shows full history unchanged.
+                    isBound = t.type === directTypeView
+                        && (categoryDrillYear === "all" || d.getFullYear().toString() === categoryDrillYear)
+                        && (categoryDrillMonth === "all" || d.getMonth().toString() === categoryDrillMonth);
                 } else if (activeLedgerAccountView !== "all") {
                     // Year-scoped Account Activity view (v33) — only this account's transactions
                     // dated within the currently selected year (accountLedgerYear).
@@ -8944,6 +9021,17 @@
             select.innerHTML = `<option value="all">All Years</option>` +
                 sortedYears.map(y => `<option value="${y}">${y}</option>`).join("");
 
+            // v148: report card "Total" click forcing a specific year takes priority over both
+            // the first-load default and the normal preserve-selection-across-renders behaviour
+            // below — one-shot, cleared immediately so it doesn't stick past this render.
+            if (pendingSavingsYearOverride !== null) {
+                const preset = pendingSavingsYearOverride;
+                pendingSavingsYearOverride = null;
+                select.value = (preset === "all" || sortedYears.map(String).includes(preset)) ? preset : "all";
+                savingsYearFilterInitialized = true;
+                return;
+            }
+
             if (!savingsYearFilterInitialized) {
                 select.value = "all";
                 savingsYearFilterInitialized = true;
@@ -9057,6 +9145,18 @@
             populateSavingsYearFilterOptions(txs);
             const filterY = document.getElementById("savingsYearFilter").value;
 
+            // v148: small "Filtered: <Month Year> · Clear" badge for the report card's Total
+            // click — only ever visible when savingsFilterMonth is set, i.e. reached that way.
+            const monthScopeBadge = document.getElementById("savingsMonthScopeBadge");
+            if (savingsFilterMonth !== "all") {
+                const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+                const yearLabel = filterY !== "all" ? filterY : new Date().getFullYear();
+                document.getElementById("savingsMonthScopeBadgeText").textContent = `Filtered: ${monthNames[parseInt(savingsFilterMonth)]} ${yearLabel}`;
+                monthScopeBadge.style.display = "flex";
+            } else {
+                monthScopeBadge.style.display = "none";
+            }
+
             const currentIncomeCategories = [...new Set([...dynamicCategories.filter(c => c.type === "income").map(c => c.name), "Salary", "Investments", "Freelance", "Other Income"])];
             const currentExpenseCategories = [...new Set([...dynamicCategories.filter(c => c.type === "expense").map(c => c.name), "Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"])];
 
@@ -9076,6 +9176,10 @@
             let incBaseTotal = 0, expBaseTotal = 0;
             txs.forEach(t => {
                 if (filterY !== "all" && new Date(t.date).getFullYear().toString() !== filterY) return;
+                // v148: report card "Total" click may also carry a specific month (see
+                // navigateToSavingsPage/savingsFilterMonth) — "all" the rest of the time, so this
+                // page filters by year alone exactly as before for every other visit.
+                if (savingsFilterMonth !== "all" && new Date(t.date).getMonth().toString() !== savingsFilterMonth) return;
 
                 const tBase = convertTxAmountToBase(t, accounts);
                 if (t.type === "income" && t.isRefund) {
@@ -10135,6 +10239,9 @@
             openCurrencyConfig: () => openCurrencyConfig(),
             lockAppNow: () => lockAppNow(),
             navigateToSavingsPage: () => navigateToSavingsPage(),
+            reportCardClickDirectType: (el) => reportCardClickDirectType(el),
+            reportCardClickTotal: (el) => reportCardClickTotal(el),
+            clearSavingsMonthScope: () => clearSavingsMonthScope(),
             navigateToAccountsPage: () => navigateToAccountsPage(),
             navigateToCategoriesPage: () => navigateToCategoriesPage(),
             navigateToBackupPage: () => navigateToBackupPage(),

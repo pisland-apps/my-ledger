@@ -1406,15 +1406,15 @@
                 <div class="report-card-mini-body">
                     <div id="reportCardDonut1" class="report-card-mini-donut"></div>
                     <div class="report-card-mini-stats">
-                        <div class="report-card-mini-row" data-click="navigateToDirectTypePage" data-type="income">
+                        <div class="report-card-mini-row" data-click="reportCardClickDirectType" data-type="income" data-cardnum="1">
                             <span class="report-card-mini-label" style="color:#15803d;">Income</span>
                             <span class="report-card-mini-value" id="reportCardIncome1" style="color:#15803d;">0.00</span>
                         </div>
-                        <div class="report-card-mini-row" data-click="navigateToDirectTypePage" data-type="expense">
+                        <div class="report-card-mini-row" data-click="reportCardClickDirectType" data-type="expense" data-cardnum="1">
                             <span class="report-card-mini-label" style="color:#b91c1c;">Expense</span>
                             <span class="report-card-mini-value" id="reportCardExpense1" style="color:#b91c1c;">0.00</span>
                         </div>
-                        <div class="report-card-mini-row report-card-mini-total" data-click="navigateToSavingsPage">
+                        <div class="report-card-mini-row report-card-mini-total" data-click="reportCardClickTotal" data-cardnum="1">
                             <span class="report-card-mini-label">Total</span>
                             <span class="report-card-mini-value" id="reportCardTotal1">0.00</span>
                         </div>
@@ -1429,15 +1429,15 @@
                 <div class="report-card-mini-body">
                     <div id="reportCardDonut2" class="report-card-mini-donut"></div>
                     <div class="report-card-mini-stats">
-                        <div class="report-card-mini-row" data-click="navigateToDirectTypePage" data-type="income">
+                        <div class="report-card-mini-row" data-click="reportCardClickDirectType" data-type="income" data-cardnum="2">
                             <span class="report-card-mini-label" style="color:#15803d;">Income</span>
                             <span class="report-card-mini-value" id="reportCardIncome2" style="color:#15803d;">0.00</span>
                         </div>
-                        <div class="report-card-mini-row" data-click="navigateToDirectTypePage" data-type="expense">
+                        <div class="report-card-mini-row" data-click="reportCardClickDirectType" data-type="expense" data-cardnum="2">
                             <span class="report-card-mini-label" style="color:#b91c1c;">Expense</span>
                             <span class="report-card-mini-value" id="reportCardExpense2" style="color:#b91c1c;">0.00</span>
                         </div>
-                        <div class="report-card-mini-row report-card-mini-total" data-click="navigateToSavingsPage">
+                        <div class="report-card-mini-row report-card-mini-total" data-click="reportCardClickTotal" data-cardnum="2">
                             <span class="report-card-mini-label">Total</span>
                             <span class="report-card-mini-value" id="reportCardTotal2">0.00</span>
                         </div>
@@ -1881,6 +1881,13 @@
             <select id="savingsYearFilter" data-change="resetSavingsPageAndRender">
                 <option value="all">All Years</option>
             </select>
+        </div>
+
+        <!-- v148: shown only after reaching this page via the dashboard report card's "Total"
+             row on a month-based tile (This Month/Last Month) — see savingsFilterMonth. -->
+        <div id="savingsMonthScopeBadge" style="display:none; align-items:center; justify-content:space-between; gap:8px; background:#f5f3ff; border:1.5px solid var(--primary); border-radius:10px; padding:8px 12px; margin-bottom:12px; font-size:0.78rem; font-weight:700; color:var(--primary);">
+            <span id="savingsMonthScopeBadgeText"></span>
+            <button type="button" class="trash-btn" data-click="clearSavingsMonthScope" style="padding:2px 8px; font-size:0.7rem;">Clear</button>
         </div>
 
 

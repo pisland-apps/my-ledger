@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v145";
+        const APP_VERSION = "v146";
         const APP_VERSION_DATE = "2026-08-27";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2442,6 +2442,7 @@
             const select = document.getElementById("defaultPaymentAccountSelect");
             select.innerHTML = `<option value="">(None)</option>` + accounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a, accounts))} (${escapeHtml(a.currency || a.type)})</option>`).join("");
             select.value = accounts.some(a => a.id === defaultPaymentAccount) ? defaultPaymentAccount : "";
+            syncAccountPickerButtonText("defaultPaymentAccountSelect");
         }
 
         async function saveDefaultPaymentAccount() {
@@ -2460,6 +2461,7 @@
             const select = document.getElementById("defaultReceiveAccountSelect");
             select.innerHTML = `<option value="">(None)</option>` + accounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a, accounts))} (${escapeHtml(a.currency || a.type)})</option>`).join("");
             select.value = accounts.some(a => a.id === defaultReceiveAccount) ? defaultReceiveAccount : "";
+            syncAccountPickerButtonText("defaultReceiveAccountSelect");
         }
 
         async function saveDefaultReceiveAccount() {
@@ -5337,6 +5339,8 @@
 
             incSelect.value = incomeNames.includes(defaultIncomeCategory) ? defaultIncomeCategory : "";
             expSelect.value = expenseNames.includes(defaultExpenseCategory) ? defaultExpenseCategory : "";
+            syncAccountPickerButtonText("defaultIncomeCategorySelect");
+            syncAccountPickerButtonText("defaultExpenseCategorySelect");
         }
 
         async function saveDefaultCategories() {

@@ -139,6 +139,13 @@
             gap: 8px;
         }
 
+        /* v158: single flex cluster for Base/Save/Lock — see markup comment above for why. */
+        .header-controls-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
         /* v157: "Financial Assets vs Real Estate" split row, shown directly under the Portfolio
            Net Worth figure — only when at least one Real Estate account exists (see
            netWorthSplitRow toggling in renderApp()). Deliberately flat/high-contrast, no
@@ -1606,11 +1613,18 @@
                     <h1 id="netWorthDisplay">0.00</h1>
                     <p style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">Portfolio Net Worth</p>
                 </div>
-                <button class="currency-pill" data-click="openCurrencyConfig">
-                    Base: <span id="currentBasePill">USD</span> ⚙
-                </button>
-                <button class="lock-btn-header" title="Export &amp; Import" aria-label="Export and Import" data-click="navigateToBackupPageFromDashboard">💾</button>
-                <button class="lock-btn-header" title="Lock app now" data-click="lockAppNow">🔒</button>
+                <!-- v158: Base/Save/Lock grouped into one flex cluster (was 3 separate flex
+                     children of .net-worth-container) so that when the net-worth text pushes
+                     them onto a second line on narrow screens, they wrap down as one tight unit
+                     instead of `justify-content: space-between` spreading them across the full
+                     width with a big empty gap between the pill and the icons. -->
+                <div class="header-controls-group">
+                    <button class="currency-pill" data-click="openCurrencyConfig">
+                        Base: <span id="currentBasePill">USD</span> ⚙
+                    </button>
+                    <button class="lock-btn-header" title="Export &amp; Import" aria-label="Export and Import" data-click="navigateToBackupPageFromDashboard">💾</button>
+                    <button class="lock-btn-header" title="Lock app now" data-click="lockAppNow">🔒</button>
+                </div>
             </div>
 
             <!-- v157: Financial Assets / Real Estate split — only shown when at least one Real

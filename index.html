@@ -139,7 +139,10 @@
             gap: 8px;
         }
 
-        /* v158: single flex cluster for Base/Save/Lock — see markup comment above for why. */
+        /* v160: single flex cluster for Base/Save/Lock, now living in the top-bar row (see
+           .top-bar-left comment above) — was originally under net-worth-container in v158, moved
+           up so the whole cluster sits at the top-right corner next to "☰ Ledger" instead of on
+           its own row below the net-worth figure. */
         .header-controls-group {
             display: flex;
             align-items: center;
@@ -567,8 +570,18 @@
         .top-bar {
             display: flex;
             align-items: center;
-            gap: 12px;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
             margin-bottom: 14px;
+        }
+        /* v160: left cluster (hamburger + title) — kept as one flex item alongside
+           .header-controls-group so `justify-content: space-between` on .top-bar pins them to
+           opposite corners instead of spreading all children evenly. */
+        .top-bar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
         .hamburger-btn {
             background: var(--card-bg);
@@ -1604,26 +1617,27 @@
     <!-- ================= PAGE 1: PORTFOLIO MAIN WORKSPACE ================= -->
     <div id="page-workspace" class="page">
         <header>
+            <!-- v160: Base/Save/Lock moved from net-worth-container up into the top-bar row,
+                 grouped as one cluster on the right so it sits at the top-right corner next to
+                 "☰ Ledger" (space-between between the two clusters) instead of on its own row
+                 below the net-worth figure. -->
             <div class="top-bar">
-                <button class="hamburger-btn" data-click="openSidebar" aria-label="Open menu">☰</button>
-                <span class="top-bar-title">Ledger</span>
-            </div>
-            <div class="net-worth-container">
-                <div>
-                    <h1 id="netWorthDisplay">0.00</h1>
-                    <p style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">Portfolio Net Worth</p>
+                <div class="top-bar-left">
+                    <button class="hamburger-btn" data-click="openSidebar" aria-label="Open menu">☰</button>
+                    <span class="top-bar-title">Ledger</span>
                 </div>
-                <!-- v158: Base/Save/Lock grouped into one flex cluster (was 3 separate flex
-                     children of .net-worth-container) so that when the net-worth text pushes
-                     them onto a second line on narrow screens, they wrap down as one tight unit
-                     instead of `justify-content: space-between` spreading them across the full
-                     width with a big empty gap between the pill and the icons. -->
                 <div class="header-controls-group">
                     <button class="currency-pill" data-click="openCurrencyConfig">
                         Base: <span id="currentBasePill">USD</span> ⚙
                     </button>
                     <button class="lock-btn-header" title="Export &amp; Import" aria-label="Export and Import" data-click="navigateToBackupPageFromDashboard">💾</button>
                     <button class="lock-btn-header" title="Lock app now" data-click="lockAppNow">🔒</button>
+                </div>
+            </div>
+            <div class="net-worth-container">
+                <div>
+                    <h1 id="netWorthDisplay">0.00</h1>
+                    <p style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">Portfolio Net Worth</p>
                 </div>
             </div>
 

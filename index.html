@@ -146,7 +146,7 @@
         .header-controls-group {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
 
         /* v157: "Financial Assets vs Real Estate" split row, shown directly under the Portfolio
@@ -197,7 +197,9 @@
         .currency-pill {
             background: #f1f5f9;
             border: 1px solid var(--border-color);
-            padding: 12px 14px; /* Enlarged touch target for mobile */
+            padding: 9px 10px; /* v160: tightened from 12px 14px to help the top-bar's right-hand
+                                  cluster (pill + save + lock) fit on one line on narrow phones —
+                                  still a reasonable touch target. */
             border-radius: 8px;
             font-size: 0.75rem;
             font-weight: 700;
@@ -1373,7 +1375,11 @@
             padding: 10px;
         }
         .lock-btn-header {
-            background: none; border: none; font-size: 1.2rem; cursor: pointer; padding: 6px; margin-left: 4px;
+            /* v160: dropped the 4px margin-left — .header-controls-group's own `gap` already
+               spaces these out, so the margin was adding redundant width on top of that gap,
+               part of why the cluster didn't fit on one line on narrow phones. Padding trimmed
+               6px → 5px for the same reason. */
+            background: none; border: none; font-size: 1.2rem; cursor: pointer; padding: 5px;
         }
         .numpad-grid {
             display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;
@@ -1627,8 +1633,8 @@
                     <span class="top-bar-title">Ledger</span>
                 </div>
                 <div class="header-controls-group">
-                    <button class="currency-pill" data-click="openCurrencyConfig">
-                        Base: <span id="currentBasePill">USD</span> ⚙
+                    <button class="currency-pill" data-click="openCurrencyConfig" title="Base currency" aria-label="Base currency">
+                        <span id="currentBasePill">USD</span> ⚙
                     </button>
                     <button class="lock-btn-header" title="Export &amp; Import" aria-label="Export and Import" data-click="navigateToBackupPageFromDashboard">💾</button>
                     <button class="lock-btn-header" title="Lock app now" data-click="lockAppNow">🔒</button>

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v154";
+        const APP_VERSION = "v155";
         const APP_VERSION_DATE = "2026-08-27";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7425,7 +7425,12 @@
             const memberSelect = document.getElementById("salaryMemberSelect");
             memberSelect.innerHTML = `<option value="all">All Members (show every account)</option>`;
             membersCache.forEach(m => { memberSelect.innerHTML += `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`; });
-            memberSelect.value = "all";
+            // v155: when the household only has one member set up, there's no real choice to make —
+            // auto-select that member instead of defaulting to "All Members", and run the same
+            // smart-default logic a manual pick would trigger (Bank Account / EPF-CPF Account
+            // nudged toward that member's own accounts). With 2+ members "All Members" remains the
+            // safer default since guessing which one just got paid isn't possible.
+            memberSelect.value = membersCache.length === 1 ? membersCache[0].id : "all";
 
             document.getElementById("salaryScheme").value = "none";
             document.getElementById("salaryGross").value = "";
@@ -7449,13 +7454,15 @@
             populateSalaryAccountSelects(accounts);
             // Bank Account defaults to Default Receive Account, if one is set and still exists —
             // same setting the ordinary Income form now also defaults to (see openTransactionForm()).
-            // Member defaults to "All Members" when the form first opens, so this is the only
-            // default in play at this point; picking a specific Member afterward may still nudge
-            // it further via handleSalaryMemberChange()'s own smart-default logic.
             if (defaultReceiveAccount && accounts.some(a => a.id === defaultReceiveAccount)) {
                 document.getElementById("salaryBankAccount").value = defaultReceiveAccount;
                 syncAccountPickerButtonText("salaryBankAccount");
             }
+            // Member defaults to "All Members" unless the household only has one member (handled
+            // above), in which case run the same smart-default logic a manual pick would trigger —
+            // nudging Bank Account / EPF-CPF Account toward that member's own accounts. Picking a
+            // different Member afterward re-runs this via handleSalaryMemberChange() either way.
+            if (memberSelect.value !== "all") await handleSalaryMemberChange();
             await handleSalarySchemeChange();
             recalcSalaryPreview();
             openModal("salaryModal");

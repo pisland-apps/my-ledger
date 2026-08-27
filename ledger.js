@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v149";
+        const APP_VERSION = "v150";
         const APP_VERSION_DATE = "2026-08-27";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -167,6 +167,17 @@
         function currencyBadgeHTML(code) {
             const { bg, fg } = currencyBadgeColor(code);
             return `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:${bg}; color:${fg}; font-weight:bold;">${escapeHtml(code)}</span>`;
+        }
+
+        // v150: same deterministic hash-to-palette approach as currencyBadgeColor() above, for the
+        // big round category icon on each Transactions list row — same category always gets the
+        // same background color, without needing a new per-category color field/UI.
+        const CATEGORY_ICON_BG_PALETTE = ["#fee2e2", "#ffedd5", "#fef3c7", "#ecfccb", "#dcfce7", "#ccfbf1", "#cffafe", "#dbeafe", "#e0e7ff", "#ede9fe", "#fae8ff", "#ffe4e6"];
+        function categoryIconBgColor(name) {
+            let hash = 0;
+            const str = String(name || "");
+            for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+            return CATEGORY_ICON_BG_PALETTE[hash % CATEGORY_ICON_BG_PALETTE.length];
         }
 
         // v80: formats a Date object as a "YYYY-MM-DD" calendar-date string using its LOCAL
@@ -8839,12 +8850,11 @@
                 const iconBadge = t.type === "transfer"
                     ? "🔄"
                     : (splitInfo ? splitInfo.members.map(m => getCategoryIcon(m.cat, t.type)).join("") : getCategoryIcon(t.cat, t.type));
-                // v88: a small ✅ overlay on the category icon flags a transaction the user has
-                // already reconciled against a bank/card statement (see the Checked toggle in
-                // Quick View / the entry form) — purely a visual cue, no effect on any total.
-                const checkedIconHTML = t.checked
-                    ? `<span title="Checked" style="display:inline-block; position:relative; margin-right:2px;">${iconBadge}<span style="position:absolute; bottom:-4px; right:-6px; font-size:0.6rem; background:#15803d; color:white; border-radius:50%; width:13px; height:13px; line-height:13px; text-align:center;">✓</span></span>`
-                    : iconBadge;
+                // v88: a small ✅ overlay flags a transaction the user has already reconciled
+                // against a bank/card statement (see the Checked toggle in Quick View / the entry
+                // form) — purely a visual cue, no effect on any total. v150: moved from an inline
+                // overlay on the small text-line icon (checkedIconHTML) onto the big tx-icon-circle
+                // instead — see txCheckOverlay below.
                 const refundBadge = t.isRefund
                     ? `<span style="font-size:0.62rem; font-weight:700; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">↩️ Refund</span>`
                     : '';
@@ -8916,20 +8926,35 @@
                 // above — so it's surfaced right on the row here too, not just inside Quick View.
                 const notesLine = t.notes ? `<span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted); font-style:italic;">${escapeHtml(t.notes)}</span>` : '';
 
+                // v150: the category icon now shows big, in its own colored circle beside the
+                // details (reference: a competing budget app's Transactions list) — checkedIconHTML
+                // above still holds the emoji (+ ✅ checkmark overlay when reconciled), just moved
+                // out of the title text into txIconCircleHTML below. Transfers get a neutral
+                // lavender circle since they aren't tied to any one category.
+                const txIconBg = t.type === "transfer" ? "#e0e7ff" : categoryIconBgColor(splitInfo ? splitInfo.catLabel : (t.cat || t.type));
+                const txCheckOverlay = t.checked
+                    ? `<span style="position:absolute; bottom:-2px; right:-2px; font-size:0.55rem; background:#15803d; color:white; border-radius:50%; width:14px; height:14px; line-height:14px; text-align:center; border:2px solid var(--card-bg);">✓</span>`
+                    : '';
+                const txIconCircleHTML = `<div class="tx-icon-circle" style="background:${txIconBg};"><span style="line-height:1;">${iconBadge}</span>${txCheckOverlay}</div>`;
+
                 ledgerHTML += `
-                    <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
-                        <div class="item-left">
-                            <span class="item-name">${checkedIconHTML} ${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}${refundBadge}</span>
-                            <span class="item-meta">${t.date} [${escapeHtml(splitInfo ? splitInfo.catLabel : (t.cat || 'Transfer'))}]${referenceText}${maturityText}${receiptBadge}</span>
-                            <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">${accountText}</span>
-                            ${notesLine}
-                        </div>
-                        <div class="item-right">
-                            <div class="item-value" style="color:var(--${col}); font-weight: bold;">
-                                ${displayAmountHTML}
-                                ${sub}
+                    <div class="ledger-item ledger-item-tx" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
+                        ${txIconCircleHTML}
+                        <div class="tx-row-body">
+                            <div class="item-left">
+                                <span class="item-name">${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}${refundBadge}</span>
+                                <span class="item-meta">${t.date} [${escapeHtml(splitInfo ? splitInfo.catLabel : (t.cat || 'Transfer'))}]${referenceText}${maturityText}${receiptBadge}</span>
+                                <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">${accountText}</span>
+                                ${notesLine}
+                            </div>
+                            <div class="item-right">
+                                <div class="item-value" style="color:var(--${col}); font-weight: bold;">
+                                    ${displayAmountHTML}
+                                    ${sub}
+                                </div>
                             </div>
                         </div>
+                        <span class="tx-side-bar" style="background:var(--${col});"></span>
                     </div>
                 `;
             });

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v153";
+        const APP_VERSION = "v154";
         const APP_VERSION_DATE = "2026-08-27";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7630,7 +7630,7 @@
             // Backpay Note only makes sense once there's a Backpay amount to attach it to —
             // hidden (not cleared) when Backpay drops back to 0, so re-entering an amount
             // restores whatever note was already typed.
-            document.getElementById("salaryBackpayNoteRow").style.display = backpay > 0 ? "block" : "none";
+            document.getElementById("salaryBackpayNoteRow").style.display = backpay > 0 ? "flex" : "none";
         }
 
         // Saves 1–3 ordinary Income transactions (Bank leg always; EE/ER legs only when a

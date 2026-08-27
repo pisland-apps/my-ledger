@@ -3027,9 +3027,9 @@
             </div>
 
             <div class="form-row-inline">
-                <div>
-                    <label>Date</label>
-                    <input type="date" id="salaryDate" required>
+                <div class="form-row-icon">
+                    <span class="field-icon" aria-hidden="true">📅</span>
+                    <input type="date" id="salaryDate" required aria-label="Date">
                 </div>
                 <div>
                     <label>Scheme</label>
@@ -3041,14 +3041,14 @@
                 </div>
             </div>
 
-            <div class="form-row">
-                <label>Description</label>
-                <input type="text" id="salaryDesc" placeholder="e.g. August 2026 Salary">
+            <div class="form-row form-row-icon">
+                <span class="field-icon" aria-hidden="true">👤</span>
+                <input type="text" id="salaryDesc" placeholder="e.g. August 2026 Salary" aria-label="Description">
             </div>
 
-            <div class="form-row">
-                <label>Bank Account</label>
-                <button type="button" id="salaryBankAccountBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="salaryBankAccount" data-title="Select Bank Account">
+            <div class="form-row form-row-icon">
+                <span class="field-icon" aria-hidden="true">🏦</span>
+                <button type="button" id="salaryBankAccountBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="salaryBankAccount" data-title="Select Bank Account" aria-label="Bank Account">
                     <span id="salaryBankAccountBtnText">Select account</span><span class="account-picker-chevron">▾</span>
                 </button>
                 <select id="salaryBankAccount" style="display:none;"></select>
@@ -3067,36 +3067,36 @@
                 <select id="salaryContribAccount" style="display:none;"></select>
             </div>
 
-            <div class="form-row">
-                <label>Gross Salary</label>
-                <input type="number" id="salaryGross" step="0.01" min="0" inputmode="decimal" placeholder="0.00" data-input="recalcSalaryPreview">
+            <div class="form-row form-row-icon">
+                <span class="field-icon" aria-hidden="true">💵</span>
+                <input type="number" id="salaryGross" step="0.01" min="0" inputmode="decimal" placeholder="0.00" aria-label="Gross Salary" data-input="recalcSalaryPreview">
             </div>
 
             <div class="form-row-inline">
-                <div>
-                    <label>🏠 Housing Allowance</label>
-                    <input type="number" id="salaryHousingAllowance" step="0.01" min="0" inputmode="decimal" placeholder="0.00" data-input="recalcSalaryPreview">
+                <div class="form-row-icon">
+                    <span class="field-icon" aria-hidden="true">🏠</span>
+                    <input type="number" id="salaryHousingAllowance" step="0.01" min="0" inputmode="decimal" placeholder="0.00" aria-label="Housing Allowance" data-input="recalcSalaryPreview">
                 </div>
-                <div>
-                    <label>📱 Handphone Claim</label>
-                    <input type="number" id="salaryHandphoneClaim" step="0.01" min="0" inputmode="decimal" placeholder="0.00" data-input="recalcSalaryPreview">
+                <div class="form-row-icon">
+                    <span class="field-icon" aria-hidden="true">📱</span>
+                    <input type="number" id="salaryHandphoneClaim" step="0.01" min="0" inputmode="decimal" placeholder="0.00" aria-label="Handphone Claim" data-input="recalcSalaryPreview">
                 </div>
             </div>
 
             <div class="form-row-inline">
-                <div>
-                    <label>✈️ Overseas Allowance</label>
-                    <input type="number" id="salaryOverseasAllowance" step="0.01" min="0" inputmode="decimal" placeholder="0.00" data-input="recalcSalaryPreview">
+                <div class="form-row-icon">
+                    <span class="field-icon" aria-hidden="true">✈️</span>
+                    <input type="number" id="salaryOverseasAllowance" step="0.01" min="0" inputmode="decimal" placeholder="0.00" aria-label="Overseas Allowance" data-input="recalcSalaryPreview">
                 </div>
-                <div>
-                    <label>🕒 Backpay</label>
-                    <input type="number" id="salaryBackpay" step="0.01" min="0" inputmode="decimal" placeholder="0.00" data-input="recalcSalaryPreview">
+                <div class="form-row-icon">
+                    <span class="field-icon" aria-hidden="true">🕒</span>
+                    <input type="number" id="salaryBackpay" step="0.01" min="0" inputmode="decimal" placeholder="0.00" aria-label="Backpay" data-input="recalcSalaryPreview">
                 </div>
             </div>
 
-            <div class="form-row" id="salaryBackpayNoteRow" style="display:none;">
-                <label>Backpay Note (optional)</label>
-                <input type="text" id="salaryBackpayNote" placeholder="e.g. Nov 2025 – Jan 2026 salary revision">
+            <div class="form-row form-row-icon" id="salaryBackpayNoteRow" style="display:none;">
+                <span class="field-icon" aria-hidden="true">📝</span>
+                <input type="text" id="salaryBackpayNote" placeholder="Backpay Note (Optional) — e.g. Nov 2025 – Jan 2026 salary revision" aria-label="Backpay Note (Optional)">
             </div>
 
             <div class="form-row-inline" id="salaryContribRow" style="display:none;">

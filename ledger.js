@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v144";
-        const APP_VERSION_DATE = "2026-08-26";
+        const APP_VERSION = "v145";
+        const APP_VERSION_DATE = "2026-08-27";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -1204,32 +1204,44 @@
             const typeCats = dynamicCategories.filter(c => c.type === type);
             const mains = typeCats.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
 
-            let html = "";
+            // v145: each entry (a Main Category block, or a leftover flat name) is built as
+            // {name, html} and ALL entries are sorted together by name at the end, instead of
+            // emitting every Main Category block first and appending leftover/fallback names
+            // afterward in their own separate sorted run. The old two-pass approach produced two
+            // back-to-back alphabetical sequences in the rendered <select> (e.g. ...Unknown, Vehicle
+            // Expenses, then restarting at Commute, Dining Out...) which read as broken sorting even
+            // though each pass was individually sorted. A Main Category's sort position uses its own
+            // name even when it renders as an <optgroup> (so "Vehicle Expenses" sorts under V).
             const covered = new Set();
+            const entries = [];
 
             mains.forEach(main => {
                 if (!allNames.has(main.name)) return;
                 const subs = typeCats.filter(c => c.parentId === main.id && allNames.has(c.name)).sort((a, b) => a.name.localeCompare(b.name));
                 covered.add(main.name);
                 subs.forEach(s => covered.add(s.name));
+                let html;
                 if (subs.length) {
-                    html += `<optgroup label="${main.icon} ${escapeHtml(main.name)}">`;
+                    html = `<optgroup label="${main.icon} ${escapeHtml(main.name)}">`;
                     html += `<option value="${escapeHtml(main.name)}">${main.icon} ${escapeHtml(main.name)} (General)</option>`;
                     subs.forEach(s => { html += `<option value="${escapeHtml(s.name)}">${s.icon} ${escapeHtml(s.name)}</option>`; });
                     html += `</optgroup>`;
                 } else {
-                    html += `<option value="${escapeHtml(main.name)}">${main.icon} ${escapeHtml(main.name)}</option>`;
+                    html = `<option value="${escapeHtml(main.name)}">${main.icon} ${escapeHtml(main.name)}</option>`;
                 }
+                entries.push({ name: main.name, html });
             });
 
             // Anything left over — legacy/fallback names with no matching category record, or a
             // Subcategory whose parent record is missing from `allNames` for some reason — still
-            // gets shown, as a flat top-level option, rather than silently disappearing.
-            [...allNames].filter(n => !covered.has(n)).sort((a, b) => a.localeCompare(b)).forEach(n => {
-                html += `<option value="${escapeHtml(n)}">${getCategoryIcon(n, type)} ${escapeHtml(n)}</option>`;
+            // gets shown, as a flat top-level option, rather than silently disappearing. Now merged
+            // into the same sorted `entries` array rather than tacked on after.
+            [...allNames].filter(n => !covered.has(n)).forEach(n => {
+                entries.push({ name: n, html: `<option value="${escapeHtml(n)}">${getCategoryIcon(n, type)} ${escapeHtml(n)}</option>` });
             });
 
-            return html;
+            entries.sort((a, b) => a.name.localeCompare(b.name));
+            return entries.map(e => e.html).join("");
         }
 
         // v91: Split Expenses groups (see collectTxSplitRows()/saveTransactionSubmit() around the

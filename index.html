@@ -1012,6 +1012,14 @@
         .form-row { margin-bottom: 12px; }
         .form-row-inline { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
         label { display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; }
+        /* Icon-beside-field rows (Account / Date / Description / Notes on the transaction form) —
+           an icon sits to the left of the field itself instead of as text inside a label above it,
+           matching the reference mobile-app layout. Text labels are dropped in favor of the icon
+           (Account/Date already show a real value) or a placeholder inside the field itself
+           (Description/Notes, which are empty until typed into). */
+        .form-row-icon { display: flex; align-items: center; gap: 10px; }
+        .form-row-icon .field-icon { flex: 0 0 22px; text-align: center; font-size: 1.05rem; line-height: 1; color: var(--text-muted); }
+        .form-row-icon input, .form-row-icon .account-picker-btn { flex: 1 1 auto !important; width: auto !important; min-width: 0; margin: 0; }
         input, select.form-input { width: 100%; padding: 12px; border: 1.5px solid var(--border-color); border-radius: 8px; font-size: 0.9rem; background: #f8fafc; height: 44px; }
         .submit-btn { background: var(--primary); color: white; border: none; padding: 14px; border-radius: 10px; width: 100%; font-weight: 700; cursor: pointer; font-size: 0.9rem; margin-top: 10px; }
         .submit-btn:active { opacity: 0.9; transform: scale(0.99); }
@@ -2606,16 +2614,16 @@
                     </div>
                 </div>
 
-                <div class="form-row" id="srcAccRow">
-                    <label id="srcAccLabel">🏦 Account</label>
-                    <button type="button" id="srcAccountBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="srcAccount" data-title="Select Account">
+                <div class="form-row form-row-icon" id="srcAccRow">
+                    <span class="field-icon" id="srcAccLabel" aria-hidden="true">🏦</span>
+                    <button type="button" id="srcAccountBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="srcAccount" data-title="Select Account" aria-label="Account">
                         <span id="srcAccountBtnText">Select account</span><span class="account-picker-chevron">▾</span>
                     </button>
                     <select id="srcAccount" style="display:none;" data-change="syncTransactionCurrency"></select>
                 </div>
-                <div class="form-row" id="destAccRow" style="display:none;">
-                    <label>🏦 To Account</label>
-                    <button type="button" id="destAccountBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="destAccount" data-title="Select Destination Account">
+                <div class="form-row form-row-icon" id="destAccRow" style="display:none;">
+                    <span class="field-icon" aria-hidden="true">🏦</span>
+                    <button type="button" id="destAccountBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="destAccount" data-title="Select Destination Account" aria-label="To Account">
                         <span id="destAccountBtnText">Select account</span><span class="account-picker-chevron">▾</span>
                     </button>
                     <select id="destAccount" style="display:none;" data-change="syncTransactionCurrency"></select>
@@ -2674,7 +2682,7 @@
                     <p id="txManualFxAutoHint" style="font-size:0.7rem; color:var(--text-muted); margin:0;"></p>
                 </div>
 
-                <div class="form-row"><label>📅 Date</label><input type="date" id="txDate" required></div>
+                <div class="form-row form-row-icon"><span class="field-icon" aria-hidden="true">📅</span><input type="date" id="txDate" required aria-label="Date"></div>
 
                 <!-- Fixed Deposit placement terms — shown only when this entry deposits funds into an FD account -->
                 <div id="txFdFieldsWrap" style="display:none; background:#faf5ff; border:1px solid #ede9fe; border-radius:10px; padding:10px; margin-bottom:10px;">
@@ -2716,8 +2724,8 @@
                     <p id="txFdMaturityPreview" style="font-size:0.72rem; color:#6d28d9; margin-top:2px;"></p>
                 </div>
 
-                <div class="form-row" id="txDescRow"><label>👤 Description</label><input type="text" id="txDesc" required></div>
-                <div class="form-row"><label>📝 Notes (Optional)</label><input type="text" id="txNotes"></div>
+                <div class="form-row form-row-icon" id="txDescRow"><span class="field-icon" aria-hidden="true">👤</span><input type="text" id="txDesc" required placeholder="Description" aria-label="Description"></div>
+                <div class="form-row form-row-icon"><span class="field-icon" aria-hidden="true">📝</span><input type="text" id="txNotes" placeholder="Notes (Optional)" aria-label="Notes (Optional)"></div>
                 <div class="form-row">
                     <div class="toggle-switch-row">
                         <span class="toggle-switch-label">Checked</span>

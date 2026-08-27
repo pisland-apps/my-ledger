@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v151";
+        const APP_VERSION = "v152";
         const APP_VERSION_DATE = "2026-08-27";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -5988,7 +5988,7 @@
                 }
                 
                 document.getElementById("txCategory").value = tx.cat || "";
-                document.getElementById("destAccRow").style.display = tx.type === "transfer" ? "block" : "none";
+                document.getElementById("destAccRow").style.display = tx.type === "transfer" ? "flex" : "none";
                 document.getElementById("categoryRow").style.display = tx.type === "transfer" ? "none" : "flex";
 
                 document.getElementById("txModalTitle").textContent = "Edit Ledger Entry";
@@ -6045,7 +6045,7 @@
                     srcSelect.value = presetSrcAccountId;
                 }
 
-                document.getElementById("destAccRow").style.display = type === "transfer" ? "block" : "none";
+                document.getElementById("destAccRow").style.display = type === "transfer" ? "flex" : "none";
                 document.getElementById("categoryRow").style.display = type === "transfer" ? "none" : "flex";
 
                 // "To Account" is a single <select> shared across every time the transaction modal
@@ -6688,7 +6688,7 @@
             const descInput = document.getElementById("txDesc");
 
             const autoMode = fdVisible && !manualChecked;
-            descRow.style.display = autoMode ? "none" : "block";
+            descRow.style.display = autoMode ? "none" : "flex";
             descInput.required = !autoMode;
         }
 

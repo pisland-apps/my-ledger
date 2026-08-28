@@ -1359,6 +1359,14 @@
             flex-shrink: 0;
         }
         .account-card-metarow { margin-top: 3px; }
+        /* v164: Account No./Ref — placed right under the name/type badge, ahead of owner tags
+           etc. in .account-card-subline below. */
+        .account-card-refline {
+            margin-top: 3px;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
         .account-card-subline { margin-top: 4px; }
         .account-card-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
         /* v163: group header pill (was plain uppercase text) — icon + colored background, same

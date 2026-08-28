@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v163";
+        const APP_VERSION = "v164";
         const APP_VERSION_DATE = "2026-08-28";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -3434,7 +3434,13 @@
                     ? `<br><span style="font-size:0.7rem; color:#991b1b; font-weight:600;">🚫 Excluded from Net Worth</span>`
                     : "";
 
-                const extraInfoLine = accountExtraInfoLine(a, nativeBalances);
+                // v164: Account No./Ref shown right under the account name (was bundled at the
+                // bottom of the card via accountExtraInfoLine's own refLine) — includeRef:false
+                // below so it isn't rendered twice.
+                const acctRefLine = a.accountRef
+                    ? `<div class="account-card-refline">${escapeHtml(a.accountRef)}</div>`
+                    : "";
+                const extraInfoLine = accountExtraInfoLine(a, nativeBalances, false);
 
                 // Credit Card (v127): "Amount due" line + 💳 Pay button, both only shown when
                 // there's actually something owed (a card paid off in full, or never used, has
@@ -3555,6 +3561,7 @@
                                 <span class="account-card-balance">${balSummary}</span>
                             </div>
                             <div class="account-card-metarow">${typeBadge}</div>
+                            ${acctRefLine}
                             <div class="account-card-subline">${accountOwnerTagHTML(a)}${linkedLine}${excludedLine}${extraInfoLine}${ccAmountDueLine}</div>
                         </div>
                         <span style="display:flex; align-items:center; gap:6px;">
@@ -4642,13 +4649,17 @@
         // under an account's name wherever it's listed. Shared by the Accounts page, a member's
         // own Accounts list, and the account's own Activity page header banner so all three stay
         // in sync automatically instead of drifting out of step with separately-written markup.
-        function accountExtraInfoLine(a, nativeBalances) {
+        // v164: `includeRef` (default true, unchanged for existing callers) lets a caller that
+        // wants to show the Account No./Ref in its own separate spot — see the Accounts-page
+        // .account-card-refline below the account name — opt out of it here, so it isn't also
+        // repeated in whatever this function returns for the rest of the row/banner.
+        function accountExtraInfoLine(a, nativeBalances, includeRef = true) {
             const group = a.group || DEFAULT_ACCOUNT_GROUP;
             // Account No. / Ref (v130): plain informational text, independent of group/type, so
             // it's built separately here and prepended ahead of whichever type-specific line (if
             // any) applies below, rather than living inside one of those mutually-exclusive
             // branches.
-            const refLine = a.accountRef ? `<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${escapeHtml(a.accountRef)}</span>` : "";
+            const refLine = (includeRef && a.accountRef) ? `<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${escapeHtml(a.accountRef)}</span>` : "";
             if (a.type === "creditcard" && (a.creditLimit || a.statementDay || a.paymentDueDay)) {
                 const bits = [];
                 if (a.creditLimit) bits.push(`Limit ${formatBalanceHTML(a.creditLimit, a.currency || baseCurrency)}`);

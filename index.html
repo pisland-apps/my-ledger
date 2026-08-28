@@ -111,6 +111,16 @@
             padding-bottom: 40px;
         }
 
+        /* v163 美化方案 point 6: custom scrollbar — thin, rounded, semi-transparent, so it
+           doesn't stand out against the app's own rounded/shadowed card styling the way a
+           default OS scrollbar does. Firefox via `scrollbar-width`/`scrollbar-color`, everything
+           else via the `::-webkit-scrollbar-*` pseudo-elements. */
+        * { scrollbar-width: thin; scrollbar-color: rgba(100,116,139,0.35) transparent; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.35); border-radius: 999px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(100,116,139,0.55); }
+
         /* SPA Page management frameworks */
         .page { display: block; }
         .page.hidden { display: none !important; }
@@ -673,11 +683,6 @@
         }
         .sidebar-nav { padding: 10px 0 24px; }
         .config-list-section-label {
-            font-size: 0.7rem;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            color: var(--text-muted);
             padding: 14px 4px 6px;
         }
         .config-list-subgroup-label {
@@ -1171,6 +1176,17 @@
             -webkit-overflow-scrolling: touch; /* Butter-smooth scrolling on iOS/Android */
         }
         .form-row { margin-bottom: 12px; }
+        /* v163 美化方案 point 4: card wrapper for the two Default Account dropdowns — see markup
+           comment in index.html (#defaultAccountsCard) for why its visibility is toggled as a
+           whole rather than relying only on its children's existing hidden-toggles. */
+        .default-accounts-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            margin-bottom: 18px;
+        }
         .form-row-inline { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
         label { display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; }
         /* Icon-beside-field rows (Account / Date / Description / Notes on the transaction form) —
@@ -1262,11 +1278,101 @@
         button.form-input.account-picker-btn { width:100%; padding:12px; border:1.5px solid var(--border-color); border-radius:8px; font-size:0.9rem; background:#f8fafc; height:44px; color:var(--text-main); display:flex; align-items:center; justify-content:space-between; gap:8px; text-align:left; font-weight:700; cursor:pointer; }
         .account-picker-chevron { opacity:0.55; flex:0 0 auto; }
         .account-picker-btn span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
-        .config-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
-        .config-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: #f8fafc; border-radius: 8px; border: 1px solid var(--border-color); }
+        .config-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+        /* v163 美化方案 point 1: real card treatment (was flat — same background as the page
+           itself, `#f8fafc`, which is exactly why rows disappeared into the background instead
+           of reading as cards). Applies app-wide (Categories, Members, etc. all use this same
+           class), not just Accounts. */
+        .config-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            background: var(--card-bg);
+            border-radius: 14px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+        }
+        .config-item:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transform: translateY(-1px);
+            border-color: #c7d2fe;
+        }
         /* Fund holding listed under its Unit Trust account row on the Accounts page — indented,
-           lighter background/border so it reads as a child of the account above it. */
-        .fund-subrow { margin-left: 18px; padding: 8px 12px; background: #fff; font-size: 0.8rem; }
+           lighter background/border so it reads as a child of the account above it. Deliberately
+           flatter than .config-item above (no shadow/hover-lift) — it's already visually nested
+           via margin-left, so adding its own elevation on top would look like a card floating
+           inside a card. */
+        .fund-subrow {
+            margin-left: 18px;
+            padding: 8px 12px;
+            background: #fff;
+            font-size: 0.8rem;
+            box-shadow: none;
+            border-radius: 8px;
+        }
+        .fund-subrow:hover { box-shadow: none; transform: none; border-color: var(--border-color); }
+        /* v163: account row avatar — deterministic gradient per account name, same hash→palette
+           idiom as currencyBadgeColor()/categoryIconBgColor() in ledger.js, so a given account
+           always gets the same two colors across reloads without needing a stored color field. */
+        .account-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1rem;
+            color: #fff;
+        }
+        /* v163: Accounts-page row layout — avatar + name/balance/meta stacked in the middle +
+           action icons on the right. align-items:flex-start (overriding the base .config-item's
+           align-items:center via the extra .account-card class) since the middle column can run
+           to several lines (owner tags, linked-account note, excluded flag, credit card due) and
+           the avatar/actions should sit at the top of the row, not vertically centered across
+           all of that. */
+        .config-item.account-card { align-items: flex-start; gap: 12px; }
+        .account-card-body { flex: 1; min-width: 0; }
+        .account-card-toprow {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 10px;
+        }
+        .account-card-name {
+            font-weight: 700;
+            font-size: 0.95rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+        .account-card-balance {
+            font-weight: 800;
+            font-size: 1.05rem;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .account-card-metarow { margin-top: 3px; }
+        .account-card-subline { margin-top: 4px; }
+        .account-card-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        /* v163: group header pill (was plain uppercase text) — icon + colored background, same
+           icons as the Add Account "Group" dropdown so the two stay visually consistent. */
+        .group-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+        }
         /* Collapse/expand caret (v62) on an Accounts-page row with fund/currency/FD-placement
            subrows underneath it — plain button reset, sized as a small tap target distinct from
            the row's own "›" navigation chevron beside it. */
@@ -1892,24 +1998,31 @@
             </div>
         </div>
 
-        <div class="section-header" id="defaultPaymentAccountSection" style="margin-top:0;">
-            <span class="section-title">Default Payment Account</span>
-        </div>
-        <div class="form-row" id="defaultPaymentAccountRow" style="margin-bottom:18px;">
-            <button type="button" id="defaultPaymentAccountSelectBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="defaultPaymentAccountSelect" data-title="Default Payment Account">
-                <span id="defaultPaymentAccountSelectBtnText">Select...</span><span class="account-picker-chevron">▾</span>
-            </button>
-            <select id="defaultPaymentAccountSelect" style="display:none;" data-change="saveDefaultPaymentAccount"></select>
-        </div>
+        <!-- v163 美化方案 point 4: both Default Account dropdowns wrapped in one card (was two
+             bare dropdowns sitting directly on the page background). Wrapper's own visibility is
+             toggled in renderAccountsPage() alongside the existing per-element toggles below, so
+             it collapses to nothing (not an empty white box) whenever a sidebar filter narrows
+             the list to one group/sub-group. -->
+        <div class="default-accounts-card" id="defaultAccountsCard">
+            <div class="section-header" id="defaultPaymentAccountSection" style="margin-top:0;">
+                <span class="section-title">Default Payment Account</span>
+            </div>
+            <div class="form-row" id="defaultPaymentAccountRow" style="margin-bottom:18px;">
+                <button type="button" id="defaultPaymentAccountSelectBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="defaultPaymentAccountSelect" data-title="Default Payment Account">
+                    <span id="defaultPaymentAccountSelectBtnText">Select...</span><span class="account-picker-chevron">▾</span>
+                </button>
+                <select id="defaultPaymentAccountSelect" style="display:none;" data-change="saveDefaultPaymentAccount"></select>
+            </div>
 
-        <div class="section-header" id="defaultReceiveAccountSection">
-            <span class="section-title">Default Receive Account</span>
-        </div>
-        <div class="form-row" id="defaultReceiveAccountRow" style="margin-bottom:18px;">
-            <button type="button" id="defaultReceiveAccountSelectBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="defaultReceiveAccountSelect" data-title="Default Receive Account">
-                <span id="defaultReceiveAccountSelectBtnText">Select...</span><span class="account-picker-chevron">▾</span>
-            </button>
-            <select id="defaultReceiveAccountSelect" style="display:none;" data-change="saveDefaultReceiveAccount"></select>
+            <div class="section-header" id="defaultReceiveAccountSection">
+                <span class="section-title">Default Receive Account</span>
+            </div>
+            <div class="form-row" id="defaultReceiveAccountRow" style="margin-bottom:0;">
+                <button type="button" id="defaultReceiveAccountSelectBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="defaultReceiveAccountSelect" data-title="Default Receive Account">
+                    <span id="defaultReceiveAccountSelectBtnText">Select...</span><span class="account-picker-chevron">▾</span>
+                </button>
+                <select id="defaultReceiveAccountSelect" style="display:none;" data-change="saveDefaultReceiveAccount"></select>
+            </div>
         </div>
 
         <div class="section-header">

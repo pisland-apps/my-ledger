@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v162";
+        const APP_VERSION = "v163";
         const APP_VERSION_DATE = "2026-08-28";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -173,6 +173,44 @@
         function currencyBadgeHTML(code) {
             const { bg, fg } = currencyBadgeColor(code);
             return `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:${bg}; color:${fg}; font-weight:bold;">${escapeHtml(code)}</span>`;
+        }
+
+        // v163 美化方案 point 2: deterministic gradient-avatar initial for an Accounts-page row —
+        // same hash→palette idiom as currencyBadgeColor() above, so a given account name always
+        // lands on the same two colors across reloads without needing a stored color field on
+        // the account itself.
+        const ACCOUNT_AVATAR_GRADIENTS = [
+            ["#6366f1", "#8b5cf6"], ["#ec4899", "#f472b6"], ["#f59e0b", "#fb923c"],
+            ["#10b981", "#14b8a6"], ["#0ea5e9", "#38bdf8"], ["#ef4444", "#f87171"],
+            ["#8b5cf6", "#c084fc"], ["#0891b2", "#22d3ee"],
+        ];
+        function accountAvatarHTML(name) {
+            const str = String(name || "").trim();
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+            const [c1, c2] = ACCOUNT_AVATAR_GRADIENTS[hash % ACCOUNT_AVATAR_GRADIENTS.length];
+            const initial = escapeHtml((str.charAt(0) || "?").toUpperCase());
+            return `<div class="account-avatar" style="background:linear-gradient(135deg, ${c1}, ${c2});">${initial}</div>`;
+        }
+
+        // v163 美化方案 point 5: icon + color for an account Group's section-header pill on the
+        // Accounts page — same emoji already used in the Add/Edit Account "Group" dropdown
+        // (index.html), so the two stay visually consistent. Falls back to a neutral folder icon
+        // for any group name not in this fixed list (there currently isn't one — ACCOUNT_GROUPS
+        // above is a closed set — but this keeps the pill from rendering blank/broken if that
+        // ever changes).
+        const ACCOUNT_GROUP_BADGE = {
+            "Bank/Cash": { icon: "🏦", bg: "#e0e7ff", fg: "#4338ca" },
+            "Credit Card": { icon: "💳", bg: "#fce7f3", fg: "#9d174d" },
+            "Investment": { icon: "📈", bg: "#dbeafe", fg: "#1d4ed8" },
+            "Real Estate": { icon: "🏠", bg: "#ffedd5", fg: "#9a3412" },
+            "Other Assets": { icon: "💼", bg: "#e0f2fe", fg: "#0369a1" },
+            "Bank Loan": { icon: "💸", bg: "#fee2e2", fg: "#b91c1c" },
+            "Other Liabilities": { icon: "🧾", bg: "#fef3c7", fg: "#92400e" },
+        };
+        function accountGroupBadgeHTML(group) {
+            const info = ACCOUNT_GROUP_BADGE[group] || { icon: "🗂️", bg: "#f1f5f9", fg: "#475569" };
+            return `<span class="group-pill" style="background:${info.bg}; color:${info.fg};">${info.icon} ${escapeHtml(group)}</span>`;
         }
 
         // v150: same deterministic hash-to-palette approach as currencyBadgeColor() above, for the
@@ -3296,6 +3334,7 @@
             // slice — the Default Payment Account selector is unrelated to any single group/
             // sub-group, so it's hidden whenever a filter narrowed the list, not just shown
             // unconditionally at the top of every Accounts view.
+            document.getElementById("defaultAccountsCard").classList.toggle("hidden", !!filter);
             document.getElementById("defaultPaymentAccountSection").classList.toggle("hidden", !!filter);
             document.getElementById("defaultPaymentAccountRow").classList.toggle("hidden", !!filter);
             document.getElementById("defaultReceiveAccountSection").classList.toggle("hidden", !!filter);
@@ -3335,7 +3374,7 @@
                 if (group !== lastGroup) {
                     flushSubgroupTotal();
                     flushGroupTotal();
-                    html += `<div class="config-list-section-label">${escapeHtml(group)}</div>`;
+                    html += `<div class="config-list-section-label">${accountGroupBadgeHTML(group)}</div>`;
                     lastGroup = group;
                     lastSubgroup = undefined;
                 }
@@ -3508,11 +3547,16 @@
                     : "";
 
                 html += `
-                    <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="accounts">
-                        <span>
-                            <strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}
-                            <br>${accountOwnerTagHTML(a)}${linkedLine}${excludedLine}${extraInfoLine}${ccAmountDueLine}
-                        </span>
+                    <div class="config-item account-card" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="accounts">
+                        ${accountAvatarHTML(a.name)}
+                        <div class="account-card-body">
+                            <div class="account-card-toprow">
+                                <span class="account-card-name">${escapeHtml(a.name)}</span>
+                                <span class="account-card-balance">${balSummary}</span>
+                            </div>
+                            <div class="account-card-metarow">${typeBadge}</div>
+                            <div class="account-card-subline">${accountOwnerTagHTML(a)}${linkedLine}${excludedLine}${extraInfoLine}${ccAmountDueLine}</div>
+                        </div>
                         <span style="display:flex; align-items:center; gap:6px;">
                             ${ccPayBtnHTML}
                             ${subrowToggleHTML}

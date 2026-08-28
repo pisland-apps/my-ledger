@@ -8759,6 +8759,7 @@
                 else if (categoryDrillMonth !== "all") periodSuffix = ` · ${monthNames[parseInt(categoryDrillMonth)]} (All Years)`;
                 document.getElementById("ledgerTargetTitle").textContent = `${icon} ${activeCategoryView.toUpperCase()}${periodSuffix}`;
                 document.getElementById("ledgerTargetEditBtn").style.display = "none";
+                document.getElementById("ledgerTargetOwnerTags").style.display = "none";
             } else if (directTypeView !== "all") {
                 // v148: same period-suffix treatment as the category branch above, for the report
                 // card's Income/Expense clicks (categoryDrillYear/Month "all" when reached any
@@ -8770,17 +8771,26 @@
                 else if (categoryDrillMonth !== "all") periodSuffix = ` · ${monthNames[parseInt(categoryDrillMonth)]} (All Years)`;
                 document.getElementById("ledgerTargetTitle").textContent = `All ${directTypeView.charAt(0).toUpperCase() + directTypeView.slice(1)} Log${periodSuffix}`;
                 document.getElementById("ledgerTargetEditBtn").style.display = "none";
+                document.getElementById("ledgerTargetOwnerTags").style.display = "none";
             } else if (activeLedgerAccountView === "all") {
                 document.getElementById("ledgerTargetTitle").textContent = "Portfolio General Log";
                 document.getElementById("ledgerTargetEditBtn").style.display = "none";
+                document.getElementById("ledgerTargetOwnerTags").style.display = "none";
             } else {
                 const activeAcc = accounts.find(a => a.id === activeLedgerAccountView);
-                // v71: name + owner only here, no Related-account suffix — the dedicated
-                // "🔗 Related Account: X" banner already shows that right below this title,
-                // so repeating it in the title itself was just noise (see Image 2 feedback).
-                const currentActiveAccName = activeAcc ? `${activeAcc.name} (${accountOwnerNamesText(activeAcc)})` : "Vault";
+                // v166: owner names moved out of the title (was cluttered as plain text in
+                // parentheses) and shown instead as colored ● tags on their own line, reusing
+                // accountOwnerTagHTML — the same per-member color dots used on the Accounts page.
+                const currentActiveAccName = activeAcc ? activeAcc.name : "Vault";
                 document.getElementById("ledgerTargetTitle").textContent = `${currentActiveAccName} Activity`;
                 document.getElementById("ledgerTargetEditBtn").style.display = "inline-block";
+                const ownerTagsEl = document.getElementById("ledgerTargetOwnerTags");
+                if (activeAcc) {
+                    ownerTagsEl.innerHTML = accountOwnerTagHTML(activeAcc);
+                    ownerTagsEl.style.display = "flex";
+                } else {
+                    ownerTagsEl.style.display = "none";
+                }
             }
 
             let ledgerHTML = "";

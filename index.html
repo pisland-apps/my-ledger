@@ -133,12 +133,17 @@
            harmless now that this covers them too, and lower-risk than touching them. */
         .hidden { display: none !important; }
 
+        /* v166: layered-surface shadow — was flat (border only, same as the page background
+           behind it). Not a hover target itself (its content is: currency pill, save/lock
+           buttons, etc., each with their own affordance), so a static shadow only, no hover-lift
+           here. */
         header {
             background: var(--card-bg);
             padding: 16px;
             border-radius: 16px;
             border: 1px solid var(--border-color);
             margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
         }
 
         .net-worth-container {
@@ -252,15 +257,23 @@
             color: var(--text-muted);
         }
 
+        /* v166: hover feedback added — deepens to a darker shade of the same primary color +
+           a faint background chip, rather than dimming its resting color to something duller.
+           This class is reused across the whole app (Settings/Categories links, section
+           collapse-toggles, etc.) as the visible "there's an action here" signal, so its
+           resting color is left alone; only the hover state changes. */
         .text-btn {
             background: none;
             border: none;
+            border-radius: 8px;
             color: var(--primary);
             font-size: 0.85rem;
             font-weight: 700;
             padding: 8px 12px; /* Touch target optimized */
             cursor: pointer;
+            transition: background-color 0.15s ease-out, color 0.15s ease-out;
         }
+        .text-btn:hover { background: #eef2ff; color: #4338ca; }
 
         .actions-bar {
             display: grid;
@@ -280,10 +293,17 @@
             flex-direction: column;
             align-items: center;
             gap: 4px;
-            transition: transform 0.1s ease, box-shadow 0.1s ease;
+            transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
             /* v156: soft-UI highlight/shadow pair on top of each button's own flat color —
                a gentle dome rather than a hard flat fill. */
             box-shadow: -2px -2px 5px var(--neu-primary-light), 3px 4px 8px rgba(15, 23, 42, 0.18);
+        }
+        /* v166: hover lift — small upward nudge + slightly deeper shadow, purely a mouse-hover
+           affordance (the existing :active bounce-back below already covers the tap/click case
+           and is untouched). */
+        .action-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: -2px -2px 5px var(--neu-primary-light), 4px 6px 12px rgba(15, 23, 42, 0.24);
         }
         .action-btn:active {
             transform: scale(0.96);
@@ -294,11 +314,15 @@
         .btn-transfer { background-color: var(--transfer-color); }
         .btn-salary { background-color: var(--salary-color); }
 
+        /* v166: layered-surface shadow (was flat/border-only) — static only, not itself a click
+           target (its clickable content is .report-card-mini-row below, which gets its own hover
+           treatment there). */
         .report-card {
             background: var(--card-bg);
             border-radius: 16px;
             border: 1.5px solid var(--border-color);
             padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
         }
 
         /* --- Financial Report Card, two-tile layout (v147) --- */
@@ -313,6 +337,7 @@
             border: 1.5px solid var(--border-color);
             padding: 12px;
             min-width: 0; /* allow grid children to shrink below content width */
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
         }
         .report-card-mini-header {
             display: flex;
@@ -352,9 +377,15 @@
             justify-content: space-between;
             align-items: baseline;
             gap: 6px;
-            padding: 3px 0;
+            padding: 3px 6px;
+            border-radius: 6px;
             cursor: pointer;
+            transition: background-color 0.15s ease-out;
         }
+        /* v166: was :active-only (opacity dim on tap) — added a proper hover surface tint so a
+           mouse user sees this row is clickable before clicking, same "surface-muted" treatment
+           as .ledger-item rows elsewhere (Accounts / Transactions). */
+        .report-card-mini-row:hover { background: #f3f4f6; }
         .report-card-mini-row:active { opacity: 0.7; }
         .report-card-mini-label { font-size: 0.68rem; font-weight: 700; white-space: nowrap; }
         .report-card-mini-value {
@@ -386,7 +417,7 @@
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 0;
-                padding: 4px 0;
+                padding: 4px 6px;
             }
             .report-card-mini-label { font-size: 0.62rem; }
             .report-card-mini-value {
@@ -1003,10 +1034,19 @@
 
         /* Dashboard "Net Worth by Member" report rows */
         .member-networth-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+        /* v166: added layered-surface shadow (was flat/border-only) + hover lift, consistent
+           with the account-card treatment elsewhere — this row is a full click target
+           (navigates to the member's filtered view), so it gets both. */
         .member-networth-row {
             display: flex; align-items: center; justify-content: space-between; gap: 10px;
             background: var(--card-bg); border: 1.5px solid var(--border-color); border-radius: 12px;
-            padding: 12px 14px; cursor: pointer; transition: opacity 0.15s;
+            padding: 12px 14px; cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            transition: opacity 0.15s, box-shadow 0.15s ease-out, transform 0.15s ease-out;
+        }
+        .member-networth-row:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transform: translateY(-1px);
         }
         .member-networth-row:active { opacity: 0.75; }
         .member-networth-row .member-row-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -1110,11 +1150,14 @@
             .print-fab-btn { left: 356px; }
         }
 
+        /* v166: layered-surface shadow — static (this container isn't itself a click target;
+           its children .ledger-item rows below get their own hover treatment). */
         .ledger-container {
             background: var(--card-bg);
             border: 1.5px solid var(--border-color);
             border-radius: 16px;
             overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
         }
 
         .ledger-item {
@@ -1124,8 +1167,13 @@
             padding: 16px;
             border-bottom: 1px solid var(--border-color);
             cursor: pointer;
-            transition: background 0.1s;
+            transition: background-color 0.15s ease-out;
         }
+        /* v166: was :active-only (background flash on tap, no separate hover). This same class
+           renders both the Dashboard's pinned Accounts widget rows AND the main Transactions
+           list rows (see renderPinnedAccountsWidget / comment on .ledger-item-tx below), so one
+           fix here covers both. */
+        .ledger-item:hover { background: #f3f4f6; }
         .ledger-item:active { background: #f1f5f9; }
         .item-left { display: flex; flex-direction: column; gap: 2px; max-width: 65%; }
         .item-name { font-weight: 600; font-size: 0.9rem; }

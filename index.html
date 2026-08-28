@@ -139,14 +139,15 @@
             gap: 8px;
         }
 
-        /* v160: single flex cluster for Base/Save/Lock, now living in the top-bar row (see
-           .top-bar-left comment above) — was originally under net-worth-container in v158, moved
-           up so the whole cluster sits at the top-right corner next to "☰ Ledger" instead of on
-           its own row below the net-worth figure. */
+        /* v162: single flex cluster for Base/Save/Lock — sibling of .top-bar under
+           .dashboard-header-row (see comment there). margin-left:auto is what actually pins it
+           to the right, independent of whether .top-bar is visible (mobile) or hidden (desktop,
+           ≥768px) — see the fuller history in the .dashboard-header-row comment above. */
         .header-controls-group {
             display: flex;
             align-items: center;
             gap: 6px;
+            margin-left: auto;
         }
 
         /* v157: "Financial Assets vs Real Estate" split row, shown directly under the Portfolio
@@ -569,18 +570,18 @@
         .back-btn:active { background: #f1f5f9; }
 
         /* ================= SIDEBAR NAVIGATION DRAWER ================= */
-        .top-bar {
+        /* v162: wraps .top-bar (hamburger+title) and .header-controls-group (Base/Save/Lock) as
+           two sibling clusters — .header-controls-group's own margin-left:auto pushes it to the
+           right, working whether .top-bar is present (mobile) or display:none (desktop, see the
+           768px media query below), so the controls stay in the top-right corner either way. */
+        .dashboard-header-row {
             display: flex;
             align-items: center;
-            justify-content: space-between;
             flex-wrap: wrap;
             gap: 8px;
             margin-bottom: 14px;
         }
-        /* v160: left cluster (hamburger + title) — kept as one flex item alongside
-           .header-controls-group so `justify-content: space-between` on .top-bar pins them to
-           opposite corners instead of spreading all children evenly. */
-        .top-bar-left {
+        .top-bar {
             display: flex;
             align-items: center;
             gap: 12px;
@@ -1623,12 +1624,16 @@
     <!-- ================= PAGE 1: PORTFOLIO MAIN WORKSPACE ================= -->
     <div id="page-workspace" class="page">
         <header>
-            <!-- v160: Base/Save/Lock moved from net-worth-container up into the top-bar row,
-                 grouped as one cluster on the right so it sits at the top-right corner next to
-                 "☰ Ledger" (space-between between the two clusters) instead of on its own row
-                 below the net-worth figure. -->
-            <div class="top-bar">
-                <div class="top-bar-left">
+            <!-- v162: header-controls-group pulled back OUT of .top-bar to be its sibling under
+                 .dashboard-header-row instead. Reason: @media (min-width: 768px) further down
+                 does `.top-bar { display:none }` on desktop, since the sidebar there is
+                 permanently docked and already shows "Ledger" branding, making the hamburger +
+                 title redundant. When header-controls-group (Base/Save/Lock) was nested INSIDE
+                 .top-bar (v160), that same rule hid it too — a bug, since those controls have no
+                 desktop equivalent and should always stay visible. Keeping it as a sibling means
+                 the desktop rule only ever touches the hamburger+title, never the controls. -->
+            <div class="dashboard-header-row">
+                <div class="top-bar">
                     <button class="hamburger-btn" data-click="openSidebar" aria-label="Open menu">☰</button>
                     <span class="top-bar-title">Ledger</span>
                 </div>

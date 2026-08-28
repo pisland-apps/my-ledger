@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v164";
+        const APP_VERSION = "v165";
         const APP_VERSION_DATE = "2026-08-28";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -5179,7 +5179,10 @@
             wrap.classList.toggle("hidden", !sidebarAccountShortcutsExpanded);
             const toggleBtn = document.getElementById("sidebarAccountShortcutsToggle");
             if (toggleBtn) {
-                toggleBtn.textContent = sidebarAccountShortcutsExpanded ? "▾" : "▸";
+                // v165: was toggleBtn.textContent = "▾"/"▸" — the button now holds a static SVG
+                // chevron (see index.html) rotated via this class + a CSS transition instead, so
+                // collapsing/expanding animates instead of instantly swapping glyphs.
+                toggleBtn.classList.toggle("collapsed", !sidebarAccountShortcutsExpanded);
                 const label = `${sidebarAccountShortcutsExpanded ? "Collapse" : "Expand"} account type list`;
                 toggleBtn.setAttribute("aria-label", label);
                 toggleBtn.setAttribute("title", label);
@@ -5189,16 +5192,17 @@
             }
         }
 
-        // Wired to the ▾/▸ beside "Financial Accounts" in the sidebar — purely a local show/hide
-        // of the type-shortcut list; does not touch accountsPageTypeFilter or navigate anywhere,
-        // so it's safe to tap even while a filter from one of those shortcuts is still active.
+        // Wired to the chevron beside "Financial Accounts" in the sidebar — purely a local
+        // show/hide of the type-shortcut list; does not touch accountsPageTypeFilter or navigate
+        // anywhere, so it's safe to tap even while a filter from one of those shortcuts is still
+        // active.
         function toggleSidebarAccountShortcuts() {
             sidebarAccountShortcutsExpanded = !sidebarAccountShortcutsExpanded;
             const wrap = document.getElementById("sidebarAccountTypeShortcuts");
             if (wrap) wrap.classList.toggle("hidden", !sidebarAccountShortcutsExpanded);
             const toggleBtn = document.getElementById("sidebarAccountShortcutsToggle");
             if (toggleBtn) {
-                toggleBtn.textContent = sidebarAccountShortcutsExpanded ? "▾" : "▸";
+                toggleBtn.classList.toggle("collapsed", !sidebarAccountShortcutsExpanded);
                 const label = `${sidebarAccountShortcutsExpanded ? "Collapse" : "Expand"} account type list`;
                 toggleBtn.setAttribute("aria-label", label);
                 toggleBtn.setAttribute("title", label);

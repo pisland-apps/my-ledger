@@ -664,11 +664,30 @@
             overflow-y: auto;
         }
         .sidebar-drawer.open { transform: translateX(0); }
+        /* v165 美化方案2 point 1: was a full-bleed purple gradient block that clashed against
+           the white/glass body below it ("紫头+白身" split feel). Now transparent (so it reads
+           as part of the same glass surface as the rest of the drawer) with a bottom divider,
+           and the brand color lives only on the small logo chip (.sidebar-brand-mark) instead of
+           the whole header. */
         .sidebar-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 22px 20px 18px;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+        .sidebar-brand-mark {
+            width: 38px;
+            height: 38px;
+            border-radius: 11px;
             background: linear-gradient(135deg, var(--primary), #4338ca);
             color: #fff;
-            padding: 28px 20px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             flex-shrink: 0;
+            box-shadow: 0 3px 8px rgba(99, 102, 241, 0.35);
         }
         .sidebar-header-title {
             font-size: 1.3rem;
@@ -678,8 +697,8 @@
         .sidebar-header-sub {
             font-size: 0.75rem;
             font-weight: 600;
-            opacity: 0.85;
-            margin-top: 4px;
+            color: var(--text-muted);
+            margin-top: 2px;
         }
         .sidebar-nav { padding: 10px 0 24px; }
         .config-list-section-label {
@@ -733,13 +752,16 @@
             padding: 2px 8px;
             margin-left: 2px;
         }
+        /* v165 美化方案2 point 5: more "breathing room" before a new section — slightly
+           smaller/wider-tracked label text, more top padding, matched with the existing
+           .sidebar-divider line already sitting just above each of these except the first. */
         .sidebar-section-label {
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             font-weight: 800;
             text-transform: uppercase;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.08em;
             color: var(--text-muted);
-            padding: 16px 20px 6px;
+            padding: 18px 20px 6px;
         }
         .sidebar-item {
             display: flex;
@@ -754,7 +776,13 @@
             width: 100%;
             text-align: left;
             color: var(--text-main);
+            transition: background-color 0.15s ease, color 0.15s ease;
         }
+        /* v165 美化方案2 point 6: real :hover feedback (was only a :active flash on tap/click,
+           nothing for a mouse hovering without clicking — this app also runs in a desktop
+           browser window, not just touch). :not(.active) so hovering the already-active row
+           doesn't fight with its own highlight below. */
+        .sidebar-item:hover:not(.active) { background: #f3f4f6; }
         .sidebar-item:active { background: #f1f5f9; }
         .sidebar-item.active {
             background: #eef2ff;
@@ -765,16 +793,27 @@
             content: "";
             position: absolute;
             left: 0; top: 6px; bottom: 6px;
-            width: 4px;
+            width: 3px;
             border-radius: 0 4px 4px 0;
             background: var(--primary);
         }
+        /* v165 美化方案2 point 2: swapped from system emoji (inconsistent across platforms,
+           uncontrollable color) to inline SVG line icons — 18px, stroke-width 2, stroke=
+           currentColor so each icon automatically tints to match its button's current text
+           color (muted grey at rest, primary color when active/hovered — see .sidebar-item.active
+           / :hover rules) without any extra per-state icon color rules needed. */
         .sidebar-item-icon {
-            font-size: 1.1rem;
             width: 22px;
-            text-align: center;
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             flex-shrink: 0;
+            color: var(--text-muted);
         }
+        .sidebar-item-icon svg { width: 18px; height: 18px; }
+        .sidebar-item:hover .sidebar-item-icon,
+        .sidebar-item.active .sidebar-item-icon { color: inherit; }
         .sidebar-divider {
             height: 1px;
             background: var(--border-color);
@@ -996,7 +1035,9 @@
             display: flex; align-items: center; gap: 12px; padding: 10px 20px; font-weight: 700;
             font-size: 0.88rem; cursor: pointer; border: none; background: none; width: 100%;
             text-align: left; color: var(--text-main);
+            transition: background-color 0.15s ease, color 0.15s ease;
         }
+        .sidebar-member-item:hover:not(.active) { background: #f3f4f6; }
         .sidebar-member-item:active { background: #f1f5f9; }
         .sidebar-member-item.active { background: #eef2ff; color: var(--primary); }
         .sidebar-member-item .member-row-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1005,14 +1046,26 @@
         /* Sidebar "Add <type>" shortcuts under Financial Accounts — one per account
            group/sub-group, only rendered for types that already have at least one account
            (see renderSidebarAccountTypeShortcuts). Indented further than the parent button so
-           they read as a nested sub-list. */
+           they read as a nested sub-list.
+           v165 美化方案2 point 4: wrapping #sidebarAccountTypeShortcuts (below) now carries a
+           left "tree line" + its own left margin, so this item's own padding-left is reduced
+           from 40px to 16px — added together (24px margin + 16px padding) that still lands text
+           at the same ~40px depth as before, just with a visible guide line down the left edge
+           instead of bare whitespace. Font size nudged down slightly (0.82rem → 0.8rem) for a
+           touch more contrast against the 0.92rem parent item. */
         .sidebar-account-type-item {
-            display: flex; align-items: center; gap: 10px; padding: 8px 20px 8px 40px; font-weight: 600;
-            font-size: 0.82rem; cursor: pointer; border: none; background: none; width: 100%;
+            display: flex; align-items: center; gap: 10px; padding: 8px 20px 8px 16px; font-weight: 600;
+            font-size: 0.8rem; cursor: pointer; border: none; background: none; width: 100%;
             text-align: left; color: var(--text-muted);
+            transition: background-color 0.15s ease, color 0.15s ease;
         }
+        .sidebar-account-type-item:hover:not(.active) { background: #f3f4f6; }
         .sidebar-account-type-item:active { background: #f1f5f9; }
         .sidebar-account-type-item.active { background: #eef2ff; color: var(--primary); font-weight: 700; }
+        #sidebarAccountTypeShortcuts {
+            margin-left: 24px;
+            border-left: 2px solid #e0e7ff;
+        }
 
         /* Color swatch picker (member form) */
         .color-swatch-grid { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 4px; }
@@ -1385,6 +1438,15 @@
            subrows underneath it — plain button reset, sized as a small tap target distinct from
            the row's own "›" navigation chevron beside it. */
         .subrow-toggle-btn { border: none; background: transparent; color: var(--text-muted); font-size: 0.85rem; line-height: 1; padding: 4px; cursor: pointer; }
+        /* v165 美化方案2 point 4: rotating chevron for the sidebar's "Financial Accounts"
+           expand/collapse toggle specifically (its markup now holds a static SVG chevron — see
+           index.html — instead of a swapped ▾/▸ character; only that button gets the "collapsed"
+           class, toggled in toggleSidebarAccountShortcuts()/renderSidebarAccountTypeShortcuts()).
+           The other .subrow-toggle-btn uses elsewhere (Accounts-page fund/currency subrows,
+           Portfolio detail) are untouched — they still swap glyphs via textContent and never
+           get this class. */
+        .subrow-toggle-btn .chevron-icon { transition: transform 0.2s ease; }
+        .subrow-toggle-btn.collapsed .chevron-icon { transform: rotate(-90deg); }
         .util-row { display: flex; gap: 8px; margin-top: 24px; }
         .btn-util { flex: 1; padding: 12px; font-size: 0.8rem; border-radius: 8px; background: #e2e8f0; border: none; font-weight: 600; cursor: pointer; }
 
@@ -1635,23 +1697,32 @@
     <div class="sidebar-overlay" id="sidebarOverlay" data-click="closeSidebar"></div>
     <div class="sidebar-drawer" id="sidebarDrawer">
         <div class="sidebar-header">
-            <div class="sidebar-header-title">💰 Ledger</div>
-            <div class="sidebar-header-sub">Multi-Currency Financial Tracker</div>
+            <!-- v165 美化方案2 point 1: brand color now lives only on this chip, not the whole
+                 header bar (reusing the "$" mark already shown in the browser tab title). -->
+            <div class="sidebar-brand-mark">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <div>
+                <div class="sidebar-header-title">Ledger</div>
+                <div class="sidebar-header-sub">Multi-Currency Financial Tracker</div>
+            </div>
         </div>
         <nav class="sidebar-nav">
             <div class="sidebar-section-label">Overview</div>
             <button class="sidebar-item" data-click="sidebarGo" data-target="workspace">
-                <span class="sidebar-item-icon">🏠</span> Dashboard
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg></span> Dashboard
             </button>
             <div class="sidebar-item-row" style="display:flex; align-items:center;">
                 <button class="sidebar-item" style="flex:1;" data-click="navigateToAccountsPage">
-                    <span class="sidebar-item-icon">🏦</span> Financial Accounts
+                    <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 21 8 3 8"/></svg></span> Financial Accounts
                 </button>
-                <button type="button" class="subrow-toggle-btn" id="sidebarAccountShortcutsToggle" data-click="toggleSidebarAccountShortcuts" aria-label="Collapse account type list" title="Collapse account type list">▾</button>
+                <button type="button" class="subrow-toggle-btn" id="sidebarAccountShortcutsToggle" data-click="toggleSidebarAccountShortcuts" aria-label="Collapse account type list" title="Collapse account type list">
+                    <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
             </div>
             <div id="sidebarAccountTypeShortcuts"></div>
             <button class="sidebar-item" data-click="navigateToNavUpdatePage">
-                <span class="sidebar-item-icon">📊</span> Daily NAV Update
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> Daily NAV Update
             </button>
             <!-- v126: "Transactions" — added on request. Wired to the existing "all-ledger"
                  sidebarGo() target (navigateToLedgerPage("all") → the unfiltered "Portfolio
@@ -1660,25 +1731,25 @@
                  currently being viewed — see navigateToLedgerPage()'s activeLedgerAccountView
                  handling in ledger.js) but had no direct nav entry point until now. -->
             <button class="sidebar-item" data-click="sidebarGo" data-target="all-ledger">
-                <span class="sidebar-item-icon">📒</span> Transactions
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span> Transactions
             </button>
 
             <div class="sidebar-divider"></div>
             <div class="sidebar-section-label">Reports</div>
             <button class="sidebar-item" data-click="sidebarGo" data-target="spending-breakdown">
-                <span class="sidebar-item-icon">🥧</span> Spending Breakdown
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></span> Spending Breakdown
             </button>
             <button class="sidebar-item" data-click="sidebarGo" data-target="income-breakdown">
-                <span class="sidebar-item-icon">📈</span> Income Breakdown
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span> Income Breakdown
             </button>
             <button class="sidebar-item" data-click="sidebarGo" data-target="portfolio-report">
-                <span class="sidebar-item-icon">🧺</span> Unit Trust Portfolio
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span> Unit Trust Portfolio
             </button>
             <button class="sidebar-item" data-click="sidebarGo" data-target="owner-networth-report">
-                <span class="sidebar-item-icon">🏛️</span> Financial Assets vs Real Estate
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span> Financial Assets vs Real Estate
             </button>
             <button class="sidebar-item" data-click="sidebarGo" data-target="currency-report">
-                <span class="sidebar-item-icon">🌐</span> Net Worth by Currency
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span> Net Worth by Currency
             </button>
 
             <div class="sidebar-divider"></div>
@@ -1687,7 +1758,7 @@
 
             <div class="sidebar-divider"></div>
             <button class="sidebar-item" data-click="navigateToDataSecurityPage">
-                <span class="sidebar-item-icon">⚙️</span> Setting
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Setting
             </button>
         </nav>
     </div>

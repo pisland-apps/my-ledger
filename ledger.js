@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v181";
+        const APP_VERSION = "v182";
         const APP_VERSION_DATE = "2026-08-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2532,6 +2532,23 @@
         function closeSidebar() {
             document.getElementById("sidebarOverlay").classList.remove("open");
             document.getElementById("sidebarDrawer").classList.remove("open");
+        }
+
+        // --- v182: INSIGHTS RAIL AS A MOBILE (<768px) RIGHT-EDGE DRAWER ---
+        // Same #desktopInsightsRail element/content as the 1400px+ rail (see
+        // renderDesktopInsightsRail) — these two functions just toggle its .open class (and the
+        // dedicated #insightsRailOverlay) so it slides in from the right on phones. Harmless to
+        // call at any width: above 767px the CSS in the matching @media block simply doesn't
+        // apply, so toggling .open there has no visual effect.
+        function openInsightsDrawer() {
+            closeSidebar(); // mutually exclusive with the left nav drawer, same as two modals
+            document.getElementById("insightsRailOverlay").classList.add("open");
+            document.getElementById("desktopInsightsRail").classList.add("open");
+        }
+
+        function closeInsightsDrawer() {
+            document.getElementById("insightsRailOverlay").classList.remove("open");
+            document.getElementById("desktopInsightsRail").classList.remove("open");
         }
 
         // Highlights the sidebar item matching whichever page is currently on screen —
@@ -10639,6 +10656,8 @@
         const CLICK_ACTIONS = {
             openSidebar: () => openSidebar(),
             closeSidebar: () => closeSidebar(),
+            openInsightsDrawer: () => openInsightsDrawer(),
+            closeInsightsDrawer: () => closeInsightsDrawer(),
             sidebarGo: (el) => sidebarGo(el),
             handleSetupPasscodeSubmit: () => handleSetupPasscodeSubmit(),
             handleUnlockSubmit: () => handleUnlockSubmit(),
@@ -10921,6 +10940,51 @@
                 // scroll doesn't accidentally pop the drawer open.
                 if (dx > MIN_SWIPE_PX && dy < dx) {
                     openSidebar();
+                }
+                touchStartX = null;
+                touchStartY = null;
+                startedInEdgeZone = false;
+            }, { passive: true });
+        })();
+
+        // v182: right-edge swipe (start near the right screen edge, drag leftward) opens the
+        // insights drawer (Top Categories This Month / Recent Large Transactions — same content
+        // as the 1400px+ rail) on phones. Mirrors setupSidebarSwipeGesture() above exactly, just
+        // the opposite edge/direction, so the two can never both match the same touch.
+        //
+        // v182 follow-up: the first cut of this gestured on ANY left-to-right swipe starting
+        // outside the left-edge zone, gated by a generic "is any ancestor horizontally
+        // scrollable?" walk up the DOM. That walk was true for almost every element on the page
+        // (containers commonly end up 1-2px wider than their clientWidth from borders/rounding,
+        // with nothing actually scrollable) — so nearly every swipe got silently disqualified,
+        // matching the "1 in 10" report. Switched to the same deterministic edge-zone check the
+        // left drawer already uses reliably, instead of trying to detect scrollability at all.
+        (function setupInsightsDrawerSwipeGesture() {
+            const EDGE_ZONE_PX = 24;
+            const MIN_SWIPE_PX = 60;
+            let touchStartX = null;
+            let touchStartY = null;
+            let startedInEdgeZone = false;
+
+            document.addEventListener("touchstart", (e) => {
+                if (window.innerWidth >= 768) return; // tablet/desktop: rail is docked or hidden, not a drawer
+                if (document.getElementById("desktopInsightsRail").classList.contains("open")) return;
+                const t = e.touches[0];
+                touchStartX = t.clientX;
+                touchStartY = t.clientY;
+                startedInEdgeZone = t.clientX >= window.innerWidth - EDGE_ZONE_PX;
+            }, { passive: true });
+
+            document.addEventListener("touchend", (e) => {
+                if (!startedInEdgeZone || touchStartX === null) return;
+                const t = e.changedTouches[0];
+                const dx = t.clientX - touchStartX;
+                const dy = Math.abs(t.clientY - touchStartY);
+                // Require a mostly-horizontal leftward swipe (dx negative), same "mostly
+                // horizontal" guard as the sidebar gesture, so an edge-starting vertical scroll
+                // doesn't accidentally pop the drawer open.
+                if (dx < -MIN_SWIPE_PX && dy < -dx) {
+                    openInsightsDrawer();
                 }
                 touchStartX = null;
                 touchStartY = null;

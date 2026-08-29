@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v170";
+        const APP_VERSION = "v171";
         const APP_VERSION_DATE = "2026-08-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -74,7 +74,7 @@
         // held/paid, which are custodial in nature, not trade debts. "Other Assets"/"Other
         // Liabilities" are the correct general-purpose catch-alls for that. Existing accounts
         // still saved under the old AP/AR groups are remapped by migrateAccountGroupRename().
-        const ACCOUNT_GROUPS = ["Bank/Cash", "Credit Card", "Investment", "Real Estate", "Other Assets", "Bank Loan", "Other Liabilities"];
+        const ACCOUNT_GROUPS = ["Bank/Cash", "Credit Card", "Multi-Currency", "Investment", "Real Estate", "Other Assets", "Bank Loan", "Other Liabilities"];
         const DEFAULT_ACCOUNT_GROUP = ACCOUNT_GROUPS[0];
 
         // Sub-groups (v39) — optional, per-Group breakdown so e.g. "Investment" can be split
@@ -202,6 +202,7 @@
         const ACCOUNT_GROUP_BADGE = {
             "Bank/Cash": { icon: "🏦", bg: "#e0e7ff", fg: "#4338ca" },
             "Credit Card": { icon: "💳", bg: "#fce7f3", fg: "#9d174d" },
+            "Multi-Currency": { icon: "💱", bg: "#ccfbf1", fg: "#0f766e" },
             "Investment": { icon: "📈", bg: "#dbeafe", fg: "#1d4ed8" },
             "Real Estate": { icon: "🏠", bg: "#ffedd5", fg: "#9a3412" },
             "Other Assets": { icon: "💼", bg: "#e0f2fe", fg: "#0369a1" },
@@ -2800,6 +2801,13 @@
                     ? "Add Another Currency (optional)"
                     : "Opening Balances (optional)";
                 if (!isEditing && document.getElementById("multiOpeningRows").children.length === 0) addMultiCurrencyRow();
+                // v171: new-account creation only defaults Group to "Multi-Currency" for
+                // convenience, same precedent as Credit Card above — never overrides it while
+                // editing an existing account, in case it was deliberately grouped elsewhere.
+                if (!isEditing) {
+                    document.getElementById("newAccGroup").value = "Multi-Currency";
+                    handleAccGroupChange();
+                }
             } else if (type === "fd") {
                 fdBtn.style.background = "var(--transfer-color)"; fdBtn.style.color = "white";
                 hint.textContent = "Just choose the type and name — currency, principal, tenure, rate, and maturity date are captured per placement below (or later, whenever you transfer funds in).";

@@ -1028,6 +1028,8 @@
             box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18), -2px -2px 5px var(--neu-light), 2px 2px 5px var(--neu-dark);
         }
         .speed-dial-fab {
+            position: relative;
+            overflow: hidden;
             width: 48px;
             height: 48px;
             border-radius: 50%;
@@ -1038,9 +1040,10 @@
             justify-content: center;
             color: #fff;
             cursor: pointer;
-            /* v175: frosted-glass fill (translucent tint + backdrop blur) replacing the v174
-               solid fill — each button keeps its own hue via --sd-tint below, just no longer
-               opaque. backdrop-filter needs -webkit- for Safari/iOS. */
+            /* v176: layered glass — a diagonal tri-stop gradient tint (see .sd-* rules below,
+               light-to-dark along the same hue) sits under a glossy ::before highlight, both on
+               top of the backdrop blur, so the disc reads as curved/glassy rather than a flat
+               tinted circle (v175). backdrop-filter needs -webkit- for Safari/iOS. */
             backdrop-filter: blur(10px) saturate(180%);
             -webkit-backdrop-filter: blur(10px) saturate(180%);
             box-shadow:
@@ -1048,14 +1051,26 @@
                 inset 0 1px 1px rgba(255, 255, 255, 0.5);
             transition: transform 0.12s ease, box-shadow 0.12s ease;
         }
+        .speed-dial-fab::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0.15) 32%, rgba(255, 255, 255, 0) 60%);
+            pointer-events: none;
+        }
+        /* Keep the icon above the ::before gloss overlay — without this, the absolutely
+           positioned pseudo-element (painted after static in-flow content within this stacking
+           context) would sit visually on top of the static <svg> icon and dim it. */
+        .speed-dial-fab svg { position: relative; z-index: 1; }
         .speed-dial-fab:active {
             transform: scale(0.92);
             box-shadow: inset 2px 2px 5px rgba(15, 23, 42, 0.3), inset -2px -2px 4px rgba(255, 255, 255, 0.3);
         }
-        .speed-dial-fab.sd-income { background-color: rgba(16, 185, 129, 0.55); }
-        .speed-dial-fab.sd-expense { background-color: rgba(239, 68, 68, 0.55); }
-        .speed-dial-fab.sd-transfer { background-color: rgba(59, 130, 246, 0.55); }
-        .speed-dial-fab.sd-salary { background-color: rgba(217, 119, 6, 0.55); }
+        .speed-dial-fab.sd-income { background: linear-gradient(135deg, rgba(52, 211, 153, 0.75) 0%, rgba(16, 185, 129, 0.4) 55%, rgba(6, 95, 70, 0.55) 100%); }
+        .speed-dial-fab.sd-expense { background: linear-gradient(135deg, rgba(248, 113, 113, 0.75) 0%, rgba(239, 68, 68, 0.4) 55%, rgba(153, 27, 27, 0.55) 100%); }
+        .speed-dial-fab.sd-transfer { background: linear-gradient(135deg, rgba(96, 165, 250, 0.75) 0%, rgba(59, 130, 246, 0.4) 55%, rgba(30, 64, 175, 0.55) 100%); }
+        .speed-dial-fab.sd-salary { background: linear-gradient(135deg, rgba(251, 191, 36, 0.75) 0%, rgba(217, 119, 6, 0.4) 55%, rgba(146, 64, 14, 0.55) 100%); }
 
         /* Small icon-only button beside the account name on its Activity page */
         .icon-edit-btn {

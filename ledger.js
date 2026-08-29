@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v171";
+        const APP_VERSION = "v172";
         const APP_VERSION_DATE = "2026-08-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -3413,7 +3413,7 @@
                     // per-currency breakdown moves to its own subrow list below (same pattern as
                     // Unit Trust's fund subrows), each line up on its own row and clickable
                     // through to that currency's own Activity page.
-                    balSummary = `Base ${escapeHtml(baseCurrency)}: ${formatBalanceHTML(baseVal, baseCurrency)}`;
+                    balSummary = `≈ ${formatBalanceHTML(baseVal, baseCurrency)}`;
                 } else if (a.type === "fd" || a.type === "unittrust") {
                     const baskets = nativeBalances[a.id];
                     const currencies = Object.keys(baskets);
@@ -5455,7 +5455,7 @@
                     // Multi-Currency accounts (v55 on the global Accounts page, ported here now):
                     // show the one converted Base total rather than a joined "+" string of native
                     // amounts — this page had been left on the pre-v55 joined-string format.
-                    balSummary = `<strong>Base ${escapeHtml(baseCurrency)}: ${formatBalanceHTML(accountBaseValue(a, nativeBalances), baseCurrency)}</strong>`;
+                    balSummary = `<strong>≈ ${formatBalanceHTML(accountBaseValue(a, nativeBalances), baseCurrency)}</strong>`;
                 } else if (a.type === "fd" || a.type === "unittrust") {
                     const baskets = nativeBalances[a.id];
                     const currencies = Object.keys(baskets);

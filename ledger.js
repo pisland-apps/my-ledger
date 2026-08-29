@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v191";
+        const APP_VERSION = "v192";
         const APP_VERSION_DATE = "2026-08-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -11137,6 +11137,7 @@
             openSalaryEntryForm: () => openSalaryEntryForm(),
             handleSaveSalaryRecord: () => handleSaveSalaryRecord(),
             printCurrentApp: () => printCurrentApp(),
+            toggleDonutSlice: (el) => toggleDonutSlice(el),
         };
 
         const CHANGE_ACTIONS = {
@@ -11178,7 +11179,6 @@
             handleSalaryCurrencyChange: () => handleSalaryCurrencyChange(),
             changeReportCardPeriod1: (el) => changeReportCardPeriod(1, el.value),
             changeReportCardPeriod2: (el) => changeReportCardPeriod(2, el.value),
-            toggleDonutSlice: (el) => toggleDonutSlice(el),
         };
 
         const INPUT_ACTIONS = {

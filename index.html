@@ -998,6 +998,61 @@
             z-index: 49;
         }
 
+        /* Dashboard speed-dial FAB (v174) — icon-circle + label-pill rows, reference: a
+           competing budget app's expanding "+" FAB. Distinct from .quick-add-sheet above (which
+           keeps the Account Activity page's original wide-button style) since only the dashboard
+           got this restyle. */
+        .speed-dial-sheet {
+            position: fixed;
+            right: 20px;
+            bottom: 92px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 14px;
+            z-index: 51;
+        }
+        .speed-dial-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .speed-dial-label {
+            background: #fff;
+            color: var(--text-primary, #1e293b);
+            font-weight: 700;
+            font-size: 0.85rem;
+            padding: 8px 14px;
+            border-radius: 10px;
+            white-space: nowrap;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18), -2px -2px 5px var(--neu-light), 2px 2px 5px var(--neu-dark);
+        }
+        .speed-dial-fab {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: none;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            cursor: pointer;
+            box-shadow:
+                0 4px 14px rgba(15, 23, 42, 0.28),
+                -2px -2px 5px var(--neu-primary-light),
+                3px 4px 8px var(--neu-primary-dark);
+            transition: transform 0.12s ease, box-shadow 0.12s ease;
+        }
+        .speed-dial-fab:active {
+            transform: scale(0.92);
+            box-shadow: inset 2px 2px 5px rgba(15, 23, 42, 0.3), inset -2px -2px 4px var(--neu-primary-light);
+        }
+        .speed-dial-fab.sd-income { background-color: var(--income-color); }
+        .speed-dial-fab.sd-expense { background-color: var(--expense-color); }
+        .speed-dial-fab.sd-transfer { background-color: var(--transfer-color); }
+        .speed-dial-fab.sd-salary { background-color: var(--salary-color); }
+
         /* Small icon-only button beside the account name on its Activity page */
         .icon-edit-btn {
             background: none;
@@ -1666,7 +1721,7 @@
                div/span elements for actual transaction data specifically, so this blanket
                button rule can never hide real content, only controls). */
             button, input[type="file"], select, .sidebar-overlay, .sidebar-drawer, #lockOverlay,
-            .modal, #versionBadge, .quick-add-backdrop, .quick-add-sheet, .print-filter-row {
+            .modal, #versionBadge, .quick-add-backdrop, .quick-add-sheet, .speed-dial-sheet, .print-filter-row {
                 display: none !important;
             }
             /* Report pages replace their <select> filters (hidden above) with a plain-text
@@ -1913,11 +1968,6 @@
 
         <div id="fdReminderContainer"></div>
 
-        <div class="section-header" style="margin-top: 0;">
-            <span class="section-title">Quick Transaction Entry</span>
-            <button class="text-btn" data-click="navigateToCategoriesPage">🏷 Categories</button>
-        </div>
-
         <div class="section-header">
             <span class="section-title">Financial Report Card</span>
         </div>
@@ -2014,11 +2064,31 @@
              Salary options, mirroring the existing Account Activity page pattern above
              (ledgerQuickAddSheet, v34) so both use the same visual language. -->
         <div id="dashboardQuickAddBackdrop" class="quick-add-backdrop" style="display:none;" data-click="closeDashboardQuickAddSheet"></div>
-        <div id="dashboardQuickAddSheet" class="quick-add-sheet" style="display:none;">
-            <button class="action-btn btn-income" data-click="dashboardQuickAddChooseAction" data-action="income"><span>🟢 Income</span></button>
-            <button class="action-btn btn-expense" data-click="dashboardQuickAddChooseAction" data-action="expense"><span>🔴 Expense</span></button>
-            <button class="action-btn btn-transfer" data-click="dashboardQuickAddChooseAction" data-action="transfer"><span>🔄 Transfer</span></button>
-            <button class="action-btn btn-salary" data-click="dashboardQuickAddChooseAction" data-action="salary"><span>💰 Salary</span></button>
+        <div id="dashboardQuickAddSheet" class="speed-dial-sheet" style="display:none;">
+            <div class="speed-dial-row">
+                <span class="speed-dial-label">Transfer money</span>
+                <button class="speed-dial-fab sd-transfer" data-click="dashboardQuickAddChooseAction" data-action="transfer" aria-label="Transfer money" title="Transfer money">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                </button>
+            </div>
+            <div class="speed-dial-row">
+                <span class="speed-dial-label">Salary</span>
+                <button class="speed-dial-fab sd-salary" data-click="dashboardQuickAddChooseAction" data-action="salary" aria-label="Salary" title="Salary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                </button>
+            </div>
+            <div class="speed-dial-row">
+                <span class="speed-dial-label">Income</span>
+                <button class="speed-dial-fab sd-income" data-click="dashboardQuickAddChooseAction" data-action="income" aria-label="Income" title="Income">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+            </div>
+            <div class="speed-dial-row">
+                <span class="speed-dial-label">Expense</span>
+                <button class="speed-dial-fab sd-expense" data-click="dashboardQuickAddChooseAction" data-action="expense" aria-label="Expense" title="Expense">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+            </div>
         </div>
         <button class="fab-btn" id="dashboardQuickAddFab" data-click="toggleDashboardQuickAddSheet" aria-label="Add transaction" title="Add transaction">+</button>
     </div>
@@ -2171,7 +2241,7 @@
     <!-- ================= PAGE 5: ALL CATEGORIES ================= -->
     <div id="page-categories" class="page hidden">
         <div class="nav-header">
-            <button class="back-btn" data-click="navigateToWorkspace">&larr; Back</button>
+            <button class="back-btn" data-click="navigateToDataSecurityPage">&larr; Back</button>
             <div>
                 <h3 style="font-weight:800; font-size:1.2rem;">Categories</h3>
                 <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">All income &amp; spending categories</p>
@@ -2597,6 +2667,10 @@
         <div class="config-list">
             <div class="config-item" style="cursor:pointer;" data-click="sidebarGo" data-target="members">
                 <span>👪 <strong>Manage Members</strong></span>
+                <span style="color:var(--text-muted);">›</span>
+            </div>
+            <div class="config-item" style="cursor:pointer;" data-click="navigateToCategoriesPage">
+                <span>🏷️ <strong>Manage Categories</strong></span>
                 <span style="color:var(--text-muted);">›</span>
             </div>
             <div class="config-item" style="cursor:pointer;" data-click="sidebarGo" data-target="backup">

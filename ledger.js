@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v187";
+        const APP_VERSION = "v188";
         const APP_VERSION_DATE = "2026-08-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2210,6 +2210,60 @@
             } else {
                 openTransactionForm(action);
             }
+        }
+
+        // v188: "Group by Note" — collapses every transaction in the category/period currently
+        // being viewed (see navigateToCategoryPage below) into one row per distinct note text
+        // (case-insensitive, trimmed), each with a combined total, an occurrence count, and every
+        // date it was logged — e.g. typing "mcd" as the note on three separate McDonald's
+        // purchases groups them into one "mcd (x3)" row. Mirrors a reference budgeting app's
+        // per-category note-merge summary. Reuses the exact same isBound rule the ledger list
+        // itself uses for a category view (t.cat === activeCategoryView, scoped by
+        // categoryDrillYear/Month) so the two always agree on what's "in" this category/period —
+        // deliberately NOT limited to expenses only, so it also works when viewing an income
+        // category.
+        async function openNoteSummaryModal() {
+            if (activeCategoryView === "all") return; // button is hidden otherwise, but guard anyway
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const groups = {}; // normalized note -> { label, total, count, dates: [] }
+            txs.forEach(t => {
+                if (t.cat !== activeCategoryView) return;
+                const d = new Date(t.date);
+                if (categoryDrillYear !== "all" && d.getFullYear().toString() !== categoryDrillYear) return;
+                if (categoryDrillMonth !== "all" && d.getMonth().toString() !== categoryDrillMonth) return;
+                const noteRaw = (t.notes || "").trim();
+                const key = noteRaw ? noteRaw.toLowerCase() : "\u0000no-note";
+                if (!groups[key]) groups[key] = { label: noteRaw || "(No note)", total: 0, count: 0, dates: [] };
+                groups[key].total += convertTxAmountToBase(t, accounts);
+                groups[key].count += 1;
+                groups[key].dates.push(t.date);
+            });
+
+            const entries = Object.values(groups).sort((a, b) => b.total - a.total);
+            const icon = getCategoryIcon(activeCategoryView);
+            document.getElementById("noteSummaryModalTitle").textContent = `${icon} ${activeCategoryView} — Notes Summary`;
+
+            document.getElementById("noteSummaryModalList").innerHTML = entries.length === 0
+                ? `<p style="font-size:0.8rem; text-align:center; color:var(--text-muted);">No transactions to group here.</p>`
+                : entries.map(g => {
+                    const datesHTML = g.dates.slice().sort().reverse().map(dt => `<div style="padding-left:2px;">• ${escapeHtml(dt)}</div>`).join("");
+                    const countSuffix = g.count > 1 ? ` (x${g.count})` : "";
+                    return `
+                        <div style="background:var(--bg-color); border:1px solid var(--border-color); border-left:4px solid var(--primary); border-radius:10px; padding:12px 14px; margin-bottom:12px;">
+                            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
+                                <strong style="font-size:0.95rem;">${escapeHtml(g.label)}${countSuffix}</strong>
+                                <span style="font-weight:800; color:var(--text-main); white-space:nowrap;">${formatCurrency(g.total, baseCurrency)}</span>
+                            </div>
+                            <div style="font-size:0.72rem; color:var(--text-muted); margin-top:6px;">
+                                📅 Dates:
+                                ${datesHTML}
+                            </div>
+                        </div>
+                    `;
+                }).join("");
+
+            openModal("noteSummaryModal");
         }
 
         function navigateToCategoryPage(categoryName, backTarget = "workspace", year = "all", month = "all") {
@@ -9155,6 +9209,11 @@
                 document.getElementById("ledgerTargetTitle").textContent = `${icon} ${activeCategoryView.toUpperCase()}${periodSuffix}`;
                 document.getElementById("ledgerTargetEditBtn").style.display = "none";
                 document.getElementById("ledgerTargetOwnerTags").style.display = "none";
+                // v188: "Group by Note" — only makes sense once a single category is being
+                // viewed (mirrors a reference app's per-category note-merge summary: same note
+                // text logged across several entries — e.g. "mcd" — collapsed into one row with
+                // its combined total and every date it was used).
+                document.getElementById("ledgerNoteSummaryBtn").style.display = "";
             } else if (directTypeView !== "all") {
                 // v148: same period-suffix treatment as the category branch above, for the report
                 // card's Income/Expense clicks (categoryDrillYear/Month "all" when reached any
@@ -9167,10 +9226,12 @@
                 document.getElementById("ledgerTargetTitle").textContent = `All ${directTypeView.charAt(0).toUpperCase() + directTypeView.slice(1)} Log${periodSuffix}`;
                 document.getElementById("ledgerTargetEditBtn").style.display = "none";
                 document.getElementById("ledgerTargetOwnerTags").style.display = "none";
+                document.getElementById("ledgerNoteSummaryBtn").style.display = "none";
             } else if (activeLedgerAccountView === "all") {
                 document.getElementById("ledgerTargetTitle").textContent = "Portfolio General Log";
                 document.getElementById("ledgerTargetEditBtn").style.display = "none";
                 document.getElementById("ledgerTargetOwnerTags").style.display = "none";
+                document.getElementById("ledgerNoteSummaryBtn").style.display = "none";
             } else {
                 const activeAcc = accounts.find(a => a.id === activeLedgerAccountView);
                 // v166: owner names moved out of the title (was cluttered as plain text in
@@ -9179,6 +9240,7 @@
                 const currentActiveAccName = activeAcc ? activeAcc.name : "Vault";
                 document.getElementById("ledgerTargetTitle").textContent = `${currentActiveAccName} Activity`;
                 document.getElementById("ledgerTargetEditBtn").style.display = "inline-block";
+                document.getElementById("ledgerNoteSummaryBtn").style.display = "none";
                 const ownerTagsEl = document.getElementById("ledgerTargetOwnerTags");
                 if (activeAcc) {
                     ownerTagsEl.innerHTML = accountOwnerTagHTML(activeAcc);
@@ -10966,6 +11028,7 @@
             navigateToLedgerPage: (el) => navigateToLedgerPage(el.dataset.id, el.dataset.back || "workspace"),
             deleteTxFromEditModal: () => deleteTxFromEditModal(),
             navigateToCategoryPage: (el) => navigateToCategoryPage(el.dataset.category, el.dataset.back || "workspace", el.dataset.year || "all", el.dataset.month || "all"),
+            openNoteSummaryModal: () => openNoteSummaryModal(),
             numpadDigit: (el) => numpadDigit(el.dataset.digit),
             numpadBackspace: () => numpadBackspace(),
             numpadClear: () => numpadClear(),

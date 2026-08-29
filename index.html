@@ -1216,6 +1216,14 @@
         }
         .color-swatch.selected { border-color: var(--text-main); }
 
+        /* Background-theme swatches (Setting page) — these preset colors are pale pastels,
+           so (unlike the saturated member-color swatches) they need a visible resting border
+           to read as a chip against the white settings-panel card, plus room for a label. */
+        .bg-theme-swatch-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 56px; }
+        .bg-theme-swatch-wrap .color-swatch { box-shadow: 0 0 0 1.5px var(--border-color) inset; }
+        .bg-theme-swatch-wrap .color-swatch.selected { box-shadow: none; }
+        .bg-theme-swatch-label { font-size: 0.65rem; color: var(--text-muted); font-weight: 600; text-align: center; line-height: 1.2; }
+
         /* Net worth card on a member/joint filtered page */
         .member-page-networth-card {
             background: var(--card-bg); border-radius: 16px; border: 1.5px solid var(--border-color);
@@ -1830,6 +1838,25 @@
             a[href]::after { content: none !important; }
         }
     </style>
+    <!-- v179: apply any saved background-theme choice before first paint, so the page never
+         flashes the default slate background and then jumps to the user's chosen tint. Only
+         --bg-color and the browser-chrome theme-color are touched here; every other design
+         token (glass, neumorphism, card colors, data colors) is untouched, so the rest of the
+         v156+ glass/neumorphism styling is unaffected regardless of which background is picked. -->
+    <script>
+        (function () {
+            try {
+                var saved = JSON.parse(localStorage.getItem("ledgerBgTheme"));
+                if (saved && saved.bg) {
+                    document.documentElement.style.setProperty("--bg-color", saved.bg);
+                    if (saved.themeColor) {
+                        var m = document.querySelector('meta[name="theme-color"]');
+                        if (m) m.setAttribute("content", saved.themeColor);
+                    }
+                }
+            } catch (e) {}
+        })();
+    </script>
 </head>
 <body>
 
@@ -2706,6 +2733,14 @@
             </div>
         </div>
         <div class="config-list">
+            <div class="config-item" style="cursor:pointer;" data-click="toggleBgThemeSettings">
+                <span>🎨 <strong>Background Theme</strong></span>
+                <span style="color:var(--text-muted);">›</span>
+            </div>
+            <div id="bgThemeSettingsPanel" style="display:none; flex-direction:column; gap:10px; background:var(--card-bg); border:1.5px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:10px;">
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Applies only to the page background — cards, glass panels and data colors stay the same.</p>
+                <div class="color-swatch-grid" id="bgThemeSwatchGrid"></div>
+            </div>
             <div class="config-item" style="cursor:pointer;" data-click="sidebarGo" data-target="members">
                 <span>👪 <strong>Manage Members</strong></span>
                 <span style="color:var(--text-muted);">›</span>

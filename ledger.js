@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v185";
+        const APP_VERSION = "v186";
         const APP_VERSION_DATE = "2026-08-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -3911,7 +3911,13 @@
             activeFundActivityId = fundId;
             // v78: rows in the Unit Trust Portfolio Report link here too — send Back to that
             // report instead of misrouting to Ledger/Accounts when that's where the tap came from.
-            if (!document.getElementById("page-portfolio-report").classList.contains("hidden")) {
+            // v186: a member page's own fund subrow (data-back="member") gets a third explicit
+            // target — needed now that the member page has fund/currency/FD subrows of its own
+            // (see renderMemberPage), otherwise it fell through to the generic ledger/accounts
+            // guess below and Back would strand the user on the wrong page.
+            if (typeof el !== "string" && el.dataset.back === "member") {
+                fundActivityBackToPage = "member";
+            } else if (!document.getElementById("page-portfolio-report").classList.contains("hidden")) {
                 fundActivityBackToPage = "portfolio-report";
             } else {
                 fundActivityBackToPage = activeLedgerAccountView !== "all" ? "ledger" : "accounts";
@@ -3929,6 +3935,9 @@
             } else if (fundActivityBackToPage === "portfolio-report") {
                 showPage("page-portfolio-report");
                 await renderPortfolioReportPage();
+            } else if (fundActivityBackToPage === "member") {
+                showPage("page-member");
+                await renderMemberPage();
             } else {
                 showPage("page-accounts");
                 await renderAccountsPage();
@@ -3994,7 +4003,11 @@
             workspaceScrollY = window.scrollY;
             activeCurrencyActivityAccountId = accountId;
             activeCurrencyActivityCurrency = currency;
-            currencyActivityBackToPage = el.dataset.back === "accounts" ? "accounts" : "ledger";
+            // v186: added "member" as a third explicit target (see the matching comment on
+            // navigateToFundActivityPage) now that the member page has currency subrows too.
+            currencyActivityBackToPage = el.dataset.back === "accounts" ? "accounts"
+                : el.dataset.back === "member" ? "member"
+                : "ledger";
             showPage("page-currencyactivity");
             window.scrollTo(0, 0);
             pushVirtualState("currencyactivity");
@@ -4005,6 +4018,9 @@
             if (currencyActivityBackToPage === "accounts") {
                 showPage("page-accounts");
                 await renderAccountsPage();
+            } else if (currencyActivityBackToPage === "member") {
+                showPage("page-member");
+                await renderMemberPage();
             } else {
                 showPage("page-ledger");
                 await renderApp();
@@ -5625,9 +5641,24 @@
         async function renderMemberPage() {
             if (!activeMemberFilter) return;
             const { type, ids } = activeMemberFilter;
-            const { accounts, nativeBalances } = await computeAccountBalances();
+            const { accounts, txs, nativeBalances } = await computeAccountBalances();
             const subset = filterAccountsByOwnership(accounts, type, ids);
             const { total, currencyTotals } = summarizeAccountsNetWorth(subset, nativeBalances);
+            // v186: same fund/FD-placement subrow data the global Accounts page builds (see
+            // renderAccountsPage) — needed here now that this page's cards match that page's
+            // card style/arrangement (accountAvatarHTML, group headers, subrows) instead of the
+            // older plain-list format.
+            const allFunds = await readAllDB(STORES.FUNDS);
+            const fundsByAccountId = {};
+            allFunds.forEach(f => { (fundsByAccountId[f.accountId] = fundsByAccountId[f.accountId] || []).push(f); });
+            const fdPlacementsByAccountId = {};
+            txs.filter(t => t.type === "transfer" && t.fdMaturityDate && !t.fdResolved && t.dest).forEach(t => {
+                (fdPlacementsByAccountId[t.dest] = fdPlacementsByAccountId[t.dest] || []).push(t);
+            });
+            // Subrow expand/collapse state (v64 pattern) is scoped per view — this page's own
+            // prefix so it can never collide with the global Accounts page's "all"/filter-based
+            // keys for the same account id.
+            const subrowFilterKeyPrefix = `member_${type}_${ids.join("-")}`.replace(/\s+/g, "-");
 
             const titleEl = document.getElementById("memberPageTitle");
             if (type === "member") {
@@ -5654,8 +5685,51 @@
                     </div>
                 `).join("");
 
+            // v186: card markup/grouping below mirrors renderAccountsPage's "account-card" style
+            // exactly (avatar chip, top row name+balance, meta-row type badge, ref line, subline,
+            // group/sub-group section headers + sub-totals, collapsible fund/currency/FD subrows)
+            // so a member's own Accounts view matches the global Accounts page's arrangement —
+            // this page had been left on an older plain-row format. Per the standing "duplicated
+            // list renderers" lesson, this is a second hand-written copy of that same block, not
+            // a shared component — any future layout change to one needs the same check against
+            // the other.
             let html = "";
+            let lastGroup = null;
+            let lastSubgroup = undefined;
+            let groupTotal = 0, subgroupTotal = 0;
+
+            function flushSubgroupTotal() {
+                if (lastSubgroup) {
+                    html += `<div class="config-list-subtotal"><span class="total-label">Sub-Total · ${escapeHtml(lastSubgroup)}</span>: <span class="total-amount">${formatBalanceHTML(subgroupTotal, baseCurrency)}</span></div>`;
+                }
+                subgroupTotal = 0;
+            }
+            function flushGroupTotal() {
+                if (lastGroup !== null) {
+                    html += `<div class="config-list-grouptotal"><span class="total-label">Group Total · ${escapeHtml(lastGroup)}</span>: <span class="total-amount">${formatBalanceHTML(groupTotal, baseCurrency)}</span></div>`;
+                }
+                groupTotal = 0;
+            }
+
             sortAccountsByGroupThenName(subset).forEach(a => {
+                const subrowKey = `${subrowFilterKeyPrefix}__${a.id}`;
+                const group = a.group || DEFAULT_ACCOUNT_GROUP;
+                const subgroup = a.subgroup || "";
+                if (group !== lastGroup) {
+                    flushSubgroupTotal();
+                    flushGroupTotal();
+                    html += `<div class="config-list-section-label">${accountGroupBadgeHTML(group)}</div>`;
+                    lastGroup = group;
+                    lastSubgroup = undefined;
+                }
+                if (subgroup !== lastSubgroup) {
+                    flushSubgroupTotal();
+                    if (subgroup) {
+                        html += `<div class="config-list-subgroup-label">↳ ${escapeHtml(subgroup)}</div>`;
+                    }
+                    lastSubgroup = subgroup;
+                }
+
                 const typeBadge = a.type === "fd"
                     ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#ede9fe; color:#6d28d9; font-weight:bold;">Fixed Deposit</span>`
                     : a.type === "multi"
@@ -5666,55 +5740,140 @@
                                 ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#fce7f3; color:#9d174d; font-weight:bold;">Credit Card</span>`
                                 : currencyBadgeHTML(a.currency);
 
+                const baseVal = accountBaseValue(a, nativeBalances);
+
                 let balSummary;
                 if (a.type === "multi") {
-                    // Multi-Currency accounts (v55 on the global Accounts page, ported here now):
-                    // show the one converted Base total rather than a joined "+" string of native
-                    // amounts — this page had been left on the pre-v55 joined-string format.
-                    balSummary = `<strong>≈ ${formatBalanceHTML(accountBaseValue(a, nativeBalances), baseCurrency)}</strong>`;
+                    balSummary = `≈ ${formatBalanceHTML(baseVal, baseCurrency)}`;
                 } else if (a.type === "fd" || a.type === "unittrust") {
                     const baskets = nativeBalances[a.id];
                     const currencies = Object.keys(baskets);
                     balSummary = currencies.length === 0
                         ? '<span style="color:var(--text-muted);">No funds yet</span>'
-                        : currencies.map(curr => `<strong>${formatBalanceHTML(baskets[curr], curr)}</strong>`).join(" + ");
+                        : currencies.map(curr => formatBalanceHTML(baskets[curr], curr)).join(" + ");
                 } else {
-                    balSummary = `<strong>${formatBalanceHTML(nativeBalances[a.id], a.currency)}</strong>`;
+                    balSummary = formatBalanceHTML(nativeBalances[a.id], a.currency);
                 }
+
+                groupTotal += baseVal;
+                subgroupTotal += baseVal;
 
                 const linkedAcc = a.linkedAccountId ? accounts.find(x => x.id === a.linkedAccountId) : null;
                 const linkedLine = linkedAcc
-                    ? ` · <span style="color:#92400e; font-weight:600;">🔗 ${escapeHtml(accountOptionLabel(linkedAcc, accounts))}</span>`
+                    ? `<br><span style="font-size:0.7rem; color:#92400e; font-weight:600;">🔗 Related: ${escapeHtml(accountOptionLabel(linkedAcc, accounts))}</span>`
                     : "";
 
                 // Real Estate (v53): same "excluded from Net Worth" flag renderAccountsPage()
-                // already shows on the global Accounts page — was missing here, so a property
-                // marked Exclude looked identical to an included one on a member's own page.
+                // already shows on the global Accounts page.
                 const excludedLine = a.includeInNetWorth === false
-                    ? ` · <span style="color:#991b1b; font-weight:600;">🚫 Excluded from Net Worth</span>`
+                    ? `<br><span style="font-size:0.7rem; color:#991b1b; font-weight:600;">🚫 Excluded from Net Worth</span>`
                     : "";
 
-                const extraInfoLine = accountExtraInfoLine(a, nativeBalances);
+                const acctRefLine = a.accountRef
+                    ? `<div class="account-card-refline">${escapeHtml(a.accountRef)}</div>`
+                    : "";
+                const extraInfoLine = accountExtraInfoLine(a, nativeBalances, false);
 
                 // Credit Card (v127): same "Amount due" line + 💳 Pay button as the main Accounts
                 // page (renderAccountsPage) — see that copy's comment for what amountDue means.
                 const ccAmountDue = a.type === "creditcard" ? Math.max(0, -(nativeBalances[a.id] || 0)) : 0;
                 const ccAmountDueLine = ccAmountDue > 0.005
-                    ? ` · <span style="color:#9d174d; font-weight:700;">💳 Amount due: ${formatBalanceHTML(ccAmountDue, a.currency)}</span>`
+                    ? `<br><span style="font-size:0.72rem; color:#9d174d; font-weight:700;">💳 Amount due: ${formatBalanceHTML(ccAmountDue, a.currency)}</span>`
                     : "";
                 const ccPayBtnHTML = ccAmountDue > 0.005
-                    ? `<button type="button" data-click="openCreditCardPayment" data-id="${escapeHtml(a.id)}" style="font-size:0.66rem; font-weight:700; color:#fff; background:#db2777; border:none; border-radius:6px; padding:5px 8px; white-space:nowrap; cursor:pointer; margin-right:6px;">💳 Pay</button>`
+                    ? `<button type="button" data-click="openCreditCardPayment" data-id="${escapeHtml(a.id)}" style="font-size:0.66rem; font-weight:700; color:#fff; background:#db2777; border:none; border-radius:6px; padding:5px 8px; white-space:nowrap; cursor:pointer;">💳 Pay</button>`
+                    : "";
+
+                let subrowsHtml = "";
+
+                if (a.type === "multi") {
+                    const baskets = nativeBalances[a.id] || {};
+                    const currencies = Object.keys(baskets).sort();
+                    if (currencies.length > 0) {
+                        subrowsHtml += currencies.map(curr => {
+                            const subText = curr !== baseCurrency
+                                ? `<span class="converted-subtext">≈ ${formatCurrency(convertCurrency(baskets[curr], curr, baseCurrency), baseCurrency)}</span>`
+                                : "";
+                            return `
+                            <div class="config-item fund-subrow" style="cursor:pointer;" data-click="navigateToCurrencyActivityPage" data-id="${escapeHtml(a.id)}" data-currency="${escapeHtml(curr)}" data-back="member">
+                                <span>${escapeHtml(curr)} <span style="color:var(--text-muted); font-weight:600;">— ${formatBalanceHTML(baskets[curr], curr)}</span>${subText}</span>
+                                <span style="color:var(--text-muted);">›</span>
+                            </div>`;
+                        }).join("");
+                    }
+                }
+
+                if (a.type === "unittrust") {
+                    const funds = (fundsByAccountId[a.id] || []).slice().sort((x, y) => x.name.localeCompare(y.name));
+                    if (funds.length > 0) {
+                        subrowsHtml += funds.map(f => {
+                            const value = (f.units || 0) * (f.currentNav || 0);
+                            return `
+                                <div class="config-item fund-subrow" style="cursor:pointer;" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}" data-back="member">
+                                    <span>${escapeHtml(f.name)} <span style="color:var(--text-muted); font-weight:600;">— ${formatBalanceHTML(value, f.currency)}</span></span>
+                                    <span style="color:var(--text-muted);">›</span>
+                                </div>`;
+                        }).join("");
+                    }
+                }
+
+                if (a.type === "fd") {
+                    const placements = (fdPlacementsByAccountId[a.id] || []).slice().sort((x, y) => new Date(y.date) - new Date(x.date));
+                    if (placements.length > 0) {
+                        subrowsHtml += placements.map(t => {
+                            const isOverdue = new Date(t.fdMaturityDate + "T00:00:00").getTime() < new Date(todayLocalStr() + "T00:00:00").getTime();
+                            const statusBadge = isOverdue
+                                ? `<span style="font-size:0.62rem; font-weight:700; color:#b91c1c; background:#fee2e2; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">⏰ Due</span>`
+                                : `<span style="font-size:0.62rem; font-weight:700; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">🟢 Active</span>`;
+                            const refText = t.fdReferenceNo ? ` (${escapeHtml(t.fdReferenceNo)})` : '';
+                            const resolveBtnHTML = isOverdue
+                                ? `<button type="button" data-click="openResolveFdModal" data-id="${escapeHtml(t.id)}" style="font-size:0.66rem; font-weight:700; color:#fff; background:#b91c1c; border:none; border-radius:6px; padding:5px 8px; white-space:nowrap; cursor:pointer;">⏰ Resolve Maturity</button>`
+                                : "";
+                            return `
+                                <div class="config-item fund-subrow" style="cursor:pointer;" data-click="openTransactionForm" data-type="${escapeHtml(t.type)}" data-id="${escapeHtml(t.id)}">
+                                    <span>
+                                        Fixed Deposit Placement${refText}${statusBadge}
+                                        <br><span style="color:var(--text-muted); font-weight:600;">${formatBalanceHTML(t.amount, t.currency)} · Matures ${escapeHtml(t.fdMaturityDate)}</span>
+                                    </span>
+                                    <span style="display:flex; align-items:center; gap:6px;">
+                                        ${resolveBtnHTML}
+                                        <span style="color:var(--text-muted);">›</span>
+                                    </span>
+                                </div>`;
+                        }).join("");
+                    }
+                }
+
+                const isExpanded = expandedAccountSubrows.has(subrowKey);
+                const subrowToggleHTML = subrowsHtml
+                    ? `<button type="button" class="subrow-toggle-btn" data-click="toggleAccountSubrows" data-id="${escapeHtml(subrowKey)}" aria-label="${isExpanded ? "Collapse" : "Expand"} details" title="${isExpanded ? "Collapse" : "Expand"} details">${isExpanded ? "▾" : "▸"}</button>`
                     : "";
 
                 html += `
-                    <div class="config-item" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="member">
-                        <span><strong>${escapeHtml(a.name)}</strong> ${typeBadge} - ${balSummary}<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${escapeHtml(a.group || DEFAULT_ACCOUNT_GROUP)}</span>${linkedLine}${excludedLine}${extraInfoLine}${ccAmountDueLine}</span>
+                    <div class="config-item account-card" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="member">
+                        ${accountAvatarHTML(a.name)}
+                        <div class="account-card-body">
+                            <div class="account-card-toprow">
+                                <span class="account-card-name">${escapeHtml(a.name)}</span>
+                                <span class="account-card-balance">${balSummary}</span>
+                            </div>
+                            <div class="account-card-metarow">${typeBadge}</div>
+                            ${acctRefLine}
+                            <div class="account-card-subline">${accountOwnerTagHTML(a)}${linkedLine}${excludedLine}${extraInfoLine}${ccAmountDueLine}</div>
+                        </div>
                         <span style="display:flex; align-items:center; gap:6px;">
                             ${ccPayBtnHTML}
+                            ${subrowToggleHTML}
                             <span style="color:var(--text-muted);">›</span>
                         </span>
                     </div>`;
+
+                if (subrowsHtml) {
+                    html += `<div id="acctSubrows-${escapeHtml(subrowKey)}" class="${isExpanded ? "" : "hidden"}">${subrowsHtml}</div>`;
+                }
             });
+            flushSubgroupTotal();
+            flushGroupTotal();
             document.getElementById("memberPageAccountsList").innerHTML = html || `<p style="color:var(--text-muted); text-align:center; padding:24px 0; font-size:0.85rem;">No accounts tagged to this member yet.</p>`;
         }
 

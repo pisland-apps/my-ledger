@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v184";
+        const APP_VERSION = "v185";
         const APP_VERSION_DATE = "2026-08-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -10946,35 +10946,57 @@
         // the left screen edge, matching the standard "edge swipe" gesture used by most mobile
         // apps/OSes — this avoids hijacking an ordinary left-right scroll or swipe gesture that
         // starts in the middle of the page content (e.g. dismissing a card, a chart pan, etc.).
+        // v185: swipe-to-close added alongside the existing edge-swipe-to-open above. When the
+        // drawer is OPEN, a touch starting anywhere inside #sidebarDrawer (not just the edge —
+        // the whole open panel is a natural "drag it away" target) that moves leftward past the
+        // threshold closes it, mirroring the rightward open gesture. Tracked with the same
+        // touchStartX/Y pair so only one of the two branches (open vs close) can ever be "armed"
+        // for a given touch, since the open-branch's own guard already bails out when the drawer
+        // is open.
         (function setupSidebarSwipeGesture() {
             const EDGE_ZONE_PX = 24;
             const MIN_SWIPE_PX = 60;
             let touchStartX = null;
             let touchStartY = null;
             let startedInEdgeZone = false;
+            let startedInsideOpenDrawer = false;
 
             document.addEventListener("touchstart", (e) => {
                 if (window.innerWidth >= 768) return; // desktop/tablet: sidebar already docked
-                if (document.getElementById("sidebarDrawer").classList.contains("open")) return;
+                const isOpen = document.getElementById("sidebarDrawer").classList.contains("open");
                 const t = e.touches[0];
                 touchStartX = t.clientX;
                 touchStartY = t.clientY;
-                startedInEdgeZone = t.clientX <= EDGE_ZONE_PX;
+                if (isOpen) {
+                    startedInEdgeZone = false;
+                    startedInsideOpenDrawer = document.getElementById("sidebarDrawer").contains(e.target);
+                } else {
+                    startedInEdgeZone = t.clientX <= EDGE_ZONE_PX;
+                    startedInsideOpenDrawer = false;
+                }
             }, { passive: true });
 
             document.addEventListener("touchend", (e) => {
-                if (!startedInEdgeZone || touchStartX === null) return;
+                if (touchStartX === null) return;
                 const t = e.changedTouches[0];
                 const dx = t.clientX - touchStartX;
                 const dy = Math.abs(t.clientY - touchStartY);
-                // Require a mostly-horizontal rightward swipe so an edge-starting vertical
-                // scroll doesn't accidentally pop the drawer open.
-                if (dx > MIN_SWIPE_PX && dy < dx) {
-                    openSidebar();
+                if (startedInEdgeZone) {
+                    // Require a mostly-horizontal rightward swipe so an edge-starting vertical
+                    // scroll doesn't accidentally pop the drawer open.
+                    if (dx > MIN_SWIPE_PX && dy < dx) {
+                        openSidebar();
+                    }
+                } else if (startedInsideOpenDrawer) {
+                    // Mirror image: mostly-horizontal leftward swipe closes the open drawer.
+                    if (dx < -MIN_SWIPE_PX && dy < -dx) {
+                        closeSidebar();
+                    }
                 }
                 touchStartX = null;
                 touchStartY = null;
                 startedInEdgeZone = false;
+                startedInsideOpenDrawer = false;
             }, { passive: true });
         })();
 
@@ -10990,36 +11012,55 @@
         // with nothing actually scrollable) — so nearly every swipe got silently disqualified,
         // matching the "1 in 10" report. Switched to the same deterministic edge-zone check the
         // left drawer already uses reliably, instead of trying to detect scrollability at all.
+        // v185: swipe-to-close added alongside the existing edge-swipe-to-open above, mirroring
+        // setupSidebarSwipeGesture()'s open/close pairing exactly but for the opposite edge —
+        // when the rail is OPEN, a touch starting anywhere inside #desktopInsightsRail that
+        // moves rightward past the threshold closes it.
         (function setupInsightsDrawerSwipeGesture() {
             const EDGE_ZONE_PX = 24;
             const MIN_SWIPE_PX = 60;
             let touchStartX = null;
             let touchStartY = null;
             let startedInEdgeZone = false;
+            let startedInsideOpenDrawer = false;
 
             document.addEventListener("touchstart", (e) => {
                 if (window.innerWidth >= 768) return; // tablet/desktop: rail is docked or hidden, not a drawer
-                if (document.getElementById("desktopInsightsRail").classList.contains("open")) return;
+                const isOpen = document.getElementById("desktopInsightsRail").classList.contains("open");
                 const t = e.touches[0];
                 touchStartX = t.clientX;
                 touchStartY = t.clientY;
-                startedInEdgeZone = t.clientX >= window.innerWidth - EDGE_ZONE_PX;
+                if (isOpen) {
+                    startedInEdgeZone = false;
+                    startedInsideOpenDrawer = document.getElementById("desktopInsightsRail").contains(e.target);
+                } else {
+                    startedInEdgeZone = t.clientX >= window.innerWidth - EDGE_ZONE_PX;
+                    startedInsideOpenDrawer = false;
+                }
             }, { passive: true });
 
             document.addEventListener("touchend", (e) => {
-                if (!startedInEdgeZone || touchStartX === null) return;
+                if (touchStartX === null) return;
                 const t = e.changedTouches[0];
                 const dx = t.clientX - touchStartX;
                 const dy = Math.abs(t.clientY - touchStartY);
-                // Require a mostly-horizontal leftward swipe (dx negative), same "mostly
-                // horizontal" guard as the sidebar gesture, so an edge-starting vertical scroll
-                // doesn't accidentally pop the drawer open.
-                if (dx < -MIN_SWIPE_PX && dy < -dx) {
-                    openInsightsDrawer();
+                if (startedInEdgeZone) {
+                    // Require a mostly-horizontal leftward swipe (dx negative), same "mostly
+                    // horizontal" guard as the sidebar gesture, so an edge-starting vertical
+                    // scroll doesn't accidentally pop the drawer open.
+                    if (dx < -MIN_SWIPE_PX && dy < -dx) {
+                        openInsightsDrawer();
+                    }
+                } else if (startedInsideOpenDrawer) {
+                    // Mirror image: mostly-horizontal rightward swipe closes the open rail.
+                    if (dx > MIN_SWIPE_PX && dy < dx) {
+                        closeInsightsDrawer();
+                    }
                 }
                 touchStartX = null;
                 touchStartY = null;
                 startedInEdgeZone = false;
+                startedInsideOpenDrawer = false;
             }, { passive: true });
         })();
 

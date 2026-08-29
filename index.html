@@ -1031,27 +1031,31 @@
             width: 48px;
             height: 48px;
             border-radius: 50%;
-            border: none;
+            border: 1px solid rgba(255, 255, 255, 0.4);
             flex-shrink: 0;
             display: flex;
             align-items: center;
             justify-content: center;
             color: #fff;
             cursor: pointer;
+            /* v175: frosted-glass fill (translucent tint + backdrop blur) replacing the v174
+               solid fill — each button keeps its own hue via --sd-tint below, just no longer
+               opaque. backdrop-filter needs -webkit- for Safari/iOS. */
+            backdrop-filter: blur(10px) saturate(180%);
+            -webkit-backdrop-filter: blur(10px) saturate(180%);
             box-shadow:
-                0 4px 14px rgba(15, 23, 42, 0.28),
-                -2px -2px 5px var(--neu-primary-light),
-                3px 4px 8px var(--neu-primary-dark);
+                0 4px 14px rgba(15, 23, 42, 0.22),
+                inset 0 1px 1px rgba(255, 255, 255, 0.5);
             transition: transform 0.12s ease, box-shadow 0.12s ease;
         }
         .speed-dial-fab:active {
             transform: scale(0.92);
-            box-shadow: inset 2px 2px 5px rgba(15, 23, 42, 0.3), inset -2px -2px 4px var(--neu-primary-light);
+            box-shadow: inset 2px 2px 5px rgba(15, 23, 42, 0.3), inset -2px -2px 4px rgba(255, 255, 255, 0.3);
         }
-        .speed-dial-fab.sd-income { background-color: var(--income-color); }
-        .speed-dial-fab.sd-expense { background-color: var(--expense-color); }
-        .speed-dial-fab.sd-transfer { background-color: var(--transfer-color); }
-        .speed-dial-fab.sd-salary { background-color: var(--salary-color); }
+        .speed-dial-fab.sd-income { background-color: rgba(16, 185, 129, 0.55); }
+        .speed-dial-fab.sd-expense { background-color: rgba(239, 68, 68, 0.55); }
+        .speed-dial-fab.sd-transfer { background-color: rgba(59, 130, 246, 0.55); }
+        .speed-dial-fab.sd-salary { background-color: rgba(217, 119, 6, 0.55); }
 
         /* Small icon-only button beside the account name on its Activity page */
         .icon-edit-btn {

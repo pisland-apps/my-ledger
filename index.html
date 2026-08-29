@@ -886,6 +886,11 @@
                 inset 3px 3px 7px var(--neu-primary-dark),
                 inset -2px -2px 5px var(--neu-primary-light);
         }
+        /* Open state (v173, dashboard speed-dial FAB): rotating the "+" glyph 45° reads as an
+           "×" close icon with no separate icon swap needed — toggled by JS alongside showing the
+           sheet/backdrop. */
+        .fab-btn.fab-btn-open { transform: rotate(45deg); }
+        .fab-btn.fab-btn-open:active { transform: rotate(45deg) scale(0.95); }
 
         /* Floating "back to top" button (v66) — global, sits above the "+" FAB on the right edge
            so the two never overlap. Hidden by default; JS toggles it visible once the page has
@@ -1912,20 +1917,6 @@
             <span class="section-title">Quick Transaction Entry</span>
             <button class="text-btn" data-click="navigateToCategoriesPage">🏷 Categories</button>
         </div>
-        <div class="actions-bar">
-            <button class="action-btn btn-income" data-click="openTransactionForm" data-type="income">
-                <span>🟢 Income</span>
-            </button>
-            <button class="action-btn btn-expense" data-click="openTransactionForm" data-type="expense">
-                <span>🔴 Expense</span>
-            </button>
-            <button class="action-btn btn-transfer" data-click="openTransactionForm" data-type="transfer">
-                <span>🔄 Transfer</span>
-            </button>
-            <button class="action-btn btn-salary" data-click="openSalaryEntryForm">
-                <span>💰 Salary</span>
-            </button>
-        </div>
 
         <div class="section-header">
             <span class="section-title">Financial Report Card</span>
@@ -2017,6 +2008,19 @@
             </div>
         </div>
         <div class="ledger-container" id="recentTxList"></div>
+
+        <!-- Quick-add speed-dial FAB (v173) — dashboard's "Quick Transaction Entry" moved from a
+             static 4-button row to a floating "+" that expands into the Income/Expense/Transfer/
+             Salary options, mirroring the existing Account Activity page pattern above
+             (ledgerQuickAddSheet, v34) so both use the same visual language. -->
+        <div id="dashboardQuickAddBackdrop" class="quick-add-backdrop" style="display:none;" data-click="closeDashboardQuickAddSheet"></div>
+        <div id="dashboardQuickAddSheet" class="quick-add-sheet" style="display:none;">
+            <button class="action-btn btn-income" data-click="dashboardQuickAddChooseAction" data-action="income"><span>🟢 Income</span></button>
+            <button class="action-btn btn-expense" data-click="dashboardQuickAddChooseAction" data-action="expense"><span>🔴 Expense</span></button>
+            <button class="action-btn btn-transfer" data-click="dashboardQuickAddChooseAction" data-action="transfer"><span>🔄 Transfer</span></button>
+            <button class="action-btn btn-salary" data-click="dashboardQuickAddChooseAction" data-action="salary"><span>💰 Salary</span></button>
+        </div>
+        <button class="fab-btn" id="dashboardQuickAddFab" data-click="toggleDashboardQuickAddSheet" aria-label="Add transaction" title="Add transaction">+</button>
     </div>
 
 

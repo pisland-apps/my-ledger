@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v172";
+        const APP_VERSION = "v173";
         const APP_VERSION_DATE = "2026-08-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2072,6 +2072,34 @@
             // form opens ready to log against it rather than the stored default payment account.
             const presetAccountId = activeLedgerAccountView !== "all" ? activeLedgerAccountView : null;
             openTransactionForm(el.dataset.type, null, presetAccountId);
+        }
+
+        // Dashboard "Quick Transaction Entry" speed-dial FAB (v173) — same open/close/choose
+        // shape as the Account Activity page's quick-add sheet above, but with a 4th option
+        // (Salary, routing to openSalaryEntryForm() instead of openTransactionForm()) and no
+        // preset account, matching what the old 4-button actions-bar row used to do.
+        function toggleDashboardQuickAddSheet() {
+            const sheet = document.getElementById("dashboardQuickAddSheet");
+            const isOpen = sheet.style.display === "flex";
+            sheet.style.display = isOpen ? "none" : "flex";
+            document.getElementById("dashboardQuickAddBackdrop").style.display = isOpen ? "none" : "block";
+            document.getElementById("dashboardQuickAddFab").classList.toggle("fab-btn-open", !isOpen);
+        }
+
+        function closeDashboardQuickAddSheet() {
+            document.getElementById("dashboardQuickAddSheet").style.display = "none";
+            document.getElementById("dashboardQuickAddBackdrop").style.display = "none";
+            document.getElementById("dashboardQuickAddFab").classList.remove("fab-btn-open");
+        }
+
+        function dashboardQuickAddChooseAction(el) {
+            closeDashboardQuickAddSheet();
+            const action = el.dataset.action;
+            if (action === "salary") {
+                openSalaryEntryForm();
+            } else {
+                openTransactionForm(action);
+            }
         }
 
         function navigateToCategoryPage(categoryName, backTarget = "workspace", year = "all", month = "all") {
@@ -8492,6 +8520,11 @@
 
         // --- CONSOLIDATED RENDER ENGINE ---
         async function renderApp() {
+            // Reset the dashboard quick-add speed-dial to its closed "+" state on every render
+            // (mirrors closeLedgerQuickAddSheet() being called on every ledger-page render) so it
+            // never stays stuck open across a navigation or a data-driven re-render.
+            closeDashboardQuickAddSheet();
+
             const { accounts, txs, nativeBalances } = await computeAccountBalances();
 
             document.getElementById("currentBasePill").textContent = baseCurrency;
@@ -10507,6 +10540,9 @@
             toggleLedgerQuickAddSheet: () => toggleLedgerQuickAddSheet(),
             closeLedgerQuickAddSheet: () => closeLedgerQuickAddSheet(),
             quickAddChooseType: (el) => quickAddChooseType(el),
+            toggleDashboardQuickAddSheet: () => toggleDashboardQuickAddSheet(),
+            closeDashboardQuickAddSheet: () => closeDashboardQuickAddSheet(),
+            dashboardQuickAddChooseAction: (el) => dashboardQuickAddChooseAction(el),
             openAccountFormModal: () => openAccountFormModal(),
             openCategoryFormModal: () => openCategoryFormModal(),
             editCategory: (el) => editCategory(el.dataset.id),

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v186";
+        const APP_VERSION = "v187";
         const APP_VERSION_DATE = "2026-08-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1694,7 +1694,7 @@
                 const donutTotal = allCatsDesc.reduce((sum, c) => sum + catTotals[c], 0);
                 const donutEntries = allCatsDesc.map((c, i) => ({ label: c, value: catTotals[c], color: BREAKDOWN_CHART_COLORS[i % BREAKDOWN_CHART_COLORS.length] }));
                 donutWrapEl.innerHTML = donutEntries.length
-                    ? buildBreakdownDonutSVG(donutEntries, donutTotal)
+                    ? buildBreakdownDonutSVG(donutEntries, donutTotal, "expense")
                     : `<p class="insights-empty">No expenses yet this month.</p>`;
             }
 
@@ -9880,39 +9880,66 @@
         }
 
         // Donut chart via stroke-dasharray on a circle — the standard no-library technique for a
-        // simple pie/donut in raw SVG. A separate color-coded legend accompanies it since slice
-        // labels don't fit cleanly inside thin donut segments.
-        function buildBreakdownDonutSVG(entries, total) {
+        // simple pie/donut in raw SVG. v187: rounded, gapped segments + an HTML overlay centered
+        // in the hole showing the top (largest) category, plus a full-width legend list below
+        // with icon/name/amount/percentage per row — see the matching CSS comment on
+        // .breakdown-donut-svg-holder for why (was a plain solid-stroke ring + cramped side
+        // legend that didn't fit the 300px dashboard Insights rail). `entries` must already be
+        // sorted descending by value (every caller already does this for its own legend/ranking,
+        // so entries[0] is always the largest slice — that's what the center overlay shows).
+        function buildBreakdownDonutSVG(entries, total, type = "expense") {
             if (entries.length === 0 || total <= 0) return "";
-            const size = 200, r = 70, cx = size / 2, cy = size / 2, circumference = 2 * Math.PI * r;
-            let offset = 0;
+            const size = 220, r = 76, cx = size / 2, cy = size / 2, circumference = 2 * Math.PI * r;
+            // Small fixed-px gap between adjacent segments, centered on each boundary via the
+            // half-gap dashoffset nudge below — only applied when there's more than one slice
+            // (a single 100% category should still read as a clean unbroken ring).
+            const gapPx = entries.length > 1 ? 5 : 0;
+            let offsetCursor = 0;
             let segments = "";
             entries.forEach(e => {
-                const frac = e.value / total;
-                const dash = frac * circumference;
-                segments += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${e.color}" stroke-width="28" stroke-dasharray="${dash.toFixed(2)} ${(circumference - dash).toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"></circle>`;
-                offset += dash;
+                const sliceLen = (e.value / total) * circumference;
+                const dashVisible = Math.max(0, sliceLen - gapPx);
+                segments += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${e.color}" stroke-width="26" stroke-linecap="round" stroke-dasharray="${dashVisible.toFixed(2)} ${(circumference - dashVisible).toFixed(2)}" stroke-dashoffset="${(-(offsetCursor + gapPx / 2)).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"></circle>`;
+                offsetCursor += sliceLen;
             });
+
+            // Center overlay: the largest category by value (entries[0]) — icon, name, amount,
+            // and its share of the total. A plain HTML div positioned over the SVG hole rather
+            // than SVG <text>, so normal CSS (ellipsis, font-weight, var(--text-main)) applies.
+            const top = entries[0];
+            const topPct = total > 0 ? Math.round((top.value / total) * 100) : 0;
+            const centerHTML = `
+                <div class="breakdown-donut-center">
+                    <div class="breakdown-donut-center-icon">${getCategoryIcon(top.label, type)}</div>
+                    <div class="breakdown-donut-center-label">${escapeHtml(top.label)}</div>
+                    <div class="breakdown-donut-center-amount">${formatCurrency(top.value, baseCurrency)}</div>
+                    <div class="breakdown-donut-center-pct">${topPct}% of total</div>
+                </div>`;
+
             const legend = entries.map(e => {
                 const pct = total > 0 ? ((e.value / total) * 100).toFixed(0) : 0;
-                return `<div style="display:flex; align-items:center; gap:6px; font-size:0.7rem; margin-bottom:4px;">
-                    <span style="width:10px; height:10px; border-radius:50%; background:${e.color}; flex-shrink:0;"></span>
-                    <span style="flex:1;">${escapeHtml(e.label)}</span>
-                    <span style="color:var(--text-muted);">${pct}%</span>
-                </div>`;
+                return `
+                    <div class="breakdown-donut-legend-row">
+                        <span class="breakdown-donut-legend-dot" style="background:${e.color};"></span>
+                        <span class="breakdown-donut-legend-label">${getCategoryIcon(e.label, type)} ${escapeHtml(e.label)}</span>
+                        <span class="breakdown-donut-legend-amount">${formatCurrency(e.value, baseCurrency)}</span>
+                        <span class="breakdown-donut-legend-pct">${pct}%</span>
+                    </div>`;
             }).join("");
+
             return `
-                <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:center;">
-                    <svg viewBox="0 0 ${size} ${size}" style="width:180px; height:180px; flex-shrink:0;">${segments}</svg>
-                    <div style="min-width:140px; flex:1;">${legend}</div>
+                <div class="breakdown-donut-svg-holder">
+                    <svg viewBox="0 0 ${size} ${size}">${segments}</svg>
+                    ${centerHTML}
                 </div>
+                <div class="breakdown-donut-legend">${legend}</div>
             `;
         }
 
         function renderBreakdownChart(wrapId, chartType, entries, total, type) {
             const wrap = document.getElementById(wrapId);
             if (chartType === "bar") wrap.innerHTML = buildBreakdownBarSVG(entries);
-            else if (chartType === "donut") wrap.innerHTML = buildBreakdownDonutSVG(entries, total);
+            else if (chartType === "donut") wrap.innerHTML = buildBreakdownDonutSVG(entries, total, type);
             else wrap.innerHTML = ""; // "list" view has no separate chart — the list rows are the whole view
         }
 

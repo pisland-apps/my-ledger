@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v167";
-        const APP_VERSION_DATE = "2026-08-28";
+        const APP_VERSION = "v168";
+        const APP_VERSION_DATE = "2026-08-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -6784,8 +6784,10 @@
         // opted to fill it in manually — derived from the Account/Reference No. if one was given,
         // else a generic placement label.
         function buildAutoFdDescription() {
-            const ref = document.getElementById("txFdReference").value.trim();
-            return ref ? `Fixed Deposit Placement (${ref})` : "Fixed Deposit Placement";
+            // v168: no longer appends "(ref)" here — the ledger row already shows the reference
+            // number on its own meta line (via fdReferenceNo / referenceText), so baking it into
+            // the title too was showing it twice on the same row.
+            return "Fixed Deposit Placement";
         }
 
         async function syncTransactionCurrency() {
@@ -7162,7 +7164,11 @@
             const action = document.getElementById("resolveFdAction").value;
             const resolutionDate = document.getElementById("resolveFdResolutionDate").value;
             if (!resolutionDate) { alert("Please select a resolution date."); return; }
-            const refLabel = tx.fdReferenceNo ? `Ref: ${tx.fdReferenceNo}` : `#${tx.id}`;
+            // v168: previously always "(Ref: xxx)" / "(#id)" baked into these titles — but when a
+            // reference number exists, the ledger row already shows it separately on its meta line
+            // (via fdReferenceNo), so it was appearing twice on the same row. Now this only supplies
+            // a "(#id)" fallback suffix for placements that have no reference number to show there.
+            const refLabel = tx.fdReferenceNo ? "" : ` (#${tx.id})`;
 
             try {
                 if (action === "withdraw") {
@@ -7173,7 +7179,7 @@
                     // "transfer" (not "expense") — moving your own principal isn't a spend, so it
                     // must not be counted in the Expense report.
                     await writeDB(STORES.TRANSACTIONS, {
-                        type: "transfer", desc: `FD Withdrawal — Principal (${refLabel})`,
+                        type: "transfer", desc: `FD Withdrawal — Principal${refLabel}`,
                         amount: tx.amount, src: holdingAccountId, dest: destId, currency: tx.currency,
                         cat: "Fixed Deposit", date: resolutionDate, image: null,
                         fdReferenceNo: tx.fdReferenceNo || null,
@@ -7183,7 +7189,7 @@
                     // The interest, however, IS genuine new income — record it as such into the destination account.
                     if (interest > 0) {
                         await writeDB(STORES.TRANSACTIONS, {
-                            type: "income", desc: `FD Interest Received (${refLabel})`,
+                            type: "income", desc: `FD Interest Received${refLabel}`,
                             amount: interest, src: destId, dest: "", currency: tx.currency,
                             cat: "FD Interest Income", date: resolutionDate, image: null,
                             fdReferenceNo: tx.fdReferenceNo || null,
@@ -7209,7 +7215,7 @@
                     if (!newMaturity) { alert("Could not calculate the new maturity date — please re-check the commencing date and tenure."); return; }
 
                     await writeDB(STORES.TRANSACTIONS, {
-                        type: "transfer", desc: `FD Placement Closed for Renewal (${refLabel})`,
+                        type: "transfer", desc: `FD Placement Closed for Renewal${refLabel}`,
                         amount: tx.amount, src: holdingAccountId, dest: "", currency: tx.currency,
                         cat: "Fixed Deposit", date: resolutionDate, image: null,
                         fdReferenceNo: tx.fdReferenceNo || null,
@@ -7229,7 +7235,7 @@
                         const interestDestId = document.getElementById("resolveFdInterestDest").value;
                         if (!interestDestId) { alert("Please choose an account to receive the interest."); return; }
                         await writeDB(STORES.TRANSACTIONS, {
-                            type: "income", desc: `FD Interest Received (${refLabel})`,
+                            type: "income", desc: `FD Interest Received${refLabel}`,
                             amount: interest, src: interestDestId, dest: "", currency: tx.currency,
                             cat: "FD Interest Income", date: resolutionDate, image: null,
                             fdReferenceNo: tx.fdReferenceNo || null,

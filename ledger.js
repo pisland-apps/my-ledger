@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v168";
+        const APP_VERSION = "v169";
         const APP_VERSION_DATE = "2026-08-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -10064,6 +10064,50 @@
             calculateStorageMetrics();
         }
 
+        // v168 data migration (one-time, guarded by a settings flag so it never re-runs): earlier
+        // versions baked the FD reference number straight into these four auto-generated
+        // transaction descriptions — "Fixed Deposit Placement (ref)", "FD Withdrawal — Principal
+        // (Ref: ref)", "FD Interest Received (Ref: ref)", "FD Placement Closed for Renewal
+        // (Ref: ref)" — while the ledger row's meta line *also* shows that same fdReferenceNo
+        // separately, so any transaction saved before this fix displays its reference number
+        // twice on the same row (see the FD Withdrawal / Fixed Deposit Placement screenshot).
+        // The code fix only changes how new descriptions are generated going forward — it can't
+        // retroactively rewrite text already committed to existing records — so this strips the
+        // now-redundant "(...)" suffix from any already-saved transaction whose desc still has it
+        // baked in, one time, the first time this version runs.
+        async function migrateFdDescRefDedup() {
+            const flagKey = "migratedFdDescRefDedup_v168";
+            const already = await readKeyDB("settings", flagKey);
+            if (already) return;
+
+            const patterns = [
+                { prefix: "Fixed Deposit Placement" },
+                { prefix: "FD Withdrawal — Principal" },
+                { prefix: "FD Interest Received" },
+                { prefix: "FD Placement Closed for Renewal" },
+            ];
+
+            const allTx = await readAllDB(STORES.TRANSACTIONS);
+            for (const t of allTx) {
+                if (!t.fdReferenceNo || typeof t.desc !== "string") continue;
+                for (const { prefix } of patterns) {
+                    // Matches "<prefix> (Ref: xxx)" or "<prefix> (xxx)" only when it's this exact
+                    // record's own reference number being repeated — never touches a manually-
+                    // typed description that just happens to start the same way with different
+                    // trailing text.
+                    const refEsc = t.fdReferenceNo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                    const re = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\((?:Ref: )?${refEsc}\\)$`);
+                    if (re.test(t.desc)) {
+                        t.desc = prefix;
+                        await writeDB(STORES.TRANSACTIONS, t);
+                        break;
+                    }
+                }
+            }
+
+            await writeDB(STORES.SETTINGS, { key: flagKey, value: true });
+        }
+
         async function bootstrap() {
             const lockResult = await runLockFlow();
             await initDB();
@@ -10130,6 +10174,7 @@
 
             await syncAndLoadCategories();
             await ensureDefaultCategories();
+            await migrateFdDescRefDedup();
 
             const accs = await readAllDB(STORES.ACCOUNTS);
             if(accs.length === 0) {

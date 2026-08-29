@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v169";
+        const APP_VERSION = "v170";
         const APP_VERSION_DATE = "2026-08-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -3405,15 +3405,15 @@
                     // per-currency breakdown moves to its own subrow list below (same pattern as
                     // Unit Trust's fund subrows), each line up on its own row and clickable
                     // through to that currency's own Activity page.
-                    balSummary = `<strong>Base ${escapeHtml(baseCurrency)}: ${formatBalanceHTML(baseVal, baseCurrency)}</strong>`;
+                    balSummary = `Base ${escapeHtml(baseCurrency)}: ${formatBalanceHTML(baseVal, baseCurrency)}`;
                 } else if (a.type === "fd" || a.type === "unittrust") {
                     const baskets = nativeBalances[a.id];
                     const currencies = Object.keys(baskets);
                     balSummary = currencies.length === 0
                         ? '<span style="color:var(--text-muted);">No funds yet</span>'
-                        : currencies.map(curr => `<strong>${formatBalanceHTML(baskets[curr], curr)}</strong>`).join(" + ");
+                        : currencies.map(curr => formatBalanceHTML(baskets[curr], curr)).join(" + ");
                 } else {
-                    balSummary = `<strong>${formatBalanceHTML(nativeBalances[a.id], a.currency)}</strong>`;
+                    balSummary = formatBalanceHTML(nativeBalances[a.id], a.currency);
                 }
 
                 groupTotal += baseVal;

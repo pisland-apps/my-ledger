@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v179";
+        const APP_VERSION = "v180";
         const APP_VERSION_DATE = "2026-08-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -61,18 +61,26 @@
         // Fixed palette offered when picking a member's color (sidebar dot, net-worth rows, etc.)
         const MEMBER_COLORS = ["#3b82f6", "#ec4899", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#0ea5e9", "#14b8a6", "#f97316", "#64748b"];
 
-        // v179: page-background presets (Setting > Background Theme). Deliberately narrow in
-        // scope — each preset only overrides --bg-color (and the browser-chrome theme-color
-        // meta tag to match). Cards, glass panels, borders, text and all data colors (income/
-        // expense/transfer/salary) keep their existing tokens untouched, so every v156+ glass/
-        // neumorphism style stays exactly as designed no matter which background is chosen.
+        // v179: page-background presets (Setting > Background Theme). Each preset overrides
+        // --bg-color plus two cohesion touches: --neu-dark (the shadow half of the chrome-only
+        // neumorphism effect — FAB, calculator keys, nav bar — tinted to match the background's
+        // hue instead of staying a fixed slate-gray) and the browser-chrome theme-color meta tag.
+        // Deliberately NOT touched: --card-bg, --border-color, --text-*, --glass-*, --neu-light,
+        // or any data color (income/expense/transfer/salary, stat-box chips, badges). Those stay
+        // flat/light and print-safe by design (see the v156 token comment above).
         const BG_THEMES = [
-            { id: "default", name: "Slate",    bg: "#f8fafc", themeColor: "#4f46e5" },
-            { id: "sand",    name: "Sand",      bg: "#faf5ec", themeColor: "#b9863f" },
-            { id: "mint",    name: "Mint",      bg: "#f1faf6", themeColor: "#3f9d76" },
-            { id: "lavender",name: "Lavender",  bg: "#f6f4fc", themeColor: "#7c6bc4" },
-            { id: "sky",     name: "Sky",       bg: "#eff7fc", themeColor: "#4a90c2" },
-            { id: "blush",   name: "Blush",     bg: "#fdf3f2", themeColor: "#c97f7f" },
+            { id: "default",    name: "Slate",       bg: "#f8fafc", neuDark: "rgba(148,163,184,0.45)", themeColor: "#4f46e5" },
+            { id: "sand",       name: "Sand",         bg: "#faf5ec", neuDark: "rgba(180,150,110,0.40)", themeColor: "#b9863f" },
+            { id: "mint",       name: "Mint",         bg: "#f1faf6", neuDark: "rgba(110,170,140,0.35)", themeColor: "#3f9d76" },
+            { id: "lavender",   name: "Lavender",     bg: "#f6f4fc", neuDark: "rgba(150,130,190,0.35)", themeColor: "#7c6bc4" },
+            { id: "sky",        name: "Sky",          bg: "#eff7fc", neuDark: "rgba(110,150,190,0.35)", themeColor: "#4a90c2" },
+            { id: "blush",      name: "Blush",        bg: "#fdf3f2", neuDark: "rgba(200,140,140,0.35)", themeColor: "#c97f7f" },
+            { id: "sage",       name: "Sage",         bg: "#f4f7f0", neuDark: "rgba(140,165,110,0.35)", themeColor: "#7a9a52" },
+            { id: "peach",      name: "Peach",        bg: "#fdf6ee", neuDark: "rgba(210,160,110,0.35)", themeColor: "#d99a54" },
+            { id: "periwinkle", name: "Periwinkle",   bg: "#f2f3fc", neuDark: "rgba(130,140,210,0.35)", themeColor: "#6a72c9" },
+            { id: "rosegold",   name: "Rose Gold",    bg: "#fdf2f5", neuDark: "rgba(200,150,165,0.35)", themeColor: "#c97a95" },
+            { id: "cloud",      name: "Cloud Gray",   bg: "#f5f5f6", neuDark: "rgba(150,150,155,0.40)", themeColor: "#6b7280" },
+            { id: "butter",     name: "Butter",       bg: "#fdfaf0", neuDark: "rgba(200,180,110,0.35)", themeColor: "#c9a63f" },
         ];
         const BG_THEME_STORAGE_KEY = "ledgerBgTheme";
 
@@ -5020,12 +5028,13 @@
             } catch (e) { return "default"; }
         }
 
-        // Applies a preset's --bg-color (and matching theme-color meta tag) to the live page,
-        // and — unless save is false — persists it so both the next app launch and the
-        // no-flash inline snippet in <head> pick it up before first paint.
+        // Applies a preset's --bg-color / --neu-dark (and matching theme-color meta tag) to the
+        // live page, and — unless save is false — persists it so both the next app launch and
+        // the no-flash inline snippet in <head> pick it up before first paint.
         function applyBgTheme(themeId, { save = true } = {}) {
             const theme = BG_THEMES.find(t => t.id === themeId) || BG_THEMES[0];
             document.documentElement.style.setProperty("--bg-color", theme.bg);
+            if (theme.neuDark) document.documentElement.style.setProperty("--neu-dark", theme.neuDark);
             const metaThemeColor = document.querySelector('meta[name="theme-color"]');
             if (metaThemeColor) metaThemeColor.setAttribute("content", theme.themeColor);
             if (save) {

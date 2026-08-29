@@ -1840,8 +1840,8 @@
     </style>
     <!-- v179: apply any saved background-theme choice before first paint, so the page never
          flashes the default slate background and then jumps to the user's chosen tint. Only
-         --bg-color and the browser-chrome theme-color are touched here; every other design
-         token (glass, neumorphism, card colors, data colors) is untouched, so the rest of the
+         --bg-color / --neu-dark and the browser-chrome theme-color are touched here; every
+         other design token (glass, card colors, data colors) is untouched, so the rest of the
          v156+ glass/neumorphism styling is unaffected regardless of which background is picked. -->
     <script>
         (function () {
@@ -1849,6 +1849,7 @@
                 var saved = JSON.parse(localStorage.getItem("ledgerBgTheme"));
                 if (saved && saved.bg) {
                     document.documentElement.style.setProperty("--bg-color", saved.bg);
+                    if (saved.neuDark) document.documentElement.style.setProperty("--neu-dark", saved.neuDark);
                     if (saved.themeColor) {
                         var m = document.querySelector('meta[name="theme-color"]');
                         if (m) m.setAttribute("content", saved.themeColor);
@@ -2738,7 +2739,7 @@
                 <span style="color:var(--text-muted);">›</span>
             </div>
             <div id="bgThemeSettingsPanel" style="display:none; flex-direction:column; gap:10px; background:var(--card-bg); border:1.5px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:10px;">
-                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Applies only to the page background — cards, glass panels and data colors stay the same.</p>
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Changes the page background and the tint of the chrome shadows (FAB, calculator, nav bar) to match. Cards, glass panels and data colors stay the same.</p>
                 <div class="color-swatch-grid" id="bgThemeSwatchGrid"></div>
             </div>
             <div class="config-item" style="cursor:pointer;" data-click="sidebarGo" data-target="members">

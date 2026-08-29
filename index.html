@@ -1072,6 +1072,28 @@
         .speed-dial-fab.sd-transfer { background: linear-gradient(135deg, rgba(96, 165, 250, 0.75) 0%, rgba(59, 130, 246, 0.4) 55%, rgba(30, 64, 175, 0.55) 100%); }
         .speed-dial-fab.sd-salary { background: linear-gradient(135deg, rgba(251, 191, 36, 0.75) 0%, rgba(217, 119, 6, 0.4) 55%, rgba(146, 64, 14, 0.55) 100%); }
 
+        /* Dashboard main toggle FAB, gradient-glass restyle (v177) — same layered look as the
+           4 speed-dial circles above (gradient tint + glossy highlight + backdrop blur), applied
+           via the radial+linear multi-background trick instead of a ::before overlay (simpler
+           here since the "+"/"×" glyph is plain text content, which always paints above an
+           element's own backgrounds — no z-index juggling needed, unlike the SVG-icon circles).
+           Scoped to #dashboardQuickAddFab only (ID beats .fab-btn's class rules) so every other
+           "+" FAB elsewhere in the app (Accounts/Categories/Members/etc., all sharing .fab-btn)
+           keeps its original solid purple look. */
+        #dashboardQuickAddFab {
+            background:
+                radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0.12) 32%, rgba(255, 255, 255, 0) 60%),
+                linear-gradient(135deg, rgba(129, 140, 248, 0.75) 0%, rgba(99, 102, 241, 0.4) 55%, rgba(67, 56, 202, 0.55) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(10px) saturate(180%);
+            -webkit-backdrop-filter: blur(10px) saturate(180%);
+        }
+        #dashboardQuickAddFab:active {
+            background:
+                radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.1) 32%, rgba(255, 255, 255, 0) 60%),
+                linear-gradient(135deg, rgba(67, 56, 202, 0.55) 0%, rgba(99, 102, 241, 0.4) 45%, rgba(129, 140, 248, 0.75) 100%);
+        }
+
         /* Small icon-only button beside the account name on its Activity page */
         .icon-edit-btn {
             background: none;

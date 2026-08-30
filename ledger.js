@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v206";
+        const APP_VERSION = "v207";
         const APP_VERSION_DATE = "2026-08-30";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -93,6 +93,11 @@
             incomeChipBg: "#f0fdf4", incomeChipBorder: "#bbf7d0", expenseChipBg: "#fef2f2", expenseChipBorder: "#fecaca",
             primaryChipBg: "#f5f3ff",
             cardShadow: "0 1px 3px rgba(0,0,0,0.06)",
+            // v207: "light source from above" — top edge of every card can be brighter than the
+            // sides/bottom. Defaults to the same value as borderColor (no visible change for
+            // light presets); midnight/slate below override it to something brighter than their
+            // own borderColor.
+            cardTopBorderColor: "#e2e8f0",
             hardwareTrackBg: "#f4ede4", hardwareTrackBorder: "#dcd1c4", hardwareFillStart: "#e3cbb3", hardwareFillEnd: "#c5a88a",
             dropdownOptionBg: "#ffffff",
             primary: "#6366f1", incomeColor: "#10b981", expenseColor: "#ef4444", transferColor: "#3b82f6", salaryColor: "#d97706",
@@ -129,6 +134,9 @@
                 id: "slate", name: "Slate",
                 bg: "#0f172a", cardBg: "#1e293b", textMain: "#e2e8f0", textMuted: "#94a3b8",
                 borderColor: "rgba(255,255,255,0.12)",
+                // v207: top edge brighter than the sides/bottom above — "light source from
+                // above", see the :root --card-top-border comment in index.html.
+                cardTopBorderColor: "rgba(255,255,255,0.20)",
                 neuLight: "rgba(255,255,255,0.04)", neuDark: "rgba(0,0,0,0.55)",
                 neuPrimaryLight: "rgba(255,255,255,0.10)", neuPrimaryDark: "rgba(0,0,0,0.5)",
                 glassBg: "rgba(30,41,59,0.72)", glassBgStrong: "rgba(30,41,59,0.85)",
@@ -151,6 +159,9 @@
                 id: "midnight", name: "暗夜描边",
                 bg: "#0a0a0f", cardBg: "#15151d", textMain: "#e8eaf0", textMuted: "#8b93a8",
                 borderColor: "rgba(255,255,255,0.14)",
+                // v207: top edge brighter than the sides/bottom above — see the matching comment
+                // on the "slate" entry above.
+                cardTopBorderColor: "rgba(255,255,255,0.22)",
                 neuLight: "rgba(255,255,255,0.04)", neuDark: "rgba(0,0,0,0.55)",
                 neuPrimaryLight: "rgba(255,255,255,0.10)", neuPrimaryDark: "rgba(0,0,0,0.5)",
                 glassBg: "rgba(20,20,28,0.72)", glassBgStrong: "rgba(20,20,28,0.85)",
@@ -5372,6 +5383,7 @@
             expenseChipBg: "--expense-chip-bg", expenseChipBorder: "--expense-chip-border",
             primaryChipBg: "--primary-chip-bg",
             cardShadow: "--card-shadow",
+            cardTopBorderColor: "--card-top-border",
             hardwareTrackBg: "--hardware-track-bg", hardwareTrackBorder: "--hardware-track-border",
             hardwareFillStart: "--hardware-fill-start", hardwareFillEnd: "--hardware-fill-end",
             dropdownOptionBg: "--dropdown-option-bg",

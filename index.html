@@ -107,6 +107,13 @@
                near-black background is invisible anyway, so elevation there comes from
                --border-color + --card-bg being a shade lighter than --bg-color instead. */
             --card-shadow: 0 1px 3px rgba(0,0,0,0.06);
+            /* v207: "light source from above" — every card's top edge uses this instead of
+               --border-color, so a dark preset can make just the top edge brighter than the
+               sides/bottom (mimicking overhead light) without touching the uniform border those
+               still use. Light presets default this to the same value as --border-color (no
+               visible change there — the effect is a dark-mode-only refinement); see the
+               midnight/slate entries in BG_THEMES for the actual brightened value. */
+            --card-top-border: #e2e8f0;
 
             /* v195: the "hardware/storage meter" bar (Settings > storage) has its own warm
                wood-tone palette, independent of the app's income/expense/chip colors — kept as
@@ -217,6 +224,7 @@
             padding: 16px;
             border-radius: 16px;
             border: 1px solid var(--border-color);
+            border-top-color: var(--card-top-border); /* v207: light-from-above, see :root comment */
             margin-bottom: 20px;
             box-shadow: var(--card-shadow);
         }
@@ -396,6 +404,7 @@
             background: var(--card-bg);
             border-radius: 16px;
             border: 1.5px solid var(--border-color);
+            border-top-color: var(--card-top-border); /* v207: light-from-above, see :root comment */
             padding: 16px;
             box-shadow: var(--card-shadow);
         }
@@ -410,6 +419,7 @@
             background: var(--card-bg);
             border-radius: 16px;
             border: 1.5px solid var(--border-color);
+            border-top-color: var(--card-top-border); /* v207: light-from-above, see :root comment */
             padding: 12px;
             min-width: 0; /* allow grid children to shrink below content width */
             box-shadow: var(--card-shadow);
@@ -1262,6 +1272,7 @@
         .member-networth-row {
             display: flex; align-items: center; justify-content: space-between; gap: 10px;
             background: var(--card-bg); border: 1.5px solid var(--border-color); border-radius: 12px;
+            border-top-color: var(--card-top-border); /* v207: light-from-above, see :root comment */
             padding: 12px 14px; cursor: pointer;
             box-shadow: var(--card-shadow);
             transition: opacity 0.15s, box-shadow 0.15s ease-out, transform 0.15s ease-out;
@@ -1474,6 +1485,7 @@
         .ledger-container {
             background: var(--card-bg);
             border: 1.5px solid var(--border-color);
+            border-top-color: var(--card-top-border); /* v207: light-from-above, see :root comment */
             border-radius: 16px;
             overflow: hidden;
             box-shadow: var(--card-shadow);
@@ -1617,6 +1629,7 @@
         .default-accounts-card {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
+            border-top-color: var(--card-top-border); /* v207: light-from-above, see :root comment */
             border-radius: 16px;
             padding: 16px;
             box-shadow: var(--card-shadow);
@@ -1753,6 +1766,7 @@
             background: var(--card-bg);
             border-radius: 14px;
             border: 1px solid var(--border-color);
+            border-top-color: var(--card-top-border); /* v207: light-from-above, see :root comment */
             box-shadow: var(--card-shadow);
             transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
         }
@@ -2109,6 +2123,7 @@
                 var MIDNIGHT_THEME = {
                     id: "midnight", bg: "#0a0a0f", cardBg: "#15151d", textMain: "#e8eaf0", textMuted: "#8b93a8",
                     borderColor: "rgba(255,255,255,0.14)",
+                    cardTopBorderColor: "rgba(255,255,255,0.22)", /* v207: lockstep with ledger.js */
                     neuLight: "rgba(255,255,255,0.04)", neuDark: "rgba(0,0,0,0.55)",
                     neuPrimaryLight: "rgba(255,255,255,0.10)", neuPrimaryDark: "rgba(0,0,0,0.5)",
                     glassBg: "rgba(20,20,28,0.72)", glassBgStrong: "rgba(20,20,28,0.85)",
@@ -2134,6 +2149,7 @@
                 var SLATE_THEME = {
                     id: "slate", bg: "#0f172a", cardBg: "#1e293b", textMain: "#e2e8f0", textMuted: "#94a3b8",
                     borderColor: "rgba(255,255,255,0.12)",
+                    cardTopBorderColor: "rgba(255,255,255,0.20)", /* v207: lockstep with ledger.js */
                     neuLight: "rgba(255,255,255,0.04)", neuDark: "rgba(0,0,0,0.55)",
                     neuPrimaryLight: "rgba(255,255,255,0.10)", neuPrimaryDark: "rgba(0,0,0,0.5)",
                     glassBg: "rgba(30,41,59,0.72)", glassBgStrong: "rgba(30,41,59,0.85)",
@@ -2181,6 +2197,7 @@
                         expenseChipBg: "--expense-chip-bg", expenseChipBorder: "--expense-chip-border",
                         primaryChipBg: "--primary-chip-bg",
                         cardShadow: "--card-shadow",
+                        cardTopBorderColor: "--card-top-border",
                         hardwareTrackBg: "--hardware-track-bg", hardwareTrackBorder: "--hardware-track-border",
                         hardwareFillStart: "--hardware-fill-start", hardwareFillEnd: "--hardware-fill-end",
                         dropdownOptionBg: "--dropdown-option-bg",

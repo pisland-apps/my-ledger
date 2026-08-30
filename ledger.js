@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v209";
-        const APP_VERSION_DATE = "2026-08-30";
+        const APP_VERSION = "v210";
+        const APP_VERSION_DATE = "2026-08-31";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -9305,6 +9305,79 @@
                 }
             });
             document.getElementById("fdReminderContainer").innerHTML = reminderHTML;
+
+            // --- Credit Card payment due reminders ---
+            // Unlike an FD placement's one-off maturity date, a card's due date recurs monthly
+            // on a fixed day-of-month (paymentDueDay), which creates a rollover trap the FD
+            // reminder above doesn't have: naively computing "this calendar month's due date"
+            // and comparing it to today means that the instant the calendar rolls into a new
+            // month, that computed date jumps forward to a future date — even if last month's
+            // bill was never paid — silently turning an overdue reminder into a calm "due in N
+            // days" (or making it vanish under the 7-day window entirely) until the new month's
+            // due date comes back into range. Potentially weeks of a real overdue balance going
+            // unflagged. Fixed below by always anchoring the "overdue" check on the most recent
+            // due-day occurrence that has already happened relative to today (this month's, or
+            // last month's if this month's hasn't arrived yet) rather than "this month's" alone
+            // — that anchor only ever moves forward once a further due date has also been
+            // reached, so it can never flip back to a calm state while a balance remains
+            // outstanding. It briefly steps aside for the "due soon" advance notice once we're
+            // within a week of the *next* due date, so the banner reads as "heads up, due in 3
+            // days" rather than "27 days overdue" right as a new cycle's due date approaches —
+            // then flips straight back to overdue the moment that date also passes unpaid.
+            //
+            // Note: like the 💳 Pay amount-due figure elsewhere in this app, this has no
+            // separate per-statement-cycle bucketing — "outstanding" is just -balance. So a
+            // card that's always paid to zero each cycle will only ever show this reminder in
+            // its accurate "due soon"/"due today" form (balance is 0 the rest of the time,
+            // which already suppresses it below). A card that's left carrying a partial balance
+            // across cycles will show as overdue somewhat eagerly, since there's no way to tell
+            // "old unpaid balance" from "this cycle's fresh spending, not due yet" from the
+            // balance alone.
+            function ccDueDateFor(year, month, day) {
+                // Clamps to the last real day of the month instead of letting JS Date silently
+                // roll over into the following month (e.g. day 31 in a 30-day month).
+                const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+                return new Date(year, month, Math.min(day, lastDayOfMonth));
+            }
+            let ccReminderHTML = "";
+            accounts.filter(a => a.type === "creditcard" && a.paymentDueDay).forEach(a => {
+                const amountDue = Math.max(0, -(nativeBalances[a.id] || 0));
+                if (amountDue <= 0.005) return; // nothing owed — nothing to remind about
+
+                const todayDate = new Date(todayLocalStr() + "T00:00:00");
+
+                let anchor = ccDueDateFor(todayDate.getFullYear(), todayDate.getMonth(), a.paymentDueDay);
+                if (anchor > todayDate) anchor = ccDueDateFor(todayDate.getFullYear(), todayDate.getMonth() - 1, a.paymentDueDay);
+                const daysSinceAnchor = Math.round((todayDate - anchor) / MS_PER_DAY);
+
+                const upcoming = ccDueDateFor(anchor.getFullYear(), anchor.getMonth() + 1, a.paymentDueDay);
+                const daysUntilUpcoming = Math.round((upcoming - todayDate) / MS_PER_DAY);
+
+                let overdue, daysOverdue, dueDateStr, dueToday;
+                if (daysSinceAnchor === 0) {
+                    overdue = false; dueToday = true; dueDateStr = anchor.toISOString().slice(0, 10);
+                } else if (daysUntilUpcoming <= 7) {
+                    overdue = false; dueToday = (daysUntilUpcoming === 0); dueDateStr = upcoming.toISOString().slice(0, 10);
+                } else {
+                    overdue = true; daysOverdue = daysSinceAnchor; dueDateStr = anchor.toISOString().slice(0, 10);
+                }
+                const daysAway = overdue ? null : (dueToday ? 0 : daysUntilUpcoming);
+                if (!overdue && !dueToday && daysAway > 7) return; // outside the 1-week advance window
+
+                const bg = overdue ? "#fee2e2" : "#fef3c7";
+                const border = overdue ? "#fecaca" : "#fde68a";
+                const textCol = overdue ? "#b91c1c" : "#92400e";
+                const label = overdue
+                    ? `payment overdue by ${daysOverdue} day${daysOverdue === 1 ? '' : 's'} (since ${dueDateStr}) — action needed`
+                    : (dueToday ? `due today` : `due in ${daysAway} day${daysAway === 1 ? '' : 's'} (${dueDateStr})`);
+                ccReminderHTML += `
+                    <div data-click="openCreditCardPayment" data-id="${escapeHtml(a.id)}" style="cursor:pointer; background:${bg}; border:1px solid ${border}; color:${textCol}; border-radius:12px; padding:12px 14px; margin-bottom:8px; font-size:0.8rem; font-weight:600; display:flex; justify-content:space-between; align-items:center;">
+                        <span>${overdue ? '⏰' : '🔔'} ${formatCurrency(amountDue, a.currency)} on "${escapeHtml(accountOptionLabel(a, accounts))}" ${label}.</span>
+                        <span style="font-size:1.1rem;">›</span>
+                    </div>
+                `;
+            });
+            document.getElementById("ccReminderContainer").innerHTML = ccReminderHTML;
 
             // --- Per-account "Account Activity" year navigation (v33) ---
             // Only meaningful when viewing one specific account with no category/type filter

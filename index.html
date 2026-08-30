@@ -2128,12 +2128,40 @@
                     transferColor: "#60a5fa", salaryColor: "#fbbf24",
                     colorScheme: "dark", themeColor: "#0a0a0f",
                 };
+                // v206: second dark preset, duplicated here in lockstep with ledger.js's
+                // BG_THEMES "slate" entry — same reasoning as MIDNIGHT_THEME above (BG_THEMES
+                // itself only lives in ledger.js, which hasn't loaded yet at this point).
+                var SLATE_THEME = {
+                    id: "slate", bg: "#0f172a", cardBg: "#1e293b", textMain: "#e2e8f0", textMuted: "#94a3b8",
+                    borderColor: "rgba(255,255,255,0.12)",
+                    neuLight: "rgba(255,255,255,0.04)", neuDark: "rgba(0,0,0,0.55)",
+                    neuPrimaryLight: "rgba(255,255,255,0.10)", neuPrimaryDark: "rgba(0,0,0,0.5)",
+                    glassBg: "rgba(30,41,59,0.72)", glassBgStrong: "rgba(30,41,59,0.85)",
+                    glassBgModal: "#1e293b", glassBorder: "rgba(255,255,255,0.12)", modalSheetBorder: "#64748b",
+                    hoverBg: "rgba(255,255,255,0.06)", pressBg: "rgba(255,255,255,0.10)",
+                    activeBg: "rgba(99,102,241,0.18)", activeBorder: "rgba(129,140,248,0.35)", chipBg: "rgba(255,255,255,0.08)",
+                    incomeChipBg: "rgba(52,211,153,0.15)", incomeChipBorder: "rgba(52,211,153,0.35)",
+                    expenseChipBg: "rgba(248,113,113,0.15)", expenseChipBorder: "rgba(248,113,113,0.35)",
+                    primaryChipBg: "rgba(129,140,248,0.15)",
+                    cardShadow: "none",
+                    hardwareTrackBg: "#2a231c", hardwareTrackBorder: "#46392c",
+                    hardwareFillStart: "#6b5642", hardwareFillEnd: "#4a3a2a",
+                    dropdownOptionBg: "#293548",
+                    primary: "#818cf8", incomeColor: "#34d399", expenseColor: "#f87171",
+                    transferColor: "#60a5fa", salaryColor: "#fbbf24",
+                    colorScheme: "dark", themeColor: "#0f172a",
+                };
                 var isAuto = localStorage.getItem("ledgerBgThemeAuto") === "1";
                 var systemPrefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
                 var saved = JSON.parse(localStorage.getItem("ledgerBgTheme"));
                 if (isAuto) {
                     if (systemPrefersDark) {
-                        saved = MIDNIGHT_THEME;
+                        // v206: which dark preset Auto lands on is itself a saved choice now
+                        // (see ledger.js's getAutoDarkThemeId()/setAutoDarkThemeId() — tapping
+                        // either dark swatch, any time, updates this) — was unconditionally
+                        // MIDNIGHT_THEME back when it was the only dark preset offered.
+                        var autoDarkId = localStorage.getItem("ledgerBgThemeAutoDarkId");
+                        saved = (autoDarkId === "slate") ? SLATE_THEME : MIDNIGHT_THEME;
                     } else {
                         var lightSnapshot = JSON.parse(localStorage.getItem("ledgerBgThemeLightSnapshot"));
                         if (lightSnapshot && lightSnapshot.bg) saved = lightSnapshot;
@@ -3100,9 +3128,12 @@
             </div>
             <div id="bgThemeSettingsPanel" style="display:none; flex-direction:column; gap:10px; background:var(--card-bg); border:1.5px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:10px;">
                 <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Changes the page background and the tint of the chrome shadows (FAB, calculator, nav bar) to match. Cards, glass panels and data colors stay the same.</p>
-                <!-- v202: mirrors the OS's own day/night auto-switch — toggling this on tracks
-                     prefers-color-scheme live, flipping between 暗夜描边 at night and whichever
-                     light preset was active beforehand. Tapping any swatch below turns it back off. -->
+                <!-- v206: mirrors the OS's own day/night auto-switch — toggling this on tracks
+                     prefers-color-scheme live, flipping between whichever dark preset (暗夜描边
+                     or Slate) you last tapped and whichever light preset was active beforehand.
+                     Tapping any swatch below turns Auto back off but still remembers that swatch
+                     for its side (light or dark) — so you can change which dark preset Auto uses
+                     any time, not just while turning Auto on. -->
                 <div class="toggle-switch-row" style="margin-top:0;">
                     <span class="toggle-switch-label">🌗 Auto (follow system day/night)</span>
                     <label class="toggle-switch">
@@ -3110,6 +3141,7 @@
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
+                <p style="font-size:0.7rem; color:var(--text-muted);">Tapping 暗夜描边 or Slate — anytime, even while Auto is off — sets which one Auto switches to at night. The other stays remembered for daytime.</p>
                 <div class="color-swatch-grid" id="bgThemeSwatchGrid"></div>
             </div>
             <div class="config-item" style="cursor:pointer;" data-click="sidebarGo" data-target="members">

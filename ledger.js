@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v230";
+        const APP_VERSION = "v231";
         const APP_VERSION_DATE = "2026-08-31";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1782,7 +1782,11 @@
                 return !info || t.id === info.repId;
             });
 
-            filtered = [...filtered].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, recentTxCount);
+            // v231: date-only sort left same-day ties in original (ascending-id/insertion) order,
+            // so the latest-added transaction on today's date sank to the bottom of its date group
+            // instead of showing first. Tie-break by id descending (autoIncrement = insertion order)
+            // so the most recently added same-day transaction is always shown first.
+            filtered = [...filtered].sort((a, b) => (new Date(b.date) - new Date(a.date)) || (b.id - a.id)).slice(0, recentTxCount);
 
             if (filtered.length === 0) {
                 list.innerHTML = `<p style="color:var(--text-muted); text-align:center; padding:16px 0; font-size:0.85rem;">No matching transactions yet.</p>`;
@@ -4565,7 +4569,8 @@
             document.getElementById("fundActivityTitle").textContent = `${fund.name} Activity`;
 
             const allTxs = await readAllDB(STORES.TRANSACTIONS);
-            const fundTxs = allTxs.filter(t => t.fundId === fundId).sort((a, b) => new Date(b.date) - new Date(a.date));
+            // v231: same same-day tie-break fix as Dashboard/Transactions — see comment there.
+            const fundTxs = allTxs.filter(t => t.fundId === fundId).sort((a, b) => (new Date(b.date) - new Date(a.date)) || (b.id - a.id));
 
             const value = (fund.units || 0) * (fund.currentNav || 0);
             document.getElementById("fundActivityBalanceValue").innerHTML = formatBalanceHTML(value, fund.currency);
@@ -4663,7 +4668,8 @@
                     const info = getSplitGroupInfo(t, txs);
                     return !info || t.id === info.repId;
                 })
-                .sort((a, b) => new Date(b.date) - new Date(a.date));
+                // v231: same same-day tie-break fix as Dashboard/Transactions — see comment there.
+                .sort((a, b) => (new Date(b.date) - new Date(a.date)) || (b.id - a.id));
 
             const html = relevantTxs.map(t => {
                 let col, sgn;
@@ -10540,7 +10546,9 @@
             // views now always show full history too, exactly like the account view already does.
             const showFullHistoryForThisView = showFullAccountHistory || activeCategoryView !== "all" || directTypeView !== "all" || isPortfolioAllView;
 
-            txs.sort((a,b) => new Date(b.date) - new Date(a.date)).forEach(t => {
+            // v231: same same-day tie-break fix as the Dashboard Recent Transactions widget above —
+            // see the comment there.
+            txs.sort((a,b) => (new Date(b.date) - new Date(a.date)) || (b.id - a.id)).forEach(t => {
                 const tBase = convertTxAmountToBase(t, accounts);
                 // Multi-Currency account view (v55): skip building any per-transaction row here
                 // — see isMultiCurrencyAccountView above, this account's own list is replaced

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v210";
+        const APP_VERSION = "v211";
         const APP_VERSION_DATE = "2026-08-31";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1281,6 +1281,12 @@
         // Year, right card on This Month.
         let reportCardPeriod1 = "thisYear";
         let reportCardPeriod2 = "thisMonth";
+
+        // v211: which year the dashboard's Monthly Trend chart shows (see
+        // renderMonthlyTrendChart() below) — a single year at a time, since the chart plots all
+        // 12 of that year's months side by side (an "All Years" option wouldn't fit the same
+        // chart shape). Stored in SETTINGS like the report card periods above.
+        let monthlyTrendYear = new Date().getFullYear().toString();
 
         // Built-in starter categories (auto-provisioned if missing; user can still
         // rename/remove via the Categories manager same as any custom category).
@@ -2608,6 +2614,130 @@
             populateReportCardPeriodSelect("reportCardPeriodSelect2", reportCardPeriod2);
             renderReportCardTile(1, reportCardPeriod1, txs, accounts);
             renderReportCardTile(2, reportCardPeriod2, txs, accounts);
+        }
+
+        // --- Monthly Trend chart (v211) ---
+        // Grouped income/expense bars, one pair per month, for a single selected year — the
+        // dashboard didn't previously have anything showing the shape of the year at a glance
+        // (the report cards above summarise one period at a time; this shows all 12 side by
+        // side). Reuses computeReportCardTotals' exact exclusion + refund-as-negative-expense
+        // rules (via the same per-month date-range totalling) so the numbers already tie out to
+        // every other income/expense figure on the dashboard — no separate accounting logic.
+        function populateMonthlyTrendYearOptions(txs) {
+            const select = document.getElementById("monthlyTrendYearSelect");
+            const currentYear = new Date().getFullYear();
+            const years = new Set([currentYear]);
+            txs.forEach(t => {
+                const y = new Date(t.date + "T00:00:00").getFullYear();
+                if (!isNaN(y)) years.add(y);
+            });
+            const sortedYears = [...years].sort((a, b) => b - a);
+            select.innerHTML = sortedYears.map(y => `<option value="${y}">${y}</option>`).join("");
+            select.value = sortedYears.map(String).includes(monthlyTrendYear) ? monthlyTrendYear : String(currentYear);
+        }
+
+        function computeMonthlyTrendData(txs, accounts, year) {
+            const excludedCatNames = new Set(dynamicCategories.filter(c => c.excludeFromSavings).map(c => c.name));
+            const months = Array.from({ length: 12 }, (_, i) => ({
+                label: new Date(2000, i, 1).toLocaleDateString(undefined, { month: "short" }),
+                income: 0, expense: 0
+            }));
+            txs.forEach(t => {
+                const d = new Date(t.date + "T00:00:00");
+                if (d.getFullYear() !== year) return;
+                if (excludedCatNames.has(t.cat)) return;
+                const tBase = convertTxAmountToBase(t, accounts);
+                const bucket = months[d.getMonth()];
+                if (t.type === "income" && t.isRefund) bucket.expense -= tBase;
+                else if (t.type === "income") bucket.income += tBase;
+                else if (t.type === "expense") bucket.expense += tBase;
+            });
+            return months;
+        }
+
+        // Grouped (paired) bar chart, no external chart library, styled to match this app's
+        // other hand-drawn SVG charts (buildBreakdownBarSVG/buildBreakdownDonutSVG above) rather
+        // than copying any other app's exact look. A light horizontal gridline + axis label every
+        // ~1/4 of the scale, an income/expense legend up top, and a muted "no data" label under
+        // any month with nothing logged (rather than just leaving it blank, which reads as a
+        // rendering gap rather than "no transactions that month").
+        function buildMonthlyTrendBarSVG(months) {
+            const w = 680, h = 260, padLeft = 46, padRight = 10, padTop = 34, padBottom = 26;
+            const plotW = w - padLeft - padRight, plotH = h - padTop - padBottom;
+            const maxVal = Math.max(...months.map(mo => Math.max(mo.income, mo.expense)), 0.01);
+            // Round the axis ceiling up to a "nice" number (1/2/5 × a power of ten) so gridline
+            // labels read like 4,000/8,000 rather than an arbitrary max-value fraction.
+            const magnitude = Math.pow(10, Math.floor(Math.log10(maxVal || 1)));
+            const niceSteps = [1, 2, 2.5, 5, 10];
+            let axisMax = magnitude * 10;
+            for (const step of niceSteps) {
+                if (maxVal <= magnitude * step) { axisMax = magnitude * step; break; }
+            }
+            const gridlineCount = 4;
+            let gridlinesSVG = "";
+            for (let i = 0; i <= gridlineCount; i++) {
+                const val = (axisMax / gridlineCount) * i;
+                const y = padTop + plotH - (plotH * val) / axisMax;
+                gridlinesSVG += `
+                    <line x1="${padLeft}" y1="${y.toFixed(1)}" x2="${w - padRight}" y2="${y.toFixed(1)}" stroke="#e2e8f0" stroke-width="1"></line>
+                    <text x="${padLeft - 8}" y="${(y + 3).toFixed(1)}" font-size="9" text-anchor="end" fill="#94a3b8">${formatCompactAxisNumber(val)}</text>
+                `;
+            }
+            const groupW = plotW / 12;
+            const barW = Math.min(14, groupW / 2 - 4);
+            let barsSVG = "";
+            months.forEach((mo, i) => {
+                const groupX = padLeft + i * groupW;
+                const incH = (plotH * mo.income) / axisMax;
+                const expH = (plotH * mo.expense) / axisMax;
+                const incX = groupX + groupW / 2 - barW - 1;
+                const expX = groupX + groupW / 2 + 1;
+                if (mo.income > 0) {
+                    barsSVG += `<rect x="${incX.toFixed(1)}" y="${(padTop + plotH - incH).toFixed(1)}" width="${barW.toFixed(1)}" height="${incH.toFixed(1)}" rx="2" fill="#22c55e"></rect>`;
+                }
+                if (mo.expense > 0) {
+                    barsSVG += `<rect x="${expX.toFixed(1)}" y="${(padTop + plotH - expH).toFixed(1)}" width="${barW.toFixed(1)}" height="${expH.toFixed(1)}" rx="2" fill="#ef4444"></rect>`;
+                }
+                barsSVG += `<text x="${(groupX + groupW / 2).toFixed(1)}" y="${h - 6}" font-size="9" text-anchor="middle" fill="#64748b">${escapeHtml(mo.label)}</text>`;
+            });
+            return `
+                <svg viewBox="0 0 ${w} ${h}" style="width:100%; display:block;">
+                    <g>
+                        <rect x="0" y="0" width="12" height="12" fill="#22c55e" rx="2" transform="translate(${padLeft}, 4)"></rect>
+                        <text x="${padLeft + 16}" y="14" font-size="10" fill="#334155">Income</text>
+                        <rect x="0" y="0" width="12" height="12" fill="#ef4444" rx="2" transform="translate(${padLeft + 66}, 4)"></rect>
+                        <text x="${padLeft + 82}" y="14" font-size="10" fill="#334155">Expense</text>
+                    </g>
+                    ${gridlinesSVG}
+                    ${barsSVG}
+                </svg>
+            `;
+        }
+
+        // Compact axis-label formatting (1,200 / 12K / 1.2M) — plain-language style matching the
+        // rest of this app's currency/number display rather than a locale-aware Intl formatter,
+        // since axis labels here are unitless (no currency symbol) at a glance.
+        function formatCompactAxisNumber(val) {
+            if (val >= 1000000) return (val / 1000000).toFixed(val % 1000000 === 0 ? 0 : 1) + "M";
+            if (val >= 1000) return (val / 1000).toFixed(val % 1000 === 0 ? 0 : 1) + "K";
+            return Math.round(val).toString();
+        }
+
+        function renderMonthlyTrendChart(txs, accounts) {
+            populateMonthlyTrendYearOptions(txs);
+            const year = parseInt(document.getElementById("monthlyTrendYearSelect").value, 10);
+            const months = computeMonthlyTrendData(txs, accounts, year);
+            const hasAnyData = months.some(mo => mo.income > 0 || mo.expense > 0);
+            document.getElementById("monthlyTrendChartWrap").innerHTML = hasAnyData
+                ? buildMonthlyTrendBarSVG(months)
+                : '<p style="font-size:0.75rem; text-align:center; color:var(--text-muted); padding: 40px 0;">No transactions logged for this year yet.</p>';
+        }
+
+        async function changeMonthlyTrendYear(el) {
+            monthlyTrendYear = el.value;
+            await writeDB(STORES.SETTINGS, { key: "monthlyTrendYear", value: monthlyTrendYear });
+            const { accounts, txs } = await computeAccountBalances();
+            renderMonthlyTrendChart(txs, accounts);
         }
 
         async function changeReportCardPeriod(cardNum, value) {
@@ -9959,6 +10089,7 @@
             ledgerHTML += openingBalanceHTML;
 
             renderReportCards(txs, accounts);
+            renderMonthlyTrendChart(txs, accounts);
 
             // Unit Trust account's own Activity page: each fund now has its own dedicated
             // Activity page (see navigateToFundActivityPage) showing that fund's transactions,
@@ -11061,6 +11192,9 @@
             const storedReportCardPeriod2 = await readKeyDB("settings", "reportCardPeriod2");
             if (storedReportCardPeriod2) reportCardPeriod2 = storedReportCardPeriod2.value || "thisMonth";
 
+            const storedMonthlyTrendYear = await readKeyDB("settings", "monthlyTrendYear");
+            if (storedMonthlyTrendYear) monthlyTrendYear = storedMonthlyTrendYear.value || new Date().getFullYear().toString();
+
             const storedRecentTxType = await readKeyDB("settings", "recentTxTypeFilter");
             if (storedRecentTxType) recentTxTypeFilter = storedRecentTxType.value || "both";
 
@@ -11341,6 +11475,7 @@
                                 case "defaultReceiveAccount": defaultReceiveAccount = rec.value || ""; break;
                                 case "reportCardPeriod1": reportCardPeriod1 = rec.value || "thisYear"; break;
                                 case "reportCardPeriod2": reportCardPeriod2 = rec.value || "thisMonth"; break;
+                                case "monthlyTrendYear": monthlyTrendYear = rec.value || new Date().getFullYear().toString(); break;
                                 case "defaultIncomeCategory": defaultIncomeCategory = rec.value || ""; break;
                                 case "defaultExpenseCategory": defaultExpenseCategory = rec.value || ""; break;
                                 case "recentTxTypeFilter": recentTxTypeFilter = rec.value || "both"; break;
@@ -11565,6 +11700,7 @@
             handleSalaryCurrencyChange: () => handleSalaryCurrencyChange(),
             changeReportCardPeriod1: (el) => changeReportCardPeriod(1, el.value),
             changeReportCardPeriod2: (el) => changeReportCardPeriod(2, el.value),
+            changeMonthlyTrendYear: (el) => changeMonthlyTrendYear(el),
             handleBgThemeAutoToggleChange: () => handleBgThemeAutoToggleChange(),
         };
 

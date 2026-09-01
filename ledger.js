@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v235";
+        const APP_VERSION = "v236";
         const APP_VERSION_DATE = "2026-09-01";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -11078,7 +11078,15 @@
                 // Current/Savings account rather than reinvested. These are read-only references:
                 // the linked entry already counts toward its own destination account's balance
                 // elsewhere, so nothing here touches this placement's principal/balance/totals.
-                if (t.fdMaturityDate) {
+                // v236: only nest the linked-interest sub-rows when this placement row is being
+                // shown on the FD account's OWN Activity page — not when it's showing here
+                // because we're viewing the OTHER leg of its opening Transfer (e.g. the Current
+                // Account it was funded from) or the unfiltered "All" view. Those contexts
+                // already show the interest payout as its own normal top-level row on the
+                // account that actually received it, so nesting it a second time here was
+                // duplicating it on-screen.
+                const fdOwnAccountId = t.type === "transfer" ? t.dest : t.src;
+                if (t.fdMaturityDate && activeLedgerAccountView === fdOwnAccountId) {
                     ledgerHTML += buildLinkedFdPaymentRowsHTML(t, txs, accounts);
                 }
             });

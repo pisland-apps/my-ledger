@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v252";
+        const APP_VERSION = "v253";
         const APP_VERSION_DATE = "2026-09-01";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7544,10 +7544,17 @@
             const accSelect = document.getElementById("tplAccount");
             const accounts = await readAllDB(STORES.ACCOUNTS);
             const sorted = sortAccountsByGroupThenName(accounts);
+            // v253: appends the same " — VF, RS" owner tag (accountOwnerNamesText() +
+            // accountRelatedSuffix()) that openTransactionForm()'s Account picker already shows
+            // (see the ownerLabel there) — this list was built independently and had fallen out
+            // of sync with it, so two accounts sharing a bank/name (e.g. two "HSBC Current A/c")
+            // were indistinguishable here even though they aren't in the main Add/Edit
+            // Transaction form.
             accSelect.innerHTML = sorted.map(a => {
                 const prefix = a.type === "fd" ? "🏦 " : a.type === "multi" ? "💱 " : a.type === "unittrust" ? "📊 " : a.type === "creditcard" ? "💳 " : "";
                 const currLabel = (a.type === "multi" || a.type === "fd" || a.type === "unittrust") ? "" : ` (${escapeHtml(a.currency)})`;
-                return `<option value="${escapeHtml(a.id)}">${prefix}${escapeHtml(a.name)}${currLabel}</option>`;
+                const ownerLabel = ` — ${escapeHtml(accountOwnerNamesText(a) + accountRelatedSuffix(a, accounts))}`;
+                return `<option value="${escapeHtml(a.id)}">${prefix}${escapeHtml(a.name)}${currLabel}${ownerLabel}</option>`;
             }).join("");
         }
 
@@ -10253,10 +10260,25 @@
             // v150: keeps a category picker's icon avatar (the small colored circle beside the
             // button — see the .split-cat-icon CSS comment) in sync with whichever category is
             // currently selected. Only category pickers have a "<selectId>Icon" element in the DOM
-            // (txCategory / each split row's <rowId>_cat), so this is a no-op for Account pickers.
+            // (txCategory / each split row's <rowId>_cat / v253's tplCategory), so this is a no-op
+            // for Account pickers.
             const iconEl = document.getElementById(selectId + "Icon");
             if (iconEl) {
-                const typeEl = document.getElementById("txType");
+                // v253: was hardcoded to #txType, which is only correct for txCategory and the
+                // main transaction form's split rows — all three live inside txModal. tplCategory
+                // (Add/Edit Template modal) has its own separate #tplType hidden field instead, so
+                // reading #txType for it silently showed the icon/color for whatever type the
+                // transaction form last happened to be set to, unrelated to the template's own
+                // Income/Expense toggle. Any "<selectId-without-'Category'>Type" field found in
+                // the DOM wins over the #txType default — currently only tplCategory→tplType, but
+                // this covers any future "<prefix>Category"/"<prefix>Type" pair the same way
+                // without needing another special case here.
+                let typeElId = "txType";
+                if (selectId.endsWith("Category")) {
+                    const candidate = selectId.slice(0, -"Category".length) + "Type";
+                    if (document.getElementById(candidate)) typeElId = candidate;
+                }
+                const typeEl = document.getElementById(typeElId);
                 const type = (typeEl && typeEl.value === "income") ? "income" : "expense";
                 const catName = select.value;
                 iconEl.textContent = catName ? getCategoryIcon(catName, type) : "🏷️";

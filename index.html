@@ -4053,9 +4053,12 @@
 
                 <div class="form-row">
                     <label>Category</label>
-                    <button type="button" id="tplCategoryBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="tplCategory" data-title="Select Category">
-                        <span id="tplCategoryBtnText">Select category</span><span class="account-picker-chevron">▾</span>
-                    </button>
+                    <div class="split-row-catline">
+                        <span class="split-cat-icon" id="tplCategoryIcon">🏷️</span>
+                        <button type="button" id="tplCategoryBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="tplCategory" data-title="Select Category">
+                            <span id="tplCategoryBtnText">Select category</span><span class="account-picker-chevron">▾</span>
+                        </button>
+                    </div>
                     <select id="tplCategory" style="display:none;"></select>
                 </div>
 

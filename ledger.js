@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v237";
+        const APP_VERSION = "v238";
         const APP_VERSION_DATE = "2026-09-01";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -3299,6 +3299,14 @@
             } else if (ledgerBackToPage === "member") {
                 showPage("page-member");
                 await renderMemberPage();
+                window.scrollTo(0, workspaceScrollY);
+            } else if (ledgerBackToPage === "spending-breakdown") {
+                showPage("page-spending-breakdown");
+                await renderSpendingBreakdownPage();
+                window.scrollTo(0, workspaceScrollY);
+            } else if (ledgerBackToPage === "income-breakdown") {
+                showPage("page-income-breakdown");
+                await renderIncomeBreakdownPage();
                 window.scrollTo(0, workspaceScrollY);
             } else {
                 navigateToWorkspace();
@@ -11453,11 +11461,18 @@
         // the old dashboard Spending Breakdown used, now reused by both breakdown pages.
         function buildBreakdownListHTML(entries, total, type, year = "all", month = "all") {
             if (entries.length === 0) return '<p style="font-size: 0.75rem; text-align: center; color: var(--text-muted);">Nothing categorised yet.</p>';
+            // v238: which page a category row's own Back/hardware-back should return to — the two
+            // callers of this function (Spending Breakdown for "expense", Income Breakdown for
+            // "income") are already distinguished by `type`, so it's derived here rather than
+            // needing its own parameter. Previously this row carried no data-back at all, so
+            // navigateToCategoryPage's default ("workspace") applied — Back skipped straight past
+            // the Breakdown page to the Dashboard instead of returning one step.
+            const backTarget = type === "income" ? "income-breakdown" : "spending-breakdown";
             return entries.map(e => {
                 const pct = total > 0 ? ((e.value / total) * 100).toFixed(0) : 0;
                 const icon = getCategoryIcon(e.label, type);
                 return `
-                    <div class="category-row-item" data-click="navigateToCategoryPage" data-category="${escapeHtml(e.label)}" data-year="${escapeHtml(year)}" data-month="${escapeHtml(month)}" style="font-size:0.75rem; margin-top:4px;">
+                    <div class="category-row-item" data-click="navigateToCategoryPage" data-category="${escapeHtml(e.label)}" data-back="${backTarget}" data-year="${escapeHtml(year)}" data-month="${escapeHtml(month)}" style="font-size:0.75rem; margin-top:4px;">
                         <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
                             <strong>${icon} ${escapeHtml(e.label.toUpperCase())}</strong>
                             <span>${formatCurrency(e.value, baseCurrency)} (${pct}%)</span>

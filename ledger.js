@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v234";
+        const APP_VERSION = "v235";
         const APP_VERSION_DATE = "2026-09-01";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -8455,23 +8455,26 @@
             descInput.required = !autoMode;
         }
 
-        // v234: every still-open (unresolved) FD placement across every FD account — a placement
-        // is any transaction record with fdMaturityDate set and fdResolved falsy, whether it was
-        // opened via a Transfer into the FD account (the normal flow) or directly via an Income
-        // entry with FD Placement Terms filled in. Shared by the "Linked Placement" picker below
-        // and by renderLedgerPage's linked-interest-payment lookup.
+        // v234: every FD placement across every FD account — a placement is any transaction
+        // record with fdMaturityDate set, whether still open or already fdResolved (renewed/
+        // withdrawn). Shared by the "Linked Placement" picker below and by renderLedgerPage's
+        // linked-interest-payment lookup. v235: now includes resolved placements too (tagged
+        // "✅ Closed" in the label) so a late/backdated interest entry can still be linked to a
+        // placement that's already matured and been resolved — previously the picker only
+        // offered still-open placements.
         function getActiveFdPlacements(txs, accounts) {
             return txs
-                .filter(t => t.fdMaturityDate && !t.fdResolved)
+                .filter(t => t.fdMaturityDate)
                 .map(t => {
                     const acctId = t.type === "transfer" ? t.dest : t.src;
                     const acct = accounts.find(a => a.id === acctId);
                     if (!acct || acct.type !== "fd") return null;
                     const refPart = t.fdReferenceNo ? ` (${t.fdReferenceNo})` : "";
+                    const statusPart = t.fdResolved ? " · ✅ Closed" : ` · Matures ${t.fdMaturityDate}`;
                     return {
                         id: t.id,
                         accountId: acct.id,
-                        label: `🏦 ${acct.name}${refPart} — ${formatCurrency(t.amount, t.currency)} · Matures ${t.fdMaturityDate}`
+                        label: `🏦 ${acct.name}${refPart} — ${formatCurrency(t.amount, t.currency)}${statusPart}`
                     };
                 })
                 .filter(Boolean)

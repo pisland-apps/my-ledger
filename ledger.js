@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v253";
+        const APP_VERSION = "v254";
         const APP_VERSION_DATE = "2026-09-01";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1307,6 +1307,11 @@
         let modalStack = [];
         // Split Expenses — incrementing counter for unique split-row DOM ids within one form session.
         let txSplitRowCounter = 0;
+        // v254: same idea, scoped to the Add/Edit Template modal's own Split Expenses UI (see
+        // addTplSplitRow()) — a separate counter/DOM tree from txSplitRowCounter/#txSplitRows so a
+        // template being edited and the main transaction form never collide, even though both can
+        // in principle be open in nested modals at once.
+        let tplSplitRowCounter = 0;
 
         // Default currency set (v39) — the 10 currencies the user actually holds. Rates are
         // approximate starting points only (per 1 MYR) — the user edits real values via
@@ -7436,7 +7441,7 @@
                             <span>${catIcon}</span>
                             <span style="display:flex; flex-direction:column;">
                                 <strong>${escapeHtml(t.name)}</strong>
-                                <span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">${formatCurrency(t.amount || 0, t.currency)} · ${acc ? escapeHtml(acc.name) : "(no account)"}</span>
+                                <span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">${formatCurrency(t.amount || 0, t.currency)} · ${acc ? escapeHtml(acc.name) : "(no account)"}${t.splits && t.splits.length ? ` · +${t.splits.length} split${t.splits.length > 1 ? "s" : ""}` : ""}</span>
                             </span>
                         </span>
                         <div style="display:flex; align-items:center;">
@@ -7492,6 +7497,7 @@
             document.getElementById("tplAccount").value = "";
             syncAccountPickerButtonText("tplCategory");
             syncAccountPickerButtonText("tplAccount");
+            resetTplSplitRows();
             openModal("templateModal");
         }
 
@@ -7514,6 +7520,7 @@
             document.getElementById("tplAccount").value = t.accountId || "";
             syncAccountPickerButtonText("tplCategory");
             syncAccountPickerButtonText("tplAccount");
+            populateTplSplitRowsFromTemplate(t.splits);
             openModal("templateModal");
         }
 
@@ -7529,6 +7536,12 @@
             populateTemplateFormCategorySelect();
             document.getElementById("tplCategory").value = "";
             syncAccountPickerButtonText("tplCategory");
+            // v254: any already-added split rows were built with the OLD type's category list
+            // (buildSplitCategoryOptionsHTML(type) in addTplSplitRow() bakes the options in at
+            // creation time, same as the main Category select two lines up) — clearing them here
+            // is the same "start over" treatment tplCategory itself just got above, and avoids a
+            // split row silently keeping a category from a type it no longer belongs to.
+            resetTplSplitRows();
         }
 
         function populateTemplateFormCategorySelect() {
@@ -7576,6 +7589,13 @@
                 accountId,
                 desc: document.getElementById("tplDesc").value.trim(),
                 notes: document.getElementById("tplNotes").value.trim(),
+                // v254: extra Category+Amount rows beyond the main one above (see
+                // collectTplSplitRows()/populateTplSplitRowsFromTemplate()) — [] rather than
+                // omitted when there are none, so a template that's had its splits removed
+                // overwrites a previously-saved non-empty list on Edit rather than leaving it
+                // stale (writeDB() replaces the whole record, but an `undefined` field wouldn't
+                // have made that obvious from reading this code alone).
+                splits: collectTplSplitRows(),
                 // A brand-new template goes to the end of its type's list; editing an existing
                 // one keeps its current position.
                 order: editId ? (dynamicTemplates.find(t => t.id === editId)?.order ?? Date.now()) : Date.now(),
@@ -7618,7 +7638,7 @@
             const listEl = document.getElementById("templatePickerList");
             listEl.innerHTML = list.length ? list.map(t => `
                 <button type="button" class="option-menu-btn" data-click="selectTemplateFromPicker" data-id="${escapeHtml(t.id)}" style="display:flex; justify-content:space-between; align-items:center;">
-                    <span>${t.cat ? getCategoryIcon(t.cat, t.type) : "🏷️"} ${escapeHtml(t.name)}</span>
+                    <span>${t.cat ? getCategoryIcon(t.cat, t.type) : "🏷️"} ${escapeHtml(t.name)}${t.splits && t.splits.length ? ` <span style="color:var(--text-muted); font-weight:600; font-size:0.75rem;">+${t.splits.length} split${t.splits.length > 1 ? "s" : ""}</span>` : ""}</span>
                     <span style="color:var(--text-muted); font-weight:700;">${formatCurrency(t.amount || 0, t.currency)}</span>
                 </button>
             `).join("") : `<p style="color:var(--text-muted); padding:12px 4px; font-size:0.85rem;">No ${type} templates yet — add one from Sidebar → Settings → 🧾 Transaction Templates.</p>`;
@@ -7657,6 +7677,29 @@
             }
             if (t.desc) document.getElementById("txDesc").value = t.desc;
             if (t.notes) document.getElementById("txNotes").value = t.notes;
+            // v254: replay the template's own Split Expenses (collectTplSplitRows(), saved onto
+            // t.splits by handleSaveTemplateMobile()) into the main form's own split rows —
+            // guarded to a brand-new entry only, since #txSplitWrap itself is hidden for any edit
+            // (see openTransactionForm()) and a hidden form's split rows are never collected/saved
+            // at Save time regardless (collectTxSplitRows() there is gated on isNewEntry). Any
+            // split rows already in the form (manually added, or from a previously-picked
+            // template) are replaced wholesale — same overwrite-everything behavior as Amount/
+            // Category/Account above, not merged with what's already there.
+            const isNewEntry = document.getElementById("txId").value === "";
+            if (isNewEntry) {
+                resetTxSplitRows();
+                (t.splits || []).forEach(s => {
+                    addTxSplitRow();
+                    const rowId = `txSplitRow_${txSplitRowCounter}`;
+                    const rowCatSelect = document.getElementById(`${rowId}_cat`);
+                    if (rowCatSelect && [...rowCatSelect.options].some(o => o.value === s.cat)) {
+                        rowCatSelect.value = s.cat;
+                        syncAccountPickerButtonText(`${rowId}_cat`);
+                    }
+                    document.getElementById(`${rowId}_amt`).value = s.amount != null ? s.amount : "";
+                });
+            }
+            recalcTxSplitTotal();
         }
 
         // Shows/hides the ⭐ template-picker button in the transaction modal header — Income/
@@ -8280,6 +8323,99 @@
                 if (cat && !isNaN(amt) && amt > 0) rows.push({ cat, amount: amt });
             });
             return rows;
+        }
+
+        // v254: TEMPLATE SPLIT EXPENSES — a template can now save its own Split Expenses (extra
+        // Category+Amount rows beyond the main one), same shape as #txSplitRows/addTxSplitRow()
+        // above but scoped to the Add/Edit Template modal's own #tplSplitRows/#tplType/#tplAmount/
+        // #tplCurrency, so editing/adding a template never touches the (possibly also-open, in a
+        // nested modal) main transaction form's split state. Saved on the template record as
+        // `splits: [{cat, amount}]` (see handleSaveTemplateMobile()) and, when the template is
+        // picked for a brand-new Income/Expense entry, replayed into the main form's own split
+        // rows by applyTemplateToTxForm() so the resulting transaction splits exactly as saved.
+        function resetTplSplitRows() {
+            document.getElementById("tplSplitRows").innerHTML = "";
+            tplSplitRowCounter = 0;
+            recalcTplSplitTotal();
+        }
+
+        function addTplSplitRow() {
+            const type = document.getElementById("tplType").value;
+            tplSplitRowCounter++;
+            const rowId = `tplSplitRow_${tplSplitRowCounter}`;
+            const catSelectId = `${rowId}_cat`;
+            const row = document.createElement("div");
+            row.className = "split-row";
+            row.id = rowId;
+            row.innerHTML = `
+                <label>Amount</label>
+                <div class="split-amt-line">
+                    <input type="number" class="tpl-split-amt" step="0.01" inputmode="decimal" placeholder="Amount" style="flex:1;" data-input="recalcTplSplitTotal">
+                    <button type="button" class="calc-btn" data-click="openCalcPadFor" data-target="${rowId}_amt" title="Calculator / Numpad">${CALC_ICON_SVG}</button>
+                </div>
+                <div class="split-row-catline">
+                    <span class="split-cat-icon" id="${catSelectId}Icon">🏷️</span>
+                    <button type="button" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="${catSelectId}" data-title="Select Category">
+                        <span id="${catSelectId}BtnText">Select category</span><span class="account-picker-chevron">▾</span>
+                    </button>
+                    <button type="button" class="split-remove-btn" data-click="removeTplSplitRow" data-row-id="${rowId}" title="Remove this split">−</button>
+                </div>
+                <select class="form-input tpl-split-cat" id="${catSelectId}" style="display:none;">${buildSplitCategoryOptionsHTML(type)}</select>
+            `;
+            document.getElementById("tplSplitRows").appendChild(row);
+            row.querySelector(".tpl-split-amt").id = `${rowId}_amt`;
+            syncAccountPickerButtonText(catSelectId);
+            recalcTplSplitTotal();
+            return rowId;
+        }
+
+        function removeTplSplitRow(el) {
+            const rowId = el.dataset.rowId;
+            const row = document.getElementById(rowId);
+            if (row) row.remove();
+            recalcTplSplitTotal();
+        }
+
+        function recalcTplSplitTotal() {
+            const mainAmt = parseFloat(document.getElementById("tplAmount").value) || 0;
+            let splitTotal = mainAmt;
+            document.querySelectorAll("#tplSplitRows .tpl-split-amt").forEach(inp => {
+                splitTotal += parseFloat(inp.value) || 0;
+            });
+            const currency = document.getElementById("tplCurrency").value || baseCurrency;
+            const display = document.getElementById("tplSplitTotalDisplay");
+            if (display) display.textContent = formatCurrency(splitTotal, currency);
+        }
+
+        function collectTplSplitRows() {
+            const rows = [];
+            document.querySelectorAll("#tplSplitRows .split-row").forEach(rowEl => {
+                const cat = rowEl.querySelector(".tpl-split-cat").value;
+                const amt = parseFloat(rowEl.querySelector(".tpl-split-amt").value);
+                if (cat && !isNaN(amt) && amt > 0) rows.push({ cat, amount: amt });
+            });
+            return rows;
+        }
+
+        // Re-populates #tplSplitRows from a saved template's `splits` array — used by
+        // editTemplate() only (a brand-new template starts with resetTplSplitRows()'s empty
+        // list). Each row is added via addTplSplitRow() itself (so it gets a real counter-based id
+        // and its category <select>'s options built for the template's current type) and then
+        // just has its two values filled in afterwards, same "build then fill" order
+        // editTemplate() already uses for the rest of the form.
+        function populateTplSplitRowsFromTemplate(splits) {
+            resetTplSplitRows();
+            (splits || []).forEach(s => {
+                const rowId = addTplSplitRow();
+                const catSelectId = `${rowId}_cat`;
+                const catSelect = document.getElementById(catSelectId);
+                if (catSelect && [...catSelect.options].some(o => o.value === s.cat)) {
+                    catSelect.value = s.cat;
+                    syncAccountPickerButtonText(catSelectId);
+                }
+                document.getElementById(`${rowId}_amt`).value = s.amount != null ? s.amount : "";
+            });
+            recalcTplSplitTotal();
         }
 
         // --- CALCULATOR / NUMPAD (v88) ---
@@ -10264,20 +10400,17 @@
             // for Account pickers.
             const iconEl = document.getElementById(selectId + "Icon");
             if (iconEl) {
-                // v253: was hardcoded to #txType, which is only correct for txCategory and the
-                // main transaction form's split rows — all three live inside txModal. tplCategory
-                // (Add/Edit Template modal) has its own separate #tplType hidden field instead, so
-                // reading #txType for it silently showed the icon/color for whatever type the
-                // transaction form last happened to be set to, unrelated to the template's own
-                // Income/Expense toggle. Any "<selectId-without-'Category'>Type" field found in
-                // the DOM wins over the #txType default — currently only tplCategory→tplType, but
-                // this covers any future "<prefix>Category"/"<prefix>Type" pair the same way
-                // without needing another special case here.
-                let typeElId = "txType";
-                if (selectId.endsWith("Category")) {
-                    const candidate = selectId.slice(0, -"Category".length) + "Type";
-                    if (document.getElementById(candidate)) typeElId = candidate;
-                }
+                // v253/v254: was hardcoded to #txType, which is only correct for category pickers
+                // that live inside txModal (txCategory, each of its split rows' <rowId>_cat).
+                // tplCategory and v254's per-row tplSplitRow_N_cat (Add/Edit Template modal) all
+                // belong to the template's own #tplType hidden field instead — reading #txType for
+                // them silently showed the icon/color for whatever type the transaction form last
+                // happened to be set to, unrelated to the template's own Income/Expense toggle.
+                // Every category-picker id the template modal creates is prefixed "tpl" (see
+                // openTemplateFormModal()/addTplSplitRow()), so that prefix alone is enough to
+                // route to #tplType instead — no per-field special-casing needed as more
+                // template-side picker fields get added.
+                const typeElId = selectId.startsWith("tpl") ? "tplType" : "txType";
                 const typeEl = document.getElementById(typeElId);
                 const type = (typeEl && typeEl.value === "income") ? "income" : "expense";
                 const catName = select.value;
@@ -13075,6 +13208,8 @@
             // v88: split expenses, calculator/numpad, transaction quick view/options/refund.
             addTxSplitRow: () => addTxSplitRow(),
             removeTxSplitRow: (el) => removeTxSplitRow(el),
+            addTplSplitRow: () => addTplSplitRow(),
+            removeTplSplitRow: (el) => removeTplSplitRow(el),
             openCalcPadFor: (el) => openCalcPad(el),
             calcPadPress: (el) => calcPadPress(el),
             calcPadApply: () => calcPadApply(),
@@ -13105,6 +13240,7 @@
             handleBiometricToggleChange: () => handleBiometricToggleChange(),
             handleBaseCurrencyChange: () => handleBaseCurrencyChange(),
             recalcTxFdMaturity: () => { recalcTxFdMaturity(); recalcTxSplitTotal(); },
+            recalcTplSplitTotal: () => recalcTplSplitTotal(),
             syncTransactionCurrency: () => syncTransactionCurrency(),
             handleTxAttachmentsSelected: (el, e) => handleTxAttachmentsSelected(e),
             recalcResolveFdMaturity: () => recalcResolveFdMaturity(),
@@ -13155,6 +13291,7 @@
             recalcFundTxPriceFromTotal: () => recalcFundTxPriceFromTotal(),
             handleNavPriceInput: (el) => handleNavPriceInput(el),
             recalcTxSplitTotal: () => recalcTxSplitTotal(),
+            recalcTplSplitTotal: () => recalcTplSplitTotal(),
             recalcSalaryPreview: () => recalcSalaryPreview(),
             filterDescSuggestions: (el) => filterDescSuggestions(el),
         };

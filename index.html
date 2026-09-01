@@ -4043,11 +4043,11 @@
                 <div class="form-row-inline" style="grid-template-columns: 2fr 1fr;">
                     <div>
                         <label>Amount</label>
-                        <input type="number" id="tplAmount" step="0.01" inputmode="decimal" placeholder="0.00">
+                        <input type="number" id="tplAmount" step="0.01" inputmode="decimal" placeholder="0.00" data-input="recalcTplSplitTotal">
                     </div>
                     <div>
                         <label>Currency</label>
-                        <select id="tplCurrency" class="form-input"></select>
+                        <select id="tplCurrency" class="form-input" data-change="recalcTplSplitTotal"></select>
                     </div>
                 </div>
 
@@ -4060,6 +4060,20 @@
                         </button>
                     </div>
                     <select id="tplCategory" style="display:none;"></select>
+                </div>
+
+                <!-- v254: Split Expenses on a Template — same markup pattern/CSS classes as
+                     #txSplitWrap in the Add/Edit Transaction form (.split-row/.split-total-row/
+                     .split-add-btn), but its own #tplSplitRows/tplSplitRowCounter so it never
+                     collides with an also-open transaction form's split state. See
+                     addTplSplitRow()/collectTplSplitRows()/populateTplSplitRowsFromTemplate() in
+                     ledger.js. Always visible here (unlike #txSplitWrap, which openTransactionForm()
+                     hides for Transfers/edits) — a template is always Income or Expense, never a
+                     Transfer, and is only ever "added" or "edited" as itself, never mid-entry. -->
+                <div id="tplSplitRows"></div>
+                <div class="split-total-row">
+                    <span style="font-size:0.82rem; font-weight:700; color:var(--text-main);">Split Total: <span id="tplSplitTotalDisplay">—</span></span>
+                    <button type="button" class="split-add-btn" data-click="addTplSplitRow" title="Split into another category">+</button>
                 </div>
 
                 <div class="form-row">

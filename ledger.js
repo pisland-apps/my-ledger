@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v236";
+        const APP_VERSION = "v237";
         const APP_VERSION_DATE = "2026-09-01";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2439,6 +2439,17 @@
         function ledgerCalendarNextMonth() {
             ledgerCalMonth++;
             if (ledgerCalMonth > 11) { ledgerCalMonth = 0; ledgerCalYear++; }
+            renderApp();
+        }
+
+        // v237: "today" button in the Calendar view header — jumps straight back to the current
+        // month and selects today's date (same as first entering Calendar mode fresh), regardless
+        // of how many months the user has paged away via </>.
+        function ledgerCalendarGoToday() {
+            const today = new Date();
+            ledgerCalYear = today.getFullYear();
+            ledgerCalMonth = today.getMonth();
+            ledgerCalSelectedDate = localDateStr(today);
             renderApp();
         }
 
@@ -12638,6 +12649,7 @@
             setLedgerViewMode: (el) => setLedgerViewMode(el),
             ledgerCalendarPrevMonth: () => ledgerCalendarPrevMonth(),
             ledgerCalendarNextMonth: () => ledgerCalendarNextMonth(),
+            ledgerCalendarGoToday: () => ledgerCalendarGoToday(),
             selectLedgerCalendarDate: (el) => selectLedgerCalendarDate(el.dataset.date),
             toggleLedgerQuickAddSheet: () => toggleLedgerQuickAddSheet(),
             closeLedgerQuickAddSheet: () => closeLedgerQuickAddSheet(),

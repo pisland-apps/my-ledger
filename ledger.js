@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v254";
+        const APP_VERSION = "v255";
         const APP_VERSION_DATE = "2026-09-01";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -6216,10 +6216,18 @@
         // header button's icon, and per-figure reveal/reblur. Default is ON (blurred) — an
         // unset key means "never touched the setting", not "chose to turn it off" — so a fresh
         // install is blurred-by-default rather than silently exposing amounts on first launch.
-        const PRIVACY_MODE_KEY = "ledgerPrivacyModeEnabled";
+        // v255: was persisted to localStorage, so explicitly turning Privacy Mode off carried
+        // across a full app quit/relaunch — the exact opposite of what the feature is for
+        // (someone unhides amounts, closes the app, and the next launch should still open
+        // blurred regardless of that). Now purely an in-memory, per-session flag: always starts
+        // true on every fresh load, can be toggled off for as long as this session/tab stays
+        // open, and is never written anywhere — so there's nothing left for the next launch to
+        // read back. Matches how a revealed individual figure already behaved (see
+        // togglePrivacyAmountReveal() below) — this just extends the same "never survives a
+        // reload" rule to the on/off switch itself.
+        let privacyModeEnabledSession = true;
         function isPrivacyModeEnabled() {
-            const v = localStorage.getItem(PRIVACY_MODE_KEY);
-            return v === null ? true : v === "1";
+            return privacyModeEnabledSession;
         }
         // Feather-style outline icons (viewBox 0 0 24 24, stroke=currentColor, stroke-width=2,
         // round caps/joins) — matches the sidebar nav icons elsewhere in this file exactly,
@@ -6239,7 +6247,7 @@
         }
         function togglePrivacyMode() {
             const enabling = !isPrivacyModeEnabled();
-            try { localStorage.setItem(PRIVACY_MODE_KEY, enabling ? "1" : "0"); } catch (e) {}
+            privacyModeEnabledSession = enabling;
             if (enabling) {
                 // Turning it back ON should hide everything immediately, not leave whatever was
                 // mid-reveal exposed until it's individually re-tapped.

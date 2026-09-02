@@ -2401,12 +2401,12 @@
                 // Privacy Mode — a real amount briefly flashing unblurred for one frame while
                 // someone's phone screen is visible to bystanders is exactly the scenario this
                 // feature exists to prevent, so it can't wait for ledger.js to run.
-                // v250: default is ON (blurred) — only an explicit "0" (user turned it off)
-                // skips setting the attribute; an unset key (never touched) still blurs, so a
-                // fresh install is private-by-default instead of exposing amounts on first launch.
-                if (localStorage.getItem("ledgerPrivacyModeEnabled") !== "0") {
-                    document.documentElement.setAttribute("data-privacy-mode", "on");
-                }
+                // v255: unconditional now — Privacy Mode is a per-session-only toggle (see
+                // ledger.js's privacyModeEnabledSession), never persisted, so every fresh
+                // load/relaunch always starts blurred regardless of whether it was turned off
+                // last session. The old localStorage("ledgerPrivacyModeEnabled") check here (and
+                // the "0" it used to look for) is gone along with that persistence.
+                document.documentElement.setAttribute("data-privacy-mode", "on");
             } catch (e) {}
         })();
     </script>

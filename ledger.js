@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v256";
+        const APP_VERSION = "v257";
         const APP_VERSION_DATE = "2026-09-01";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -53,12 +53,15 @@
         // images and PDFs — replacing the old single inline `image` field on a transaction).
         // v227: DB_VERSION 6→7 adds the TEMPLATES store (reusable Income/Expense transaction
         // templates — see openTemplateFormModal()/openTemplatePicker()).
-        const DB_VERSION = 7;
-        const STORES = { ACCOUNTS: "accounts", TRANSACTIONS: "transactions", SETTINGS: "settings", CATEGORIES: "categories", MEMBERS: "members", FUNDS: "funds", NAV_HISTORY: "navHistory", ATTACHMENTS: "attachments", TEMPLATES: "templates" };
+        // v257: DB_VERSION 7→8 adds the TAGS store (trip/claim labels — e.g. "Japan Holiday Aug
+        // 2026" — a transaction can carry alongside its Category; see renderTagsPage()/
+        // createTag() and the Tags row on the Add/Edit Transaction form).
+        const DB_VERSION = 8;
+        const STORES = { ACCOUNTS: "accounts", TRANSACTIONS: "transactions", SETTINGS: "settings", CATEGORIES: "categories", MEMBERS: "members", FUNDS: "funds", NAV_HISTORY: "navHistory", ATTACHMENTS: "attachments", TEMPLATES: "templates", TAGS: "tags" };
         // Maps each object store to the field IndexedDB uses as its keyPath. That field must stay
         // unencrypted on the stored record (IndexedDB needs to read it directly to index/generate keys);
         // every other field on the record is encrypted as a single AES-GCM blob.
-        const STORE_KEYPATHS = { accounts: "id", transactions: "id", settings: "key", categories: "id", members: "id", funds: "id", navHistory: "date", attachments: "id", templates: "id" };
+        const STORE_KEYPATHS = { accounts: "id", transactions: "id", settings: "key", categories: "id", members: "id", funds: "id", navHistory: "date", attachments: "id", templates: "id", tags: "id" };
 
         // Fixed palette offered when picking a member's color (sidebar dot, net-worth rows, etc.)
         const MEMBER_COLORS = ["#3b82f6", "#ec4899", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#0ea5e9", "#14b8a6", "#f97316", "#64748b"];
@@ -1360,6 +1363,12 @@
         // does a plain in-memory substring filter against this array.
         let dynamicDescSuggestions = [];
 
+        // v257: in-memory registry of saved Tags (trip/claim labels — id + name only), refreshed
+        // by syncAndLoadTags() at bootstrap and after every add/rename/delete — same pattern as
+        // dynamicCategories/dynamicTemplates above. See Manage Tags (renderTagsPage()) and the
+        // Tags row on the Add/Edit Transaction form (filterTxTagSuggestions()).
+        let dynamicTags = [];
+
         // User-chosen category pre-selected whenever a NEW Income / Expense entry is opened
         // (never applied when editing an existing transaction). Stored in the SETTINGS store,
         // "" / null means "no default — leave the dropdown at its first option" as before.
@@ -1662,6 +1671,8 @@
             const accountsPage = document.getElementById("page-accounts");
             const categoriesPage = document.getElementById("page-categories");
             const templatesPage = document.getElementById("page-templates");
+            const tagsPage = document.getElementById("page-tags");
+            const tagReportPage = document.getElementById("page-tag-report");
             const backupPage = document.getElementById("page-backup");
             const autolockPage = document.getElementById("page-autolock");
             const databasePage = document.getElementById("page-database");
@@ -1697,6 +1708,8 @@
                 !networthStatementPage.classList.contains("hidden") ||
                 !categoriesPage.classList.contains("hidden") ||
                 !templatesPage.classList.contains("hidden") ||
+                !tagsPage.classList.contains("hidden") ||
+                !tagReportPage.classList.contains("hidden") ||
                 !backupPage.classList.contains("hidden") ||
                 !autolockPage.classList.contains("hidden") ||
                 !databasePage.classList.contains("hidden") ||
@@ -1754,6 +1767,13 @@
                         // v227: one record per saved transaction template (id, type, name, amount,
                         // currency, cat, accountId, desc, notes, order) — see openTemplateFormModal().
                         database.createObjectStore(STORES.TEMPLATES, { keyPath: "id" });
+                    }
+                    if (!database.objectStoreNames.contains(STORES.TAGS)) {
+                        // v257: one record per tag (id, name only) — see createTag()/renderTagsPage().
+                        // Transactions themselves store tags as an array of plain name strings (same
+                        // convention as `cat` — see the STORES comment above), not a reference to
+                        // this store's ids, so renaming/deleting a tag here never rewrites history.
+                        database.createObjectStore(STORES.TAGS, { keyPath: "id" });
                     }
                 };
                 request.onerror = (e) => reject(e.target.error);
@@ -2286,7 +2306,7 @@
         // --- SPA NAVIGATION PIPELINE ---
         // Every top-level page div's id — used by showPage() to hide all but the target,
         // so adding a new page never risks leaving a stale one visible underneath.
-        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-backup", "page-autolock", "page-database", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity"];
+        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-backup", "page-autolock", "page-database", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity"];
         function showPage(id) {
             APP_PAGE_IDS.forEach(p => {
                 const el = document.getElementById(p);
@@ -2311,6 +2331,8 @@
                 case "page-accounts": return "Financial Accounts";
                 case "page-categories": return "Categories";
                 case "page-templates": return "Transaction Templates";
+                case "page-tags": return "Manage Tags";
+                case "page-tag-report": return document.getElementById("tagReportTitle")?.textContent || "Spending by Tag";
                 case "page-backup": return "Export & Import";
                 case "page-autolock": return "Auto-Lock Settings";
                 case "page-database": return "Database";
@@ -3497,6 +3519,7 @@
             else if (target === "portfolio-report") navigateToPortfolioReportPage();
             else if (target === "owner-networth-report") navigateToOwnerNetWorthReportPage();
             else if (target === "currency-report") navigateToCurrencyReportPage();
+            else if (target === "tag-report") navigateToTagReportPage();
             else if (target === "lock") lockAppNow();
         }
 
@@ -7415,6 +7438,196 @@
             dynamicCategories = customCats.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
         }
 
+        // --- TAGS SYSTEM (v257) ---
+        // Trip/claim labels (e.g. "Japan Holiday Aug 2026", "Expense Claim — Client X") a
+        // transaction can carry alongside its Category — see the Tags row on the Add/Edit
+        // Transaction form and the "Spending by Tag" report. Deliberately the simplest possible
+        // managed list (name only, alphabetical, no reorder) since a tag is just a label, not
+        // something needing its own icon/type/parent like Categories.
+        async function syncAndLoadTags() {
+            const tags = await readAllDB(STORES.TAGS);
+            dynamicTags = tags.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+        }
+
+        // Creates a new tag, or returns the existing one if a case-insensitive match already
+        // exists (same dedup convention as loadDescSuggestionsCache()'s Description suggestions)
+        // — so typing "japan trip" when "Japan Trip" already exists reuses it instead of quietly
+        // creating a near-duplicate. Used by both the Manage Tags "+" FAB (openTagFormModal(),
+        // add mode) and the on-the-fly "+ Create tag" option in the transaction form's Tags
+        // suggestion dropdown (createAndAddTxTag()) — the single source of truth for "how a new
+        // tag comes into being" regardless of where that happens.
+        async function createTag(name) {
+            const trimmed = (name || "").trim();
+            if (!trimmed) return null;
+            const existing = dynamicTags.find(t => t.name.toLowerCase() === trimmed.toLowerCase());
+            if (existing) return existing;
+            const rec = { id: "tag_" + Date.now() + "_" + Math.floor(Math.random() * 100000), name: trimmed };
+            await writeDB(STORES.TAGS, rec);
+            await syncAndLoadTags();
+            return rec;
+        }
+
+        async function navigateToTagsPage() {
+            workspaceScrollY = window.scrollY;
+            showPage("page-tags");
+            window.scrollTo(0, 0);
+            pushVirtualState("tags");
+            renderTagsPage();
+        }
+
+        function renderTagsPage() {
+            const listEl = document.getElementById("tagsPageList");
+            listEl.innerHTML = dynamicTags.length ? dynamicTags.map(t => `
+                <div class="config-item">
+                    <span class="category-display-badge">🔖 <strong>${escapeHtml(t.name)}</strong></span>
+                    <div style="display:flex; align-items:center;">
+                        <button type="button" class="trash-btn" data-click="editTag" data-id="${escapeHtml(t.id)}" title="Rename tag">✏️</button>
+                        <button type="button" class="trash-btn" data-click="removeTag" data-id="${escapeHtml(t.id)}" title="Delete tag">🗑</button>
+                    </div>
+                </div>`).join("")
+                : `<p style="color:var(--text-muted); padding:8px 0; font-size:0.85rem;">No tags yet — add one here, or type a new one straight from the Add Income/Expense form's Tags field.</p>`;
+        }
+
+        function openTagFormModal() {
+            document.getElementById("tagModalTitle").textContent = "Add Tag";
+            document.getElementById("tagSubmitBtn").textContent = "Save Tag";
+            document.getElementById("tagEditId").value = "";
+            document.getElementById("tagName").value = "";
+            openModal("tagModal");
+        }
+
+        function editTag(id) {
+            const t = dynamicTags.find(x => x.id === id);
+            if (!t) return;
+            document.getElementById("tagModalTitle").textContent = "Edit Tag";
+            document.getElementById("tagSubmitBtn").textContent = "Save Changes";
+            document.getElementById("tagEditId").value = t.id;
+            document.getElementById("tagName").value = t.name;
+            openModal("tagModal");
+        }
+
+        // Renaming here only affects the tag's entry in Manage Tags / future pickers — it does
+        // NOT retroactively rewrite the name string already saved on past transactions (see the
+        // STORE_KEYPATHS-adjacent comment on createObjectStore(STORES.TAGS) above), same
+        // tradeoff Category renames already live with in this app.
+        async function handleSaveTagMobile() {
+            const name = document.getElementById("tagName").value.trim();
+            if (!name) { alert("Please enter a tag name."); return; }
+            const editId = document.getElementById("tagEditId").value;
+            const dupe = dynamicTags.find(t => t.name.toLowerCase() === name.toLowerCase() && t.id !== editId);
+            if (dupe) { alert("A tag with that name already exists."); return; }
+            const record = { id: editId || ("tag_" + Date.now() + "_" + Math.floor(Math.random() * 100000)), name };
+            try {
+                await writeDB(STORES.TAGS, record);
+            } catch (err) {
+                alert("Could not save tag: " + (err && err.message ? err.message : err));
+                return;
+            }
+            await syncAndLoadTags();
+            renderTagsPage();
+            closeModal("tagModal");
+        }
+
+        async function removeTag(id) {
+            const ok = await customConfirm("Delete this tag? Transactions already tagged with it keep the tag text, but it won't be offered as a suggestion anymore.");
+            if (!ok) return;
+            try {
+                await deleteDB(STORES.TAGS, id);
+            } catch (err) {
+                alert("Could not delete tag: " + (err && err.message ? err.message : err));
+                return;
+            }
+            await syncAndLoadTags();
+            renderTagsPage();
+        }
+
+        // v257: TAGS ON THE TRANSACTION FORM — the chip row above #txTagInput on the Add/Edit
+        // Transaction form (Income/Expense only; hidden for Transfers — see openTransactionForm()).
+        // txTagsSelected holds the currently-attached tag names for whichever entry the form has
+        // open right now; it's read at Save time (saveTransactionSubmit()) into record.tags and,
+        // for a split transaction, flows onto every split leg for free via the existing
+        // Object.assign(record, ...) pattern those legs are already built with.
+        let txTagsSelected = [];
+
+        function renderTxTagsChips() {
+            const wrap = document.getElementById("txTagsChips");
+            if (!wrap) return;
+            wrap.innerHTML = txTagsSelected.map(name => `
+                <span class="tag-chip">
+                    ${escapeHtml(name)}
+                    <button type="button" data-click="removeTxTagChip" data-tag="${escapeHtml(name)}" aria-label="Remove tag">&times;</button>
+                </span>
+            `).join("");
+        }
+
+        // Called by openTransactionForm() for both a brand-new entry (initial = []) and an
+        // existing one (initial = tx.tags || []) — also clears any leftover suggestion-input text
+        // from a previous time this form was open.
+        function resetTxTagsChips(initial) {
+            txTagsSelected = Array.isArray(initial) ? [...initial] : [];
+            renderTxTagsChips();
+            const input = document.getElementById("txTagInput");
+            if (input) input.value = "";
+            closeTxTagSuggestions();
+        }
+
+        function addTxTagChip(name) {
+            const trimmed = (name || "").trim();
+            if (!trimmed) return;
+            if (!txTagsSelected.some(t => t.toLowerCase() === trimmed.toLowerCase())) {
+                txTagsSelected.push(trimmed);
+                renderTxTagsChips();
+            }
+            const input = document.getElementById("txTagInput");
+            input.value = "";
+            closeTxTagSuggestions();
+            input.focus();
+        }
+
+        function removeTxTagChip(el) {
+            const tag = el.dataset.tag;
+            txTagsSelected = txTagsSelected.filter(t => t !== tag);
+            renderTxTagsChips();
+        }
+
+        function closeTxTagSuggestions() {
+            const list = document.getElementById("txTagSuggestList");
+            if (!list) return;
+            list.classList.remove("active");
+            list.innerHTML = "";
+        }
+
+        // Same substring-filter dropdown pattern as filterDescSuggestions() (reuses its
+        // .desc-suggest-list/.desc-suggest-item CSS and highlightDescMatch() helper directly) —
+        // matches anywhere in a tag's name, not just its start, and excludes tags already
+        // attached as a chip. When nothing on file matches exactly what's typed, a "+ Create tag"
+        // row is appended so a brand-new trip/claim tag can be created and attached in one tap.
+        function filterTxTagSuggestions(el) {
+            const list = document.getElementById("txTagSuggestList");
+            const q = el.value.trim().toLowerCase();
+            if (!q) { closeTxTagSuggestions(); return; }
+            const matches = dynamicTags.map(t => t.name)
+                .filter(n => n.toLowerCase().includes(q) && !txTagsSelected.some(sel => sel.toLowerCase() === n.toLowerCase()))
+                .slice(0, 8);
+            let html = matches.map(n => `<button type="button" class="desc-suggest-item" data-click="selectTxTagSuggestion" data-value="${escapeHtml(n)}">${highlightDescMatch(n, q)}</button>`).join("");
+            const rawTyped = el.value.trim();
+            const exactExists = dynamicTags.some(t => t.name.toLowerCase() === rawTyped.toLowerCase());
+            if (!exactExists) {
+                html += `<button type="button" class="desc-suggest-item" data-click="createAndAddTxTag" data-value="${escapeHtml(rawTyped)}" style="font-weight:700; color:var(--primary);">+ Create tag "${escapeHtml(rawTyped)}"</button>`;
+            }
+            list.innerHTML = html;
+            list.classList.add("active");
+        }
+
+        function selectTxTagSuggestion(el) {
+            addTxTagChip(el.dataset.value);
+        }
+
+        async function createAndAddTxTag(el) {
+            const rec = await createTag(el.dataset.value);
+            if (rec) addTxTagChip(rec.name);
+        }
+
         // --- TRANSACTION TEMPLATES SYSTEM (v227) ---
         // Reusable Income/Expense presets — same fields as a normal Add/Edit Transaction entry
         // (minus Date, which always defaults to today when a template is applied) — see
@@ -8037,6 +8250,11 @@
                 // index.html) — an existing record, split or not, is always edited as the single row
                 // it already is.
                 document.getElementById("txSplitWrap").style.display = "none";
+                // Tags, unlike Split Expenses, ARE editable on an existing record (a chip can be
+                // added/removed on this one leg same as Category/Amount already can be) — only
+                // hidden for Transfers, which were never taggable in the first place.
+                document.getElementById("txTagsRow").style.display = tx.type === "transfer" ? "none" : "block";
+                resetTxTagsChips(tx.tags || []);
 
                 document.getElementById("txManualFxToggle").checked = !!tx.manualFxRate;
                 document.getElementById("txManualFxRate").value = tx.manualFxRate || "";
@@ -8134,6 +8352,8 @@
                 document.getElementById("txChecked").checked = false;
                 // Split Expenses only makes sense for a brand-new Income/Expense entry.
                 document.getElementById("txSplitWrap").style.display = (type === "transfer") ? "none" : "block";
+                document.getElementById("txTagsRow").style.display = (type === "transfer") ? "none" : "block";
+                resetTxTagsChips([]);
 
                 // Pre-select the user's default account, if one is set and still exists — new
                 // entries only, never when editing (handled above via tx.src). Income uses
@@ -9612,6 +9832,13 @@
                 // silently wiping historic payee data the moment an old entry is edited and re-saved.
                 payee: existingTxForEdit ? existingTxForEdit.payee : null,
                 notes: document.getElementById("txNotes").value.trim() || null,
+                // v257: trip/claim labels (see the Tags row) — a plain array of tag name strings,
+                // same storage convention as `cat` (a category name, not an id) so renaming or
+                // deleting a tag later in Manage Tags never rewrites this record. Empty for
+                // Transfers (the Tags row is hidden for them, same as `cat` being forced null
+                // above) rather than trusting whatever txTagsSelected happens to still hold from
+                // a previous Income/Expense entry this session.
+                tags: document.getElementById("txType").value === "transfer" ? [] : [...txTagsSelected],
                 checked: document.getElementById("txChecked").checked,
                 fdReferenceNo: null,
                 fdStartDate: null,
@@ -12220,6 +12447,125 @@
             }
         }
 
+        // --- SPENDING BY TAG REPORT (v257) ---
+        // Non-clickable version of buildBreakdownListHTML()'s category rows — that function's rows
+        // navigate to navigateToCategoryPage (ALL transactions in that category, tag-blind), which
+        // would be wrong here: tapping a slice of "Japan Trip"'s Dining spend should not jump to
+        // every Dining transaction ever made. Same visual shape (bar + % + amount), just static.
+        function buildTagReportCategoryListHTML(entries, total) {
+            if (entries.length === 0) return '<p style="font-size:0.75rem; text-align:center; color:var(--text-muted);">No expenses tagged yet.</p>';
+            return entries.map(e => {
+                const pct = total > 0 ? ((e.value / total) * 100).toFixed(0) : 0;
+                return `
+                    <div style="font-size:0.75rem; margin-top:4px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+                            <strong>${getCategoryIcon(e.label, "expense")} ${escapeHtml(e.label.toUpperCase())}</strong>
+                            <span>${formatCurrency(e.value, baseCurrency)} (${pct}%)</span>
+                        </div>
+                        <div class="progress-bar-container"><div class="progress-bar-fill" style="width:${pct}%; background:${e.color};"></div></div>
+                    </div>
+                `;
+            }).join("");
+        }
+
+        // Fills the "Tag" select with every tag on file — value is the tag's NAME (not id),
+        // matching how transactions actually store tags (plain name-string array, see the
+        // STORES.TAGS comment in ledger.js), since that's what this report filters transactions
+        // by. Preserves whatever was already selected across a tag list refresh, same convention
+        // as populateBreakdownMemberFilter().
+        function populateTagReportTagSelect() {
+            const sel = document.getElementById("tagReportTagSelect");
+            const prevValue = sel.value;
+            sel.innerHTML = `<option value="">— Select a tag —</option>` +
+                dynamicTags.map(t => `<option value="${escapeHtml(t.name)}">${escapeHtml(t.name)}</option>`).join("");
+            sel.value = dynamicTags.some(t => t.name === prevValue) ? prevValue : "";
+        }
+
+        function navigateToTagReportPage() {
+            workspaceScrollY = window.scrollY;
+            showPage("page-tag-report");
+            window.scrollTo(0, 0);
+            pushVirtualState("tag-report");
+            renderTagReportPage();
+        }
+
+        async function renderTagReportPage() {
+            populateTagReportTagSelect();
+            const tagName = document.getElementById("tagReportTagSelect").value;
+            document.getElementById("tagReportEmptyState").style.display = tagName ? "none" : "";
+            document.getElementById("tagReportContent").style.display = tagName ? "" : "none";
+            if (!tagName) return;
+
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            // v257: every individual record carrying this tag — deliberately NOT collapsed by
+            // splitGroupId (unlike e.g. renderRecentTransactionsWidget()) because a split leg can
+            // carry its own tags independent of its siblings (tags are editable per-record, same
+            // as Category/Amount already are once a split exists — see openTransactionForm()'s
+            // Tags population). Showing each leg itemized is also just more useful for a trip/claim
+            // report: a hotel bill split into Accommodation + Breakfast, both tagged "Japan Trip",
+            // should show as two lines here, not one merged one.
+            const matching = txs.filter(t => Array.isArray(t.tags) && t.tags.includes(tagName));
+
+            let incomeTotal = 0, expenseTotal = 0;
+            const catTotals = {};
+            matching.forEach(t => {
+                // Same refund-nets-against-its-own-category convention as
+                // renderSpendingBreakdownPage() — a refund is credited like income but must not
+                // inflate this tag's Income total, and should reduce the category it refunds.
+                const isRefundCredit = t.type === "income" && t.isRefund;
+                const tBase = convertTxAmountToBase(t, accounts);
+                if (t.type === "expense" || isRefundCredit) {
+                    const signed = isRefundCredit ? -tBase : tBase;
+                    expenseTotal += signed;
+                    const cat = t.cat || "Other Expenses";
+                    catTotals[cat] = (catTotals[cat] || 0) + signed;
+                } else if (t.type === "income" && !t.isRefund) {
+                    incomeTotal += tBase;
+                }
+                // Transfers are never taggable (see the Tags row's income/expense-only visibility
+                // in openTransactionForm()), so no branch is needed for t.type === "transfer" here.
+            });
+
+            document.getElementById("tagReportIncomeTotal").textContent = formatCurrency(incomeTotal, baseCurrency);
+            document.getElementById("tagReportExpenseTotal").textContent = formatCurrency(expenseTotal, baseCurrency);
+            const net = incomeTotal - expenseTotal;
+            const netEl = document.getElementById("tagReportNetTotal");
+            netEl.textContent = formatCurrency(net, baseCurrency);
+            netEl.style.color = net >= 0 ? "var(--income-color)" : "var(--expense-color)";
+
+            const dates = matching.map(t => t.date).filter(Boolean).sort();
+            const metaEl = document.getElementById("tagReportMeta");
+            metaEl.textContent = dates.length
+                ? `${matching.length} transaction${matching.length === 1 ? "" : "s"} · ${dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} — ${dates[dates.length - 1]}`}`
+                : "No transactions tagged yet.";
+
+            const entries = Object.keys(catTotals)
+                .filter(c => catTotals[c] > 0)
+                .sort((a, b) => catTotals[b] - catTotals[a])
+                .map((c, i) => ({ label: c, value: catTotals[c], color: BREAKDOWN_CHART_COLORS[i % BREAKDOWN_CHART_COLORS.length] }));
+            renderDonutIntoWrap("tagReportChartWrap", entries, expenseTotal, "expense");
+            document.getElementById("tagReportList").innerHTML = buildTagReportCategoryListHTML(entries, expenseTotal);
+
+            const sortedTx = [...matching].sort((a, b) => (new Date(b.date) - new Date(a.date)) || (b.id - a.id));
+            document.getElementById("tagReportTxList").innerHTML = sortedTx.length ? sortedTx.map(t => {
+                const acc = accounts.find(a => a.id === t.src);
+                const col = t.type === "income" ? "income-color" : "expense-color";
+                const sgn = t.type === "income" ? "+" : "-";
+                return `
+                    <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
+                        <div class="item-left">
+                            <span class="item-name">${getCategoryIcon(t.cat, t.type)} ${escapeHtml(t.desc)}</span>
+                            <span class="item-meta">${t.date} [${escapeHtml(t.cat || "")}]</span>
+                            <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}</span>
+                        </div>
+                        <div class="item-right">
+                            <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(t.amount, t.currency)}</div>
+                        </div>
+                    </div>`;
+            }).join("") : `<p style="color:var(--text-muted); text-align:center; padding:16px 0; font-size:0.85rem;">No transactions tagged yet.</p>`;
+        }
+
         // Generic year-filter populator (mirrors populateYearFilterOptions/populateSavingsYearFilterOptions)
         // for the two new breakdown pages, keyed by a distinct "already initialized" flag per select
         // so each page defaults to "All Years" on first load and preserves the user's choice after.
@@ -12741,6 +13087,7 @@
             await ensureDefaultCategories();
             await migrateFdDescRefDedup();
             await syncAndLoadTemplates();
+            await syncAndLoadTags();
 
             const accs = await readAllDB(STORES.ACCOUNTS);
             if(accs.length === 0) {
@@ -12803,6 +13150,11 @@
                 attachments: await readAllDB(STORES.ATTACHMENTS),
                 // v227: reusable Income/Expense transaction templates (see openTemplateFormModal()).
                 templates: await readAllDB(STORES.TEMPLATES),
+                // v257: trip/claim tag definitions (see renderTagsPage()) — the transactions
+                // above already carry their own tags as plain name-string arrays, but the tag
+                // definitions themselves (so Manage Tags / the on-the-fly picker still lists
+                // them, even ones with zero tagged transactions right now) need their own entry.
+                tags: await readAllDB(STORES.TAGS),
                 // v65: full SETTINGS store dump ({key,value} rows — defaultPaymentAccount,
                 // defaultReceiveAccount, defaultIncomeCategory, defaultExpenseCategory, recentTx*
                 // widget filters, expandedAccountSubrows, plus baseCurrency/fxRates which are
@@ -12956,6 +13308,9 @@
                     if (db.objectStoreNames.contains(STORES.TEMPLATES)) {
                         await clearStoreDB(STORES.TEMPLATES);
                     }
+                    if (db.objectStoreNames.contains(STORES.TAGS)) {
+                        await clearStoreDB(STORES.TAGS);
+                    }
 
                     if (bundle.baseCurrency) baseCurrency = bundle.baseCurrency;
                     if (bundle.fxRates) fxRates = bundle.fxRates;
@@ -12987,6 +13342,10 @@
                     // skipped entirely for those (same pattern as bundle.attachments above).
                     if (bundle.templates) {
                         for (const tpl of bundle.templates) await writeDB(STORES.TEMPLATES, tpl);
+                    }
+                    // v257: tag definitions — same "absent on older backups → skip" pattern.
+                    if (bundle.tags) {
+                        for (const tag of bundle.tags) await writeDB(STORES.TAGS, tag);
                     }
 
                     // v65: restore preferences from the SETTINGS store dump (defaultPaymentAccount,
@@ -13233,6 +13592,14 @@
             openRefundFromOptions: () => openRefundFromOptions(),
             openAccountPicker: (el) => openAccountPicker(el),
             selectDescSuggestion: (el) => selectDescSuggestion(el),
+            navigateToTagsPage: () => navigateToTagsPage(),
+            openTagFormModal: () => openTagFormModal(),
+            editTag: (el) => editTag(el.dataset.id),
+            removeTag: (el) => removeTag(el.dataset.id),
+            handleSaveTagMobile: () => handleSaveTagMobile(),
+            removeTxTagChip: (el) => removeTxTagChip(el),
+            selectTxTagSuggestion: (el) => selectTxTagSuggestion(el),
+            createAndAddTxTag: (el) => createAndAddTxTag(el),
             closeAccountPicker: () => closeAccountPicker(),
             selectAccountPickerOption: (el) => selectAccountPickerOption(el),
             openSalaryEntryForm: () => openSalaryEntryForm(),
@@ -13243,6 +13610,7 @@
 
         const CHANGE_ACTIONS = {
             resetLedgerPageAndRender: () => { ledgerRenderLimit = LEDGER_PAGE_SIZE; renderApp(); },
+            renderTagReportPage: () => renderTagReportPage(),
             importBackup: (el, e) => importBackup(e),
             handleExportEncryptToggleChange: () => handleExportEncryptToggleChange(),
             handleBiometricToggleChange: () => handleBiometricToggleChange(),
@@ -13302,6 +13670,7 @@
             recalcTplSplitTotal: () => recalcTplSplitTotal(),
             recalcSalaryPreview: () => recalcSalaryPreview(),
             filterDescSuggestions: (el) => filterDescSuggestions(el),
+            filterTxTagSuggestions: (el) => filterTxTagSuggestions(el),
         };
 
         document.addEventListener("click", (e) => {

@@ -1433,10 +1433,16 @@
            (mirrors the left drawer's own edge-swipe exactly — see
            setupInsightsDrawerSwipeGesture in ledger.js), or by tapping the dashboard's
            "Insights" shortcut; closed via the × button or tapping the dimmed overlay
-           (#insightsRailOverlay, reusing .sidebar-overlay's styling). Left untouched at
-           768–1399px (tablet) — same as before this version, that range simply has no way to
-           reach it, matching the gap that already existed there for the rail itself. */
-        @media (max-width: 767px) {
+           (#insightsRailOverlay, reusing .sidebar-overlay's styling).
+           v256: this drawer mode now extends up to 1399px (see the @media block below) — it used
+           to stop at 767px, leaving 768–1399px (tablets) with no way to reach the rail at all. */
+        /* v256: was max-width: 767px — the rail was only ever a permanent 1400px+ dock or a
+           <768px slide-in drawer, leaving 768–1399px (tablets) with no way to reach it at all
+           (see the removed comment below this block, which used to document that gap as
+           deliberate/left-as-is). Widened to cover that whole range instead, so anything narrower
+           than the 1400px dock now gets the drawer treatment — paired with the matching widened
+           swipe-gesture gate in setupInsightsDrawerSwipeGesture() (ledger.js). */
+        @media (max-width: 1399px) {
             .desktop-insights-rail {
                 display: flex;
                 flex-direction: column;
@@ -1526,6 +1532,21 @@
                underneath the sidebar, completely covered and unclickable. Shift it past the
                sidebar's own width (336px, matching body's margin-left right above) instead. */
             .print-fab-btn { left: 356px; }
+        }
+
+        /* v256: #insightsRailOverlay (id, not just .sidebar-overlay's class) reasserts itself over
+           the "display:none !important" rule right above — that rule was written for the LEFT
+           sidebar's own overlay (correctly hidden at 768px+, since the left sidebar becomes a
+           permanent column there, never a drawer needing a backdrop), but #insightsRailOverlay
+           shares the same .sidebar-overlay class purely for its dim+blur styling and is a
+           genuinely separate element that now also acts as a drawer through 1399px (see the
+           .desktop-insights-rail CSS comment). Without this, the drawer itself would still
+           slide in/out correctly at 768–1399px, but its dimmed backdrop — and with it,
+           tap-outside-to-close — would silently stay display:none the whole time. An id selector
+           always outranks a class selector's specificity regardless of source order, so this
+           reliably wins over the rule above even though it's !important too. */
+        @media (min-width: 768px) and (max-width: 1399px) {
+            #insightsRailOverlay { display: block !important; }
         }
 
         /* v166: layered-surface shadow — static (this container isn't itself a click target;
@@ -2423,15 +2444,17 @@
     <button type="button" class="back-to-top-btn" id="backToTopBtn" data-click="scrollToTop" aria-label="Back to top" title="Back to top">&uarr;</button>
 
     <!-- v182: dimmed backdrop behind the insights rail when it's acting as a mobile drawer
-         (<768px — see the CSS comment on .desktop-insights-rail). No-op at 1400px+/tablet since
-         it's only ever toggled .open by openInsightsDrawer(), which is itself only reachable via
-         the <768px swipe gesture. Reuses .sidebar-overlay's dim+blur styling as-is. -->
+         (<1400px as of v256 — see the CSS comment on .desktop-insights-rail). No-op at 1400px+
+         since it's only ever toggled .open by openInsightsDrawer(), which is itself only
+         reachable via the <1400px swipe gesture (or the drawer's own close controls). Reuses
+         .sidebar-overlay's dim+blur styling as-is. -->
     <div class="sidebar-overlay" id="insightsRailOverlay" data-click="closeInsightsDrawer"></div>
 
     <!-- v181: Desktop "Insights" right rail — see the matching CSS comment above for why this
-         only shows at 1400px+. Lives outside every .page div (same reasoning as the back-to-top
-         button above) and is refreshed by renderDesktopInsightsRail(), called from renderApp().
-         v182: same element also serves as the <768px slide-in drawer — see the CSS comment. -->
+         only shows permanently-docked at 1400px+. Lives outside every .page div (same reasoning
+         as the back-to-top button above) and is refreshed by renderDesktopInsightsRail(), called
+         from renderApp(). v182/v256: same element also serves as the <1400px slide-in drawer —
+         see the CSS comment. -->
     <div class="desktop-insights-rail" id="desktopInsightsRail">
         <div class="insights-rail-header">
             <span class="insights-rail-title">Insights</span>

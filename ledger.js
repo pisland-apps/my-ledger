@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v255";
+        const APP_VERSION = "v256";
         const APP_VERSION_DATE = "2026-09-01";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -13469,6 +13469,10 @@
         // setupSidebarSwipeGesture()'s open/close pairing exactly but for the opposite edge —
         // when the rail is OPEN, a touch starting anywhere inside #desktopInsightsRail that
         // moves rightward past the threshold closes it.
+        // v256: gate widened from >=768 to >=1400, matching the CSS drawer-mode range widening
+        // (see the .desktop-insights-rail comment in index.html) — this gesture used to be
+        // unreachable on tablets (768–1399px), the exact width range where the rail was neither
+        // the permanent dock nor a swipeable drawer, so there was no way to open it at all there.
         (function setupInsightsDrawerSwipeGesture() {
             const EDGE_ZONE_PX = 24;
             const MIN_SWIPE_PX = 60;
@@ -13478,7 +13482,7 @@
             let startedInsideOpenDrawer = false;
 
             document.addEventListener("touchstart", (e) => {
-                if (window.innerWidth >= 768) return; // tablet/desktop: rail is docked or hidden, not a drawer
+                if (window.innerWidth >= 1400) return; // desktop: rail is permanently docked, not a drawer
                 const isOpen = document.getElementById("desktopInsightsRail").classList.contains("open");
                 const t = e.touches[0];
                 touchStartX = t.clientX;

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v265";
+        const APP_VERSION = "v266";
         const APP_VERSION_DATE = "2026-09-03";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1475,12 +1475,12 @@
         // Dynamic Rich Catalog of Preset Icons grouped logically
         const emojiDirectory = {
             "Money & Fin.": ["💵", "💰", "💳", "📈", "📉", "🪙", "💎", "💸"],
-            "Food & Dining": ["🍔", "🍜", "🍕", "☕", "🍺", "🍏", "🍣", "🍩", "🍷", "🧺"],
+            "Food & Dining": ["🍔", "🍜", "🍕", "☕", "🍺", "🍏", "🍣", "🍩", "🍷", "🧺", "🥕"],
             "Transport": ["🚗", "🚌", "🚆", "✈️", "🚲", "⛽", "🚕", "🚢"],
             "Home & Living": ["🏠", "🔌", "📡", "🛋️", "🧹", "💧", "📦", "🔑"],
-            "Life & Leisure": ["🎬", "🎮", "⚽", "🏖️", "🛒", "👕", "🎁", "💊", "🎭"],
+            "Life & Leisure": ["🎬", "🎮", "⚽", "🏖️", "🛒", "👕", "🎁", "💊", "🎭", "🪶"],
             "Income & Business": ["🏢", "💼", "💻", "🛠️", "🤝", "🏡", "🎓", "👑", "📋"],
-            "Family & Pets": ["👨‍👩‍👧‍👦", "🐹", "🐄", "🐶", "🐱"]
+            "Family & Pets": ["👨‍👩‍👧‍👦", "🐹", "🐄", "🐶", "🐱", "🐻"]
         };
 
         // Fallback default system icons if not found

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v264";
+        const APP_VERSION = "v265";
         const APP_VERSION_DATE = "2026-09-03";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -8088,9 +8088,40 @@
             await syncAndLoadCategories();
             await migrateOthersCategoryRename();
             await migrateFdInterestIncomeRename();
+            await migrateFdInterestDuplicateCleanup();
             await migrateStaleDestFieldCleanup();
             await migrateStaleCategoryOnTransfersCleanup();
             await migrateAccountGroupRename();
+            // migrateFdInterestDuplicateCleanup() may have deleted a Categories record (the
+            // legacy "FD Interest" duplicate), so dynamicCategories — loaded further above,
+            // before that migration ran — is re-synced here to reflect the deletion immediately
+            // rather than only on the next full app load.
+            await syncAndLoadCategories();
+        }
+
+        // One-time migration: an older version of the app (before "FD Interest Income" existed
+        // as a proper DEFAULT_CATEGORIES entry) let "FD Interest" get created/used as its own
+        // category, splitting FD interest transactions across two near-identical categories.
+        // Existing transactions still filed under the exact legacy name "FD Interest" are moved
+        // to "FD Interest Income" (mirrors migrateFdInterestIncomeRename() above), and the
+        // now-empty "FD Interest" category record itself is deleted so it stops showing up
+        // as a duplicate in Manage Categories / the transaction picker. Only ever touches a
+        // category record whose name is the exact legacy string "FD Interest" — never "FD
+        // Interest Income" itself, and never a category the user has since renamed to something
+        // else.
+        async function migrateFdInterestDuplicateCleanup() {
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            for (const t of txs) {
+                if (t.cat === "FD Interest") {
+                    t.cat = "FD Interest Income";
+                    await writeDB(STORES.TRANSACTIONS, t);
+                }
+            }
+            const cats = await readAllDB(STORES.CATEGORIES);
+            const legacyFdInterest = cats.find(c => c.name === "FD Interest");
+            if (legacyFdInterest) {
+                await deleteDB(STORES.CATEGORIES, legacyFdInterest.id);
+            }
         }
 
         // One-time migration: "Others" (the implicit income/expense fallback category — never a

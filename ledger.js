@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v267";
-        const APP_VERSION_DATE = "2026-09-03";
+        const APP_VERSION = "v268";
+        const APP_VERSION_DATE = "2026-09-04";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -1680,6 +1680,7 @@
             const backupPage = document.getElementById("page-backup");
             const autolockPage = document.getElementById("page-autolock");
             const databasePage = document.getElementById("page-database");
+            const totalSummaryPage = document.getElementById("page-total-summary");
             const spendingBreakdownPage = document.getElementById("page-spending-breakdown");
             const incomeBreakdownPage = document.getElementById("page-income-breakdown");
             const portfolioReportPage = document.getElementById("page-portfolio-report");
@@ -1717,6 +1718,7 @@
                 !backupPage.classList.contains("hidden") ||
                 !autolockPage.classList.contains("hidden") ||
                 !databasePage.classList.contains("hidden") ||
+                !totalSummaryPage.classList.contains("hidden") ||
                 !spendingBreakdownPage.classList.contains("hidden") ||
                 !incomeBreakdownPage.classList.contains("hidden") ||
                 !portfolioReportPage.classList.contains("hidden") ||
@@ -2329,7 +2331,7 @@
         // --- SPA NAVIGATION PIPELINE ---
         // Every top-level page div's id — used by showPage() to hide all but the target,
         // so adding a new page never risks leaving a stale one visible underneath.
-        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-backup", "page-autolock", "page-database", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity"];
+        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-backup", "page-autolock", "page-database", "page-total-summary", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity"];
         function showPage(id) {
             APP_PAGE_IDS.forEach(p => {
                 const el = document.getElementById(p);
@@ -2359,6 +2361,7 @@
                 case "page-backup": return "Export & Import";
                 case "page-autolock": return "Auto-Lock Settings";
                 case "page-database": return "Database";
+                case "page-total-summary": return "Total Bill Summary";
                 case "page-spending-breakdown": return "Spending Breakdown";
                 case "page-income-breakdown": return "Income Breakdown";
                 case "page-savings": return "Savings Statement";
@@ -2390,6 +2393,9 @@
             };
             let parts;
             switch (pageId) {
+                case "page-total-summary":
+                    parts = [selectedText("totalSummaryMemberFilter")];
+                    break;
                 case "page-spending-breakdown":
                     parts = [selectedText("spendingYearFilter"), selectedText("spendingMonthFilter"), selectedText("spendingMemberFilter")];
                     break;
@@ -3489,6 +3495,7 @@
             const backupHidden = document.getElementById("page-backup").classList.contains("hidden");
             const autolockHidden = document.getElementById("page-autolock").classList.contains("hidden");
             const databaseHidden = document.getElementById("page-database").classList.contains("hidden");
+            const totalSummaryHidden = document.getElementById("page-total-summary").classList.contains("hidden");
             const spendingHidden = document.getElementById("page-spending-breakdown").classList.contains("hidden");
             const incomeHidden = document.getElementById("page-income-breakdown").classList.contains("hidden");
             const portfolioReportHidden = document.getElementById("page-portfolio-report").classList.contains("hidden");
@@ -3502,6 +3509,7 @@
             else if (!backupHidden) target = "backup";
             else if (!autolockHidden) target = "autolock";
             else if (!databaseHidden) target = "database";
+            else if (!totalSummaryHidden) target = "total-summary";
             else if (!spendingHidden) target = "spending-breakdown";
             else if (!incomeHidden) target = "income-breakdown";
             else if (!portfolioReportHidden) target = "portfolio-report";
@@ -3537,6 +3545,7 @@
             else if (target === "members") navigateToMembersPage();
             else if (target === "autolock") navigateToAutoLockPage();
             else if (target === "database") navigateToDatabasePage();
+            else if (target === "total-summary") navigateToTotalSummaryPage();
             else if (target === "spending-breakdown") navigateToSpendingBreakdownPage();
             else if (target === "income-breakdown") navigateToIncomeBreakdownPage();
             else if (target === "portfolio-report") navigateToPortfolioReportPage();
@@ -13067,6 +13076,89 @@
             renderCurrencyReportPage();
         }
 
+        // --- TOTAL BILL SUMMARY REPORT (v268) ---
+        // A single Date/Income/Expense/Balance table: Total (all-time), Yearly Average, then one
+        // row per year with data, newest first. Deliberately reuses computeReportCardTotals's
+        // exact rules (refund nets against Expense, excludeFromSavings categories left out)
+        // rather than a fresh accounting path, bucketed by calendar year instead of a single
+        // period — see that function's own comment for why those specific rules were chosen.
+        async function renderTotalSummaryPage() {
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            populateBreakdownMemberFilter("totalSummaryMemberFilter");
+            document.getElementById("totalSummaryBaseCurrLabel").textContent = baseCurrency;
+            const filterMember = document.getElementById("totalSummaryMemberFilter").value;
+            const memberAccountIds = filterMember !== "all" ? accountIdsForMemberFilter(accounts, filterMember) : null;
+
+            const excludedCatNames = new Set(dynamicCategories.filter(c => c.excludeFromSavings).map(c => c.name));
+
+            const byYear = {};
+            txs.forEach(t => {
+                if (t.type !== "income" && t.type !== "expense") return;
+                if (excludedCatNames.has(t.cat)) return;
+                if (memberAccountIds && !memberAccountIds.has(t.src)) return;
+                const y = new Date(t.date + "T00:00:00").getFullYear();
+                if (isNaN(y)) return;
+                if (!byYear[y]) byYear[y] = { income: 0, expense: 0 };
+                const tBase = convertTxAmountToBase(t, accounts);
+                if (t.type === "income" && t.isRefund) byYear[y].expense -= tBase;
+                else if (t.type === "income") byYear[y].income += tBase;
+                else byYear[y].expense += tBase;
+            });
+
+            const years = Object.keys(byYear).map(Number).sort((a, b) => b - a);
+            const wrap = document.getElementById("totalSummaryTableWrap");
+            if (years.length === 0) {
+                wrap.innerHTML = `<p style="color:var(--text-muted); font-size:0.85rem; text-align:center; padding:24px 0;">No income or expense transactions yet.</p>`;
+                return;
+            }
+
+            let gIncome = 0, gExpense = 0;
+            years.forEach(y => { gIncome += byYear[y].income; gExpense += byYear[y].expense; });
+
+            const balanceColor = (v) => v >= 0 ? "var(--income-color)" : "var(--expense-color)";
+            const rowHTML = (label, income, expense, opts = {}) => {
+                const balance = income - expense;
+                const weight = opts.bold ? "font-weight:800;" : "";
+                const shade = opts.shade ? "background:rgba(127,127,127,0.06);" : "";
+                return `
+                    <tr style="${shade}">
+                        <td style="padding:9px 10px; ${weight}">${escapeHtml(label)}</td>
+                        <td style="padding:9px 10px; text-align:right; color:var(--income-color); ${weight}">${formatCurrency(income, baseCurrency)}</td>
+                        <td style="padding:9px 10px; text-align:right; color:var(--expense-color); ${weight}">${formatCurrency(expense, baseCurrency)}</td>
+                        <td style="padding:9px 10px; text-align:right; color:${balanceColor(balance)}; ${weight}">${formatCurrency(balance, baseCurrency)}</td>
+                    </tr>`;
+            };
+
+            let rows = rowHTML("Total", gIncome, gExpense, { bold: true });
+            // Averaged only across years that actually have at least one transaction, so a
+            // partial current year just counts as one more data point rather than needing
+            // special-casing (mirrors how the year list itself is built).
+            rows += rowHTML("Yearly Average", gIncome / years.length, gExpense / years.length, { shade: true });
+            years.forEach(y => { rows += rowHTML(String(y), byYear[y].income, byYear[y].expense); });
+
+            wrap.innerHTML = `
+                <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                    <thead>
+                        <tr style="text-align:left; color:var(--text-muted); font-size:0.68rem; text-transform:uppercase; border-bottom:2px solid var(--border-color);">
+                            <th style="padding:6px 10px;">Period</th>
+                            <th style="padding:6px 10px; text-align:right;">Income</th>
+                            <th style="padding:6px 10px; text-align:right;">Expense</th>
+                            <th style="padding:6px 10px; text-align:right;">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+        }
+
+        function navigateToTotalSummaryPage() {
+            workspaceScrollY = window.scrollY;
+            showPage("page-total-summary");
+            window.scrollTo(0, 0);
+            pushVirtualState("total-summary");
+            renderTotalSummaryPage();
+        }
+
         function navigateToAutoLockPage() {
             workspaceScrollY = window.scrollY;
             showPage("page-autolock");
@@ -13762,6 +13854,7 @@
             renderIncomeBreakdownPage: () => renderIncomeBreakdownPage(),
             renderPortfolioReportPage: () => renderPortfolioReportPage(),
             renderCurrencyReportPage: () => renderCurrencyReportPage(),
+            renderTotalSummaryPage: () => renderTotalSummaryPage(),
             toggleTxTransferFx: () => toggleTxTransferFx(),
             handleRecentTxSettingChange: () => handleRecentTxSettingChange(),
             handlePinnedAccountCountChange: () => handlePinnedAccountCountChange(),

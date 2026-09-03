@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v263";
+        const APP_VERSION = "v264";
         const APP_VERSION_DATE = "2026-09-03";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1422,7 +1422,7 @@
             { name: "Investments", type: "income", icon: "📈" },
             { name: "Freelance", type: "income", icon: "💻" },
             { name: "Dividend ASNB", type: "income", icon: "📈" },
-            { name: "Divident EPF", type: "income", icon: "🏦" },
+            { name: "Dividend EPF", type: "income", icon: "🏦" },
             { name: "EPF Contrib.(ER)", type: "income", icon: "🏦" },
             { name: "EPF Contrib.(EE)", type: "income", icon: "🏦" },
             { name: "CPF Contrib.(ER)", type: "income", icon: "🏦" },
@@ -1435,6 +1435,7 @@
             { name: "Dividend Unit Trust", type: "income", icon: "🧺" },
             { name: "Rental Income", type: "income", icon: "🏠" },
             { name: "Bank Charges", type: "expense", icon: "💳" },
+            { name: "Books & Stationery", type: "expense", icon: "📚" },
             { name: "Mortgage Interest", type: "expense", icon: "🏠" },
             { name: "Education", type: "expense", icon: "🎓" },
             { name: "Family", type: "expense", icon: "👨‍👩‍👧‍👦" },
@@ -1459,6 +1460,7 @@
             { name: "Car Upkeep", type: "expense", icon: "🔧", parent: "Vehicle Expenses" },
             { name: "Fuel", type: "expense", icon: "⛽", parent: "Vehicle Expenses" },
             { name: "Ins & Road Tax", type: "expense", icon: "📄", parent: "Vehicle Expenses" },
+            { name: "Parking", type: "expense", icon: "🅿️", parent: "Vehicle Expenses" },
             { name: "Transportation", type: "expense", icon: "🚌", parent: "Vehicle Expenses" },
             // Property Expenses (Main) + its Subcategories
             { name: "Property Expenses", type: "expense", icon: "🏢" },
@@ -1502,7 +1504,7 @@
             "fixed deposit": "🏦",
             "interest income": "💰",
             "dividend asnb": "📈",
-            "divident epf": "🏦",
+            "dividend epf": "🏦",
             "epf contrib.(er)": "🏦",
             "epf contrib.(ee)": "🏦",
             "cpf contrib.(er)": "🏦",
@@ -1514,6 +1516,8 @@
             "rebate": "💸",
             "grants": "🎓",
             "bank charges": "💳",
+            "books & stationery": "📚",
+            "parking": "🅿️",
             "education": "🎓",
             "family": "👨‍👩‍👧‍👦",
             "betting": "🎰",
@@ -1551,7 +1555,7 @@
         // on existing transactions, so a renamed/deleted category doesn't vanish from its own
         // transaction's dropdown) — merged with the full legacy + DEFAULT_CATEGORIES fallback set.
         function buildCategoryOptionsHTML(type, namesToInclude) {
-            const legacyFallback = type === "income" ? ["Salary", "Investments", "Freelance", "Other Income"] : ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
+            const legacyFallback = type === "income" ? ["Salary", "Investments", "Freelance", "Other Income"] : ["Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
             const fallbackGroup = [...legacyFallback, ...DEFAULT_CATEGORIES.filter(c => c.type === type).map(c => c.name)];
             const allNames = new Set([...(namesToInclude || []), ...fallbackGroup]);
 
@@ -7290,7 +7294,7 @@
         // "(None)" option, and selects whatever is currently saved as the default.
         function populateDefaultCategorySelects() {
             const incomeFallback = ["Salary", "Investments", "Freelance", "Other Income"];
-            const expenseFallback = ["Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
+            const expenseFallback = ["Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
 
             const incomeNames = [...new Set([...dynamicCategories.filter(c => c.type === "income").map(c => c.name), ...incomeFallback])];
             const expenseNames = [...new Set([...dynamicCategories.filter(c => c.type === "expense").map(c => c.name), ...expenseFallback])];
@@ -8029,6 +8033,24 @@
                 for (const t of txs) {
                     if (t.cat === "Renting Expenses") {
                         t.cat = "Rental Expenses";
+                        await writeDB(STORES.TRANSACTIONS, t);
+                    }
+                }
+            }
+
+            // One-time migration: fixes the "Divident EPF" typo seeded before this version —
+            // renamed to "Dividend EPF". Only touches the record if it still has the auto-seeded
+            // id, never a category the user has since renamed away from "Divident EPF". Existing
+            // transactions filed under the old (misspelled) name are updated too, so nothing
+            // shows up as an orphaned "Divident EPF" string in reports.
+            const legacyDividentEpf = existing.find(c => c.id === "cat_divident_epf");
+            if (legacyDividentEpf && legacyDividentEpf.name.toLowerCase() === "divident epf") {
+                legacyDividentEpf.name = "Dividend EPF";
+                await writeDB(STORES.CATEGORIES, legacyDividentEpf);
+                const txs = await readAllDB(STORES.TRANSACTIONS);
+                for (const t of txs) {
+                    if (t.cat === "Divident EPF") {
+                        t.cat = "Dividend EPF";
                         await writeDB(STORES.TRANSACTIONS, t);
                     }
                 }
@@ -10871,14 +10893,17 @@
             await deleteTransactionById(id);
         }
 
-        // Opens a new Income entry, pre-filled from the tapped expense and locked to its exact
-        // category — the category is forced (not just pre-selected) because the Income category
-        // dropdown otherwise only ever lists Income categories, and the Spending/Income Breakdown
-        // + Net Savings Statement + dashboard totals all key their refund offset off `t.cat`
-        // matching the original expense's category exactly (see the isRefund handling in
+        // Opens a new Income entry, pre-filled from the tapped expense with its exact category
+        // pre-selected (v263: manually changeable, previously forced/disabled — see below) — the
+        // category is built from the Expense list (not the Income category dropdown, which
+        // otherwise only ever lists Income categories) because the Spending/Income Breakdown +
+        // Net Savings Statement + dashboard totals all key their refund offset off `t.cat`
+        // matching an Expense category exactly (see the isRefund handling in
         // renderApp()/renderSavingsStatement()/renderSpendingBreakdownPage()/
-        // renderIncomeBreakdownPage()). pendingRefundOf (read by handleTransactionSubmitMobile) is
-        // the actual flag that makes this save as a refund rather than an ordinary Income entry.
+        // renderIncomeBreakdownPage()) — so whichever Expense category ends up chosen here is the
+        // one the refund nets against, not necessarily the original expense's own category.
+        // pendingRefundOf (read by handleTransactionSubmitMobile) is the actual flag that makes
+        // this save as a refund rather than an ordinary Income entry.
         function openRefundFromOptions() {
             const id = activeQuickViewTxId;
             closeTxOptionsMenu(); // v95 fix — see editTransactionFromOptions() above.
@@ -10895,20 +10920,23 @@
                 document.getElementById("srcAccount").value = tx.src || "";
                 syncAccountPickerButtonText("srcAccount"); // v99 — see comment in openTransactionForm().
 
+                // v263: category now pre-fills to the original expense's category but is left
+                // freely selectable (previously forced + disabled — see the removed comment
+                // block just above this function, which the "namesToInclude" call below still
+                // honors by guaranteeing catName itself is always present as an option even if
+                // it isn't among the current Expense categories, e.g. after a rename/delete). A
+                // refund still nets against whatever category ends up chosen here (the
+                // isRefund/t.cat matching described above), so picking a different Expense
+                // category on purpose is safe and simply offsets that category instead.
                 const catSelect = document.getElementById("txCategory");
                 const catName = tx.cat || "Other Expenses";
-                const icon = getCategoryIcon(catName, "expense");
-                catSelect.innerHTML = `<option value="${escapeHtml(catName)}">${icon} ${escapeHtml(catName)}</option>`;
+                const currentExpenseCats = dynamicCategories.filter(c => c.type === "expense").map(c => c.name);
+                catSelect.innerHTML = buildCategoryOptionsHTML("expense", [...currentExpenseCats, catName]);
                 catSelect.value = catName;
-                catSelect.disabled = true;
-                // v142: the button now stands in for the <select> (see openAccountPicker()) — a
-                // disabled button never dispatches click, so this alone stops openAccountPicker()
-                // from firing and re-opening a picker the user shouldn't be able to change; the
-                // dimmed opacity just makes that locked state visible, matching how a disabled
-                // <select> looks greyed out.
+                catSelect.disabled = false;
                 const catBtn = document.getElementById("txCategoryBtn");
-                catBtn.disabled = true;
-                catBtn.style.opacity = "0.6";
+                catBtn.disabled = false;
+                catBtn.style.opacity = "";
                 syncAccountPickerButtonText("txCategory");
 
                 document.getElementById("txDate").value = todayLocalStr();
@@ -12088,7 +12116,7 @@
             }
 
             const currentIncomeCategories = [...new Set([...dynamicCategories.filter(c => c.type === "income").map(c => c.name), "Salary", "Investments", "Freelance", "Other Income"])];
-            const currentExpenseCategories = [...new Set([...dynamicCategories.filter(c => c.type === "expense").map(c => c.name), "Groceries", "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"])];
+            const currentExpenseCategories = [...new Set([...dynamicCategories.filter(c => c.type === "expense").map(c => c.name), "Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"])];
 
             // v72: categories flagged "Exclude from Net Savings Report" (Manage Categories) —
             // their transactions are pulled out of incBaseTotal/expBaseTotal/catSummary below and

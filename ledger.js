@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v273";
+        const APP_VERSION = "v274";
         const APP_VERSION_DATE = "2026-09-04";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -11995,6 +11995,18 @@
 
                 const todayDate = new Date(todayLocalStr() + "T00:00:00");
 
+                // v274: use the balance AS OF TODAY (transactions dated today or earlier only),
+                // not the full running balance nativeBalances[a.id] which also includes any
+                // transaction dated in the FUTURE (e.g. a payment the user pre-records ahead of
+                // the date they intend to actually pay it). Without this, a future-dated payment
+                // that already nets the running balance down can make it SMALLER than what was
+                // genuinely billed by the last statement close — and the overdue math below
+                // (which takes the min() of the two) would then mistake today's fresh spending
+                // for old overdue debt. See the bug this fixed: a same-day purchase showed as
+                // "overdue since" a past due date purely because of an unrelated future-dated
+                // payment transaction on the same account.
+                const amountDueAsOfToday = Math.max(0, -ccBalanceAsOf(a, todayLocalStr()));
+
                 let anchor = ccDueDateFor(todayDate.getFullYear(), todayDate.getMonth(), a.paymentDueDay);
                 if (anchor > todayDate) anchor = ccDueDateFor(todayDate.getFullYear(), todayDate.getMonth() - 1, a.paymentDueDay);
                 const daysSinceAnchor = Math.round((todayDate - anchor) / MS_PER_DAY);
@@ -12006,7 +12018,7 @@
                 // statement (and therefore genuinely overdue), vs. freshly added afterwards and
                 // not yet due. Without statementDay set there's no way to draw that line, so it
                 // falls back to the old "whole balance" behavior.
-                let billedDebt = amountDue;
+                let billedDebt = amountDueAsOfToday;
                 if (a.statementDay) {
                     // The statement that produced `anchor`'s due date is the most recent
                     // statementDay occurrence on or before that due date — same month as the due
@@ -12018,7 +12030,7 @@
                     const closeStr = localDateStr(closeDate);
                     billedDebt = Math.max(0, -ccBalanceAsOf(a, closeStr));
                 }
-                const overdueAmount = Math.min(amountDue, billedDebt);
+                const overdueAmount = Math.min(amountDueAsOfToday, billedDebt);
 
                 let overdue, daysOverdue, dueDateStr, dueToday;
                 if (daysSinceAnchor === 0) {

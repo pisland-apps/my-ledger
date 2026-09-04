@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v274";
+        const APP_VERSION = "v275";
         const APP_VERSION_DATE = "2026-09-04";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -12007,6 +12007,28 @@
                 // payment transaction on the same account.
                 const amountDueAsOfToday = Math.max(0, -ccBalanceAsOf(a, todayLocalStr()));
 
+                // v275: sum of payments (transfers or income posted INTO the card, e.g. a bank
+                // → card transfer) dated strictly after `sinceStr`. Deliberately has NO upper
+                // bound at "today" — a payment the user has already recorded for a future date
+                // (their bank's known auto-deduction date, or just paying ahead) is a real
+                // commitment against that cycle's billed debt and should count toward clearing
+                // it before that date arrives, same as the running "Amount due" figure already
+                // treats future-dated transactions as real. Excludes new charges on purpose:
+                // fresh spending after the statement close belongs to the NEXT cycle, not this
+                // one, and must never be treated as "paying down" old billed debt.
+                function ccPaymentsAfter(sinceStr) {
+                    let paid = 0;
+                    txs.forEach(t => {
+                        if (!t.date || t.date <= sinceStr) return;
+                        if (t.type === "income" && t.src === a.id) {
+                            paid += (t.manualFxRate && t.currency !== a.currency) ? t.amount * t.manualFxRate : convertCurrency(t.amount, t.currency, a.currency);
+                        } else if (t.type === "transfer" && t.dest === a.id) {
+                            paid += (t.destAmount != null) ? t.destAmount : convertCurrency(t.amount, t.currency, a.currency);
+                        }
+                    });
+                    return paid;
+                }
+
                 let anchor = ccDueDateFor(todayDate.getFullYear(), todayDate.getMonth(), a.paymentDueDay);
                 if (anchor > todayDate) anchor = ccDueDateFor(todayDate.getFullYear(), todayDate.getMonth() - 1, a.paymentDueDay);
                 const daysSinceAnchor = Math.round((todayDate - anchor) / MS_PER_DAY);
@@ -12029,8 +12051,18 @@
                     if (closeDate > anchor) closeDate = ccDueDateFor(anchor.getFullYear(), anchor.getMonth() - 1, a.statementDay);
                     const closeStr = localDateStr(closeDate);
                     billedDebt = Math.max(0, -ccBalanceAsOf(a, closeStr));
+                    // v275: subtract anything already paid toward THIS cycle's billed debt
+                    // specifically, rather than the old approach of taking min(current total
+                    // balance, billed debt) — that couldn't tell "old debt still outstanding"
+                    // apart from "old debt fully paid off, and this balance is entirely fresh
+                    // spending on the new, not-yet-due cycle" whenever the two amounts happened
+                    // to differ (e.g. a $2,351.50 bill paid off same-day as a new $58.40
+                    // purchase: min() mistook the $58.40 for leftover old debt). Subtracting the
+                    // actual payment from the actual billed amount gets this right regardless of
+                    // what new spending has piled up since.
+                    billedDebt = Math.max(0, billedDebt - ccPaymentsAfter(closeStr));
                 }
-                const overdueAmount = Math.min(amountDueAsOfToday, billedDebt);
+                const overdueAmount = billedDebt;
 
                 let overdue, daysOverdue, dueDateStr, dueToday;
                 if (daysSinceAnchor === 0) {

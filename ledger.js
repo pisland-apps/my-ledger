@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v272";
+        const APP_VERSION = "v273";
         const APP_VERSION_DATE = "2026-09-04";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -4390,7 +4390,7 @@
                 return;
             }
 
-            document.getElementById("currentBasePill").textContent = baseCurrency;
+            document.getElementById("settingsBasePill").textContent = baseCurrency;
             closeModal("currencyModal");
             renderApp();
         }
@@ -11844,7 +11844,7 @@
 
             const { accounts, txs, nativeBalances } = await computeAccountBalances();
 
-            document.getElementById("currentBasePill").textContent = baseCurrency;
+            document.getElementById("settingsBasePill").textContent = baseCurrency;
 
             let globalBaseNetWorth = 0;
             const currencyTotals = {}; // native (unconverted) sum per currency actually held, across every account

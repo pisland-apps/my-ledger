@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v288";
+        const APP_VERSION = "v289";
         const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -6002,6 +6002,14 @@
             }
             if (!document.getElementById("page-budget").classList.contains("hidden")) {
                 await renderBudgetPage();
+            }
+            // v288: without this, saving a Reimbursement from the Spending by Tag page's own pill
+            // (openReimbursementFromTagBadge()) removed the tag in the DB immediately, but this
+            // page kept showing the just-claimed row until the user backed out and back in (the
+            // only thing that had been calling renderTagReportPage() again) — same
+            // "refresh whichever page is currently visible" convention as Accounts/Budget above.
+            if (!document.getElementById("page-tag-report").classList.contains("hidden")) {
+                await renderTagReportPage();
             }
             await refreshFundActivityPageIfVisible();
             await refreshCurrencyActivityPageIfVisible();

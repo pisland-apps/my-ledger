@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v291";
-        const APP_VERSION_DATE = "2026-09-05";
+        const APP_VERSION = "v292";
+        const APP_VERSION_DATE = "2026-09-06";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -1303,6 +1303,15 @@
         // by handleTransactionSubmitMobile() at save time; cleared on every openTransactionForm()
         // call and after saving, in lockstep with pendingRefundOf above.
         let pendingRemoveTagName = null;
+        // v291: the full candidate bill list (unclaimed CLAIMABLE_EXPENSE_CATEGORY expenses still
+        // carrying PENDING_CLAIM_TAG) the Settle Multiple Claims modal was opened with — set once
+        // by openClaimSettleModal(), read by recalcClaimSettlePreview() (to sum whichever rows are
+        // currently checked) and handleClaimSettleSubmit() (to build the settlement/variance
+        // records without re-querying IndexedDB mid-flow). Cleared when the modal closes via save;
+        // deliberately left as-is on a plain × close/back so re-opening while it's already
+        // populated doesn't need a wasted requery — openClaimSettleModal() always rebuilds it
+        // fresh anyway.
+        let claimSettleCandidates = [];
         // v99: which underlying <select> (srcAccount/destAccount) the Account picker modal is
         // currently populated for — set by openAccountPicker(), read by selectAccountPickerOption()
         // when the user taps a row.
@@ -1947,8 +1956,13 @@
         // openRefundOrReimbursementFromOptions()/fillReimbursementForm(), the same link the isRefund
         // report math already relies on) — no new field needed, this just looks the existing link
         // up from the other side.
+        // v291: a bulk settlement (see openClaimSettleModal()/handleClaimSettleSubmit()) links
+        // back to EVERY bill it covers via refundOfIds (an array), not just the single refundOf
+        // id a one-bill Reimbursement/Refund uses — so this checks both, matching either style of
+        // link. refundOf is still also set (to the first covered bill) on a bulk settlement purely
+        // for any older code path that might only ever read that field.
         function findReimbursementFor(txId, txs) {
-            return txs.find(t => t.isRefund && t.refundOf === txId);
+            return txs.find(t => t.isRefund && (t.refundOf === txId || (Array.isArray(t.refundOfIds) && t.refundOfIds.includes(txId))));
         }
 
         // v286: small "✅ Claimed"/"✅ Refunded" pill on an expense that's already been settled —
@@ -12176,6 +12190,277 @@
             await fillReimbursementForm(tx, "Reimbursement", "reimbursement", tagName || null);
         }
 
+        // --- SETTLE MULTIPLE CLAIMS (v291) — see claimSettleModal's own comment in index.html
+        // for the full record-writing plan. Everything below only ever runs against
+        // CLAIMABLE_EXPENSE_CATEGORY expenses still carrying PENDING_CLAIM_TAG that don't already
+        // have a Reimbursement/Refund linked (findReimbursementFor) — i.e. exactly the bills the
+        // "Pending Claim" Spending by Tag view itself is listing.
+
+        // Rounds to cents and treats sub-cent noise as exactly zero — every comparison/variance
+        // calc below goes through this rather than comparing raw floats directly.
+        function claimSettleRound2(n) {
+            return Math.round((n + Number.EPSILON) * 100) / 100;
+        }
+
+        function buildClaimSettleBillListHTML() {
+            if (claimSettleCandidates.length === 0) {
+                return '<p style="font-size:0.75rem; text-align:center; color:var(--text-muted); margin:4px 0;">No unclaimed bills found under Company Expenses (Claimable).</p>';
+            }
+            return claimSettleCandidates.map(t => `
+                <label style="display:flex; align-items:center; gap:8px; font-size:0.78rem; padding:4px 2px; cursor:pointer;">
+                    <input type="checkbox" class="claim-settle-bill-checkbox" data-id="${escapeHtml(t.id)}" data-input="recalcClaimSettlePreview" checked style="width:auto; margin:0;">
+                    <span style="flex:1;">${t.date} — ${escapeHtml(t.desc)}</span>
+                    <span style="font-weight:700; white-space:nowrap;">${formatCurrency(t.amount, t.currency)}</span>
+                </label>
+            `).join("");
+        }
+
+        // Mirrors populateSalaryAccountSelects()'s option-building exactly (same emoji prefix /
+        // currency suffix / owner suffix convention as every other account picker in the app —
+        // see openAccountPicker()'s own comment on why this needs to stay visually consistent).
+        async function populateClaimSettleAccountSelect() {
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const sorted = sortAccountsByGroupThenName(accounts);
+            const optionsHTML = sorted.map(a => {
+                const prefix = a.type === "fd" ? "🏦 " : a.type === "multi" ? "💱 " : a.type === "unittrust" ? "📊 " : a.type === "creditcard" ? "💳 " : "";
+                const currLabel = (a.type === "multi" || a.type === "fd" || a.type === "unittrust") ? "" : ` (${escapeHtml(a.currency)})`;
+                const ownerLabel = ` — ${escapeHtml(accountOwnerNamesText(a) + accountRelatedSuffix(a, accounts))}`;
+                return `<option value="${escapeHtml(a.id)}">${prefix}${escapeHtml(a.name)}${currLabel}${ownerLabel}</option>`;
+            }).join("");
+            document.getElementById("claimSettleAccount").innerHTML = optionsHTML;
+            syncAccountPickerButtonText("claimSettleAccount");
+        }
+
+        // Opened only from claimSettleTriggerBtn (see renderTagReportPage()), which is itself only
+        // ever shown while the "Pending Claim" tag is selected — so this can safely assume that's
+        // the tag in play without re-reading the select.
+        async function openClaimSettleModal() {
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            claimSettleCandidates = txs
+                .filter(t => t.type === "expense" && t.cat === CLAIMABLE_EXPENSE_CATEGORY && Array.isArray(t.tags) && t.tags.includes(PENDING_CLAIM_TAG) && !findReimbursementFor(t.id, txs))
+                .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+            document.getElementById("claimSettleBillList").innerHTML = buildClaimSettleBillListHTML();
+            document.getElementById("claimSettleReceivedAmount").value = "";
+            document.getElementById("claimSettleDate").value = todayLocalStr();
+            await populateClaimSettleAccountSelect();
+
+            const varCatSelect = document.getElementById("claimSettleVarianceCategory");
+            // Pre-seeded with both fallback names up front — recalcClaimSettlePreview() below
+            // rebuilds this with the correct type's options once it knows whether the variance is
+            // a shortfall (expense) or an extra (income), but an empty select would flash briefly
+            // otherwise.
+            varCatSelect.innerHTML = buildCategoryOptionsHTML("expense", ["Other Expenses"]);
+            varCatSelect.value = "Other Expenses";
+
+            recalcClaimSettlePreview();
+            openModal("claimSettleModal");
+        }
+
+        // Live preview: re-sums whichever bills are currently checked, and shows/labels/re-selects
+        // the variance box against (received − selected total). Fires on every checkbox toggle and
+        // every keystroke in the Amount Received field (see data-input="recalcClaimSettlePreview"
+        // on both in index.html) — cheap enough to just rebuild from claimSettleCandidates each
+        // time rather than tracking a running total incrementally.
+        function recalcClaimSettlePreview() {
+            const checkboxes = Array.from(document.querySelectorAll("#claimSettleBillList .claim-settle-bill-checkbox"));
+            const selectedIds = new Set(checkboxes.filter(cb => cb.checked).map(cb => cb.dataset.id));
+            const selected = claimSettleCandidates.filter(t => selectedIds.has(String(t.id)));
+
+            const currencies = new Set(selected.map(t => t.currency));
+            const warningEl = document.getElementById("claimSettleCurrencyWarning");
+            const mixedCurrencies = currencies.size > 1;
+            if (warningEl) warningEl.style.display = mixedCurrencies ? "" : "none";
+
+            const currency = selected.length ? selected[0].currency : baseCurrency;
+            const selectedTotal = claimSettleRound2(selected.reduce((sum, t) => sum + t.amount, 0));
+            document.getElementById("claimSettleSelectedTotal").textContent = formatCurrency(selectedTotal, currency);
+
+            const received = claimSettleRound2(parseFloat(document.getElementById("claimSettleReceivedAmount").value) || 0);
+            const variance = claimSettleRound2(received - selectedTotal);
+
+            const box = document.getElementById("claimSettleVarianceBox");
+            const label = document.getElementById("claimSettleVarianceLabel");
+            const catLabel = document.getElementById("claimSettleVarianceCategoryLabel");
+            const catSelect = document.getElementById("claimSettleVarianceCategory");
+
+            if (selected.length === 0 || Math.abs(variance) < 0.005) {
+                box.style.display = "none";
+                return;
+            }
+            box.style.display = "";
+            if (variance < 0) {
+                label.innerHTML = `⚠️ Short claim: <strong>${formatCurrency(Math.abs(variance), currency)}</strong> — the company paid less than these bills add up to. This will be recorded as your own expense.`;
+                catLabel.textContent = "Record the shortfall as";
+                // Only rebuild the select's options (and re-default it) when switching direction
+                // (shortfall ↔ extra) — rebuilding on every keystroke would blow away whichever
+                // category the user already picked for this same direction.
+                if (catSelect.dataset.dir !== "expense") {
+                    catSelect.innerHTML = buildCategoryOptionsHTML("expense", ["Other Expenses"]);
+                    catSelect.value = "Other Expenses";
+                    catSelect.dataset.dir = "expense";
+                }
+            } else {
+                label.innerHTML = `🎉 Extra claim: <strong>${formatCurrency(variance, currency)}</strong> — the company paid more than these bills add up to. This will be recorded as extra income.`;
+                catLabel.textContent = "Record the extra as";
+                if (catSelect.dataset.dir !== "income") {
+                    catSelect.innerHTML = buildCategoryOptionsHTML("income", ["Other Income"]);
+                    catSelect.value = "Other Income";
+                    catSelect.dataset.dir = "income";
+                }
+            }
+        }
+
+        // Builds the multi-line Notes text for the lump-sum Reimbursement record — every included
+        // bill's date/description/amount, plus the totals and whichever short/extra claim line
+        // applies, so the one settlement transaction stays self-explanatory without having to
+        // cross-reference each original bill individually.
+        function buildClaimSettleNotes(selected, selectedTotal, received, currency, variance) {
+            const lines = selected.map(t => `${t.date} — ${t.desc} — ${formatCurrency(t.amount, t.currency)}`);
+            lines.push("");
+            lines.push(`Total bills: ${formatCurrency(selectedTotal, currency)}`);
+            lines.push(`Amount received: ${formatCurrency(received, currency)}`);
+            if (Math.abs(variance) < 0.005) {
+                lines.push("Matched exactly — no shortfall or extra.");
+            } else if (variance < 0) {
+                lines.push(`Short claim (recorded as your own expense): ${formatCurrency(Math.abs(variance), currency)}`);
+            } else {
+                lines.push(`Extra claim (recorded as extra income): ${formatCurrency(variance, currency)}`);
+            }
+            return lines.join("\n");
+        }
+
+        // A minimal, complete record shape — every field every render/report function anywhere in
+        // the app is ever seen reading directly off a transaction (not just the ones this specific
+        // flow cares about), same convention as the ordinary record object handleTransactionSubmitMobile()
+        // builds, just assembled directly rather than read off the txModal form fields (this modal
+        // is its own dedicated form, not a wrapper around the ordinary Income/Expense one).
+        function buildClaimSettleBaseRecord({ type, desc, amount, cat, currency, src, date, notes, tags }) {
+            return {
+                type, desc, amount, cat, currency, src, date,
+                dest: null,
+                image: null,
+                attachments: [],
+                payee: null,
+                notes: notes || null,
+                tags: tags || [],
+                checked: false,
+                fdReferenceNo: null,
+                fdStartDate: null,
+                fdTenureMonths: null,
+                fdInterestRate: null,
+                fdMaturityDate: null,
+                linkedFdPlacementId: null,
+                manualFxRate: null,
+                destAmount: null,
+                splitGroupId: undefined,
+                isRefund: undefined,
+                refundOf: undefined,
+                refundReason: undefined
+            };
+        }
+
+        async function handleClaimSettleSubmit() {
+            const checkboxes = Array.from(document.querySelectorAll("#claimSettleBillList .claim-settle-bill-checkbox"));
+            const selectedIds = new Set(checkboxes.filter(cb => cb.checked).map(cb => cb.dataset.id));
+            const selected = claimSettleCandidates.filter(t => selectedIds.has(String(t.id)));
+
+            if (selected.length === 0) { alert("Please select at least one bill to settle."); return; }
+            const currencies = new Set(selected.map(t => t.currency));
+            if (currencies.size > 1) { alert("Selected bills use different currencies — please settle each currency as its own batch."); return; }
+            const currency = selected[0].currency;
+
+            const receivedRaw = document.getElementById("claimSettleReceivedAmount").value;
+            const received = claimSettleRound2(parseFloat(receivedRaw));
+            if (receivedRaw === "" || isNaN(received) || received < 0) { alert("Please enter the amount actually received."); return; }
+
+            const date = document.getElementById("claimSettleDate").value;
+            if (!date) { alert("Please select the date received."); return; }
+
+            const accountId = document.getElementById("claimSettleAccount").value;
+            if (!accountId) { alert("Please select which account received the payment."); return; }
+
+            const selectedTotal = claimSettleRound2(selected.reduce((sum, t) => sum + t.amount, 0));
+            const variance = claimSettleRound2(received - selectedTotal);
+            const notes = buildClaimSettleNotes(selected, selectedTotal, received, currency, variance);
+
+            const dates = selected.map(t => t.date).sort();
+            const dateRange = dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} – ${dates[dates.length - 1]}`;
+
+            try {
+                // 1) The lump-sum Reimbursement itself — nets against CLAIMABLE_EXPENSE_CATEGORY
+                //    (see excludedCatNames everywhere that category set is used) exactly like a
+                //    single-bill Reimbursement would, just for the actual amount received rather
+                //    than any one bill's own amount.
+                const reimbursement = buildClaimSettleBaseRecord({
+                    type: "income",
+                    desc: `Reimbursement: ${selected.length} bill${selected.length === 1 ? "" : "s"} (${dateRange})`,
+                    amount: received,
+                    cat: CLAIMABLE_EXPENSE_CATEGORY,
+                    currency,
+                    src: accountId,
+                    date,
+                    notes
+                });
+                reimbursement.isRefund = true;
+                reimbursement.refundReason = "reimbursement";
+                reimbursement.refundOf = selected[0].id;
+                reimbursement.refundOfIds = selected.map(t => t.id);
+                await writeDB(STORES.TRANSACTIONS, reimbursement);
+
+                // 2) The short/extra claim, if any — an ORDINARY (non-excluded) record, so it
+                //    flows into Budget/Net Savings/Spending Breakdown as real personal
+                //    spending/income instead of disappearing into the claimable category.
+                if (Math.abs(variance) >= 0.005) {
+                    const varianceCat = document.getElementById("claimSettleVarianceCategory").value;
+                    if (variance < 0) {
+                        const shortfall = buildClaimSettleBaseRecord({
+                            type: "expense",
+                            desc: `Short claim — unclaimed portion of company expense claim (${dateRange})`,
+                            amount: Math.abs(variance),
+                            cat: varianceCat || "Other Expenses",
+                            currency,
+                            src: accountId,
+                            date,
+                            notes: `Company paid ${formatCurrency(received, currency)} against ${formatCurrency(selectedTotal, currency)} billed — this ${formatCurrency(Math.abs(variance), currency)} shortfall isn't claimable.`
+                        });
+                        await writeDB(STORES.TRANSACTIONS, shortfall);
+                    } else {
+                        const extra = buildClaimSettleBaseRecord({
+                            type: "income",
+                            desc: `Extra claim — extra amount from company expense claim (${dateRange})`,
+                            amount: variance,
+                            cat: varianceCat || "Other Income",
+                            currency,
+                            src: accountId,
+                            date,
+                            notes: `Company paid ${formatCurrency(received, currency)} against ${formatCurrency(selectedTotal, currency)} billed — this ${formatCurrency(variance, currency)} extra doesn't need to be paid back.`
+                        });
+                        await writeDB(STORES.TRANSACTIONS, extra);
+                    }
+                }
+
+                // 3) Drop PENDING_CLAIM_TAG from every settled bill — same "settled, so fall off
+                //    the Tag Reminders widget/Spending by Tag report" convention as the
+                //    single-bill Reimbursement's "remove this tag" toggle.
+                for (const bill of selected) {
+                    if (Array.isArray(bill.tags) && bill.tags.includes(PENDING_CLAIM_TAG)) {
+                        await writeDB(STORES.TRANSACTIONS, { ...bill, tags: bill.tags.filter(tg => tg !== PENDING_CLAIM_TAG) });
+                    }
+                }
+            } catch (err) {
+                const msg = (err && err.name === "QuotaExceededError")
+                    ? "Not enough storage space to save this settlement."
+                    : "Could not save settlement: " + (err && err.message ? err.message : err);
+                alert(msg);
+                return;
+            }
+
+            claimSettleCandidates = [];
+            closeModal("claimSettleModal");
+            await refreshAfterTransactionChange();
+        }
+
         // (v147: the old filterMonth/filterYear-driven year filter was removed along with the
         // Financial Report Card redesign — see renderReportCards()/populateReportCardPeriodOptions
         // below — since every card's own period select (This Year/Last Year/This Month/Last
@@ -13943,6 +14228,14 @@
                 // in openTransactionForm()), so no branch is needed for t.type === "transfer" here.
             });
 
+            // v291: the "Settle Multiple Bills as One Claim" button only makes sense on the
+            // Pending Claim view itself — every other tag either isn't a claim-tracking tag at
+            // all, or (a custom trip/claim tag) has no single agreed category to file the
+            // lump-sum Reimbursement/variance records under, unlike Pending Claim which always
+            // means CLAIMABLE_EXPENSE_CATEGORY (see ensureDefaultTags()/DEFAULT_CATEGORIES).
+            const claimSettleBtn = document.getElementById("claimSettleTriggerBtn");
+            if (claimSettleBtn) claimSettleBtn.style.display = (tagName === PENDING_CLAIM_TAG) ? "" : "none";
+
             document.getElementById("tagReportIncomeTotal").textContent = formatCurrency(incomeTotal, baseCurrency);
             document.getElementById("tagReportExpenseTotal").textContent = formatCurrency(expenseTotal, baseCurrency);
             const net = incomeTotal - expenseTotal;
@@ -15222,6 +15515,8 @@
             navigateToTagsPage: () => navigateToTagsPage(),
             openTagReminderRow: (el) => openTagReminderRow(el),
             openReimbursementFromTagBadge: (el) => openReimbursementFromTagBadge(el),
+            openClaimSettleModal: () => openClaimSettleModal(),
+            handleClaimSettleSubmit: () => handleClaimSettleSubmit(),
             openTagFormModal: () => openTagFormModal(),
             editTag: (el) => editTag(el.dataset.id),
             removeTag: (el) => removeTag(el.dataset.id),
@@ -15301,6 +15596,7 @@
         };
 
         const INPUT_ACTIONS = {
+            recalcClaimSettlePreview: () => recalcClaimSettlePreview(),
             recalcTxFdMaturity: () => { recalcTxFdMaturity(); syncTransferFxOnAmountChange(); recalcTxSplitTotal(); },
             recalcResolveFdMaturity: () => recalcResolveFdMaturity(),
             recalcFdOpeningRowMaturity: (el) => recalcFdOpeningRowMaturity(el.dataset.rowId),

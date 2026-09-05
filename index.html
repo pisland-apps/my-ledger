@@ -3765,6 +3765,12 @@
                 <p style="font-size:0.72rem; color:var(--text-muted); margin-top:10px;" id="tagReportMeta"></p>
             </div>
 
+            <!-- v291: only shown when the selected tag is exactly "Pending Claim" — opens the
+                 multi-bill settlement flow (openClaimSettleModal()/claimSettleModal below) so
+                 several claimable expenses can be settled against one lump-sum reimbursement
+                 instead of one-by-one via each expense's own 🔖 pill. -->
+            <button type="button" id="claimSettleTriggerBtn" data-click="openClaimSettleModal" class="submit-btn" style="display:none; margin-bottom:14px; background:var(--income-color);">🧾 Settle Multiple Bills as One Claim</button>
+
             <div class="section-header">
                 <span class="section-title">Expense Breakdown by Category</span>
             </div>
@@ -4471,6 +4477,70 @@
                     </label>
                 </div>
                 <button type="button" data-click="handleSaveTagMobile" class="submit-btn" id="tagSubmitBtn">Save Tag</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Settle Multiple Claims (v291) — settles several "Company Expenses (Claimable)"
+         bills (still carrying PENDING_CLAIM_TAG, not yet individually reimbursed) against ONE
+         lump-sum payment received from the company. Opened only from the "Pending Claim" Spending
+         by Tag view (see claimSettleTriggerBtn above) via openClaimSettleModal(). On save this
+         writes: (1) one isRefund Income record for the amount actually received, filed under
+         CLAIMABLE_EXPENSE_CATEGORY (so it nets against that category exactly like a single-bill
+         Reimbursement, and stays excluded from Budget/Net Savings — see excludedCatNames), with
+         every selected bill's date/description/amount listed in its Notes; (2) if the received
+         amount doesn't exactly match the selected bills' total, a SEPARATE ordinary Expense
+         (short claim — company paid less than billed) or Income (extra claim — company paid more)
+         record, filed under an ordinary (non-excluded) category so it DOES flow into
+         Budget/Net Savings/Spending Breakdown as real personal spending/income; and (3) removes
+         PENDING_CLAIM_TAG from every settled bill. See handleClaimSettleSubmit()/
+         findReimbursementFor()'s refundOfIds handling in ledger.js. -->
+    <div class="modal" id="claimSettleModal">
+        <div class="modal-sheet">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:12px;">
+                <h3 style="font-weight:800;">Settle Multiple Claims</h3>
+                <button data-click="closeModal" data-modal="claimSettleModal" style="background:none; border:none; font-size:1.5rem; padding:8px;">&times;</button>
+            </div>
+            <div>
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600; margin-bottom:10px;">Pick which bills this payment covers, then enter what actually landed in your account. Any short or extra amount is recorded separately so it still shows up in your normal Reports/Budget.</p>
+
+                <div class="form-row">
+                    <label>Bills Included</label>
+                    <div id="claimSettleBillList" style="display:flex; flex-direction:column; gap:6px; max-height:260px; overflow-y:auto; border:1.5px solid var(--border-color); border-radius:10px; padding:8px;"></div>
+                    <p id="claimSettleCurrencyWarning" style="display:none; font-size:0.72rem; color:var(--expense-color); font-weight:700; margin-top:6px;">⚠️ Selected bills use different currencies — please settle each currency as its own batch.</p>
+                    <p style="font-size:0.8rem; font-weight:700; margin-top:8px; display:flex; justify-content:space-between;">
+                        <span>Selected total</span>
+                        <span id="claimSettleSelectedTotal">0.00</span>
+                    </p>
+                </div>
+
+                <div class="form-row">
+                    <label>Amount Actually Received</label>
+                    <input type="number" id="claimSettleReceivedAmount" min="0" step="0.01" inputmode="decimal" data-input="recalcClaimSettlePreview">
+                </div>
+
+                <div class="form-row">
+                    <label>Date Received</label>
+                    <input type="date" id="claimSettleDate">
+                </div>
+
+                <div class="form-row">
+                    <label>Deposit Into</label>
+                    <button type="button" id="claimSettleAccountBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="claimSettleAccount" data-title="Select Account" aria-label="Account">
+                        <span id="claimSettleAccountBtnText">Select account</span>
+                    </button>
+                    <select id="claimSettleAccount" style="display:none;"></select>
+                </div>
+
+                <div id="claimSettleVarianceBox" style="display:none; background:var(--card-bg); border:1.5px solid var(--border-color); border-radius:10px; padding:10px; margin-bottom:12px;">
+                    <p id="claimSettleVarianceLabel" style="font-size:0.8rem; font-weight:700; margin-bottom:8px;"></p>
+                    <div class="form-row" style="margin-bottom:0;">
+                        <label id="claimSettleVarianceCategoryLabel">Record this as</label>
+                        <select id="claimSettleVarianceCategory"></select>
+                    </div>
+                </div>
+
+                <button type="button" data-click="handleClaimSettleSubmit" class="submit-btn" id="claimSettleSubmitBtn">Save Settlement</button>
             </div>
         </div>
     </div>

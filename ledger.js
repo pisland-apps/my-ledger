@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v280";
+        const APP_VERSION = "v281";
         const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1954,6 +1954,50 @@
                     </div>
                 `;
             }).join("");
+        }
+
+        // v281: Dashboard "Tag Reminders" widget — one row per tag with showOnDashboard=true that
+        // currently has at least one matching transaction. Deliberately reuses the exact same
+        // "tags.includes(name)" filter and refund-nets-against-expense convention as the Spending
+        // by Tag report (renderTagReportPage()) rather than a second query mechanism — see that
+        // function's comments. This widget is intentionally dumb: it does NOT know anything about
+        // reimbursement/settlement status — a row simply reflects however many transactions still
+        // carry the tag right now, and disappears on its own once the user removes the tag from
+        // the last matching transaction (e.g. after settling a claim via Reimbursement + editing
+        // the transaction to drop the tag) — no separate "resolved" flag anywhere.
+        function renderTagReminderWidget(txs, accounts) {
+            const wrap = document.getElementById("dashboardTagWidget");
+            const list = document.getElementById("tagReminderList");
+            if (!wrap || !list) return;
+
+            const rows = dynamicTags
+                .filter(tag => tag.showOnDashboard === true)
+                .map(tag => {
+                    const matching = txs.filter(t => Array.isArray(t.tags) && t.tags.includes(tag.name));
+                    if (matching.length === 0) return null;
+                    let expenseTotal = 0;
+                    matching.forEach(t => {
+                        const isRefundCredit = t.type === "income" && t.isRefund;
+                        if (t.type === "expense" || isRefundCredit) {
+                            const tBase = convertTxAmountToBase(t, accounts);
+                            expenseTotal += isRefundCredit ? -tBase : tBase;
+                        }
+                    });
+                    return { name: tag.name, count: matching.length, expenseTotal };
+                })
+                .filter(Boolean);
+
+            wrap.style.display = rows.length ? "" : "none";
+            if (rows.length === 0) return;
+
+            list.innerHTML = rows.map(r => `
+                <div class="config-item">
+                    <span class="category-display-badge">🔖 <strong>${escapeHtml(r.name)}</strong></span>
+                    <span style="font-size:0.8rem; color:var(--text-muted); font-weight:600;">
+                        ${r.count} item${r.count === 1 ? "" : "s"} · ${formatCurrency(r.expenseTotal, baseCurrency)}
+                    </span>
+                </div>
+            `).join("");
         }
 
         // v224: single toggle for the relocated Dashboard Widgets settings panel (Setting hub) —
@@ -8255,12 +8299,15 @@
             dynamicCategories = customCats.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
         }
 
-        // --- TAGS SYSTEM (v257) ---
+        // --- TAGS SYSTEM (v257, showOnDashboard added v281) ---
         // Trip/claim labels (e.g. "Japan Holiday Aug 2026", "Expense Claim — Client X") a
         // transaction can carry alongside its Category — see the Tags row on the Add/Edit
         // Transaction form and the "Spending by Tag" report. Deliberately the simplest possible
-        // managed list (name only, alphabetical, no reorder) since a tag is just a label, not
-        // something needing its own icon/type/parent like Categories.
+        // managed list (name + optional showOnDashboard flag, alphabetical, no reorder) since a
+        // tag is just a label, not something needing its own icon/type/parent like Categories.
+        // showOnDashboard (v281): opts a tag into the Dashboard "Tag Reminders" widget — see
+        // renderTagReminderWidget(). Tags created on-the-fly via createTag() below default to it
+        // being unset/false (matches how an older tag record with no such field at all reads).
         async function syncAndLoadTags() {
             const tags = await readAllDB(STORES.TAGS);
             dynamicTags = tags.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
@@ -8310,6 +8357,7 @@
             document.getElementById("tagSubmitBtn").textContent = "Save Tag";
             document.getElementById("tagEditId").value = "";
             document.getElementById("tagName").value = "";
+            document.getElementById("tagShowOnDashboard").checked = false;
             openModal("tagModal");
         }
 
@@ -8320,6 +8368,9 @@
             document.getElementById("tagSubmitBtn").textContent = "Save Changes";
             document.getElementById("tagEditId").value = t.id;
             document.getElementById("tagName").value = t.name;
+            // v281: older tags saved before this field existed simply have it undefined —
+            // treated as off, same as everywhere else this flag is read.
+            document.getElementById("tagShowOnDashboard").checked = t.showOnDashboard === true;
             openModal("tagModal");
         }
 
@@ -8333,7 +8384,8 @@
             const editId = document.getElementById("tagEditId").value;
             const dupe = dynamicTags.find(t => t.name.toLowerCase() === name.toLowerCase() && t.id !== editId);
             if (dupe) { alert("A tag with that name already exists."); return; }
-            const record = { id: editId || ("tag_" + Date.now() + "_" + Math.floor(Math.random() * 100000)), name };
+            const showOnDashboard = document.getElementById("tagShowOnDashboard").checked;
+            const record = { id: editId || ("tag_" + Date.now() + "_" + Math.floor(Math.random() * 100000)), name, showOnDashboard };
             try {
                 await writeDB(STORES.TAGS, record);
             } catch (err) {
@@ -11769,7 +11821,16 @@
         // one the refund nets against, not necessarily the original expense's own category.
         // pendingRefundOf (read by handleTransactionSubmitMobile) is the actual flag that makes
         // this save as a refund rather than an ordinary Income entry.
-        function openRefundFromOptions() {
+        // v281: "Refund" and "Reimbursement" are the same underlying flow (isRefund/refundOf,
+        // nets against an Expense category in the report/breakdown/savings math exactly as
+        // described above) — the user deliberately chose NOT to store which word was used
+        // (no new field on the saved record), since a separate "reimbursement" tag on the
+        // original expense (removed once settled) already covers tracking outstanding claims.
+        // `label` only controls the modal title / prefilled Description text, so someone
+        // reviewing their ledger later sees "Reimbursement: Client Lunch" instead of always
+        // "Refund: Client Lunch" for a company/insurance claim. openRefundFromOptions() and
+        // openReimbursementFromOptions() below are both thin wrappers over this.
+        function openRefundOrReimbursementFromOptions(label) {
             const id = activeQuickViewTxId;
             closeTxOptionsMenu(); // v95 fix — see editTransactionFromOptions() above.
             closeModalAndThen("txQuickViewModal", async () => {
@@ -11779,7 +11840,7 @@
                 if (!tx || tx.type !== "expense") return;
 
                 await openTransactionForm("income", null);
-                document.getElementById("txDesc").value = `Refund: ${tx.desc}`;
+                document.getElementById("txDesc").value = `${label}: ${tx.desc}`;
                 document.getElementById("txAmount").value = tx.amount;
                 document.getElementById("txCurrency").value = tx.currency;
                 document.getElementById("srcAccount").value = tx.src || "";
@@ -11808,13 +11869,21 @@
                 document.getElementById("txSplitWrap").style.display = "none";
                 syncTransactionCurrency();
 
-                document.getElementById("txModalTitle").textContent = `Refund: ${tx.desc}`;
-                document.getElementById("txSubmitBtn").textContent = "Save Refund";
+                document.getElementById("txModalTitle").textContent = `${label}: ${tx.desc}`;
+                document.getElementById("txSubmitBtn").textContent = `Save ${label}`;
 
                 // Set last — openTransactionForm() itself resets pendingRefundOf to null on
                 // every call, so this has to happen after it returns, not before.
                 pendingRefundOf = id;
             });
+        }
+
+        function openRefundFromOptions() {
+            openRefundOrReimbursementFromOptions("Refund");
+        }
+
+        function openReimbursementFromOptions() {
+            openRefundOrReimbursementFromOptions("Reimbursement");
         }
 
         // (v147: the old filterMonth/filterYear-driven year filter was removed along with the
@@ -11984,6 +12053,7 @@
             renderMemberNetWorthRows(accounts, nativeBalances);
             renderPinnedAccountsWidget(accounts, nativeBalances);
             renderRecentTransactionsWidget(accounts, txs);
+            renderTagReminderWidget(txs, accounts);
             applyDashboardWidgetOrder();
             renderDesktopInsightsRail(accounts, txs);
 
@@ -14852,6 +14922,7 @@
             duplicateTransactionFromOptions: () => duplicateTransactionFromOptions(),
             deleteTransactionFromOptions: () => deleteTransactionFromOptions(),
             openRefundFromOptions: () => openRefundFromOptions(),
+            openReimbursementFromOptions: () => openReimbursementFromOptions(),
             openAccountPicker: (el) => openAccountPicker(el),
             selectDescSuggestion: (el) => selectDescSuggestion(el),
             navigateToTagsPage: () => navigateToTagsPage(),

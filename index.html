@@ -2845,6 +2845,19 @@
             </div>
         </div>
 
+        <!-- v281: Tag Reminders — one row per tag with "Show on Dashboard" enabled (see the Tag
+             modal), each showing how many transactions currently carry that tag + outstanding
+             expense total. Hidden entirely when no such tag has any matching transaction, same
+             convention as the FD-maturity/Credit-Card-due reminders elsewhere in this app. Rows are
+             deliberately non-clickable (same restraint as buildTagReportCategoryListHTML() in the
+             Spending by Tag report) — this is a "check the list yourself" nudge, not a drill-in. -->
+        <div id="dashboardTagWidget" style="display:none;">
+        <div class="section-header">
+            <span class="section-title" style="cursor:pointer;" data-click="sidebarGo" data-target="tag-report">🔖 Tag Reminders</span>
+        </div>
+        <div class="ledger-container" id="tagReminderList"></div>
+        </div>
+
         <div id="dashboardAccountsWidget">
         <div class="section-header">
             <span class="section-title" style="cursor:pointer;" data-click="navigateToAccountsPage">Accounts</span>
@@ -4444,6 +4457,19 @@
                     <label>Tag Name</label>
                     <input type="text" id="tagName" placeholder="e.g. Japan Holiday Aug 2026" required>
                 </div>
+                <!-- v281: "Show on Dashboard" — when on, a Dashboard reminder widget shows how many
+                     transactions currently carry this tag (see renderTagReminderWidget()). Purely a
+                     filter on tags.includes(name), same as the existing Spending by Tag report — no
+                     new state on the transaction itself, so removing the tag from a transaction (e.g.
+                     once a reimbursement/refund has been settled and claimed) is what makes it drop
+                     out of this reminder, same as it already drops out of the Tag report. -->
+                <div class="toggle-switch-row">
+                    <span class="toggle-switch-label">📌 Show as reminder on Dashboard</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="tagShowOnDashboard">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
                 <button type="button" data-click="handleSaveTagMobile" class="submit-btn" id="tagSubmitBtn">Save Tag</button>
             </div>
         </div>
@@ -4862,7 +4888,12 @@
             <div style="display:flex; flex-direction:column; gap:8px;">
                 <button type="button" class="option-menu-btn" data-click="duplicateTransactionFromOptions">📂 &nbsp;Duplicate transaction</button>
                 <button type="button" class="option-menu-btn" data-click="editTransactionFromOptions">✏️ &nbsp;Edit transaction</button>
+                <!-- v281: Refund and Reimbursement both open the exact same form (openRefundOrReimbursementFromOptions())
+                     and save as an identical record (isRefund/refundOf only) — the only difference
+                     is the modal title/prefilled Description text, purely for the user's own
+                     bookkeeping clarity. See the comment on openRefundOrReimbursementFromOptions(). -->
                 <button type="button" id="txOptionsRefundBtn" class="option-menu-btn" data-click="openRefundFromOptions">↩️ &nbsp;Refund</button>
+                <button type="button" id="txOptionsReimbursementBtn" class="option-menu-btn" data-click="openReimbursementFromOptions">💰 &nbsp;Reimbursement</button>
                 <button type="button" class="option-menu-btn" style="background:#fee2e2; color:var(--expense-color);" data-click="deleteTransactionFromOptions">🗑 &nbsp;Delete transaction</button>
             </div>
         </div>

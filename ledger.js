@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v284";
+        const APP_VERSION = "v283";
         const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1900,17 +1900,17 @@
         // than copy-pasted) — NOT yet applied to the per-account Activity page or the Tag Report's
         // own transaction list (the latter is always pre-filtered to one tag, so every row already
         // carries it — redundant there).
-        // v283: each pill is independently tappable (data-click="openTxTagBadge") and jumps
-        // straight into the Spending by Tag report pre-filtered to that tag — same destination as
-        // the Dashboard's Tag Reminders row (see navigateToTagReportForTag()/openTagReminderRow()
-        // below), just reachable from any transaction row instead of only the dashboard widget.
-        // The pill sits inside the row's own data-click="openTxQuickView" container, but the
-        // delegated click listener resolves e.target.closest("[data-click]") to the *nearest*
-        // match — the pill itself — so tapping it fires only this action, never the row's, with
-        // no stopPropagation() needed.
-        function buildTagBadgesHTML(tags) {
+        // v284: each pill is independently tappable (data-click="openReimbursementFromTagBadge")
+        // and jumps straight into the Reimbursement form pre-filled from its own transaction — the
+        // same destination as Options → Reimbursement (see openReimbursementFromOptions() /
+        // fillReimbursementForm() below) — reachable from any transaction row instead of only via
+        // Quick View → Options. The pill sits inside the row's own data-click="openTxQuickView"
+        // container, but the delegated click listener resolves e.target.closest("[data-click]") to
+        // the *nearest* match — the pill itself — so tapping it fires only this action, never the
+        // row's, with no stopPropagation() needed.
+        function buildTagBadgesHTML(tags, txId) {
             if (!Array.isArray(tags) || tags.length === 0) return "";
-            return tags.map(name => `<span data-click="openTxTagBadge" data-name="${escapeHtml(name)}" style="font-size:0.62rem; font-weight:700; color:#6d28d9; background:#ede9fe; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap; display:inline-block; cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent;">🔖 ${escapeHtml(name)}</span>`).join("");
+            return tags.map(name => `<span data-click="openReimbursementFromTagBadge" data-id="${escapeHtml(txId)}" style="font-size:0.62rem; font-weight:700; color:#6d28d9; background:#ede9fe; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap; display:inline-block; cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent;">🔖 ${escapeHtml(name)}</span>`).join("");
         }
 
         // Draws the compact "Recent Transactions" list on the dashboard — a small slice of
@@ -1970,7 +1970,7 @@
                 return `
                     <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
-                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags)}</span>
+                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags, t.id)}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(displayCat)}]</span>
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}</span>
                             ${notesLine}
@@ -2048,11 +2048,6 @@
         }
 
         function openTagReminderRow(el) {
-            navigateToTagReportForTag(el.dataset.name);
-        }
-
-        // v283: handler for the per-transaction "🔖 name" pill built in buildTagBadgesHTML() above.
-        function openTxTagBadge(el) {
             navigateToTagReportForTag(el.dataset.name);
         }
 
@@ -11917,6 +11912,51 @@
         // controls the modal title / prefilled Description text; `reason` (lowercase) is what
         // actually gets saved via pendingRefundReason. openRefundFromOptions() and
         // openReimbursementFromOptions() below are both thin wrappers over this.
+        // v284: the actual "fill the Income form as a Refund/Reimbursement" logic, split out of
+        // openRefundOrReimbursementFromOptions() below so the tag-pill entry point (which has no
+        // Quick View/Options modal to close first — see openReimbursementFromTagBadge()) can reuse
+        // it directly instead of routing through closeModalAndThen("txQuickViewModal", ...), which
+        // requires that modal to actually be open+active or its popstate-driven callback never runs.
+        async function fillReimbursementForm(tx, label, reason) {
+            await openTransactionForm("income", null);
+            document.getElementById("txDesc").value = `${label}: ${tx.desc}`;
+            document.getElementById("txAmount").value = tx.amount;
+            document.getElementById("txCurrency").value = tx.currency;
+            document.getElementById("srcAccount").value = tx.src || "";
+            syncAccountPickerButtonText("srcAccount"); // v99 — see comment in openTransactionForm().
+
+            // v263: category now pre-fills to the original expense's category but is left
+            // freely selectable (previously forced + disabled — see the removed comment
+            // block just above this function, which the "namesToInclude" call below still
+            // honors by guaranteeing catName itself is always present as an option even if
+            // it isn't among the current Expense categories, e.g. after a rename/delete). A
+            // refund still nets against whatever category ends up chosen here (the
+            // isRefund/t.cat matching described above), so picking a different Expense
+            // category on purpose is safe and simply offsets that category instead.
+            const catSelect = document.getElementById("txCategory");
+            const catName = tx.cat || "Other Expenses";
+            const currentExpenseCats = dynamicCategories.filter(c => c.type === "expense").map(c => c.name);
+            catSelect.innerHTML = buildCategoryOptionsHTML("expense", [...currentExpenseCats, catName]);
+            catSelect.value = catName;
+            catSelect.disabled = false;
+            const catBtn = document.getElementById("txCategoryBtn");
+            catBtn.disabled = false;
+            catBtn.style.opacity = "";
+            syncAccountPickerButtonText("txCategory");
+
+            document.getElementById("txDate").value = todayLocalStr();
+            document.getElementById("txSplitWrap").style.display = "none";
+            syncTransactionCurrency();
+
+            document.getElementById("txModalTitle").textContent = `${label}: ${tx.desc}`;
+            document.getElementById("txSubmitBtn").textContent = `Save ${label}`;
+
+            // Set last — openTransactionForm() itself resets pendingRefundOf/pendingRefundReason
+            // to null on every call, so this has to happen after it returns, not before.
+            pendingRefundOf = tx.id;
+            pendingRefundReason = reason;
+        }
+
         function openRefundOrReimbursementFromOptions(label, reason) {
             const id = activeQuickViewTxId;
             closeTxOptionsMenu(); // v95 fix — see editTransactionFromOptions() above.
@@ -11925,44 +11965,7 @@
                 const txs = await readAllDB(STORES.TRANSACTIONS);
                 const tx = txs.find(t => t.id === id);
                 if (!tx || tx.type !== "expense") return;
-
-                await openTransactionForm("income", null);
-                document.getElementById("txDesc").value = `${label}: ${tx.desc}`;
-                document.getElementById("txAmount").value = tx.amount;
-                document.getElementById("txCurrency").value = tx.currency;
-                document.getElementById("srcAccount").value = tx.src || "";
-                syncAccountPickerButtonText("srcAccount"); // v99 — see comment in openTransactionForm().
-
-                // v263: category now pre-fills to the original expense's category but is left
-                // freely selectable (previously forced + disabled — see the removed comment
-                // block just above this function, which the "namesToInclude" call below still
-                // honors by guaranteeing catName itself is always present as an option even if
-                // it isn't among the current Expense categories, e.g. after a rename/delete). A
-                // refund still nets against whatever category ends up chosen here (the
-                // isRefund/t.cat matching described above), so picking a different Expense
-                // category on purpose is safe and simply offsets that category instead.
-                const catSelect = document.getElementById("txCategory");
-                const catName = tx.cat || "Other Expenses";
-                const currentExpenseCats = dynamicCategories.filter(c => c.type === "expense").map(c => c.name);
-                catSelect.innerHTML = buildCategoryOptionsHTML("expense", [...currentExpenseCats, catName]);
-                catSelect.value = catName;
-                catSelect.disabled = false;
-                const catBtn = document.getElementById("txCategoryBtn");
-                catBtn.disabled = false;
-                catBtn.style.opacity = "";
-                syncAccountPickerButtonText("txCategory");
-
-                document.getElementById("txDate").value = todayLocalStr();
-                document.getElementById("txSplitWrap").style.display = "none";
-                syncTransactionCurrency();
-
-                document.getElementById("txModalTitle").textContent = `${label}: ${tx.desc}`;
-                document.getElementById("txSubmitBtn").textContent = `Save ${label}`;
-
-                // Set last — openTransactionForm() itself resets pendingRefundOf/pendingRefundReason
-                // to null on every call, so this has to happen after it returns, not before.
-                pendingRefundOf = id;
-                pendingRefundReason = reason;
+                await fillReimbursementForm(tx, label, reason);
             });
         }
 
@@ -11972,6 +11975,22 @@
 
         function openReimbursementFromOptions() {
             openRefundOrReimbursementFromOptions("Reimbursement", "reimbursement");
+        }
+
+        // v284: tapping a transaction's "🔖 name" pill (buildTagBadgesHTML() above) now jumps
+        // straight into the Reimbursement form pre-filled from that transaction — the same
+        // destination as Options → Reimbursement (openReimbursementFromOptions() above) — instead
+        // of the Spending by Tag report. No Quick View/Options modal is open behind the pill (it
+        // sits directly on the Dashboard/Ledger row), so this reads the transaction straight off
+        // the pill's own data-id and calls fillReimbursementForm() directly rather than through
+        // closeModalAndThen(), which only fires its callback once "txQuickViewModal" actually pops.
+        async function openReimbursementFromTagBadge(el) {
+            const id = el.dataset.id;
+            if (!id) return;
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const tx = txs.find(t => String(t.id) === String(id));
+            if (!tx || tx.type !== "expense") return;
+            await fillReimbursementForm(tx, "Reimbursement", "reimbursement");
         }
 
         // (v147: the old filterMonth/filterYear-driven year filter was removed along with the
@@ -12958,7 +12977,7 @@
                         ${txIconCircleHTML}
                         <div class="tx-row-body">
                             <div class="item-left">
-                                <span class="item-name">${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}${refundBadge}${buildTagBadgesHTML(t.tags)}</span>
+                                <span class="item-name">${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}${refundBadge}${buildTagBadgesHTML(t.tags, t.id)}</span>
                                 <span class="item-meta">${t.date} [${escapeHtml(splitInfo ? splitInfo.catLabel : (t.cat || 'Transfer'))}]${referenceText}${maturityText}${receiptBadge}</span>
                                 <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">${accountText}</span>
                                 ${notesLine}
@@ -15017,7 +15036,7 @@
             selectDescSuggestion: (el) => selectDescSuggestion(el),
             navigateToTagsPage: () => navigateToTagsPage(),
             openTagReminderRow: (el) => openTagReminderRow(el),
-            openTxTagBadge: (el) => openTxTagBadge(el),
+            openReimbursementFromTagBadge: (el) => openReimbursementFromTagBadge(el),
             openTagFormModal: () => openTagFormModal(),
             editTag: (el) => editTag(el.dataset.id),
             removeTag: (el) => removeTag(el.dataset.id),

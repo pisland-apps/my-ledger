@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v282";
+        const APP_VERSION = "v283";
         const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1893,6 +1893,18 @@
             }
         }
 
+        // v283: small "🔖 name" pill per tag a transaction carries — shown next to its
+        // description, same visual convention as refundBadge/fdStatusBadge (small colored pill,
+        // margin-left:6px). Shared by renderRecentTransactionsWidget() (dashboard) and the main
+        // Ledger list row template (bug class #8: written once, applied at both call sites rather
+        // than copy-pasted) — NOT yet applied to the per-account Activity page or the Tag Report's
+        // own transaction list (the latter is always pre-filtered to one tag, so every row already
+        // carries it — redundant there).
+        function buildTagBadgesHTML(tags) {
+            if (!Array.isArray(tags) || tags.length === 0) return "";
+            return tags.map(name => `<span style="font-size:0.62rem; font-weight:700; color:#6d28d9; background:#ede9fe; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap; display:inline-block;">🔖 ${escapeHtml(name)}</span>`).join("");
+        }
+
         // Draws the compact "Recent Transactions" list on the dashboard — a small slice of
         // Income/Expense entries (never Transfers) filtered/limited per the settings panel above it.
         function renderRecentTransactionsWidget(accounts, txs) {
@@ -1950,7 +1962,7 @@
                 return `
                     <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
-                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}</span>
+                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags)}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(displayCat)}]</span>
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}</span>
                             ${notesLine}
@@ -1998,13 +2010,34 @@
             if (rows.length === 0) return;
 
             list.innerHTML = rows.map(r => `
-                <div class="config-item">
+                <div class="config-item" data-click="openTagReminderRow" data-name="${escapeHtml(r.name)}" style="cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent;">
                     <span class="category-display-badge">🔖 <strong>${escapeHtml(r.name)}</strong></span>
                     <span style="font-size:0.8rem; color:var(--text-muted); font-weight:600;">
                         ${r.count} item${r.count === 1 ? "" : "s"} · ${formatCurrency(r.expenseTotal, baseCurrency)}
                     </span>
                 </div>
             `).join("");
+        }
+
+        // v283: tapping a specific Tag Reminders row jumps straight into the Spending by Tag
+        // report pre-filtered to that tag, instead of landing on an empty report and making the
+        // user pick it again from the dropdown. Deliberately does NOT call
+        // navigateToTagReportPage() — that function already fires its own un-awaited
+        // renderTagReportPage() call, and firing a second overlapping render while also setting
+        // the select's value would risk a race between the two (whichever finishes last wins the
+        // redraw) rather than reliably landing on this tag. This sets the select once, then
+        // renders exactly once itself.
+        function openTagReminderRow(el) {
+            const name = el.dataset.name;
+            if (!name) return;
+            workspaceScrollY = window.scrollY;
+            showPage("page-tag-report");
+            window.scrollTo(0, 0);
+            pushVirtualState("tag-report");
+            populateTagReportTagSelect();
+            const sel = document.getElementById("tagReportTagSelect");
+            if (sel) sel.value = name;
+            renderTagReportPage();
         }
 
         // v224: single toggle for the relocated Dashboard Widgets settings panel (Setting hub) —
@@ -12909,7 +12942,7 @@
                         ${txIconCircleHTML}
                         <div class="tx-row-body">
                             <div class="item-left">
-                                <span class="item-name">${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}${refundBadge}</span>
+                                <span class="item-name">${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}${refundBadge}${buildTagBadgesHTML(t.tags)}</span>
                                 <span class="item-meta">${t.date} [${escapeHtml(splitInfo ? splitInfo.catLabel : (t.cat || 'Transfer'))}]${referenceText}${maturityText}${receiptBadge}</span>
                                 <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">${accountText}</span>
                                 ${notesLine}
@@ -14967,6 +15000,7 @@
             openAccountPicker: (el) => openAccountPicker(el),
             selectDescSuggestion: (el) => selectDescSuggestion(el),
             navigateToTagsPage: () => navigateToTagsPage(),
+            openTagReminderRow: (el) => openTagReminderRow(el),
             openTagFormModal: () => openTagFormModal(),
             editTag: (el) => editTag(el.dataset.id),
             removeTag: (el) => removeTag(el.dataset.id),

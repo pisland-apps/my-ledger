@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v290";
+        const APP_VERSION = "v283";
         const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -11625,12 +11625,31 @@
                 </div>
             ` : "";
 
+            // v291: each tag the transaction carries, shown as a small removable pill — lets a
+            // tag whose whole purpose is a one-off check (e.g. "did this bill get paid from my
+            // salary/allowance rather than a company claim") be dropped right from here once it's
+            // served its purpose, without detouring through the Reimbursement flow (that flow's
+            // own "remove this tag" toggle — fillReimbursementForm()/handleTransactionSubmitMobile()
+            // — only ever offers the ONE tag that opened it, and only mid-save).
+            const tagsLineHTML = (Array.isArray(tx.tags) && tx.tags.length) ? `
+                <div style="margin-top:4px; display:flex; align-items:center; flex-wrap:wrap; gap:5px;">
+                    <span>Tags:</span>
+                    ${tx.tags.map(name => `
+                        <span style="font-size:0.72rem; font-weight:700; color:#6d28d9; background:#ede9fe; padding:2px 5px 2px 7px; border-radius:4px; white-space:nowrap; display:inline-flex; align-items:center; gap:4px;">
+                            🔖 ${escapeHtml(name)}
+                            <span data-click="removeTagFromQuickViewTx" data-tag="${escapeHtml(name)}" title="Remove this tag" style="cursor:pointer; font-weight:900; color:#4c1d95; padding:0 2px;">✕</span>
+                        </span>
+                    `).join("")}
+                </div>
+            ` : "";
+
             document.getElementById("txQuickViewDetails").innerHTML = `
                 ${splitBreakdownHTML}
                 <div>Account: ${accountName(tx.src)}</div>
                 ${destLine}
                 ${(!splitInfo && tx.cat) ? `<div>Category: ${escapeHtml(tx.cat)}</div>` : ""}
                 <div>Notes: ${tx.notes ? escapeHtml(tx.notes) : "-"}</div>
+                ${tagsLineHTML}
                 ${refundLine}
                 ${attachmentsHTML}
             `;
@@ -11647,6 +11666,33 @@
             document.getElementById("txOptionsReimbursementBtn").style.display = showRefundButtons;
 
             if (!opts.skipModalOpen) openModal("txQuickViewModal");
+        }
+
+        // v291: removes a single tag pill (see the tagsLineHTML block above) from the transaction
+        // currently open in Quick View. Rebuilds Quick View's fields in place afterward — same
+        // "already open underneath, don't call openModal again" convention
+        // handleDeleteAttachmentFromViewer() uses — and refreshes every other page/widget that
+        // reads tags (Dashboard Tag Reminders, Spending by Tag, Ledger list pills) via
+        // refreshAfterTransactionChange().
+        async function removeTagFromQuickViewTx(el) {
+            const tagName = el.dataset.tag;
+            const txId = activeQuickViewTxId;
+            if (!txId || !tagName) return;
+            const ok = await customConfirm(`Remove the "${tagName}" tag from this transaction?`);
+            if (!ok) return;
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const tx = txs.find(t => t.id === txId);
+            if (!tx || !Array.isArray(tx.tags) || !tx.tags.includes(tagName)) return;
+            tx.tags = tx.tags.filter(t => t !== tagName);
+            try {
+                await writeDB(STORES.TRANSACTIONS, tx);
+            } catch (err) {
+                alert("Could not remove tag: " + (err && err.message ? err.message : err));
+                return;
+            }
+            showToast(`🔖 "${tagName}" tag removed`);
+            await refreshAfterTransactionChange();
+            await openTxQuickView({ dataset: { id: String(txId) } }, { skipModalOpen: true });
         }
 
         function updateTxQuickViewCheckedBtn(isChecked) {
@@ -15160,6 +15206,7 @@
             calcPadPress: (el) => calcPadPress(el),
             calcPadApply: () => calcPadApply(),
             openTxQuickView: (el) => openTxQuickView(el),
+            removeTagFromQuickViewTx: (el) => removeTagFromQuickViewTx(el),
             toggleTxCheckedFromQuickView: () => toggleTxCheckedFromQuickView(),
             openTxOptionsMenu: () => openTxOptionsMenu(),
             closeTxOptionsMenu: () => closeTxOptionsMenu(),

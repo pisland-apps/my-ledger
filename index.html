@@ -5273,8 +5273,12 @@
         <div class="modal-sheet" style="max-width:95vw; max-height:88vh; background:white; border-radius:14px; padding:0; display:flex; flex-direction:column; overflow:hidden;">
             <p id="attachmentViewerTitle" style="font-size:0.85rem; font-weight:700; margin:0; padding:16px 16px 10px; word-break:break-all; flex-shrink:0;"></p>
             <div id="attachmentViewerBody" style="flex:1 1 auto; min-height:0; overflow-y:auto; max-width:80vw; padding:0 16px;"></div>
-            <div style="display:flex; gap:8px; padding:14px 16px; flex-shrink:0; border-top:1px solid var(--border-color);">
+            <div style="display:flex; gap:8px; padding:14px 16px; flex-shrink:0; border-top:1px solid var(--border-color); flex-wrap:wrap;">
                 <a id="btnDownloadAttachment" href="" download="" class="submit-btn" style="margin-top:0; width:auto; padding:10px 20px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; background:var(--chip-bg); color:var(--text-main);">⬇ Download</a>
+                <!-- v279: Delete — always re-confirmed via the shared customConfirm() modal
+                     inside handleDeleteAttachmentFromViewer() before anything is actually
+                     removed; see that function's comment for why (no undo once it's gone). -->
+                <button type="button" id="btnDeleteAttachment" data-click="handleDeleteAttachmentFromViewer" class="submit-btn" style="margin-top:0; width:auto; padding:10px 20px; background:#fee2e2; color:var(--expense-color);">🗑️ Delete</button>
                 <button type="button" data-click="closeModal" data-modal="attachmentViewerModal" class="submit-btn" style="margin-top:0; width:auto; padding:10px 24px;">Close</button>
             </div>
         </div>

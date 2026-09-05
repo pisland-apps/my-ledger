@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v278";
+        const APP_VERSION = "v279";
         const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -9806,7 +9806,12 @@
                 atts = [{ name: "Receipt.jpg", mime: "image/jpeg", data: el.dataset.legacyImage, legacy: true }];
             }
             if (atts.length === 0) return;
-            if (atts.length === 1) { openAttachment(atts[0]); return; }
+            // v279: which transaction this badge belongs to — needed so Delete (inside the
+            // viewer this can open) knows which record to update. See the data-id addition on
+            // the receiptBadge span in renderApp()'s ledger-row builder.
+            const txId = el.dataset.id ? Number(el.dataset.id) : null;
+            txAttachmentsPickerTxId = txId;
+            if (atts.length === 1) { openAttachment(atts[0], txId); return; }
 
             const list = document.getElementById("txAttachmentsPickerList");
             list.innerHTML = atts.map((att, idx) => `
@@ -9821,6 +9826,10 @@
             openModal("txAttachmentsPickerModal");
         }
         let txAttachmentsPickerCurrent = [];
+        // v279: which transaction owns whatever's currently sitting in txAttachmentsPickerCurrent
+        // — set alongside it at every call site (openTxAttachmentsBadge, openTxQuickView) so
+        // openAttachment() always knows which transaction record to update if Delete is used.
+        let txAttachmentsPickerTxId = null;
 
         function openAttachmentFromPicker(el) {
             const idx = parseInt(el.dataset.idx, 10);
@@ -9844,7 +9853,7 @@
             // throughout the app for "close A, then open B" (see closeModalAndThen and its other
             // call sites, e.g. editTransactionFromOptions). Contrast with openAttachmentFromQuickView
             // below, which deliberately does NOT close its parent modal first.
-            closeModalAndThen("txAttachmentsPickerModal", () => openAttachment(att));
+            closeModalAndThen("txAttachmentsPickerModal", () => openAttachment(att, txAttachmentsPickerTxId));
         }
 
         // Used by the inline attachment list rendered directly inside txQuickViewModal (see
@@ -9854,7 +9863,7 @@
         function openAttachmentFromQuickView(el) {
             const idx = parseInt(el.dataset.idx, 10);
             const att = txAttachmentsPickerCurrent[idx];
-            if (att) openAttachment(att);
+            if (att) openAttachment(att, activeQuickViewTxId);
         }
 
         // Deletes every IndexedDB attachment blob referenced by a transaction — used wherever a
@@ -9871,14 +9880,27 @@
             }
         }
 
+        // v279: which attachment/transaction the viewer is currently showing — set by
+        // openAttachment() below, read by handleDeleteAttachmentFromViewer(). null/null whenever
+        // nothing's open, or txId came in null (shouldn't normally happen now every call site
+        // threads one through, but handleDeleteAttachmentFromViewer guards on it anyway).
+        let activeAttachmentViewerTxId = null;
+        let activeAttachmentViewerAtt = null;
+
         // Resolves an attachment's full bytes and renders it into attachmentViewerModal — images
         // directly via <img>, PDFs page-by-page onto <canvas> via pdf.js (never handed to an
         // <iframe>/native plugin, so rendering is identical across every platform and no
         // PDF-embedded JavaScript is ever executed — pdf.js only reads page content). Accepts
         // either a lightweight ref ({id, ...}, resolved from IndexedDB) or one already carrying
         // its data inline (a legacy single-image entry, or a not-yet-saved temp attachment).
-        async function openAttachment(att) {
+        // v279: txId — the owning transaction's id, threaded through by every call site — lets
+        // the Delete button below know which record to update; not needed for viewing/download.
+        async function openAttachment(att, txId) {
             if (!att) return;
+            activeAttachmentViewerTxId = txId != null ? txId : null;
+            activeAttachmentViewerAtt = att;
+            const delBtn = document.getElementById("btnDeleteAttachment");
+            if (delBtn) delBtn.style.display = (activeAttachmentViewerTxId != null) ? "" : "none";
             const body = document.getElementById("attachmentViewerBody");
             body.innerHTML = "<p style=\"font-size:0.85rem; color:var(--text-muted);\">Loading…</p>";
             document.getElementById("attachmentViewerTitle").textContent = att.name || "Attachment";
@@ -9948,7 +9970,68 @@
             }
         }
 
-        // Determines whether this transaction is depositing funds INTO a Fixed Deposit account
+        // v279: deletes ONE specific attachment (photo/PDF) from a transaction — the "Delete"
+        // button added to attachmentViewerModal alongside Download/Close, for the Attachment
+        // Review workflow (review oldest attachments, open one, delete it once no longer needed).
+        // Always re-confirms via the shared customConfirm() modal — same convention as every
+        // other destructive action in the app (deleteTransactionById, removeAccount, etc.) —
+        // since a deleted attachment has no undo. Only the attachment is removed; the
+        // transaction record itself is untouched (still shows its amount/category/notes/etc as
+        // before) — deliberately no "cleaned up" placeholder text on the row, since the receiptBadge
+        // simply stops appearing once attachments/image are both empty, same as a transaction
+        // that never had one.
+        async function handleDeleteAttachmentFromViewer() {
+            const txId = activeAttachmentViewerTxId;
+            const att = activeAttachmentViewerAtt;
+            if (txId == null || !att) return;
+
+            const ok = await customConfirm(`Permanently delete "${att.name || "this attachment"}"? This cannot be undone — make sure you've exported a backup first if you want to keep a copy.`);
+            if (!ok) return;
+
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const tx = txs.find(t => t.id === txId);
+            if (tx) {
+                if (Array.isArray(tx.attachments) && tx.attachments.length > 0 && att.id != null) {
+                    const beforeCount = tx.attachments.length;
+                    tx.attachments = tx.attachments.filter(a => a.id !== att.id);
+                    if (tx.attachments.length !== beforeCount) {
+                        try { await deleteDB(STORES.ATTACHMENTS, att.id); } catch (err) { /* non-fatal — record already updated */ }
+                    }
+                } else if (att.legacy || (tx.image && !Array.isArray(tx.attachments))) {
+                    // Legacy pre-v121 single inline image field — nothing in STORES.ATTACHMENTS
+                    // to delete, just clear the field itself.
+                    tx.image = null;
+                }
+                await writeDB(STORES.TRANSACTIONS, tx);
+            }
+
+            activeAttachmentViewerTxId = null;
+            activeAttachmentViewerAtt = null;
+
+            closeModalAndThen("attachmentViewerModal", async () => {
+                showToast("🗑️ Attachment deleted");
+                const qvModal = document.getElementById("txQuickViewModal");
+                if (qvModal.classList.contains("active") && activeQuickViewTxId === txId) {
+                    // Rebuild Quick View's fields in place (attachments list included) — it's
+                    // already open underneath, so this must NOT call openModal again.
+                    await openTxQuickView({ dataset: { id: String(txId) } }, { skipModalOpen: true });
+                } else {
+                    // Reached via the multi-attachment picker instead (openTxAttachmentsBadge on
+                    // a ledger row with 2+ attachments) — that list has no partial-refresh wiring,
+                    // so it's simplest (and safest, avoiding a stale tappable-but-now-missing row)
+                    // to just close it too, returning straight to whatever's underneath.
+                    const pickerModal = document.getElementById("txAttachmentsPickerModal");
+                    if (pickerModal.classList.contains("active")) closeModal("txAttachmentsPickerModal");
+                }
+                await refreshAfterTransactionChange();
+                if (!document.getElementById("page-database").classList.contains("hidden")) {
+                    calculateStorageMetrics();
+                }
+                if (!document.getElementById("page-attachment-review").classList.contains("hidden")) {
+                    renderAttachmentReviewPage();
+                }
+            });
+        }
         // (income → src account, or transfer → dest account), and shows/hides the FD terms block
         // accordingly. Takes an already-loaded accounts array to avoid redundant DB reads.
         function updateTxFdFieldsVisibilitySync(accounts) {
@@ -11206,7 +11289,12 @@
         // (matching a credit-card-style "tally against statement" workflow), and a ⋮ menu for
         // Duplicate / Edit / Refund / Delete. "Edit transaction" from that menu still opens the
         // exact same txModal as before; nothing about editing itself changed.
-        async function openTxQuickView(el) {
+        // v279 param: opts.skipModalOpen — when true, rebuilds every field in place WITHOUT
+        // calling openModal("txQuickViewModal") again, for the one case that needs a refresh
+        // while Quick View is already open+active underneath the attachment viewer (deleting an
+        // attachment via handleDeleteAttachmentFromViewer() below) — calling openModal a second
+        // time would push a duplicate modalStack/history entry for a modal that's already open.
+        async function openTxQuickView(el, opts = {}) {
             const id = Number(el.dataset.id);
             if (!id) return;
             const txs = await readAllDB(STORES.TRANSACTIONS);
@@ -11308,7 +11396,7 @@
             // a group shares the same type/isRefund as the representative checked here.
             document.getElementById("txOptionsRefundBtn").style.display = (tx.type === "expense" && !tx.isRefund) ? "flex" : "none";
 
-            openModal("txQuickViewModal");
+            if (!opts.skipModalOpen) openModal("txQuickViewModal");
         }
 
         function updateTxQuickViewCheckedBtn(isChecked) {
@@ -12628,7 +12716,7 @@
                     : '';
                 const attCount = (Array.isArray(t.attachments) ? t.attachments.length : 0) + (t.image ? 1 : 0);
                 const receiptBadge = attCount > 0
-                    ? `<span data-click="openTxAttachmentsBadge" data-attachments="${escapeHtml(JSON.stringify(t.attachments || []))}" ${t.image ? `data-legacy-image="${escapeHtml(t.image)}"` : ''} style="cursor:pointer; margin-left:4px;" title="View attachment${attCount > 1 ? 's' : ''}">📎${attCount > 1 ? `<span style="font-size:0.6rem; vertical-align:top;">×${attCount}</span>` : ''}</span>`
+                    ? `<span data-click="openTxAttachmentsBadge" data-id="${escapeHtml(t.id)}" data-attachments="${escapeHtml(JSON.stringify(t.attachments || []))}" ${t.image ? `data-legacy-image="${escapeHtml(t.image)}"` : ''} style="cursor:pointer; margin-left:4px;" title="View attachment${attCount > 1 ? 's' : ''}">📎${attCount > 1 ? `<span style="font-size:0.6rem; vertical-align:top;">×${attCount}</span>` : ''}</span>`
                     : '';
                 const referenceText = t.fdReferenceNo ? ` · Ref: ${escapeHtml(t.fdReferenceNo)}` : '';
                 // Maturity date (v55) — shown inline on every FD placement row, not just inside
@@ -14686,6 +14774,7 @@
             openTxAttachmentsBadge: (el, e) => openTxAttachmentsBadge(el, e),
             openAttachmentFromPicker: (el) => openAttachmentFromPicker(el),
             openAttachmentFromQuickView: (el) => openAttachmentFromQuickView(el),
+            handleDeleteAttachmentFromViewer: () => handleDeleteAttachmentFromViewer(),
             handleTransactionSubmitMobile: () => handleTransactionSubmitMobile(),
             confirmResolveFd: () => confirmResolveFd(),
             loadMoreLedgerRows: () => { ledgerRenderLimit += LEDGER_PAGE_SIZE; renderApp(); },

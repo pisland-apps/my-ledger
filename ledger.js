@@ -1900,9 +1900,17 @@
         // than copy-pasted) — NOT yet applied to the per-account Activity page or the Tag Report's
         // own transaction list (the latter is always pre-filtered to one tag, so every row already
         // carries it — redundant there).
+        // v283: each pill is independently tappable (data-click="openTxTagBadge") and jumps
+        // straight into the Spending by Tag report pre-filtered to that tag — same destination as
+        // the Dashboard's Tag Reminders row (see navigateToTagReportForTag()/openTagReminderRow()
+        // below), just reachable from any transaction row instead of only the dashboard widget.
+        // The pill sits inside the row's own data-click="openTxQuickView" container, but the
+        // delegated click listener resolves e.target.closest("[data-click]") to the *nearest*
+        // match — the pill itself — so tapping it fires only this action, never the row's, with
+        // no stopPropagation() needed.
         function buildTagBadgesHTML(tags) {
             if (!Array.isArray(tags) || tags.length === 0) return "";
-            return tags.map(name => `<span style="font-size:0.62rem; font-weight:700; color:#6d28d9; background:#ede9fe; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap; display:inline-block;">🔖 ${escapeHtml(name)}</span>`).join("");
+            return tags.map(name => `<span data-click="openTxTagBadge" data-name="${escapeHtml(name)}" style="font-size:0.62rem; font-weight:700; color:#6d28d9; background:#ede9fe; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap; display:inline-block; cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent;">🔖 ${escapeHtml(name)}</span>`).join("");
         }
 
         // Draws the compact "Recent Transactions" list on the dashboard — a small slice of
@@ -2027,8 +2035,7 @@
         // the select's value would risk a race between the two (whichever finishes last wins the
         // redraw) rather than reliably landing on this tag. This sets the select once, then
         // renders exactly once itself.
-        function openTagReminderRow(el) {
-            const name = el.dataset.name;
+        function navigateToTagReportForTag(name) {
             if (!name) return;
             workspaceScrollY = window.scrollY;
             showPage("page-tag-report");
@@ -2038,6 +2045,15 @@
             const sel = document.getElementById("tagReportTagSelect");
             if (sel) sel.value = name;
             renderTagReportPage();
+        }
+
+        function openTagReminderRow(el) {
+            navigateToTagReportForTag(el.dataset.name);
+        }
+
+        // v283: handler for the per-transaction "🔖 name" pill built in buildTagBadgesHTML() above.
+        function openTxTagBadge(el) {
+            navigateToTagReportForTag(el.dataset.name);
         }
 
         // v224: single toggle for the relocated Dashboard Widgets settings panel (Setting hub) —
@@ -15001,6 +15017,7 @@
             selectDescSuggestion: (el) => selectDescSuggestion(el),
             navigateToTagsPage: () => navigateToTagsPage(),
             openTagReminderRow: (el) => openTagReminderRow(el),
+            openTxTagBadge: (el) => openTxTagBadge(el),
             openTagFormModal: () => openTagFormModal(),
             editTag: (el) => editTag(el.dataset.id),
             removeTag: (el) => removeTag(el.dataset.id),

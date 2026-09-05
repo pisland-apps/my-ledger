@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v285";
+        const APP_VERSION = "v286";
         const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1295,6 +1295,14 @@
         // isRefund. Set/cleared in lockstep with pendingRefundOf by
         // openRefundOrReimbursementFromOptions().
         let pendingRefundReason = null;
+        // v285: name of the tag to drop from the *original* expense (pendingRefundOf) once this
+        // reimbursement saves, or null if no removal was offered/wanted — set only by
+        // openReimbursementFromTagBadge()/fillReimbursementForm() when this Income form was opened
+        // by tapping that expense's own tag pill (never by the plain Options → Reimbursement flow,
+        // which has no single tag in view). Read (and the checkbox's live checked state re-checked)
+        // by handleTransactionSubmitMobile() at save time; cleared on every openTransactionForm()
+        // call and after saving, in lockstep with pendingRefundOf above.
+        let pendingRemoveTagName = null;
         // v99: which underlying <select> (srcAccount/destAccount) the Account picker modal is
         // currently populated for — set by openAccountPicker(), read by selectAccountPickerOption()
         // when the user taps a row.
@@ -1910,7 +1918,7 @@
         // row's, with no stopPropagation() needed.
         function buildTagBadgesHTML(tags, txId) {
             if (!Array.isArray(tags) || tags.length === 0) return "";
-            return tags.map(name => `<span data-click="openReimbursementFromTagBadge" data-id="${escapeHtml(txId)}" style="font-size:0.62rem; font-weight:700; color:#6d28d9; background:#ede9fe; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap; display:inline-block; cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent;">🔖 ${escapeHtml(name)}</span>`).join("");
+            return tags.map(name => `<span data-click="openReimbursementFromTagBadge" data-id="${escapeHtml(txId)}" data-tag="${escapeHtml(name)}" style="font-size:0.62rem; font-weight:700; color:#6d28d9; background:#ede9fe; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap; display:inline-block; cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent;">🔖 ${escapeHtml(name)}</span>`).join("");
         }
 
         // Draws the compact "Recent Transactions" list on the dashboard — a small slice of
@@ -9149,6 +9157,9 @@
             // opened normally (the "+" buttons, editing a row) must never silently inherit those.
             pendingRefundOf = null;
             pendingRefundReason = null;
+            pendingRemoveTagName = null;
+            const removeTagWrap = document.getElementById("txRemoveTagWrap");
+            if (removeTagWrap) removeTagWrap.style.display = "none";
             document.getElementById("txCategory").disabled = false;
             // v142: txCategory's own disabled state (Refund flow locks it, see
             // openRefundFromOptions()) doesn't do anything on its own anymore now that picking a
@@ -11026,6 +11037,24 @@
             for (const id of attachmentIdsToDelete) {
                 try { await deleteDB(STORES.ATTACHMENTS, id); } catch (err) { /* non-fatal — a leftover blob costs storage, not correctness */ }
             }
+            // v285: this reimbursement was opened via a tag pill (see openReimbursementFromTagBadge()/
+            // fillReimbursementForm()) and the "remove this tag" toggle is still checked at save
+            // time (re-read live here, not just its initial default) — drop that tag from the
+            // *original* expense (pendingRefundOf) now that the claim is settled, so it falls off
+            // the Tag Reminders widget/Spending by Tag report on its own. Guarded on record.type
+            // === "income" the same way the isRefund block above is, since pendingRefundOf/
+            // pendingRemoveTagName only ever apply to that flow.
+            const removeTagToggle = document.getElementById("txRemoveTagToggle");
+            if (pendingRefundOf !== null && record.type === "income" && pendingRemoveTagName && removeTagToggle && removeTagToggle.checked) {
+                try {
+                    const origTx = await readAllDB(STORES.TRANSACTIONS).then(all => all.find(t => t.id === pendingRefundOf));
+                    if (origTx && Array.isArray(origTx.tags) && origTx.tags.includes(pendingRemoveTagName)) {
+                        origTx.tags = origTx.tags.filter(tg => tg !== pendingRemoveTagName);
+                        await writeDB(STORES.TRANSACTIONS, origTx);
+                    }
+                } catch (err) { /* non-fatal — the reimbursement itself already saved fine */ }
+            }
+            pendingRemoveTagName = null;
             pendingRefundOf = null;
             closeModal("txModal");
             await refreshAfterTransactionChange();
@@ -11917,7 +11946,12 @@
         // Quick View/Options modal to close first — see openReimbursementFromTagBadge()) can reuse
         // it directly instead of routing through closeModalAndThen("txQuickViewModal", ...), which
         // requires that modal to actually be open+active or its popstate-driven callback never runs.
-        async function fillReimbursementForm(tx, label, reason) {
+        // v285: `tagToOffer` (optional) is the tag name to offer removing from the original
+        // expense once this reimbursement saves — only ever passed by
+        // openReimbursementFromTagBadge(), never by the plain Options → Reimbursement/Refund flow,
+        // which has no single tag in view. Shows/pre-checks #txRemoveTagWrap accordingly; see
+        // handleTransactionSubmitMobile() for where the actual removal happens.
+        async function fillReimbursementForm(tx, label, reason, tagToOffer = null) {
             await openTransactionForm("income", null);
             document.getElementById("txDesc").value = `${label}: ${tx.desc}`;
             document.getElementById("txAmount").value = tx.amount;
@@ -11955,6 +11989,17 @@
             // to null on every call, so this has to happen after it returns, not before.
             pendingRefundOf = tx.id;
             pendingRefundReason = reason;
+
+            const removeTagWrap = document.getElementById("txRemoveTagWrap");
+            if (tagToOffer && removeTagWrap) {
+                pendingRemoveTagName = tagToOffer;
+                document.getElementById("txRemoveTagLabel").textContent = `🔖 Remove "${tagToOffer}" tag from the original transaction`;
+                document.getElementById("txRemoveTagToggle").checked = true;
+                removeTagWrap.style.display = "";
+            } else {
+                pendingRemoveTagName = null;
+                if (removeTagWrap) removeTagWrap.style.display = "none";
+            }
         }
 
         function openRefundOrReimbursementFromOptions(label, reason) {
@@ -11984,13 +12029,17 @@
         // sits directly on the Dashboard/Ledger row), so this reads the transaction straight off
         // the pill's own data-id and calls fillReimbursementForm() directly rather than through
         // closeModalAndThen(), which only fires its callback once "txQuickViewModal" actually pops.
+        // v285: also passes the specific tag name (data-tag) through as fillReimbursementForm()'s
+        // tagToOffer, so "Claim" tagged twice on the same expense alongside e.g. "Japan Trip" only
+        // offers to remove the one pill that was actually tapped.
         async function openReimbursementFromTagBadge(el) {
             const id = el.dataset.id;
+            const tagName = el.dataset.tag;
             if (!id) return;
             const txs = await readAllDB(STORES.TRANSACTIONS);
             const tx = txs.find(t => String(t.id) === String(id));
             if (!tx || tx.type !== "expense") return;
-            await fillReimbursementForm(tx, "Reimbursement", "reimbursement");
+            await fillReimbursementForm(tx, "Reimbursement", "reimbursement", tagName || null);
         }
 
         // (v147: the old filterMonth/filterYear-driven year filter was removed along with the

@@ -4770,6 +4770,23 @@
                 <div class="form-row form-row-icon" id="txDescRow"><span class="field-icon" aria-hidden="true">👤</span><input type="text" id="txDesc" required placeholder="Description" aria-label="Description" autocomplete="off" data-input="filterDescSuggestions" data-focus="filterDescSuggestions"><div class="desc-suggest-list" id="txDescSuggestList"></div></div>
                 <div class="form-row form-row-icon"><span class="field-icon" aria-hidden="true">📝</span><input type="text" id="txNotes" placeholder="Notes (Optional)" aria-label="Notes (Optional)"></div>
 
+                <!-- v285: shown only when this Income form was opened by tapping a tag pill on the
+                     original expense (see openReimbursementFromTagBadge() in ledger.js) — offers to
+                     drop that same tag from the original expense the moment this reimbursement is
+                     saved, so a settled claim falls off the Tag Reminders widget/Spending by Tag
+                     report on its own instead of needing a separate manual edit. Checked by
+                     default; toggling it off leaves the original transaction's tags untouched.
+                     Label text and visibility are set by fillReimbursementForm(). -->
+                <div id="txRemoveTagWrap" style="display:none; background:#f5f3ff; border:1px solid #ddd6fe; border-radius:10px; padding:10px; margin-bottom:10px;">
+                    <div class="toggle-switch-row" style="margin:0;">
+                        <span class="toggle-switch-label" id="txRemoveTagLabel" style="font-size:0.75rem;">🔖 Remove this tag from the original transaction</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="txRemoveTagToggle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
                 <!-- v257: Tags — trip/claim labels (see "Spending by Tag" in Reports); hidden for
                      Transfers (toggled in openTransactionForm(), same convention as #txSplitWrap).
                      Chips render into #txTagsChips; #txTagInput reuses the exact substring-filter

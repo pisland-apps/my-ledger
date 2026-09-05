@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v289";
+        const APP_VERSION = "v290";
         const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1430,6 +1430,15 @@
         // them as a Subcategory nested under that Main Category — see ensureDefaultCategories()
         // for how parentId gets resolved from this name at seed time. Entries with no `parent`
         // are Main Categories (top-level, same as every pre-v101 entry).
+        // v290: category + tag pairing for company expenses awaiting reimbursement — see
+        // DEFAULT_CATEGORIES (excludeFromSavings:true, so these don't inflate personal spending
+        // reports) and ensureDefaultTags() (seeds PENDING_CLAIM_TAG with showOnDashboard:true, so
+        // it surfaces on the Dashboard's Tag Reminders widget). handleTransactionSubmitMobile()
+        // auto-applies the tag to every expense saved under this category — see the "v290:
+        // auto-tag" comment there.
+        const CLAIMABLE_EXPENSE_CATEGORY = "Company Expenses (Claimable)";
+        const PENDING_CLAIM_TAG = "Pending Claim";
+
         const DEFAULT_CATEGORIES = [
             { name: "Salary", type: "income", icon: "💼" },
             { name: "Housing Allowance", type: "income", icon: "🏠", parent: "Salary" },
@@ -1470,6 +1479,13 @@
             { name: "Unknown", type: "expense", icon: "❓" },
             { name: "Groceries & Household", type: "expense", icon: "🧺" },
             { name: "Professional Fees", type: "expense", icon: "📋" },
+            // v290: default excluded from the Net Savings Statement/Financial Report Card/Budget
+            // (see ensureDefaultCategories() below passing excludeFromSavings through) since this
+            // is company money passing through a personal account, not real personal spending —
+            // same reasoning "Exclude from Report" already exists for. Every expense filed here is
+            // also auto-tagged PENDING_CLAIM_TAG (see handleTransactionSubmitMobile()) so it's easy
+            // to find until it's actually claimed back.
+            { name: CLAIMABLE_EXPENSE_CATEGORY, type: "expense", icon: "📎", excludeFromSavings: true },
             { name: "Rental Expenses", type: "expense", icon: "🏠" },
             // Vehicle Expenses (Main) + its Subcategories
             { name: "Vehicle Expenses", type: "expense", icon: "🚗" },
@@ -8409,6 +8425,21 @@
             dynamicTags = tags.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
         }
 
+        // v290: idempotent seed for PENDING_CLAIM_TAG (the auto-tag applied to every
+        // CLAIMABLE_EXPENSE_CATEGORY expense — see handleTransactionSubmitMobile()), mirroring
+        // ensureDefaultCategories()'s own convention: matched by EITHER current name OR the
+        // deterministic id this seed would have used, so renaming or deleting it once never
+        // silently recreates it on a later launch.
+        async function ensureDefaultTags() {
+            const existing = await readAllDB(STORES.TAGS);
+            const id = "tag_pending_claim";
+            const alreadyThere = existing.some(t => t.id === id || t.name.toLowerCase() === PENDING_CLAIM_TAG.toLowerCase());
+            if (!alreadyThere) {
+                await writeDB(STORES.TAGS, { id, name: PENDING_CLAIM_TAG, showOnDashboard: true });
+            }
+            await syncAndLoadTags();
+        }
+
         // Creates a new tag, or returns the existing one if a case-insensitive match already
         // exists (same dedup convention as loadDescSuggestionsCache()'s Description suggestions)
         // — so typing "japan trip" when "Japan Trip" already exists reuses it instead of quietly
@@ -8972,12 +9003,12 @@
             // which look their parent up by name (case-insensitive) among everything that exists
             // by that point — either already in the DB, or just inserted in the first pass.
             for (const c of missing.filter(c => !c.parent)) {
-                await writeDB(STORES.CATEGORIES, { id: slugify(c.name), name: c.name, type: c.type, icon: c.icon, parentId: null });
+                await writeDB(STORES.CATEGORIES, { id: slugify(c.name), name: c.name, type: c.type, icon: c.icon, parentId: null, excludeFromSavings: c.excludeFromSavings || false });
             }
             const afterMains = await readAllDB(STORES.CATEGORIES);
             for (const c of missing.filter(c => c.parent)) {
                 const parentRec = afterMains.find(p => p.name.toLowerCase() === c.parent.toLowerCase());
-                await writeDB(STORES.CATEGORIES, { id: slugify(c.name), name: c.name, type: c.type, icon: c.icon, parentId: parentRec ? parentRec.id : null });
+                await writeDB(STORES.CATEGORIES, { id: slugify(c.name), name: c.name, type: c.type, icon: c.icon, parentId: parentRec ? parentRec.id : null, excludeFromSavings: c.excludeFromSavings || false });
             }
             await syncAndLoadCategories();
             await migrateOthersCategoryRename();
@@ -11009,6 +11040,17 @@
                 record.refundReason = pendingRefundReason || "refund";
             }
 
+            // v290: every expense filed under CLAIMABLE_EXPENSE_CATEGORY auto-gets
+            // PENDING_CLAIM_TAG — no manual tagging step needed for it to show up in the
+            // Dashboard's Tag Reminders widget/Spending by Tag report, or to go through the
+            // tag-pill → Reimbursement flow (buildTagBadgesHTML()/openReimbursementFromTagBadge()).
+            // Deliberately only ADDS the tag here — it never strips it back off if the category is
+            // later edited away, matching how every other tag removal in this app is a deliberate
+            // user action (the "remove this tag" toggle in fillReimbursementForm()), not automatic.
+            if (record.type === "expense" && record.cat === CLAIMABLE_EXPENSE_CATEGORY && !record.tags.includes(PENDING_CLAIM_TAG)) {
+                record.tags = [...record.tags, PENDING_CLAIM_TAG];
+            }
+
             const fdFieldsVisible = document.getElementById("txFdFieldsWrap").style.display !== "none";
             if (fdFieldsVisible) {
                 const fdStartDate = document.getElementById("txFdStartDate").value;
@@ -11057,6 +11099,15 @@
                         // attaching the same files to every split part would be misleading.
                         extraRecord.image = null;
                         extraRecord.attachments = [];
+                        // v290: a split leg's own category can differ from the main row's, so it's
+                        // re-checked independently here — same auto-tag rule as the main record
+                        // above. Object.assign only shallow-copies `record.tags`' array reference,
+                        // so this clones it first rather than mutating (and thus corrupting) every
+                        // other leg's shared array in place.
+                        extraRecord.tags = [...record.tags];
+                        if (extraRecord.cat === CLAIMABLE_EXPENSE_CATEGORY && !extraRecord.tags.includes(PENDING_CLAIM_TAG)) {
+                            extraRecord.tags.push(PENDING_CLAIM_TAG);
+                        }
                         await writeDB(STORES.TRANSACTIONS, extraRecord);
                     }
                 } else {
@@ -14597,6 +14648,7 @@
             await migrateFdDescRefDedup();
             await syncAndLoadTemplates();
             await syncAndLoadTags();
+            await ensureDefaultTags();
 
             const accs = await readAllDB(STORES.ACCOUNTS);
             if(accs.length === 0) {

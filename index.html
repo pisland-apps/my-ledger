@@ -1653,6 +1653,24 @@
         .trash-btn { background: none; border: none; color: #cbd5e1; cursor: pointer; padding: 8px; font-size: 1.1rem; }
         .trash-btn:active { color: var(--expense-color); }
 
+        /* v276: plain month divider on a single account's Year-scoped Activity list (see the
+           showMonthDividers block in renderApp()/ledger.js) — purely a scroll landmark so it's
+           obvious which month you've scrolled into on a long year, no total/subtotal attached
+           (that's deliberate, see the comment in ledger.js for why). Not clickable/hoverable —
+           it's a label, not a row — so it's kept out of .ledger-item entirely rather than
+           reusing that class with an override. */
+        .ledger-month-divider {
+            padding: 10px 16px 4px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+            background: var(--bg-color);
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
         /* v150: big round category icon + colored type bar on the main Transactions list rows
            (reference: a competing budget app's list, icon sitting beside the details instead of
            a tiny inline glyph in the title). Scoped to .ledger-item-tx only — every other

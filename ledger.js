@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v275";
-        const APP_VERSION_DATE = "2026-09-04";
+        const APP_VERSION = "v276";
+        const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -12482,6 +12482,20 @@
             // views now always show full history too, exactly like the account view already does.
             const showFullHistoryForThisView = showFullAccountHistory || activeCategoryView !== "all" || directTypeView !== "all" || isPortfolioAllView;
 
+            // v276: plain month divider, single-account Year-scoped Activity view only (per user
+            // request — deliberately just a scroll landmark, NOT a subtotal: a running total per
+            // month would need to settle currency-conversion and Transfer-inclusion questions that
+            // have nothing to do with the actual ask, which is purely "help me see where I am while
+            // scrolling a long year". Scoped tightly to activeLedgerAccountView !== "all" (one
+            // specific account) AND accountLedgerYear !== null (one specific year, not "All Years"
+            // — a month name alone would be ambiguous across years there) AND activeCategoryView/
+            // directTypeView both "all" (this is the account's own Activity list, not a category/
+            // type drill-in reusing this same render path). lastMonthKey tracks the most recently
+            // rendered row's year-month so a divider is inserted only the first time each month is
+            // reached while walking the already-date-sorted list.
+            const showMonthDividers = activeLedgerAccountView !== "all" && accountLedgerYear !== null && activeCategoryView === "all" && directTypeView === "all";
+            let lastMonthKey = null;
+
             // v231: same same-day tie-break fix as the Dashboard Recent Transactions widget above —
             // see the comment there.
             txs.sort((a,b) => (new Date(b.date) - new Date(a.date)) || (b.id - a.id)).forEach(t => {
@@ -12548,6 +12562,18 @@
                 matchedCount++;
                 // Only build DOM markup for the first `ledgerRenderLimit` matches — keeps large ledgers fast on mobile.
                 if (matchedCount > ledgerRenderLimit) return;
+
+                // v276: month divider — see showMonthDividers/lastMonthKey comment above. Keyed on
+                // month only (not year, since accountLedgerYear already pins this whole list to one
+                // year) so it reads "September" rather than a redundant "September 2026".
+                if (showMonthDividers) {
+                    const monthKey = d.getMonth();
+                    if (monthKey !== lastMonthKey) {
+                        lastMonthKey = monthKey;
+                        const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+                        ledgerHTML += `<div class="ledger-month-divider">${monthNames[monthKey]}</div>`;
+                    }
+                }
 
                 // For transfers, show a directional +/− and color when viewing a specific account
                 // (money leaving that account = red/−, money arriving = green/+). When viewing "All"

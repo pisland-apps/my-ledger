@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v281";
+        const APP_VERSION = "v282";
         const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1286,8 +1286,15 @@
         let activeQuickViewSplitGroup = null;
         // When set, the next handleTransactionSubmitMobile() save is tagged as a refund of this
         // transaction id (isRefund:true, refundOf:<id>) instead of an ordinary income entry — set by
-        // openRefundFromOptions(), cleared on every openTransactionForm() call and after saving.
+        // openRefundFromOptions()/openReimbursementFromOptions(), cleared on every
+        // openTransactionForm() call and after saving.
         let pendingRefundOf = null;
+        // v281: which button (Refund vs Reimbursement) opened the current pendingRefundOf flow —
+        // "refund" | "reimbursement" | null. Purely a display label (see refundBadge in the
+        // Ledger list renderer) — never read by any report/total math, which only ever looks at
+        // isRefund. Set/cleared in lockstep with pendingRefundOf by
+        // openRefundOrReimbursementFromOptions().
+        let pendingRefundReason = null;
         // v99: which underlying <select> (srcAccount/destAccount) the Account picker modal is
         // currently populated for — set by openAccountPicker(), read by selectAccountPickerOption()
         // when the user taps a row.
@@ -9097,6 +9104,7 @@
             // lock state a prior Quick View action (Refund, Duplicate) may have left behind — a form
             // opened normally (the "+" buttons, editing a row) must never silently inherit those.
             pendingRefundOf = null;
+            pendingRefundReason = null;
             document.getElementById("txCategory").disabled = false;
             // v142: txCategory's own disabled state (Refund flow locks it, see
             // openRefundFromOptions()) doesn't do anything on its own anymore now that picking a
@@ -10874,20 +10882,39 @@
                 // (this record object never set splitGroupId at all before v92). Carry the
                 // existing value forward on every edit; stays undefined for a brand-new entry,
                 // where the split-save branch below assigns its own freshly generated one anyway.
-                splitGroupId: existingTxForEdit ? existingTxForEdit.splitGroupId : undefined
+                splitGroupId: existingTxForEdit ? existingTxForEdit.splitGroupId : undefined,
+                // v281 bug fix: this record object is built fresh field-by-field (no
+                // ...existingTxForEdit spread), so any field not explicitly listed here is wiped
+                // the moment an existing entry is edited and re-saved (writeDB() is a full put(),
+                // same trap the v92 splitGroupId comment above already documents). isRefund/
+                // refundOf/refundReason were missing from this list — editing ANY field of an
+                // existing Refund/Reimbursement entry (date, amount, notes, anything) via
+                // "✏️ Edit transaction" was silently un-flagging it as a refund, which would have
+                // also silently changed that category's totals in every report that special-cases
+                // isRefund. Carried forward here exactly like payee/splitGroupId; the
+                // pendingRefundOf block below still overrides all three for the one case that
+                // actually needs a fresh value — creating a brand-new refund/reimbursement via the
+                // Options menu buttons (existingTxForEdit is null in that case).
+                isRefund: existingTxForEdit ? existingTxForEdit.isRefund : undefined,
+                refundOf: existingTxForEdit ? existingTxForEdit.refundOf : undefined,
+                refundReason: existingTxForEdit ? existingTxForEdit.refundReason : undefined
             };
 
-            // v88: Refund — set only by openRefundFromOptions(), which opens this same form as a
-            // plain Income entry with the category locked to the original expense's category.
-            // Tagging it here (rather than a separate save path) means it inherits every other
-            // field/validation above for free; renderApp()/renderSavingsStatement()/the Spending
-            // & Income Breakdown pages special-case isRefund so it reduces the original expense
-            // category instead of counting as income (see those functions), while
-            // computeAccountBalances() needs no change at all — crediting the account back is
-            // exactly what an ordinary income record already does.
+            // v88: Refund — set only by openRefundFromOptions()/openReimbursementFromOptions()
+            // (v281), which open this same form as a plain Income entry with the category locked
+            // to the original expense's category. Tagging it here (rather than a separate save
+            // path) means it inherits every other field/validation above for free;
+            // renderApp()/renderSavingsStatement()/the Spending & Income Breakdown pages special-
+            // case isRefund so it reduces the original expense category instead of counting as
+            // income (see those functions), while computeAccountBalances() needs no change at
+            // all — crediting the account back is exactly what an ordinary income record already
+            // does. refundReason (v281, "refund"|"reimbursement") is a pure display label read
+            // only by the Ledger list's refundBadge — never by any of the total/report math above,
+            // which only ever checks isRefund.
             if (pendingRefundOf !== null && record.type === "income") {
                 record.isRefund = true;
                 record.refundOf = pendingRefundOf;
+                record.refundReason = pendingRefundReason || "refund";
             }
 
             const fdFieldsVisible = document.getElementById("txFdFieldsWrap").style.display !== "none";
@@ -11387,7 +11414,14 @@
             if (tx.type === "transfer") {
                 destLine = `<div>To Account: ${tx.dest ? accountName(tx.dest) : "(unknown)"}</div>`;
             }
-            const refundLine = tx.isRefund ? `<div style="color:var(--income-color); font-weight:700;">↩️ Refund entry</div>` : "";
+            // v281: matches the refundBadge convention in the Ledger list renderer — same
+            // refundReason check, same fallback to "Refund entry" for older records saved before
+            // this field existed.
+            const refundLine = tx.isRefund
+                ? (tx.refundReason === "reimbursement"
+                    ? `<div style="color:var(--income-color); font-weight:700;">💰 Reimbursement entry</div>`
+                    : `<div style="color:var(--income-color); font-weight:700;">↩️ Refund entry</div>`)
+                : "";
 
             // v91: a Split Expense group's breakdown — one line per category+amount part,
             // matching the reference screenshots — shown above the Account/To/Notes fields
@@ -11441,12 +11475,15 @@
             `;
 
             updateTxQuickViewCheckedBtn(!!tx.checked);
-            // Refund only makes sense for an ordinary expense — not for a Transfer, not for
-            // another refund (no "refund of a refund"), and not for Income. Split Expenses are
-            // only ever created for a brand-new Income/Expense entry (never a refund entry, and
-            // refunds never offer the split UI — see openRefundFromOptions()), so every member of
-            // a group shares the same type/isRefund as the representative checked here.
-            document.getElementById("txOptionsRefundBtn").style.display = (tx.type === "expense" && !tx.isRefund) ? "flex" : "none";
+            // Refund/Reimbursement only make sense for an ordinary expense — not for a Transfer,
+            // not for another refund (no "refund of a refund"), and not for Income. Split
+            // Expenses are only ever created for a brand-new Income/Expense entry (never a refund
+            // entry, and refunds never offer the split UI — see
+            // openRefundOrReimbursementFromOptions()), so every member of a group shares the same
+            // type/isRefund as the representative checked here.
+            const showRefundButtons = (tx.type === "expense" && !tx.isRefund) ? "flex" : "none";
+            document.getElementById("txOptionsRefundBtn").style.display = showRefundButtons;
+            document.getElementById("txOptionsReimbursementBtn").style.display = showRefundButtons;
 
             if (!opts.skipModalOpen) openModal("txQuickViewModal");
         }
@@ -11823,14 +11860,15 @@
         // this save as a refund rather than an ordinary Income entry.
         // v281: "Refund" and "Reimbursement" are the same underlying flow (isRefund/refundOf,
         // nets against an Expense category in the report/breakdown/savings math exactly as
-        // described above) — the user deliberately chose NOT to store which word was used
-        // (no new field on the saved record), since a separate "reimbursement" tag on the
-        // original expense (removed once settled) already covers tracking outstanding claims.
-        // `label` only controls the modal title / prefilled Description text, so someone
-        // reviewing their ledger later sees "Reimbursement: Client Lunch" instead of always
-        // "Refund: Client Lunch" for a company/insurance claim. openRefundFromOptions() and
+        // described above). Originally shipped storing nothing beyond isRefund/refundOf, but a
+        // separate display badge on the Ledger list (refundBadge) turned out to need to know
+        // which word was used in order to show it back correctly — so `refundReason` ("refund" |
+        // "reimbursement") is now stored too. It remains a pure display label: no report/total
+        // logic anywhere reads it, only isRefund. `label` (capitalized, "Refund"/"Reimbursement")
+        // controls the modal title / prefilled Description text; `reason` (lowercase) is what
+        // actually gets saved via pendingRefundReason. openRefundFromOptions() and
         // openReimbursementFromOptions() below are both thin wrappers over this.
-        function openRefundOrReimbursementFromOptions(label) {
+        function openRefundOrReimbursementFromOptions(label, reason) {
             const id = activeQuickViewTxId;
             closeTxOptionsMenu(); // v95 fix — see editTransactionFromOptions() above.
             closeModalAndThen("txQuickViewModal", async () => {
@@ -11872,18 +11910,19 @@
                 document.getElementById("txModalTitle").textContent = `${label}: ${tx.desc}`;
                 document.getElementById("txSubmitBtn").textContent = `Save ${label}`;
 
-                // Set last — openTransactionForm() itself resets pendingRefundOf to null on
-                // every call, so this has to happen after it returns, not before.
+                // Set last — openTransactionForm() itself resets pendingRefundOf/pendingRefundReason
+                // to null on every call, so this has to happen after it returns, not before.
                 pendingRefundOf = id;
+                pendingRefundReason = reason;
             });
         }
 
         function openRefundFromOptions() {
-            openRefundOrReimbursementFromOptions("Refund");
+            openRefundOrReimbursementFromOptions("Refund", "refund");
         }
 
         function openReimbursementFromOptions() {
-            openRefundOrReimbursementFromOptions("Reimbursement");
+            openRefundOrReimbursementFromOptions("Reimbursement", "reimbursement");
         }
 
         // (v147: the old filterMonth/filterYear-driven year filter was removed along with the
@@ -12782,7 +12821,9 @@
                 // overlay on the small text-line icon (checkedIconHTML) onto the big tx-icon-circle
                 // instead — see txCheckOverlay below.
                 const refundBadge = t.isRefund
-                    ? `<span style="font-size:0.62rem; font-weight:700; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">↩️ Refund</span>`
+                    ? (t.refundReason === "reimbursement"
+                        ? `<span style="font-size:0.62rem; font-weight:700; color:#92400e; background:#fef3c7; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">💰 Reimbursement</span>`
+                        : `<span style="font-size:0.62rem; font-weight:700; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">↩️ Refund</span>`)
                     : '';
                 const attCount = (Array.isArray(t.attachments) ? t.attachments.length : 0) + (t.image ? 1 : 0);
                 const receiptBadge = attCount > 0

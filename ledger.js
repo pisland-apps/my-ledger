@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v279";
+        const APP_VERSION = "v280";
         const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -14100,18 +14100,27 @@
             calculateStorageMetrics();
         }
 
-        // v278: normalizes a transaction's attachment info for lightweight, read-only display
+        // v279: normalizes a transaction's attachment info for lightweight, read-only display
         // (count + a thumbnail to show) without touching the full attachment blob in
         // STORES.ATTACHMENTS — mirrors the same real-array-or-legacy-image seeding
         // openTransactionForm() already does when populating existingTxAttachments for editing
         // (see that comment), just read-only and without any module-state side effects. Returns
         // null when the transaction has no attachment at all.
+        // v280: also returns maxSize — the single largest attachment's stored size (same
+        // approximate data-URL-length figure already used everywhere else via formatAttBytes,
+        // see handleTxAttachmentsSelected's `size: data.length`) — so the Review Attachments
+        // list can flag which rows are actually worth checking. Only PDFs realistically get
+        // large (images are always compressed down to ~1280px/75% quality before they're ever
+        // stored — see compressImage() — so they rarely approach a size worth flagging; an
+        // uncompressed embedded-image PDF is really the only common way a single attachment
+        // gets big), and there's no way to tell that from the file name/thumbnail alone.
         function getTxAttachmentSummary(t) {
             if (Array.isArray(t.attachments) && t.attachments.length > 0) {
-                return { count: t.attachments.length, thumb: t.attachments[0].thumb || null };
+                const maxSize = t.attachments.reduce((max, a) => Math.max(max, a.size || 0), 0);
+                return { count: t.attachments.length, thumb: t.attachments[0].thumb || null, maxSize };
             }
             if (t.image) {
-                return { count: 1, thumb: t.image };
+                return { count: 1, thumb: t.image, maxSize: t.image.length };
             }
             return null;
         }
@@ -14170,11 +14179,18 @@
                 const countBadge = info.count > 1
                     ? `<span style="font-size:0.62rem; font-weight:700; color:#1d4ed8; background:#dbeafe; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">×${info.count}</span>`
                     : '';
+                // v280: only shown once the largest attachment on this transaction actually
+                // clears 1 MB — matches formatAttBytes' own KB/MB switch point, so anything
+                // still shown in KB here stays unflagged (deliberately: images are already
+                // compressed small, so this is really only ever a PDF worth double-checking).
+                const sizeBadge = info.maxSize >= 1024 * 1024
+                    ? `<span style="font-size:0.62rem; font-weight:700; color:#b45309; background:#fef3c7; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">${formatAttBytes(info.maxSize)}</span>`
+                    : '';
                 return `
                     <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}" style="gap:12px;">
                         ${thumbHTML}
                         <div class="item-left" style="flex:1;">
-                            <span class="item-name">${escapeHtml(t.desc)}${countBadge}</span>
+                            <span class="item-name">${escapeHtml(t.desc)}${countBadge}${sizeBadge}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(t.cat || 'Transfer')}]</span>
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${accountName(t.src)}</span>
                         </div>

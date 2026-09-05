@@ -3280,7 +3280,47 @@
             <div id="systemQuotaText">Total browser quota limit: ~10240.00 MB, Used: 0.00 MB (across local sandboxes)</div>
         </div>
         <p style="font-size:0.75rem; color:var(--text-muted); margin-top:8px;">Everything is stored locally in this browser's IndexedDB — nothing is sent to a server. Use Backup &amp; Restore to export a copy.</p>
+
+        <!-- v278: entry point into the new attachment review list — a first look at what's
+             taking up that "attachments" figure above before anything gets deleted. Cleanup
+             itself isn't built yet (this is review-only), see navigateToAttachmentReviewPage(). -->
+        <button type="button" class="submit-btn" style="background:var(--chip-bg); color:var(--text-main); margin-top:14px;" data-click="navigateToAttachmentReviewPage">🔍 Review Attachments</button>
     </div>
+
+    <!-- ================= PAGE: REVIEW ATTACHMENTS (v278) =================
+         Every transaction that carries at least one photo/PDF attachment, oldest first (the
+         reverse of every other list in the app — the point here is reviewing what's oldest,
+         since that's what a future cleanup pass would target), with an age filter so it's easy
+         to jump straight to "just show me what's older than 12 months". Review-only for now —
+         tapping a row opens the normal Quick View (same as everywhere else) so the actual photo
+         can be checked before anything is ever deleted; no delete action lives on this page yet.
+         See renderAttachmentReviewPage(). -->
+    <div id="page-attachment-review" class="page hidden">
+        <div class="nav-header">
+            <button class="back-btn" data-click="navigateToDatabasePage">&larr; Back</button>
+            <div>
+                <h3 style="font-weight:800; font-size:1.2rem;">Review Attachments</h3>
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Every transaction with a photo or PDF attached, oldest first</p>
+            </div>
+        </div>
+
+        <div class="form-row print-filter-row" style="margin-bottom:14px;">
+            <label>Show</label>
+            <select id="attachmentReviewCutoff" class="form-input" data-change="renderAttachmentReviewPage">
+                <option value="all">All attachments</option>
+                <option value="6">Older than 6 months</option>
+                <option value="12" selected>Older than 12 months</option>
+                <option value="24">Older than 24 months</option>
+            </select>
+        </div>
+
+        <p id="attachmentReviewSummary" style="font-size:0.75rem; color:var(--text-muted); margin-bottom:10px;"></p>
+
+        <div class="ledger-container" style="margin-bottom:24px;">
+            <div id="attachmentReviewList"></div>
+        </div>
+    </div>
+
 
     <!-- ================= PAGE: TOTAL BILL SUMMARY (v268) =================
          Date/Income/Expense/Balance rollup: a Total row (all-time), a Yearly Average row, then

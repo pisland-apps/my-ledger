@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v277";
+        const APP_VERSION = "v278";
         const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1683,6 +1683,13 @@
             const backupPage = document.getElementById("page-backup");
             const autolockPage = document.getElementById("page-autolock");
             const databasePage = document.getElementById("page-database");
+            // v278: bucketed with databasePage below rather than given its own dedicated
+            // handleAttachmentReviewBackClick() — matches the existing shortcut already used for
+            // databasePage itself (whose on-screen "← Back" goes to Data & Security, yet hardware
+            // back here still falls through to navigateToWorkspace() same as this whole bucket),
+            // so hardware back from this new page follows that same established precedent rather
+            // than introducing a one-off exception.
+            const attachmentReviewPage = document.getElementById("page-attachment-review");
             const totalSummaryPage = document.getElementById("page-total-summary");
             const spendingBreakdownPage = document.getElementById("page-spending-breakdown");
             const incomeBreakdownPage = document.getElementById("page-income-breakdown");
@@ -1726,6 +1733,7 @@
                 !backupPage.classList.contains("hidden") ||
                 !autolockPage.classList.contains("hidden") ||
                 !databasePage.classList.contains("hidden") ||
+                !attachmentReviewPage.classList.contains("hidden") ||
                 !totalSummaryPage.classList.contains("hidden") ||
                 !spendingBreakdownPage.classList.contains("hidden") ||
                 !incomeBreakdownPage.classList.contains("hidden") ||
@@ -2347,7 +2355,7 @@
         // --- SPA NAVIGATION PIPELINE ---
         // Every top-level page div's id — used by showPage() to hide all but the target,
         // so adding a new page never risks leaving a stale one visible underneath.
-        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-backup", "page-autolock", "page-database", "page-total-summary", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity"];
+        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-backup", "page-autolock", "page-database", "page-attachment-review", "page-total-summary", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity"];
         function showPage(id) {
             APP_PAGE_IDS.forEach(p => {
                 const el = document.getElementById(p);
@@ -2378,6 +2386,7 @@
                 case "page-backup": return "Export & Import";
                 case "page-autolock": return "Auto-Lock Settings";
                 case "page-database": return "Database";
+                case "page-attachment-review": return "Review Attachments";
                 case "page-total-summary": return "Total Bill Summary";
                 case "page-spending-breakdown": return "Spending Breakdown";
                 case "page-income-breakdown": return "Income Breakdown";
@@ -14003,6 +14012,88 @@
             calculateStorageMetrics();
         }
 
+        // v278: normalizes a transaction's attachment info for lightweight, read-only display
+        // (count + a thumbnail to show) without touching the full attachment blob in
+        // STORES.ATTACHMENTS — mirrors the same real-array-or-legacy-image seeding
+        // openTransactionForm() already does when populating existingTxAttachments for editing
+        // (see that comment), just read-only and without any module-state side effects. Returns
+        // null when the transaction has no attachment at all.
+        function getTxAttachmentSummary(t) {
+            if (Array.isArray(t.attachments) && t.attachments.length > 0) {
+                return { count: t.attachments.length, thumb: t.attachments[0].thumb || null };
+            }
+            if (t.image) {
+                return { count: 1, thumb: t.image };
+            }
+            return null;
+        }
+
+        function navigateToAttachmentReviewPage() {
+            workspaceScrollY = window.scrollY;
+            showPage("page-attachment-review");
+            window.scrollTo(0, 0);
+            pushVirtualState("attachment-review");
+            renderAttachmentReviewPage();
+        }
+
+        // v278: lists every transaction carrying at least one attachment (see
+        // getTxAttachmentSummary above), oldest first — the reverse of every other list in the
+        // app, since the point here is reviewing what's oldest before any future cleanup pass
+        // would target it. Review-only: tapping a row opens the same Quick View used everywhere
+        // else (openTxQuickView) so the actual photo/PDF can be checked; no delete action lives
+        // on this page — that's a separate, more heavily-confirmed action (see the "Review
+        // Attachments" discussion this shipped alongside for why the two are kept apart).
+        async function renderAttachmentReviewPage() {
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const cutoffSel = document.getElementById("attachmentReviewCutoff").value;
+
+            let cutoffMs = null;
+            if (cutoffSel !== "all") {
+                const c = new Date();
+                c.setMonth(c.getMonth() - parseInt(cutoffSel, 10));
+                cutoffMs = c.getTime();
+            }
+
+            const matches = [];
+            let totalAttachments = 0;
+            txs.forEach(t => {
+                const info = getTxAttachmentSummary(t);
+                if (!info) return;
+                const ms = new Date(t.date).getTime();
+                if (cutoffMs !== null && !(ms < cutoffMs)) return;
+                matches.push({ t, info, ms });
+                totalAttachments += info.count;
+            });
+
+            matches.sort((a, b) => a.ms - b.ms);
+
+            const accountName = id => { if (!id) return "(Opening Balance)"; const a = accounts.find(acc => acc.id === id); return a ? escapeHtml(accountOptionLabel(a, accounts)) : "(deleted account)"; };
+
+            document.getElementById("attachmentReviewSummary").textContent = matches.length
+                ? `${matches.length} transaction${matches.length === 1 ? '' : 's'} · ${totalAttachments} attachment${totalAttachments === 1 ? '' : 's'}`
+                : "No matching transactions.";
+
+            const listEl = document.getElementById("attachmentReviewList");
+            listEl.innerHTML = matches.length ? matches.map(({ t, info }) => {
+                const thumbHTML = info.thumb
+                    ? `<img src="${info.thumb}" style="width:44px; height:44px; border-radius:8px; object-fit:cover; flex-shrink:0;">`
+                    : `<div style="width:44px; height:44px; border-radius:8px; background:var(--chip-bg); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:1.1rem;">📄</div>`;
+                const countBadge = info.count > 1
+                    ? `<span style="font-size:0.62rem; font-weight:700; color:#1d4ed8; background:#dbeafe; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">×${info.count}</span>`
+                    : '';
+                return `
+                    <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}" style="gap:12px;">
+                        ${thumbHTML}
+                        <div class="item-left" style="flex:1;">
+                            <span class="item-name">${escapeHtml(t.desc)}${countBadge}</span>
+                            <span class="item-meta">${t.date} [${escapeHtml(t.cat || 'Transfer')}]</span>
+                            <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${accountName(t.src)}</span>
+                        </div>
+                    </div>`;
+            }).join("") : '<p style="padding:20px; text-align:center; color:var(--text-muted); font-size:0.8rem;">No matching transactions.</p>';
+        }
+
         // v168 data migration (one-time, guarded by a settings flag so it never re-runs): earlier
         // versions baked the FD reference number straight into these four auto-generated
         // transaction descriptions — "Fixed Deposit Placement (ref)", "FD Withdrawal — Principal
@@ -14530,6 +14621,13 @@
             handleBackupBackClick: () => handleBackupBackClick(),
             navigateToAllLedgerPage: () => navigateToAllLedgerPage(),
             navigateToDataSecurityPage: () => navigateToDataSecurityPage(),
+            // v278: page-database's own back button used to only be reachable via sidebarGo's
+            // "database" case (see sidebarGo() above) — this is the first place something
+            // navigates INTO that page directly via its own data-click (the new "Review
+            // Attachments" button, and the review page's own Back button returning here), so it
+            // needs its own dispatch entry now too.
+            navigateToDatabasePage: () => navigateToDatabasePage(),
+            navigateToAttachmentReviewPage: () => navigateToAttachmentReviewPage(),
             navigateToMembersPage: () => navigateToMembersPage(),
             sidebarGoMember: (el) => sidebarGoMember(el),
             sidebarFilterAccountsByType: (el) => sidebarFilterAccountsByType(el),
@@ -14682,6 +14780,7 @@
         const CHANGE_ACTIONS = {
             resetLedgerPageAndRender: () => { ledgerRenderLimit = LEDGER_PAGE_SIZE; renderApp(); },
             renderTagReportPage: () => renderTagReportPage(),
+            renderAttachmentReviewPage: () => renderAttachmentReviewPage(),
             toggleBudgetCarryover: (el) => toggleBudgetCarryover(el),
             importBackup: (el, e) => importBackup(e),
             handleExportEncryptToggleChange: () => handleExportEncryptToggleChange(),

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v293";
+        const APP_VERSION = "v294";
         const APP_VERSION_DATE = "2026-09-06";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15259,6 +15259,13 @@
                     // v257: tag definitions — same "absent on older backups → skip" pattern.
                     if (bundle.tags) {
                         for (const tag of bundle.tags) await writeDB(STORES.TAGS, tag);
+                    }
+                    // v264: monthly/yearly Budget records — same "absent on older backups → skip"
+                    // pattern. (Fix: this store was being cleared above on every import but was
+                    // never actually written back from the bundle, so a restored backup always
+                    // showed "no budget set" even though the source device had one.)
+                    if (bundle.budgets) {
+                        for (const b of bundle.budgets) await writeDB(STORES.BUDGETS, b);
                     }
 
                     // v65: restore preferences from the SETTINGS store dump (defaultPaymentAccount,

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v287";
+        const APP_VERSION = "v288";
         const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1903,11 +1903,16 @@
 
         // v283: small "🔖 name" pill per tag a transaction carries — shown next to its
         // description, same visual convention as refundBadge/fdStatusBadge (small colored pill,
-        // margin-left:6px). Shared by renderRecentTransactionsWidget() (dashboard) and the main
-        // Ledger list row template (bug class #8: written once, applied at both call sites rather
-        // than copy-pasted) — NOT yet applied to the per-account Activity page or the Tag Report's
-        // own transaction list (the latter is always pre-filtered to one tag, so every row already
-        // carries it — redundant there).
+        // margin-left:6px). Shared by renderRecentTransactionsWidget() (dashboard), the main
+        // Ledger list row template, and renderTagReportPage()'s own transaction list (bug class
+        // #8: written once, applied at every call site rather than copy-pasted) — NOT yet applied
+        // to the per-account Activity page.
+        // v287: even though the Tag Report's own list is always pre-filtered to one tag (so the
+        // pill there is visually redundant — every row already carries it "for free" by virtue of
+        // being on this page at all), it's still rendered there: since v284 the pill is the only
+        // entry point into the Reimbursement-with-tag-removal flow (fillReimbursementForm()'s
+        // tagToOffer), and this page's own rows were the one place a matching transaction could be
+        // reached with no pill to tap and no way to trigger that flow.
         // v284: each pill is independently tappable (data-click="openReimbursementFromTagBadge")
         // and jumps straight into the Reimbursement form pre-filled from its own transaction — the
         // same destination as Options → Reimbursement (see openReimbursementFromOptions() /
@@ -13861,7 +13866,7 @@
                 return `
                     <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
-                            <span class="item-name">${getCategoryIcon(t.cat, t.type)} ${escapeHtml(t.desc)}</span>
+                            <span class="item-name">${getCategoryIcon(t.cat, t.type)} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(t.cat || "")}]</span>
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}</span>
                         </div>

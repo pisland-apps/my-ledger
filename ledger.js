@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v292";
+        const APP_VERSION = "v293";
         const APP_VERSION_DATE = "2026-09-06";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -13807,12 +13807,20 @@
                 const entry = excludedSummary[c];
                 if (Math.abs(entry.value) < SAVINGS_ZERO_EPS) return;
                 const icon = getCategoryIcon(c, entry.type);
-                const sign = entry.type === "income" ? "+" : "-";
-                const color = entry.type === "income" ? "var(--income-color)" : "var(--expense-color)";
+                // v292 fix: this used to force "-" for an expense-type category and "+" for
+                // income, trusting entry.type alone — correct as long as a Reimbursement
+                // (isRefund) subtracting from an expense category's value never pushed it past
+                // zero. A bulk claim settlement (openClaimSettleModal()) breaks that assumption:
+                // several older bills reimbursed in one lump sum can easily net NEGATIVE for the
+                // period being viewed (more credited back than billed), and the old fixed "-"
+                // plus formatCurrency's own negative sign doubled up into a broken "-RM-30.00".
+                // savingsAmountHTML() already solves exactly this for the Income/Expense sections
+                // above it (deriving the sign from which way the money actually moved, not from
+                // the section/type it's filed under) — reused here instead of re-deriving it.
                 excludedRowsHTML += `
                     <div class="statement-row" data-click="navigateToCategoryPage" data-category="${escapeHtml(c)}" data-back="savings" data-year="${escapeHtml(filterY)}" data-month="${escapeHtml(savingsFilterMonth)}">
                         <strong>${icon} ${escapeHtml(c)}</strong>
-                        <span style="color:${color}; font-weight:700;">${sign}${formatCurrency(entry.value, baseCurrency)}</span>
+                        ${savingsAmountHTML(entry.value, entry.type)}
                     </div>
                 `;
             });

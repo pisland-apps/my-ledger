@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v286";
+        const APP_VERSION = "v287";
         const APP_VERSION_DATE = "2026-09-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1921,6 +1921,30 @@
             return tags.map(name => `<span data-click="openReimbursementFromTagBadge" data-id="${escapeHtml(txId)}" data-tag="${escapeHtml(name)}" style="font-size:0.62rem; font-weight:700; color:#6d28d9; background:#ede9fe; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap; display:inline-block; cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent;">🔖 ${escapeHtml(name)}</span>`).join("");
         }
 
+        // v286: an expense that already has a Refund/Reimbursement entry against it (some income
+        // record with isRefund:true and refundOf === this expense's id — set by
+        // openRefundOrReimbursementFromOptions()/fillReimbursementForm(), the same link the isRefund
+        // report math already relies on) — no new field needed, this just looks the existing link
+        // up from the other side.
+        function findReimbursementFor(txId, txs) {
+            return txs.find(t => t.isRefund && t.refundOf === txId);
+        }
+
+        // v286: small "✅ Claimed"/"✅ Refunded" pill on an expense that's already been settled —
+        // shown once its Reimbursement/Refund entry exists, regardless of whether the tag that
+        // triggered it (buildTagBadgesHTML() above) is still attached or was removed via the
+        // "remove this tag" toggle (fillReimbursementForm()/handleTransactionSubmitMobile()). Tapping
+        // it opens Quick View on that reimbursement entry itself (data-click="openTxQuickView",
+        // the same action + dataset shape every other row already uses), so this needs no new
+        // click handler of its own.
+        function buildClaimedBadgeHTML(tx, txs) {
+            if (tx.type !== "expense") return "";
+            const reimbursement = findReimbursementFor(tx.id, txs);
+            if (!reimbursement) return "";
+            const label = reimbursement.refundReason === "reimbursement" ? "Claimed" : "Refunded";
+            return `<span data-click="openTxQuickView" data-type="${escapeHtml(reimbursement.type)}" data-id="${escapeHtml(reimbursement.id)}" style="font-size:0.62rem; font-weight:700; color:#15803d; background:#dcfce7; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap; display:inline-block; cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent;">✅ ${label}</span>`;
+        }
+
         // Draws the compact "Recent Transactions" list on the dashboard — a small slice of
         // Income/Expense entries (never Transfers) filtered/limited per the settings panel above it.
         function renderRecentTransactionsWidget(accounts, txs) {
@@ -1978,7 +2002,7 @@
                 return `
                     <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
-                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags, t.id)}</span>
+                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(displayCat)}]</span>
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}</span>
                             ${notesLine}
@@ -13026,7 +13050,7 @@
                         ${txIconCircleHTML}
                         <div class="tx-row-body">
                             <div class="item-left">
-                                <span class="item-name">${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}${refundBadge}${buildTagBadgesHTML(t.tags, t.id)}</span>
+                                <span class="item-name">${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}${refundBadge}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}</span>
                                 <span class="item-meta">${t.date} [${escapeHtml(splitInfo ? splitInfo.catLabel : (t.cat || 'Transfer'))}]${referenceText}${maturityText}${receiptBadge}</span>
                                 <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">${accountText}</span>
                                 ${notesLine}

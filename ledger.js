@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v299";
+        const APP_VERSION = "v300";
         const APP_VERSION_DATE = "2026-09-06";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15216,6 +15216,101 @@
         // unencrypted file with no page/confirmation in view. The Backup & Restore page's own
         // "Export JSON" button still calls this with no argument, so it keeps respecting the
         // toggle exactly as before.
+        // v300: plain-CSV export of transactions — deliberately NOT using a library (SheetJS/
+        // xlsx.js etc): this is the user's own data, written client-side, never touching the
+        // network, and CSV covers "open it in Excel/Sheets" without a ~1MB new dependency. If a
+        // real multi-sheet formatted workbook is ever wanted later, that's the point to
+        // reconsider a proper xlsx writer — plain CSV can't represent multiple sheets or cell
+        // formatting.
+        // Only wraps a field in quotes when it actually needs it (comma/quote/newline present) —
+        // keeps the common case (a plain number or short word) human-readable in a text editor —
+        // and doubles any embedded " per RFC 4180.
+        function csvEscape(val) {
+            const s = (val === null || val === undefined) ? "" : String(val);
+            if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+            return s;
+        }
+
+        // Amount as it should read in the CSV: signed so a spreadsheet SUM() of the column gives
+        // a meaningful net change, matching the same sign logic renderApp's ledger-list rendering
+        // already uses for its color-coded +/− (see the `col, sgn` block there). For a Transfer,
+        // the sign only means something relative to ONE specific account (money leaving vs
+        // arriving) — when the export scope is every account, an internal transfer nets to zero
+        // across the whole portfolio, so there's no single correct sign; the raw positive amount
+        // is kept rather than guessing.
+        function csvSignedAmount(t, viewAccountId) {
+            if (t.type === "income") return t.amount;
+            if (t.type === "expense") return -t.amount;
+            if (viewAccountId !== "all" && t.dest === viewAccountId) return t.amount;
+            if (viewAccountId !== "all" && t.src === viewAccountId) return -t.amount;
+            return t.amount;
+        }
+
+        // CSV export button in the Ledger page header — exports either every transaction
+        // (activeLedgerAccountView === "all", the Portfolio General Log reached via the sidebar's
+        // "Transactions" link) or just the one account currently open, since those are the two
+        // scopes the page itself already represents. Deliberately does NOT also respect the
+        // page's Category/Type drill-down filters (activeCategoryView/directTypeView) — keeping
+        // the export to exactly "all accounts" or "this account" avoids a confusing mismatch
+        // where the CSV silently omits transactions a user wouldn't expect missing.
+        async function exportLedgerCsv() {
+            const [txsAll, accounts] = await Promise.all([
+                readAllDB(STORES.TRANSACTIONS),
+                readAllDB(STORES.ACCOUNTS)
+            ]);
+            const accountName = (id) => (accounts.find(a => a.id === id) || {}).name || "(deleted account)";
+            const viewAccountId = activeLedgerAccountView;
+
+            const scoped = viewAccountId === "all"
+                ? txsAll
+                : txsAll.filter(t => t.src === viewAccountId || t.dest === viewAccountId);
+
+            if (scoped.length === 0) {
+                showToast("No transactions to export");
+                return;
+            }
+
+            // Same newest-first order as the on-screen list (see the txs.sort(...) call in
+            // renderApp's ledger-page section) so scrolling the CSV top-to-bottom matches
+            // scrolling the app top-to-bottom.
+            const sorted = [...scoped].sort((a, b) => (new Date(b.date) - new Date(a.date)) || (b.id - a.id));
+
+            const header = ["Date", "Type", "Account", "Category", "Tags", "Description", "Notes", "Amount", "Currency", "Reconciled"];
+            const rows = sorted.map(t => {
+                const account = t.type === "transfer"
+                    ? `${accountName(t.src)} \u2192 ${accountName(t.dest)}`
+                    : accountName(t.src);
+                return [
+                    t.date || "",
+                    t.type || "",
+                    account,
+                    t.cat || "",
+                    (t.tags || []).join("; "),
+                    t.desc || "",
+                    t.notes || "",
+                    csvSignedAmount(t, viewAccountId).toFixed(2),
+                    t.currency || "",
+                    t.checked ? "Yes" : "No"
+                ];
+            });
+
+            const csv = [header, ...rows].map(r => r.map(csvEscape).join(",")).join("\r\n");
+            // Leading BOM: without it, Excel guesses the wrong encoding for a plain UTF-8 file
+            // and can garble non-ASCII characters (e.g. a currency symbol or accented name typed
+            // into Notes) — the BOM makes Excel specifically detect it as UTF-8.
+            const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const scopeLabel = viewAccountId === "all"
+                ? "all-accounts"
+                : accountName(viewAccountId).replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-+|-+$/g, "");
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `ledger_export_${scopeLabel}_${todayLocalStr()}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast(`\ud83d\udce4 Exported ${sorted.length} transaction${sorted.length === 1 ? "" : "s"} to CSV`);
+        }
+
         async function exportBackup(forceEncrypted = false) {
             const bundle = {
                 accounts: await readAllDB(STORES.ACCOUNTS),
@@ -15627,6 +15722,7 @@
             openCreditCardPayment: (el) => openCreditCardPayment(el),
             openCreditCardPaymentFromLedgerHeader: () => openCreditCardPaymentFromLedgerHeader(),
             navigateToLinkedAccountFromLedgerHeader: (el) => { if (el.dataset.id) navigateToLedgerPage(el.dataset.id, "workspace"); },
+            exportLedgerCsv: () => exportLedgerCsv(),
             exportBackup: () => exportBackup(),
             exportBackupQuick: () => exportBackupQuick(),
             openImportInput: () => document.getElementById("importInput").click(),

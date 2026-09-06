@@ -2924,6 +2924,10 @@
                          groups this category's transactions by their Description text, e.g. every
                          entry described "mcd" collapsed into one row with a combined total and dates. -->
                     <button id="ledgerNoteSummaryBtn" class="icon-edit-btn" style="display:none;" data-click="openNoteSummaryModal" title="Group by description">📝</button>
+                    <!-- v300: exports either every transaction (activeLedgerAccountView === "all")
+                         or just the account currently open — see exportLedgerCsv()'s own comment
+                         for why it's plain CSV rather than a real xlsx library. -->
+                    <button id="ledgerExportCsvBtn" class="icon-edit-btn" data-click="exportLedgerCsv" title="Export to CSV">📤</button>
                 </div>
                 <div id="ledgerTargetOwnerTags" style="display:none; gap:8px; margin:2px 0 1px;"></div>
                 <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Transaction Log History (Click item to Edit)</p>

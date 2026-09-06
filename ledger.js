@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v295";
+        const APP_VERSION = "v296";
         const APP_VERSION_DATE = "2026-09-06";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -14365,6 +14365,11 @@
             // CLAIMS_RECEIVABLE_ACCOUNT_ID (see ensureDefaultTags()/ensureDefaultAccounts()).
             const claimSettleBtn = document.getElementById("claimSettleTriggerBtn");
             if (claimSettleBtn) claimSettleBtn.style.display = (tagName === PENDING_CLAIM_TAG) ? "" : "none";
+
+            // v295: same Pending-Claim-only condition as the button above — see
+            // #tagReportBreakdownWrap's own comment in index.html for why.
+            const breakdownWrap = document.getElementById("tagReportBreakdownWrap");
+            if (breakdownWrap) breakdownWrap.style.display = (tagName === PENDING_CLAIM_TAG) ? "none" : "";
 
             document.getElementById("tagReportIncomeTotal").textContent = formatCurrency(incomeTotal, baseCurrency);
             document.getElementById("tagReportExpenseTotal").textContent = formatCurrency(expenseTotal, baseCurrency);

@@ -3781,12 +3781,17 @@
                  instead of one-by-one via each expense's own 🔖 pill. -->
             <button type="button" id="claimSettleTriggerBtn" data-click="openClaimSettleModal" class="submit-btn" style="display:none; margin-bottom:14px; background:var(--income-color);">🧾 Settle Multiple Bills as One Claim</button>
 
-            <div class="section-header">
-                <span class="section-title">Expense Breakdown by Category</span>
-            </div>
-            <div class="report-card">
-                <div id="tagReportChartWrap"></div>
-                <div id="tagReportList" style="display:flex; flex-direction:column; gap:8px; margin-top:10px;"></div>
+            <!-- v295: hidden specifically for the Pending Claim tag (see renderTagReportPage()) —
+                 with claims always grouped into the one "Claims Receivable" bucket, a 100%-one-
+                 category donut adds nothing worth looking at; every other tag still shows this. -->
+            <div id="tagReportBreakdownWrap">
+                <div class="section-header">
+                    <span class="section-title">Expense Breakdown by Category</span>
+                </div>
+                <div class="report-card">
+                    <div id="tagReportChartWrap"></div>
+                    <div id="tagReportList" style="display:flex; flex-direction:column; gap:8px; margin-top:10px;"></div>
+                </div>
             </div>
 
             <div class="section-header">

@@ -14397,7 +14397,7 @@
                 return `
                     <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
-                            <span class="item-name">${getCategoryIcon(t.cat, t.type)} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}</span>
+                            <span class="item-name">${t.cat ? getCategoryIcon(t.cat, t.type) : "🧾"} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(t.cat || (t.type === "transfer" ? "Claims Receivable" : ""))}]</span>
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}</span>
                         </div>

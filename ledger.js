@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v294";
+        const APP_VERSION = "v295";
         const APP_VERSION_DATE = "2026-09-06";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -287,6 +287,17 @@
         function subgroupsForGroup(group) {
             return ACCOUNT_SUBGROUPS[group] || [];
         }
+
+        // v295: default, auto-provisioned account(s) — same idempotent-seed idea as
+        // DEFAULT_CATEGORIES/ensureDefaultCategories(), just for the ACCOUNTS store. Currently
+        // just the one Claims Receivable account. Its id is a literal string here (not the
+        // CLAIMS_RECEIVABLE_ACCOUNT_ID constant, defined much further down this same file) purely
+        // to avoid a temporal-dead-zone reference — the two MUST stay in sync; see
+        // ensureDefaultAccounts()'s own comment for why a fixed id (not a name match, unlike
+        // categories) is used to detect "already seeded" here.
+        const DEFAULT_ACCOUNTS = [
+            { id: "acc_claims_receivable", name: "Claims Receivable", type: "normal", group: "Other Assets" }
+        ];
 
         // Sorts accounts by group (in ACCOUNT_GROUPS order) then by name — shared by the Accounts
         // page and per-member account lists so both stay consistent.
@@ -1303,8 +1314,9 @@
         // by handleTransactionSubmitMobile() at save time; cleared on every openTransactionForm()
         // call and after saving, in lockstep with pendingRefundOf above.
         let pendingRemoveTagName = null;
-        // v291: the full candidate bill list (unclaimed CLAIMABLE_EXPENSE_CATEGORY expenses still
-        // carrying PENDING_CLAIM_TAG) the Settle Multiple Claims modal was opened with — set once
+        // v291 (redesigned v295): the full candidate bill list (unclaimed transfers into
+        // CLAIMS_RECEIVABLE_ACCOUNT_ID still carrying PENDING_CLAIM_TAG) the Settle Multiple
+        // Claims modal was opened with — set once
         // by openClaimSettleModal(), read by recalcClaimSettlePreview() (to sum whichever rows are
         // currently checked) and handleClaimSettleSubmit() (to build the settlement/variance
         // records without re-querying IndexedDB mid-flow). Cleared when the modal closes via save;
@@ -1439,13 +1451,19 @@
         // them as a Subcategory nested under that Main Category — see ensureDefaultCategories()
         // for how parentId gets resolved from this name at seed time. Entries with no `parent`
         // are Main Categories (top-level, same as every pre-v101 entry).
-        // v290: category + tag pairing for company expenses awaiting reimbursement — see
-        // DEFAULT_CATEGORIES (excludeFromSavings:true, so these don't inflate personal spending
-        // reports) and ensureDefaultTags() (seeds PENDING_CLAIM_TAG with showOnDashboard:true, so
-        // it surfaces on the Dashboard's Tag Reminders widget). handleTransactionSubmitMobile()
-        // auto-applies the tag to every expense saved under this category — see the "v290:
-        // auto-tag" comment there.
-        const CLAIMABLE_EXPENSE_CATEGORY = "Company Expenses (Claimable)";
+        // v295: company-expense claim tracking — replaced the old category-based design
+        // (CLAIMABLE_EXPENSE_CATEGORY, an Expense category flagged excludeFromSavings) with a
+        // real asset account. Logging a claimable expense is now a Transfer (cash account →
+        // Claims Receivable), which is automatically excluded from Net Savings/Budget/Spending
+        // Breakdown for free (those only ever sum Income/Expense records) instead of needing an
+        // exclusion flag, and gives the money owed a real, tappable balance instead of a
+        // "reports pretend this expense didn't happen" trick. See ensureDefaultAccounts() (seeds
+        // the account, once, under the "Other Assets" group), ensureDefaultTags() (seeds
+        // PENDING_CLAIM_TAG with showOnDashboard:true), and the narrow Tags-on-Transfers carve-out
+        // in openTransactionForm()/updateTxTagsRowVisibility()/handleTransactionSubmitMobile() —
+        // Transfers are still never taggable in general, except a Transfer whose destination is
+        // this one account.
+        const CLAIMS_RECEIVABLE_ACCOUNT_ID = "acc_claims_receivable";
         const PENDING_CLAIM_TAG = "Pending Claim";
 
         const DEFAULT_CATEGORIES = [
@@ -1488,13 +1506,6 @@
             { name: "Unknown", type: "expense", icon: "❓" },
             { name: "Groceries & Household", type: "expense", icon: "🧺" },
             { name: "Professional Fees", type: "expense", icon: "📋" },
-            // v290: default excluded from the Net Savings Statement/Financial Report Card/Budget
-            // (see ensureDefaultCategories() below passing excludeFromSavings through) since this
-            // is company money passing through a personal account, not real personal spending —
-            // same reasoning "Exclude from Report" already exists for. Every expense filed here is
-            // also auto-tagged PENDING_CLAIM_TAG (see handleTransactionSubmitMobile()) so it's easy
-            // to find until it's actually claimed back.
-            { name: CLAIMABLE_EXPENSE_CATEGORY, type: "expense", icon: "📎", excludeFromSavings: true },
             { name: "Rental Expenses", type: "expense", icon: "🏠" },
             // Vehicle Expenses (Main) + its Subcategories
             { name: "Vehicle Expenses", type: "expense", icon: "🚗" },
@@ -1973,7 +1984,9 @@
         // the same action + dataset shape every other row already uses), so this needs no new
         // click handler of its own.
         function buildClaimedBadgeHTML(tx, txs) {
-            if (tx.type !== "expense") return "";
+            // v295: also shown on a Claims Receivable claim (type "transfer"), not just an
+            // ordinary expense — see the account-based claim redesign.
+            if (tx.type !== "expense" && tx.type !== "transfer") return "";
             const reimbursement = findReimbursementFor(tx.id, txs);
             if (!reimbursement) return "";
             const label = reimbursement.refundReason === "reimbursement" ? "Claimed" : "Refunded";
@@ -2072,7 +2085,11 @@
                     let expenseTotal = 0;
                     matching.forEach(t => {
                         const isRefundCredit = t.type === "income" && t.isRefund;
-                        if (t.type === "expense" || isRefundCredit) {
+                        // v295: a tagged Transfer only ever exists as an unsettled claim into
+                        // Claims Receivable (the only Transfer this app allows tags on at all —
+                        // see updateTxTagsRowVisibility()) — counted here the same way an expense
+                        // is, so the total shown is "amount still outstanding", not RM0.00.
+                        if (t.type === "expense" || t.type === "transfer" || isRefundCredit) {
                             const tBase = convertTxAmountToBase(t, accounts);
                             expenseTotal += isRefundCredit ? -tBase : tBase;
                         }
@@ -2935,13 +2952,20 @@
             // Preset the src account to whichever account this Activity page belongs to, so the
             // form opens ready to log against it rather than the stored default payment account.
             const presetAccountId = activeLedgerAccountView !== "all" ? activeLedgerAccountView : null;
+            // v295: "Claim" routes to openClaimEntryForm() instead of the plain openTransactionForm()
+            // every other option here uses — see that function's own comment.
+            if (el.dataset.type === "claim") {
+                openClaimEntryForm(presetAccountId);
+                return;
+            }
             openTransactionForm(el.dataset.type, null, presetAccountId);
         }
 
         // Dashboard "Quick Transaction Entry" speed-dial FAB (v173) — same open/close/choose
-        // shape as the Account Activity page's quick-add sheet above, but with a 4th option
-        // (Salary, routing to openSalaryEntryForm() instead of openTransactionForm()) and no
-        // preset account, matching what the old 4-button actions-bar row used to do.
+        // shape as the Account Activity page's quick-add sheet above, but with extra options
+        // (Salary → openSalaryEntryForm(), Claim (v295) → openClaimEntryForm(), instead of
+        // openTransactionForm()) and no preset account, matching what the old 4-button
+        // actions-bar row used to do.
         function toggleDashboardQuickAddSheet() {
             const sheet = document.getElementById("dashboardQuickAddSheet");
             const isOpen = sheet.style.display === "flex";
@@ -2961,6 +2985,8 @@
             const action = el.dataset.action;
             if (action === "salary") {
                 openSalaryEntryForm();
+            } else if (action === "claim") {
+                openClaimEntryForm();
             } else {
                 openTransactionForm(action);
             }
@@ -8439,8 +8465,9 @@
             dynamicTags = tags.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
         }
 
-        // v290: idempotent seed for PENDING_CLAIM_TAG (the auto-tag applied to every
-        // CLAIMABLE_EXPENSE_CATEGORY expense — see handleTransactionSubmitMobile()), mirroring
+        // v290 (redesigned v295): idempotent seed for PENDING_CLAIM_TAG (the auto-tag applied to
+        // every claim Transfer into the Claims Receivable account — see
+        // handleTransactionSubmitMobile()), mirroring
         // ensureDefaultCategories()'s own convention: matched by EITHER current name OR the
         // deterministic id this seed would have used, so renaming or deleting it once never
         // silently recreates it on a later launch.
@@ -8945,6 +8972,31 @@
         // Idempotent: inserts any DEFAULT_CATEGORIES entry not already present
         // (matched case-insensitively by name), so re-running on every launch is safe
         // and never overwrites a category the user has renamed or customised.
+        // v295: idempotent seed for DEFAULT_ACCOUNTS (currently just Claims Receivable) — mirrors
+        // ensureDefaultCategories()'s own pattern. Matched purely by id (never by name) — unlike a
+        // category, this specific account is also referenced directly by CLAIMS_RECEIVABLE_ACCOUNT_ID
+        // throughout the claim-settlement code, so a user renaming it must never cause a second
+        // one to be silently created alongside it (same risk ensureDefaultCategories() had to fix
+        // for renamed categories — matching by id sidesteps it from day one here instead). If the
+        // user deletes the account entirely, the next launch recreates it fresh with a zero
+        // balance — same "still offered going forward, even if removed" behavior categories
+        // already have; nothing here restores any deleted transaction history.
+        async function ensureDefaultAccounts() {
+            const existing = await readAllDB(STORES.ACCOUNTS);
+            const existingIds = new Set(existing.map(a => a.id));
+            for (const a of DEFAULT_ACCOUNTS) {
+                if (existingIds.has(a.id)) continue;
+                await writeDB(STORES.ACCOUNTS, {
+                    id: a.id, name: a.name, type: a.type, group: a.group,
+                    accountRef: "", subgroup: "", linkedAccountId: null, includeInNetWorth: true,
+                    propertyType: "", holdingStartDate: "", tenureType: "", leaseTermYears: 0, leaseExpiryDate: "",
+                    hasRedrawFacility: false, redrawAmount: 0, redrawAsOfDate: "",
+                    creditLimit: 0, statementDay: null, paymentDueDay: null, defaultPaymentAccountId: null,
+                    memberIds: [], initialBalance: 0, currency: baseCurrency
+                });
+            }
+        }
+
         async function ensureDefaultCategories() {
             const existing = await readAllDB(STORES.CATEGORIES);
 
@@ -9314,9 +9366,10 @@
                 // it already is.
                 document.getElementById("txSplitWrap").style.display = "none";
                 // Tags, unlike Split Expenses, ARE editable on an existing record (a chip can be
-                // added/removed on this one leg same as Category/Amount already can be) — only
-                // hidden for Transfers, which were never taggable in the first place.
-                document.getElementById("txTagsRow").style.display = tx.type === "transfer" ? "none" : "block";
+                // added/removed on this one leg same as Category/Amount already can be) — hidden
+                // for Transfers in general, except a Transfer into Claims Receivable (see
+                // updateTxTagsRowVisibility()'s own comment).
+                updateTxTagsRowVisibility();
                 resetTxTagsChips(tx.tags || []);
 
                 document.getElementById("txManualFxToggle").checked = !!tx.manualFxRate;
@@ -9415,7 +9468,7 @@
                 document.getElementById("txChecked").checked = false;
                 // Split Expenses only makes sense for a brand-new Income/Expense entry.
                 document.getElementById("txSplitWrap").style.display = (type === "transfer") ? "none" : "block";
-                document.getElementById("txTagsRow").style.display = (type === "transfer") ? "none" : "block";
+                updateTxTagsRowVisibility();
                 resetTxTagsChips([]);
 
                 // Pre-select the user's default account, if one is set and still exists — new
@@ -10401,6 +10454,22 @@
             updateTxFdLinkVisibility(accounts);
             updateTxManualFxVisibility();
             updateTxTransferFxVisibility();
+            updateTxTagsRowVisibility();
+        }
+
+        // v295: Tags row visibility. Transfers are still never taggable in general (see the
+        // original v257 comment on why — a Transfer's "meaning" is just moving money between two
+        // of your own accounts, so a trip/claim label doesn't obviously belong to it) EXCEPT one
+        // narrow, deliberate carve-out: a Transfer whose destination is the Claims Receivable
+        // account IS taggable, since PENDING_CLAIM_TAG is how the whole claim-tracking/Settle
+        // Multiple Bills flow finds its candidates. Called on every srcAccount/destAccount change
+        // (via syncTransactionCurrency()) so switching the destination account live-updates this,
+        // not just on the type toggle.
+        function updateTxTagsRowVisibility() {
+            const type = document.getElementById("txType").value;
+            const destId = document.getElementById("destAccount").value;
+            const show = type !== "transfer" || destId === CLAIMS_RECEIVABLE_ACCOUNT_ID;
+            document.getElementById("txTagsRow").style.display = show ? "block" : "none";
         }
 
         // Auto-calculates the FD placement's maturity date from commencing date + tenure, and
@@ -10984,7 +11053,10 @@
                 // Transfers (the Tags row is hidden for them, same as `cat` being forced null
                 // above) rather than trusting whatever txTagsSelected happens to still hold from
                 // a previous Income/Expense entry this session.
-                tags: document.getElementById("txType").value === "transfer" ? [] : [...txTagsSelected],
+                // v295: taggable Transfers are the single narrow exception (see
+                // updateTxTagsRowVisibility()'s comment) — a Transfer into Claims Receivable keeps
+                // whatever chips are selected; every other Transfer still forces this empty.
+                tags: (document.getElementById("txType").value === "transfer" && document.getElementById("destAccount").value !== CLAIMS_RECEIVABLE_ACCOUNT_ID) ? [] : [...txTagsSelected],
                 checked: document.getElementById("txChecked").checked,
                 fdReferenceNo: null,
                 fdStartDate: null,
@@ -11054,14 +11126,14 @@
                 record.refundReason = pendingRefundReason || "refund";
             }
 
-            // v290: every expense filed under CLAIMABLE_EXPENSE_CATEGORY auto-gets
-            // PENDING_CLAIM_TAG — no manual tagging step needed for it to show up in the
-            // Dashboard's Tag Reminders widget/Spending by Tag report, or to go through the
-            // tag-pill → Reimbursement flow (buildTagBadgesHTML()/openReimbursementFromTagBadge()).
-            // Deliberately only ADDS the tag here — it never strips it back off if the category is
-            // later edited away, matching how every other tag removal in this app is a deliberate
-            // user action (the "remove this tag" toggle in fillReimbursementForm()), not automatic.
-            if (record.type === "expense" && record.cat === CLAIMABLE_EXPENSE_CATEGORY && !record.tags.includes(PENDING_CLAIM_TAG)) {
+            // v295 (was v290, category-based): every Transfer into the Claims Receivable account
+            // auto-gets PENDING_CLAIM_TAG — no manual tagging step needed for it to show up in the
+            // Dashboard's Tag Reminders widget/Spending by Tag report, or in the Settle Multiple
+            // Bills candidate list. Deliberately only ADDS the tag here — it never strips it back
+            // off if the destination account is later edited away, matching how every other tag
+            // removal in this app is a deliberate user action (the "remove this tag" toggle in
+            // fillReimbursementForm()), not automatic.
+            if (record.type === "transfer" && record.dest === CLAIMS_RECEIVABLE_ACCOUNT_ID && !record.tags.includes(PENDING_CLAIM_TAG)) {
                 record.tags = [...record.tags, PENDING_CLAIM_TAG];
             }
 
@@ -11114,14 +11186,13 @@
                         extraRecord.image = null;
                         extraRecord.attachments = [];
                         // v290: a split leg's own category can differ from the main row's, so it's
-                        // re-checked independently here — same auto-tag rule as the main record
-                        // above. Object.assign only shallow-copies `record.tags`' array reference,
-                        // so this clones it first rather than mutating (and thus corrupting) every
-                        // other leg's shared array in place.
+                        // re-checked independently here — Object.assign only shallow-copies
+                        // `record.tags`' array reference, so this clones it first rather than
+                        // mutating (and thus corrupting) every other leg's shared array in place.
+                        // (v295: the auto-tag-on-category rule this used to also re-check here was
+                        // removed — claims are now Transfers, and Split Expenses is only ever
+                        // reachable for Income/Expense, so a split leg can never be a claim.)
                         extraRecord.tags = [...record.tags];
-                        if (extraRecord.cat === CLAIMABLE_EXPENSE_CATEGORY && !extraRecord.tags.includes(PENDING_CLAIM_TAG)) {
-                            extraRecord.tags.push(PENDING_CLAIM_TAG);
-                        }
                         await writeDB(STORES.TRANSACTIONS, extraRecord);
                     }
                 } else {
@@ -11232,6 +11303,28 @@
             await handleSalarySchemeChange();
             recalcSalaryPreview();
             openModal("salaryModal");
+        }
+
+        // --- CLAIM ENTRY (v295) — quick-entry shortcut for logging a company expense against
+        // Claims Receivable, so the daily habit stays close to "pick account, amount,
+        // description" even though it's now a Transfer under the hood rather than a plain
+        // Expense. Opens the ordinary Transfer form pre-filled with Claims Receivable as the
+        // destination (still fully editable — a user could repurpose this into an ordinary
+        // account-to-account Transfer, at which point PENDING_CLAIM_TAG's forced auto-add in
+        // handleTransactionSubmitMobile() simply won't apply since the destination changed) and
+        // the Pending Claim tag chip pre-added (a convenience default only — removing the chip
+        // here does NOT skip the auto-tag; see the "v295 (was v290...)" comment there).
+        async function openClaimEntryForm(presetAccountId = null) {
+            // Guards against the one nonsensical case: opening this from Claims Receivable's own
+            // Activity page would otherwise preset src = dest = the same account.
+            const safePreset = presetAccountId === CLAIMS_RECEIVABLE_ACCOUNT_ID ? null : presetAccountId;
+            await openTransactionForm("transfer", null, safePreset);
+            document.getElementById("destAccount").value = CLAIMS_RECEIVABLE_ACCOUNT_ID;
+            syncAccountPickerButtonText("destAccount");
+            document.getElementById("txModalTitle").textContent = "Company Expense (Claim)";
+            resetTxTagsChips([PENDING_CLAIM_TAG]);
+            updateTxTagsRowVisibility();
+            syncTransactionCurrency();
         }
 
         // Builds the two account <select>s (Bank Account, EPF/CPF Account) — always with EVERY
@@ -12186,15 +12279,25 @@
             if (!id) return;
             const txs = await readAllDB(STORES.TRANSACTIONS);
             const tx = txs.find(t => String(t.id) === String(id));
-            if (!tx || tx.type !== "expense") return;
+            if (!tx) return;
+            // v295: a Claims Receivable claim's "Pending Claim" pill routes into the Settle
+            // Multiple Bills flow instead — that flow already supports settling just one bill
+            // (uncheck the rest) and is the only path that correctly draws down the Claims
+            // Receivable balance; the plain single-item Reimbursement form below only ever
+            // understood Expense-type entries.
+            if (tx.type === "transfer" && tx.dest === CLAIMS_RECEIVABLE_ACCOUNT_ID && tagName === PENDING_CLAIM_TAG) {
+                await openClaimSettleModal();
+                return;
+            }
+            if (tx.type !== "expense") return;
             await fillReimbursementForm(tx, "Reimbursement", "reimbursement", tagName || null);
         }
 
-        // --- SETTLE MULTIPLE CLAIMS (v291) — see claimSettleModal's own comment in index.html
-        // for the full record-writing plan. Everything below only ever runs against
-        // CLAIMABLE_EXPENSE_CATEGORY expenses still carrying PENDING_CLAIM_TAG that don't already
-        // have a Reimbursement/Refund linked (findReimbursementFor) — i.e. exactly the bills the
-        // "Pending Claim" Spending by Tag view itself is listing.
+        // --- SETTLE MULTIPLE CLAIMS (v291, redesigned v295) — see claimSettleModal's own comment
+        // in index.html for the full record-writing plan. Everything below only ever runs against
+        // unclaimed Transfers into the Claims Receivable account still carrying PENDING_CLAIM_TAG
+        // that don't already have a settlement linked (findReimbursementFor) — i.e. exactly the
+        // bills the "Pending Claim" Spending by Tag view itself is listing.
 
         // Rounds to cents and treats sub-cent noise as exactly zero — every comparison/variance
         // calc below goes through this rather than comparing raw floats directly.
@@ -12204,7 +12307,7 @@
 
         function buildClaimSettleBillListHTML() {
             if (claimSettleCandidates.length === 0) {
-                return '<p style="font-size:0.75rem; text-align:center; color:var(--text-muted); margin:4px 0;">No unclaimed bills found under Company Expenses (Claimable).</p>';
+                return '<p style="font-size:0.75rem; text-align:center; color:var(--text-muted); margin:4px 0;">No unclaimed bills found under Claims Receivable.</p>';
             }
             return claimSettleCandidates.map(t => `
                 <label style="display:flex; align-items:center; gap:8px; font-size:0.78rem; padding:4px 2px; cursor:pointer;">
@@ -12218,9 +12321,11 @@
         // Mirrors populateSalaryAccountSelects()'s option-building exactly (same emoji prefix /
         // currency suffix / owner suffix convention as every other account picker in the app —
         // see openAccountPicker()'s own comment on why this needs to stay visually consistent).
+        // The Claims Receivable account itself is excluded — it's the source of the settlement,
+        // never a sensible "which account received the payment" answer.
         async function populateClaimSettleAccountSelect() {
             const accounts = await readAllDB(STORES.ACCOUNTS);
-            const sorted = sortAccountsByGroupThenName(accounts);
+            const sorted = sortAccountsByGroupThenName(accounts).filter(a => a.id !== CLAIMS_RECEIVABLE_ACCOUNT_ID);
             const optionsHTML = sorted.map(a => {
                 const prefix = a.type === "fd" ? "🏦 " : a.type === "multi" ? "💱 " : a.type === "unittrust" ? "📊 " : a.type === "creditcard" ? "💳 " : "";
                 const currLabel = (a.type === "multi" || a.type === "fd" || a.type === "unittrust") ? "" : ` (${escapeHtml(a.currency)})`;
@@ -12237,7 +12342,7 @@
         async function openClaimSettleModal() {
             const txs = await readAllDB(STORES.TRANSACTIONS);
             claimSettleCandidates = txs
-                .filter(t => t.type === "expense" && t.cat === CLAIMABLE_EXPENSE_CATEGORY && Array.isArray(t.tags) && t.tags.includes(PENDING_CLAIM_TAG) && !findReimbursementFor(t.id, txs))
+                .filter(t => t.type === "transfer" && t.dest === CLAIMS_RECEIVABLE_ACCOUNT_ID && Array.isArray(t.tags) && t.tags.includes(PENDING_CLAIM_TAG) && !findReimbursementFor(t.id, txs))
                 .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 
             document.getElementById("claimSettleBillList").innerHTML = buildClaimSettleBillListHTML();
@@ -12335,10 +12440,10 @@
         // flow cares about), same convention as the ordinary record object handleTransactionSubmitMobile()
         // builds, just assembled directly rather than read off the txModal form fields (this modal
         // is its own dedicated form, not a wrapper around the ordinary Income/Expense one).
-        function buildClaimSettleBaseRecord({ type, desc, amount, cat, currency, src, date, notes, tags }) {
+        function buildClaimSettleBaseRecord({ type, desc, amount, cat, currency, src, dest, date, notes, tags }) {
             return {
                 type, desc, amount, cat, currency, src, date,
-                dest: null,
+                dest: dest || null,
                 image: null,
                 attachments: [],
                 payee: null,
@@ -12387,45 +12492,60 @@
             const dates = selected.map(t => t.date).sort();
             const dateRange = dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} – ${dates[dates.length - 1]}`;
 
+            // v295: the settlement is now real money movement rather than a category-netting
+            // trick. The main leg always draws down Claims Receivable by min(received, billed) —
+            // exactly the billed total on a match or an overpayment (so the receivable clears
+            // completely for every settled bill), or exactly what actually came in on a
+            // shortfall (leaving the unclaimed remainder to be written off as its own expense
+            // below, step 2, rather than pretending it was received).
+            const settleAmount = claimSettleRound2(Math.min(received, selectedTotal));
+
             try {
-                // 1) The lump-sum Reimbursement itself — nets against CLAIMABLE_EXPENSE_CATEGORY
-                //    (see excludedCatNames everywhere that category set is used) exactly like a
-                //    single-bill Reimbursement would, just for the actual amount received rather
-                //    than any one bill's own amount.
-                const reimbursement = buildClaimSettleBaseRecord({
-                    type: "income",
-                    desc: `Reimbursement: ${selected.length} bill${selected.length === 1 ? "" : "s"} (${dateRange})`,
-                    amount: received,
-                    cat: CLAIMABLE_EXPENSE_CATEGORY,
+                // 1) The lump-sum settlement — a Transfer, Claims Receivable → settlement account.
+                const settlement = buildClaimSettleBaseRecord({
+                    type: "transfer",
+                    desc: `Claim settlement: ${selected.length} bill${selected.length === 1 ? "" : "s"} (${dateRange})`,
+                    amount: settleAmount,
+                    cat: null,
                     currency,
-                    src: accountId,
+                    src: CLAIMS_RECEIVABLE_ACCOUNT_ID,
+                    dest: accountId,
                     date,
                     notes
                 });
-                reimbursement.isRefund = true;
-                reimbursement.refundReason = "reimbursement";
-                reimbursement.refundOf = selected[0].id;
-                reimbursement.refundOfIds = selected.map(t => t.id);
-                await writeDB(STORES.TRANSACTIONS, reimbursement);
+                settlement.isRefund = true;
+                settlement.refundReason = "reimbursement";
+                settlement.refundOf = selected[0].id;
+                settlement.refundOfIds = selected.map(t => t.id);
+                await writeDB(STORES.TRANSACTIONS, settlement);
 
                 // 2) The short/extra claim, if any — an ORDINARY (non-excluded) record, so it
                 //    flows into Budget/Net Savings/Spending Breakdown as real personal
-                //    spending/income instead of disappearing into the claimable category.
+                //    spending/income, exactly the way the old category-netting version did.
                 if (Math.abs(variance) >= 0.005) {
                     const varianceCat = document.getElementById("claimSettleVarianceCategory").value;
                     if (variance < 0) {
+                        // Short claim: the settlement Transfer above only drew Claims Receivable
+                        // down by `received` — this finishes the draw-down for the unclaimed
+                        // remainder, sourced FROM Claims Receivable (not the settlement account),
+                        // so the receivable still clears to zero for these bills while the loss
+                        // lands as a real personal expense.
                         const shortfall = buildClaimSettleBaseRecord({
                             type: "expense",
                             desc: `Short claim — unclaimed portion of company expense claim (${dateRange})`,
                             amount: Math.abs(variance),
                             cat: varianceCat || "Other Expenses",
                             currency,
-                            src: accountId,
+                            src: CLAIMS_RECEIVABLE_ACCOUNT_ID,
                             date,
                             notes: `Company paid ${formatCurrency(received, currency)} against ${formatCurrency(selectedTotal, currency)} billed — this ${formatCurrency(Math.abs(variance), currency)} shortfall isn't claimable.`
                         });
                         await writeDB(STORES.TRANSACTIONS, shortfall);
                     } else {
+                        // Extra claim: money beyond what was ever billed — never touched Claims
+                        // Receivable (the settlement Transfer above already drew it fully down to
+                        // zero via `selectedTotal`), so this is ordinary income straight into the
+                        // settlement account.
                         const extra = buildClaimSettleBaseRecord({
                             type: "income",
                             desc: `Extra claim — extra amount from company expense claim (${dateRange})`,
@@ -14224,23 +14344,25 @@
                 // inflate this tag's Income total, and should reduce the category it refunds.
                 const isRefundCredit = t.type === "income" && t.isRefund;
                 const tBase = convertTxAmountToBase(t, accounts);
-                if (t.type === "expense" || isRefundCredit) {
+                if (t.type === "expense" || t.type === "transfer" || isRefundCredit) {
                     const signed = isRefundCredit ? -tBase : tBase;
                     expenseTotal += signed;
-                    const cat = t.cat || "Other Expenses";
+                    // v295: a tagged Transfer only exists as an unsettled Claims Receivable claim
+                    // (see updateTxTagsRowVisibility()) — it has no `cat` (Transfers never carry
+                    // one), so it's grouped under its own label here instead of falling into the
+                    // generic "Other Expenses" bucket every actual uncategorized expense uses.
+                    const cat = t.cat || (t.type === "transfer" ? "Claims Receivable" : "Other Expenses");
                     catTotals[cat] = (catTotals[cat] || 0) + signed;
                 } else if (t.type === "income" && !t.isRefund) {
                     incomeTotal += tBase;
                 }
-                // Transfers are never taggable (see the Tags row's income/expense-only visibility
-                // in openTransactionForm()), so no branch is needed for t.type === "transfer" here.
             });
 
             // v291: the "Settle Multiple Bills as One Claim" button only makes sense on the
             // Pending Claim view itself — every other tag either isn't a claim-tracking tag at
-            // all, or (a custom trip/claim tag) has no single agreed category to file the
-            // lump-sum Reimbursement/variance records under, unlike Pending Claim which always
-            // means CLAIMABLE_EXPENSE_CATEGORY (see ensureDefaultTags()/DEFAULT_CATEGORIES).
+            // all, or (a custom trip/claim tag) has no single agreed destination account to file
+            // the settlement/variance records against, unlike Pending Claim which always means
+            // CLAIMS_RECEIVABLE_ACCOUNT_ID (see ensureDefaultTags()/ensureDefaultAccounts()).
             const claimSettleBtn = document.getElementById("claimSettleTriggerBtn");
             if (claimSettleBtn) claimSettleBtn.style.display = (tagName === PENDING_CLAIM_TAG) ? "" : "none";
 
@@ -14267,13 +14389,16 @@
             const sortedTx = [...matching].sort((a, b) => (new Date(b.date) - new Date(a.date)) || (b.id - a.id));
             document.getElementById("tagReportTxList").innerHTML = sortedTx.length ? sortedTx.map(t => {
                 const acc = accounts.find(a => a.id === t.src);
-                const col = t.type === "income" ? "income-color" : "expense-color";
-                const sgn = t.type === "income" ? "+" : "-";
+                // v295: a tagged Transfer (a Claims Receivable claim) reads as neutral, not as an
+                // expense-colored "-" — it's an asset movement, not spending, even though it's
+                // grouped alongside expenses in the totals above for "amount outstanding" purposes.
+                const col = t.type === "income" ? "income-color" : t.type === "transfer" ? "primary" : "expense-color";
+                const sgn = t.type === "income" ? "+" : t.type === "transfer" ? "" : "-";
                 return `
                     <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
                             <span class="item-name">${getCategoryIcon(t.cat, t.type)} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}</span>
-                            <span class="item-meta">${t.date} [${escapeHtml(t.cat || "")}]</span>
+                            <span class="item-meta">${t.date} [${escapeHtml(t.cat || (t.type === "transfer" ? "Claims Receivable" : ""))}]</span>
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}</span>
                         </div>
                         <div class="item-right">
@@ -15003,6 +15128,11 @@
                 await writeDB(STORES.ACCOUNTS, { id: "sgd_w", name: "DBS Singapore", initialBalance: 1200, currency: "SGD", type: "normal", memberIds: [] });
                 await writeDB(STORES.ACCOUNTS, { id: "myr_w", name: "Maybank Malaysia", initialBalance: 3400, currency: "MYR", type: "normal", memberIds: [] });
             }
+            // v295: seeded AFTER the brand-new-install starter accounts above, not before — this
+            // writes to the same ACCOUNTS store, and running it first would make accs.length
+            // above never read as 0 for a genuinely brand-new install, silently skipping the
+            // starter USD/SGD/MYR demo accounts.
+            await ensureDefaultAccounts();
 
             // Seed a friendly starting set of household members (fully editable/removable) so the
             // Sidebar's Members feature isn't empty on first run.

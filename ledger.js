@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v296";
+        const APP_VERSION = "v297";
         const APP_VERSION_DATE = "2026-09-06";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15366,7 +15366,19 @@
                     await writeDB(STORES.SETTINGS, { key: "fxRates", value: fxRates });
 
                     for (const acc of bundle.accounts) await writeDB(STORES.ACCOUNTS, acc);
-                    for (const tx of bundle.transactions) { delete tx.id; await writeDB(STORES.TRANSACTIONS, tx); }
+                    // v296 fix: previously did `delete tx.id` before writing each transaction back,
+                    // deliberately letting IndexedDB's autoIncrement assign a fresh id to every one
+                    // on import — but several fields store ANOTHER transaction's id as a cross-
+                    // reference (linkedFdPlacementId, refundOf/refundOfIds), and a fresh id breaks
+                    // every one of them: the FD account's own Activity page stops grouping interest
+                    // payouts under their placement, the ✅ Claimed/Reimbursement badge disappears,
+                    // and — worse than cosmetic — findReimbursementFor()'s refundOfIds lookup (used
+                    // by the Settle Multiple Bills as One Claim candidate query) silently stops
+                    // matching, so an already-settled claim would reappear as unclaimed and risk
+                    // being settled twice. STORES.TRANSACTIONS is fully cleared just above, so there
+                    // is no id collision risk in keeping the originals — same reasoning the
+                    // attachments restore below already uses on purpose (see its own comment).
+                    for (const tx of bundle.transactions) await writeDB(STORES.TRANSACTIONS, tx);
 
                     if (bundle.categories) {
                         for (const cat of bundle.categories) await writeDB(STORES.CATEGORIES, cat);
@@ -15380,9 +15392,9 @@
                     if (bundle.navHistory) {
                         for (const rec of bundle.navHistory) await writeDB(STORES.NAV_HISTORY, rec);
                     }
-                    // v121: attachment blobs — written with their ORIGINAL ids (unlike transactions,
-                    // whose auto-increment `id` is deleted above before re-import) so each restored
-                    // transaction's own `attachments[].id` refs keep resolving correctly.
+                    // v121: attachment blobs — written with their ORIGINAL ids (v296: transactions
+                    // now do too, see the comment above) so each restored transaction's own
+                    // `attachments[].id` refs keep resolving correctly.
                     if (bundle.attachments) {
                         for (const att of bundle.attachments) await writeDB(STORES.ATTACHMENTS, att);
                     }

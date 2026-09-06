@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v298";
+        const APP_VERSION = "v299";
         const APP_VERSION_DATE = "2026-09-06";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -9081,13 +9081,15 @@
             await migrateOthersCategoryRename();
             await migrateFdInterestIncomeRename();
             await migrateFdInterestDuplicateCleanup();
+            await migrateRemoveEmptyClaimableCategory();
             await migrateStaleDestFieldCleanup();
             await migrateStaleCategoryOnTransfersCleanup();
             await migrateAccountGroupRename();
-            // migrateFdInterestDuplicateCleanup() may have deleted a Categories record (the
-            // legacy "FD Interest" duplicate), so dynamicCategories — loaded further above,
-            // before that migration ran — is re-synced here to reflect the deletion immediately
-            // rather than only on the next full app load.
+            // migrateFdInterestDuplicateCleanup()/migrateRemoveEmptyClaimableCategory() may have
+            // deleted a Categories record (the legacy "FD Interest" duplicate / the retired
+            // "Company Expenses (Claimable)" category), so dynamicCategories — loaded further
+            // above, before either migration ran — is re-synced here to reflect the deletion
+            // immediately rather than only on the next full app load.
             await syncAndLoadCategories();
         }
 
@@ -9157,6 +9159,25 @@
         // unrelated account. That stray `dest` made the record wrongly show up in that other
         // account's ledger too (the per-account view matches on src OR dest). Only `dest` is
         // cleared — the record's real account (`src`), amount, category, etc. are untouched.
+        // One-time cleanup: "Company Expenses (Claimable)" (the old category-based claim-tracking
+        // design, replaced v295 by the Claims Receivable account — see the "v295: money-owed
+        // tracking" comment further up) is no longer seeded and no longer offered in any dropdown,
+        // but an install that already had it before v295 still has that category record sitting in
+        // Manage Categories forever, since removing a name from DEFAULT_CATEGORIES only stops it
+        // being RE-seeded — it was never retroactively deleted from an existing database. Only
+        // ever deletes the category record itself, and only when truly unused (zero transactions
+        // still filed under that exact name) — if any transaction still references it, it's left
+        // alone untouched rather than orphaning real data.
+        async function migrateRemoveEmptyClaimableCategory() {
+            const LEGACY_NAME = "Company Expenses (Claimable)";
+            const cats = await readAllDB(STORES.CATEGORIES);
+            const legacy = cats.find(c => c.name === LEGACY_NAME);
+            if (!legacy) return;
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            if (txs.some(t => t.cat === LEGACY_NAME)) return;
+            await deleteDB(STORES.CATEGORIES, legacy.id);
+        }
+
         async function migrateStaleDestFieldCleanup() {
             const txs = await readAllDB(STORES.TRANSACTIONS);
             for (const t of txs) {
@@ -9522,6 +9543,20 @@
                     const defaultCat = type === "income" ? defaultIncomeCategory : defaultExpenseCategory;
                     if (defaultCat && [...catSelect.options].some(o => o.value === defaultCat)) {
                         catSelect.value = defaultCat;
+                    }
+
+                    // v298: opening this form via the "+" FAB on an FD account's own Activity page
+                    // (see quickAddChooseType()/presetSrcAccountId above) is overwhelmingly going to
+                    // be logging that FD's own interest payout — so for Income specifically, this
+                    // takes priority over the general default-income-category setting above rather
+                    // than falling back to the alphabetically-first option. Scoped narrowly to "the
+                    // preset account is an FD account" so this never fires for an ordinary account's
+                    // own Income quick-add.
+                    if (type === "income" && presetSrcAccountId) {
+                        const presetAcc = accounts.find(a => a.id === presetSrcAccountId);
+                        if (presetAcc && presetAcc.type === "fd" && [...catSelect.options].some(o => o.value === "FD Interest Income")) {
+                            catSelect.value = "FD Interest Income";
+                        }
                     }
                 }
 

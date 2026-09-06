@@ -2880,8 +2880,8 @@
         <div id="dashboardQuickAddBackdrop" class="quick-add-backdrop" style="display:none;" data-click="closeDashboardQuickAddSheet"></div>
         <div id="dashboardQuickAddSheet" class="speed-dial-sheet" style="display:none;">
             <div class="speed-dial-row">
-                <span class="speed-dial-label">Company Expense (Claim)</span>
-                <button class="speed-dial-fab sd-claim" data-click="dashboardQuickAddChooseAction" data-action="claim" aria-label="Company Expense (Claim)" title="Company Expense (Claim)">🧾</button>
+                <span class="speed-dial-label">Lend / Claim</span>
+                <button class="speed-dial-fab sd-claim" data-click="dashboardQuickAddChooseAction" data-action="claim" aria-label="Lend / Claim" title="Lend / Claim">🧾</button>
             </div>
             <div class="speed-dial-row">
                 <span class="speed-dial-label">Transfer money</span>
@@ -3004,8 +3004,8 @@
         <div id="ledgerQuickAddBackdrop" class="quick-add-backdrop" style="display:none;" data-click="closeLedgerQuickAddSheet"></div>
         <div id="ledgerQuickAddSheet" class="speed-dial-sheet" style="display:none;">
             <div class="speed-dial-row">
-                <span class="speed-dial-label">Company Expense (Claim)</span>
-                <button class="speed-dial-fab sd-claim" data-click="quickAddChooseType" data-type="claim" aria-label="Company Expense (Claim)" title="Company Expense (Claim)">🧾</button>
+                <span class="speed-dial-label">Lend / Claim</span>
+                <button class="speed-dial-fab sd-claim" data-click="quickAddChooseType" data-type="claim" aria-label="Lend / Claim" title="Lend / Claim">🧾</button>
             </div>
             <div class="speed-dial-row">
                 <span class="speed-dial-label">Transfer money</span>
@@ -4498,15 +4498,15 @@
 
     <!-- MODAL: Settle Multiple Claims (v291, redesigned v295) — settles several unclaimed
          Transfers into the Claims Receivable account (still carrying PENDING_CLAIM_TAG, not yet
-         individually settled) against ONE lump-sum payment received from the company. Opened only
+         individually settled) against ONE lump-sum payment received back. Opened only
          from the "Pending Claim" Spending by Tag view (see claimSettleTriggerBtn above) via
          openClaimSettleModal(). On save this writes: (1) one isRefund Transfer moving
          min(received, billed) OUT of Claims Receivable into whichever account received the
          payment, with every selected bill's date/description/amount listed in its Notes; (2) if
          the received amount doesn't exactly match the selected bills' total, a SEPARATE ordinary
-         record — an Expense sourced FROM Claims Receivable (short claim — company paid less than
+         record — an Expense sourced FROM Claims Receivable (short claim — less was received than
          billed, finishing that draw-down and booking the loss as real spending) or an Income into
-         the settlement account (extra claim — company paid more), filed under an ordinary
+         the settlement account (extra claim — more was received than billed), filed under an ordinary
          (non-excluded) category so it DOES flow into Budget/Net Savings/Spending Breakdown as real
          personal spending/income; and (3) removes PENDING_CLAIM_TAG from every settled bill. See
          handleClaimSettleSubmit()/findReimbursementFor()'s refundOfIds handling in ledger.js. -->

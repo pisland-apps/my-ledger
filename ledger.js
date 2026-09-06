@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v297";
+        const APP_VERSION = "v298";
         const APP_VERSION_DATE = "2026-09-06";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1451,9 +1451,10 @@
         // them as a Subcategory nested under that Main Category — see ensureDefaultCategories()
         // for how parentId gets resolved from this name at seed time. Entries with no `parent`
         // are Main Categories (top-level, same as every pre-v101 entry).
-        // v295: company-expense claim tracking — replaced the old category-based design
-        // (CLAIMABLE_EXPENSE_CATEGORY, an Expense category flagged excludeFromSavings) with a
-        // real asset account. Logging a claimable expense is now a Transfer (cash account →
+        // v295: money-owed tracking (v296: broadened past company expense claims to any lend/
+        // claim scenario — see the "Lend / Claim" quick-entry label) — replaced the old
+        // category-based design (CLAIMABLE_EXPENSE_CATEGORY, an Expense category flagged
+        // excludeFromSavings) with a real asset account. Logging one is now a Transfer (cash account →
         // Claims Receivable), which is automatically excluded from Net Savings/Budget/Spending
         // Breakdown for free (those only ever sum Income/Expense records) instead of needing an
         // exclusion flag, and gives the money owed a real, tappable balance instead of a
@@ -11305,7 +11306,8 @@
             openModal("salaryModal");
         }
 
-        // --- CLAIM ENTRY (v295) — quick-entry shortcut for logging a company expense against
+        // --- CLAIM ENTRY (v295) — quick-entry shortcut for logging money owed back to you (a
+        // company expense claim, money lent to someone, etc.) against
         // Claims Receivable, so the daily habit stays close to "pick account, amount,
         // description" even though it's now a Transfer under the hood rather than a plain
         // Expense. Opens the ordinary Transfer form pre-filled with Claims Receivable as the
@@ -11321,7 +11323,7 @@
             await openTransactionForm("transfer", null, safePreset);
             document.getElementById("destAccount").value = CLAIMS_RECEIVABLE_ACCOUNT_ID;
             syncAccountPickerButtonText("destAccount");
-            document.getElementById("txModalTitle").textContent = "Company Expense (Claim)";
+            document.getElementById("txModalTitle").textContent = "Lend / Claim";
             resetTxTagsChips([PENDING_CLAIM_TAG]);
             updateTxTagsRowVisibility();
             syncTransactionCurrency();
@@ -12395,7 +12397,7 @@
             }
             box.style.display = "";
             if (variance < 0) {
-                label.innerHTML = `⚠️ Short claim: <strong>${formatCurrency(Math.abs(variance), currency)}</strong> — the company paid less than these bills add up to. This will be recorded as your own expense.`;
+                label.innerHTML = `⚠️ Short claim: <strong>${formatCurrency(Math.abs(variance), currency)}</strong> — less was received than these bills add up to. This will be recorded as your own expense.`;
                 catLabel.textContent = "Record the shortfall as";
                 // Only rebuild the select's options (and re-default it) when switching direction
                 // (shortfall ↔ extra) — rebuilding on every keystroke would blow away whichever
@@ -12406,7 +12408,7 @@
                     catSelect.dataset.dir = "expense";
                 }
             } else {
-                label.innerHTML = `🎉 Extra claim: <strong>${formatCurrency(variance, currency)}</strong> — the company paid more than these bills add up to. This will be recorded as extra income.`;
+                label.innerHTML = `🎉 Extra claim: <strong>${formatCurrency(variance, currency)}</strong> — more was received than these bills add up to. This will be recorded as extra income.`;
                 catLabel.textContent = "Record the extra as";
                 if (catSelect.dataset.dir !== "income") {
                     catSelect.innerHTML = buildCategoryOptionsHTML("income", ["Other Income"]);
@@ -12532,13 +12534,13 @@
                         // lands as a real personal expense.
                         const shortfall = buildClaimSettleBaseRecord({
                             type: "expense",
-                            desc: `Short claim — unclaimed portion of company expense claim (${dateRange})`,
+                            desc: `Short claim — unclaimed portion of a claim (${dateRange})`,
                             amount: Math.abs(variance),
                             cat: varianceCat || "Other Expenses",
                             currency,
                             src: CLAIMS_RECEIVABLE_ACCOUNT_ID,
                             date,
-                            notes: `Company paid ${formatCurrency(received, currency)} against ${formatCurrency(selectedTotal, currency)} billed — this ${formatCurrency(Math.abs(variance), currency)} shortfall isn't claimable.`
+                            notes: `${formatCurrency(received, currency)} received against ${formatCurrency(selectedTotal, currency)} billed — this ${formatCurrency(Math.abs(variance), currency)} shortfall isn't claimable.`
                         });
                         await writeDB(STORES.TRANSACTIONS, shortfall);
                     } else {
@@ -12548,13 +12550,13 @@
                         // settlement account.
                         const extra = buildClaimSettleBaseRecord({
                             type: "income",
-                            desc: `Extra claim — extra amount from company expense claim (${dateRange})`,
+                            desc: `Extra claim — extra amount from a claim (${dateRange})`,
                             amount: variance,
                             cat: varianceCat || "Other Income",
                             currency,
                             src: accountId,
                             date,
-                            notes: `Company paid ${formatCurrency(received, currency)} against ${formatCurrency(selectedTotal, currency)} billed — this ${formatCurrency(variance, currency)} extra doesn't need to be paid back.`
+                            notes: `${formatCurrency(received, currency)} received against ${formatCurrency(selectedTotal, currency)} billed — this ${formatCurrency(variance, currency)} extra doesn't need to be paid back.`
                         });
                         await writeDB(STORES.TRANSACTIONS, extra);
                     }

@@ -3813,6 +3813,19 @@
             </select>
         </div>
 
+        <!-- v308: optional second reference currency, e.g. someone holding meaningful MYR AND
+             SGD financial assets can see both ≈ conversions side by side instead of switching
+             the app's base currency back and forth. Deliberately capped at one extra currency
+             (not an open multi-select) — the table already needs horizontal scroll with just the
+             one ≈ column (see report-card below), so this is the one extra column that width
+             affords rather than an open-ended list. -->
+        <div class="form-row print-filter-row" style="margin-bottom:14px;">
+            <label>Compare also in</label>
+            <select id="currencyReportSecondaryFilter" class="form-input" data-change="handleCurrencyReportSecondaryChange">
+                <option value="">None</option>
+            </select>
+        </div>
+
         <div class="report-card" id="currencyReportTableWrap" style="overflow-x:auto;"></div>
 
         <p style="font-size:0.68rem; color:var(--text-muted); margin-top:10px;">

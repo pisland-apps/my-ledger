@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v307";
-        const APP_VERSION_DATE = "2026-09-06";
+        const APP_VERSION = "v308";
+        const APP_VERSION_DATE = "2026-09-07";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -1358,6 +1358,11 @@
         // approximate starting points only (per 1 MYR) — the user edits real values via
         // Currency Settings ▸ Save FX Values; this just avoids a blank/wrong first run.
         let baseCurrency = "MYR";
+        // v308: optional second "compare also in" currency for the Net Worth by Currency report
+        // only — a lightweight, global, single-slot companion to baseCurrency (same persistence
+        // pattern, same convertCurrency() math), deliberately NOT a per-account "home currency"
+        // concept. "" means "off" (no second column shown).
+        let reportSecondaryCurrency = "";
         let fxRates = {
             MYR: 1.0, SGD: 0.3025, USD: 0.225, HKD: 1.755, CNY: 1.615,
             TWD: 7.15, THB: 7.65, KRW: 305.0, JPY: 33.3, BND: 0.3025
@@ -14772,11 +14777,49 @@
         // and % of Net Worth for comparison, plus a Grand Total row. Optional Member filter
         // (same "all" / "joint" / one member convention as Spending/Income Breakdown and the
         // Unit Trust Portfolio report) narrows the account subset before summing.
+        // v308: populates the "Compare also in" select with every currency fxRates knows about
+        // (same universe openCurrencyConfig's baseCurrencySelect draws from), minus whichever
+        // currency is the current base — comparing base against itself is a no-op column. Value
+        // "" is the explicit "off" option (no second column), and is what the select falls back
+        // to if the previously-saved secondary happens to equal the (possibly since-changed)
+        // base currency, so the report never renders a redundant ≈{base}/≈{base} pair of columns.
+        function populateCurrencyReportSecondarySelect() {
+            const sel = document.getElementById("currencyReportSecondaryFilter");
+            if (!sel) return;
+            const options = Object.keys(fxRates).filter(c => c !== baseCurrency);
+            if (reportSecondaryCurrency === baseCurrency) reportSecondaryCurrency = "";
+            sel.innerHTML = `<option value="">None</option>` +
+                options.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+            sel.value = reportSecondaryCurrency;
+        }
+
+        // v308: handler for the "Compare also in" select — persists the same way baseCurrency
+        // does (own SETTINGS row, read back on next launch), then just re-renders the report;
+        // the select itself isn't rebuilt so the user's choice sticks through the re-render.
+        async function handleCurrencyReportSecondaryChange() {
+            const sel = document.getElementById("currencyReportSecondaryFilter");
+            reportSecondaryCurrency = sel ? sel.value : "";
+            try {
+                await writeDB(STORES.SETTINGS, { key: "reportSecondaryCurrency", value: reportSecondaryCurrency });
+            } catch (err) {
+                alert("Could not save this preference: " + (err && err.message ? err.message : err));
+            }
+            renderCurrencyReportPage();
+        }
+
         async function renderCurrencyReportPage() {
             const { accounts, nativeBalances } = await computeAccountBalances();
             populateBreakdownMemberFilter("currencyReportMemberFilter");
+            populateCurrencyReportSecondarySelect();
             const filterMember = document.getElementById("currencyReportMemberFilter").value;
             document.getElementById("currencyReportBaseCurrLabel").textContent = baseCurrency;
+
+            // "" (None) leaves the report exactly as before — one ≈{base} column. A picked
+            // currency adds exactly one more ≈ column; % of Net Worth is a ratio and is identical
+            // regardless of which currency it's computed in, so it is NOT duplicated per column —
+            // see remark-2 discussion: this is what keeps the extra column from compounding the
+            // table's existing horizontal-scroll width problem.
+            const secondary = reportSecondaryCurrency;
 
             const subset = filterMember !== "all"
                 ? (() => { const ids = accountIdsForMemberFilter(accounts, filterMember); return accounts.filter(a => ids.has(a.id)); })()
@@ -14804,17 +14847,21 @@
                 .sort((a, b) => b.base - a.base);
 
             let rows = "";
-            let gFinancialBase = 0, gRealEstateBase = 0;
+            let gFinancialBase = 0, gRealEstateBase = 0, gTotalSecondary = 0;
             sortedCodes.forEach(({ code, financial, realEstate, base }) => {
                 gFinancialBase += convertCurrency(financial, code, baseCurrency);
                 gRealEstateBase += convertCurrency(realEstate, code, baseCurrency);
+                const secondaryCell = secondary
+                    ? `<td style="padding:8px 10px; text-align:right; color:var(--text-muted);">≈ ${formatBalanceHTML(convertCurrency(financial + realEstate, code, secondary), secondary)}</td>`
+                    : "";
+                if (secondary) gTotalSecondary += convertCurrency(financial + realEstate, code, secondary);
                 rows += `
                     <tr>
                         <td style="padding:8px 10px;">${currencyBadgeHTML(code)}</td>
                         <td style="padding:8px 10px; text-align:right;">${formatBalanceHTML(financial, code)}</td>
                         <td style="padding:8px 10px; text-align:right;">${formatBalanceHTML(realEstate, code)}</td>
                         <td style="padding:8px 10px; text-align:right;"><strong>${formatBalanceHTML(financial + realEstate, code)}</strong></td>
-                        <td style="padding:8px 10px; text-align:right; color:var(--text-muted);">≈ ${formatBalanceHTML(base, baseCurrency)}</td>
+                        <td style="padding:8px 10px; text-align:right; color:var(--text-muted);">≈ ${formatBalanceHTML(base, baseCurrency)}</td>${secondaryCell}
                         <td style="padding:8px 10px; text-align:right;">${pctOf(base)}</td>
                     </tr>`;
             });
@@ -14827,7 +14874,7 @@
                             <th style="padding:6px 10px; text-align:right;">Financial Assets</th>
                             <th style="padding:6px 10px; text-align:right;">Real Estate</th>
                             <th style="padding:6px 10px; text-align:right;">Total</th>
-                            <th style="padding:6px 10px; text-align:right;">≈ ${escapeHtml(baseCurrency)}</th>
+                            <th style="padding:6px 10px; text-align:right;">≈ ${escapeHtml(baseCurrency)}</th>${secondary ? `<th style="padding:6px 10px; text-align:right;">≈ ${escapeHtml(secondary)}</th>` : ""}
                             <th style="padding:6px 10px; text-align:right;">% of Net Worth</th>
                         </tr>
                     </thead>
@@ -14838,7 +14885,7 @@
                             <td style="padding:8px 10px; text-align:right;">${formatBalanceHTML(gFinancialBase, baseCurrency)}</td>
                             <td style="padding:8px 10px; text-align:right;">${formatBalanceHTML(gRealEstateBase, baseCurrency)}</td>
                             <td style="padding:8px 10px; text-align:right;">${formatBalanceHTML(grandTotal, baseCurrency)}</td>
-                            <td style="padding:8px 10px; text-align:right;">—</td>
+                            <td style="padding:8px 10px; text-align:right;">—</td>${secondary ? `<td style="padding:8px 10px; text-align:right;">${formatBalanceHTML(gTotalSecondary, secondary)}</td>` : ""}
                             <td style="padding:8px 10px; text-align:right;">100.0%</td>
                         </tr>
                     </tfoot>
@@ -15160,6 +15207,9 @@
 
             const storedBase = await readKeyDB("settings", "baseCurrency");
             if (storedBase) baseCurrency = storedBase.value;
+
+            const storedSecondary = await readKeyDB("settings", "reportSecondaryCurrency");
+            if (storedSecondary) reportSecondaryCurrency = storedSecondary.value || "";
 
             const storedRates = await readKeyDB("settings", "fxRates");
             if (storedRates) fxRates = storedRates.value;

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v311";
+        const APP_VERSION = "v312";
         const APP_VERSION_DATE = "2026-09-07";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2062,7 +2062,7 @@
                             ${notesLine}
                         </div>
                         <div class="item-right">
-                            <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(displayAmount, t.currency)}</div>
+                            <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(Math.abs(displayAmount), t.currency)}</div>
                         </div>
                     </div>
                 `;
@@ -2277,7 +2277,7 @@
                         </div>
                         <div class="insights-row-top" style="margin-top:2px;">
                             <span class="insights-tx-date">${t.date}</span>
-                            <span class="insights-row-amount" style="color:var(--${col});">${sgn}${formatCurrency(base, baseCurrency)}</span>
+                            <span class="insights-row-amount" style="color:var(--${col});">${sgn}${formatCurrency(Math.abs(base), baseCurrency)}</span>
                         </div>
                     </div>
                 `;
@@ -2918,7 +2918,7 @@
                             </div>
                             <div class="item-right">
                                 <div class="item-value" style="color:var(--${col}); font-weight:bold;">
-                                    ${sgn}${formatCurrency(splitInfo ? splitInfo.totalAmount : t.amount, t.currency)}
+                                    ${sgn}${formatCurrency(Math.abs(splitInfo ? splitInfo.totalAmount : t.amount), t.currency)}
                                     ${sub}
                                 </div>
                             </div>
@@ -5939,7 +5939,7 @@
                             <span class="item-meta">${escapeHtml(t.date)}${unitsText ? " · " + unitsText : ""}${t.notes ? " · " + escapeHtml(t.notes) : ""}</span>
                         </div>
                         <div class="item-right">
-                            <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(t.amount, t.currency)}</div>
+                            <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(Math.abs(t.amount), t.currency)}</div>
                         </div>
                     </div>`;
             }).join("");
@@ -6045,7 +6045,7 @@
                             ${notesLine}
                         </div>
                         <div class="item-right">
-                            <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(displayAmount, t.currency)}</div>
+                            <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(Math.abs(displayAmount), t.currency)}</div>
                         </div>
                     </div>`;
             }).join("");
@@ -11756,7 +11756,7 @@
             else { headerColor = "var(--primary)"; sgn = "🔄"; }
 
             document.getElementById("txQuickViewHeader").style.background = headerColor;
-            document.getElementById("txQuickViewAmount").textContent = `${sgn}${formatCurrency(splitInfo ? splitInfo.totalAmount : tx.amount, tx.currency)}`;
+            document.getElementById("txQuickViewAmount").textContent = `${sgn}${formatCurrency(Math.abs(splitInfo ? splitInfo.totalAmount : tx.amount), tx.currency)}`;
             document.getElementById("txQuickViewDate").textContent = tx.date;
 
             const icon = tx.type === "transfer"
@@ -11785,7 +11785,7 @@
                 ? splitInfo.members.map(m => `
                     <div style="display:flex; justify-content:space-between;">
                         <span>${getCategoryIcon(m.cat, tx.type)} ${escapeHtml(m.cat)}</span>
-                        <span>${sgn}${formatCurrency(m.amount, tx.currency)}</span>
+                        <span>${sgn}${formatCurrency(Math.abs(m.amount), tx.currency)}</span>
                     </div>
                 `).join("")
                 : "";
@@ -11958,7 +11958,7 @@
             document.getElementById("txSplitPickerList").innerHTML = info.members.map(m => `
                 <button type="button" class="option-menu-btn" data-click="selectTxSplitPickerRow" data-id="${m.id}" style="display:flex; justify-content:space-between;">
                     <span>${getCategoryIcon(m.cat, info.type)} ${escapeHtml(m.cat)}</span>
-                    <span>${sgn}${formatCurrency(m.amount, info.currency)}</span>
+                    <span>${sgn}${formatCurrency(Math.abs(m.amount), info.currency)}</span>
                 </button>
             `).join("");
             document.getElementById("txSplitPickerModal").classList.add("active");
@@ -13602,7 +13602,7 @@
                 // side figure instead: the locked destAmount when one was entered, or (matching
                 // what computeAccountBalances() actually applies) a live-converted estimate
                 // otherwise, clearly marked "≈" since it isn't fixed.
-                let displayAmountHTML = `${sgn}${formatCurrency(splitInfo ? splitInfo.totalAmount : t.amount, t.currency)}`;
+                let displayAmountHTML = `${sgn}${formatCurrency(Math.abs(splitInfo ? splitInfo.totalAmount : t.amount), t.currency)}`;
                 if (t.type === "transfer" && activeLedgerAccountView === t.dest) {
                     const destAcc = accounts.find(a => a.id === t.dest);
                     const srcAcc = accounts.find(a => a.id === t.src);
@@ -14507,7 +14507,7 @@
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}</span>
                         </div>
                         <div class="item-right">
-                            <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(t.amount, t.currency)}</div>
+                            <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(Math.abs(t.amount), t.currency)}</div>
                         </div>
                     </div>`;
             }).join("") : `<p style="color:var(--text-muted); text-align:center; padding:16px 0; font-size:0.85rem;">No transactions tagged yet.</p>`;

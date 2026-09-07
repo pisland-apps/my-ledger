@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v312";
+        const APP_VERSION = "v313";
         const APP_VERSION_DATE = "2026-09-07";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -6021,8 +6021,15 @@
                 let col, sgn;
                 if (t.type === "income") { col = "income-color"; sgn = "+"; }
                 else if (t.type === "expense") { col = "expense-color"; sgn = "-"; }
-                else if (t.dest === accountId) { col = "income-color"; sgn = "+"; }
-                else { col = "expense-color"; sgn = "-"; }
+                else {
+                    // v312: direction must follow the *signed* contribution to this account, not
+                    // just which side (src/dest) it's on — a transfer entered with a negative
+                    // amount (e.g. this Opening Balance) actually moves money the opposite way
+                    // from what its src/dest role alone would suggest.
+                    const contribution = (t.dest === accountId) ? t.amount : -t.amount;
+                    if (contribution >= 0) { col = "income-color"; sgn = "+"; }
+                    else { col = "expense-color"; sgn = "-"; }
+                }
 
                 const splitInfo = t.splitGroupId ? getSplitGroupInfo(t, txs) : null;
                 const displayCat = splitInfo ? splitInfo.catLabel : (t.cat || 'Transfer');
@@ -13554,8 +13561,14 @@
                 let col, sgn;
                 if (t.type === "income") { col = "income-color"; sgn = "+"; }
                 else if (t.type === "expense") { col = "expense-color"; sgn = "-"; }
-                else if (activeLedgerAccountView !== "all" && t.dest === activeLedgerAccountView) { col = "income-color"; sgn = "+"; }
-                else if (activeLedgerAccountView !== "all" && t.src === activeLedgerAccountView) { col = "expense-color"; sgn = "-"; }
+                else if (activeLedgerAccountView !== "all" && (t.dest === activeLedgerAccountView || t.src === activeLedgerAccountView)) {
+                    // v312: same signed-contribution fix as the Currency Activity page — see
+                    // comment there. A negative-amount transfer's direction flips relative to
+                    // its src/dest role.
+                    const contribution = (t.dest === activeLedgerAccountView) ? t.amount : -t.amount;
+                    if (contribution >= 0) { col = "income-color"; sgn = "+"; }
+                    else { col = "expense-color"; sgn = "-"; }
+                }
                 else { col = "transfer-color"; sgn = "🔄"; }
 
                 const sub = t.currency !== baseCurrency ? `<span class="converted-subtext">≈ ${formatCurrency(tBase, baseCurrency)}</span>` : '';

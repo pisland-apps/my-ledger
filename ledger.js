@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v313";
+        const APP_VERSION = "v314";
         const APP_VERSION_DATE = "2026-09-07";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2401,7 +2401,16 @@
 
         function formatCurrency(amount, curr) {
             const sym = currencySymbols[curr] || curr;
-            return `${sym}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            // v314: a negative amount's own "-" used to land *after* the currency symbol
+            // (e.g. "RM-6,082,436.85") because toLocaleString() puts it right against the
+            // digits and the symbol was simply glued on in front of that. Every call site that
+            // adds its own +/- sign already passes Math.abs()'d values in (verified across the
+            // codebase), so pulling the sign out here and putting it before the symbol instead
+            // (e.g. "-RM6,082,436.85") is safe and fixes every raw-negative display (Opening
+            // Balance Setup, Balance B/F, account initial balances, etc.) at once.
+            const isNeg = amount < 0;
+            const absStr = Math.abs(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return `${isNeg ? "-" : ""}${sym}${absStr}`;
         }
 
         // Formats a balance-type amount (net worth, account balance, member totals — anything

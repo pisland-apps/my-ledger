@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v310";
+        const APP_VERSION = "v311";
         const APP_VERSION_DATE = "2026-09-07";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -5182,8 +5182,12 @@
             if (type === "multi") {
                 const rows = Array.from(document.getElementById("multiOpeningRows").children);
                 for (const row of rows) {
-                    const amount = parseFloat(row.querySelector(".multi-row-amount").value);
-                    if (!amount || amount <= 0) continue; // skip empty rows
+                    const amountStr = row.querySelector(".multi-row-amount").value;
+                    const amount = parseFloat(amountStr);
+                    // Skip only truly empty/zero rows — a NEGATIVE amount is valid here (e.g. the
+                    // account already starts in deficit in that currency), so it must not be
+                    // treated the same as an unfilled row.
+                    if (amountStr.trim() === "" || isNaN(amount) || amount === 0) continue;
                     openingTransactions.push({
                         // "transfer" (not "income") — this is capital you're bringing into tracking,
                         // not earned income, so it must not inflate the Income report. src is left
@@ -11004,8 +11008,18 @@
             }
 
             const parsedAmount = parseFloat(amountVal);
-            if (isNaN(parsedAmount) || parsedAmount <= 0) {
-                alert("Please enter a valid amount greater than zero.");
+            // A Transfer with no source account (Opening Balance, Opening Fixed Deposit
+            // Placement, and similar "external funds coming into tracking" entries — see
+            // openingTransactions above) is allowed to be negative, since it simply sets how
+            // much of that currency the account starts with, and a Multi-Currency/Fixed
+            // Deposit/Unit Trust basket (or even a plain account, which already allows a
+            // negative initial balance — see newAccBal above) can legitimately start in
+            // deficit. Every other entry (Income, Expense, or a real Transfer between two
+            // accounts) still requires a positive amount, since its type/direction already
+            // encodes the sign.
+            const isExternalFundsTransfer = document.getElementById("txType").value === "transfer" && document.getElementById("srcAccount").value === "";
+            if (isNaN(parsedAmount) || parsedAmount === 0 || (parsedAmount < 0 && !isExternalFundsTransfer)) {
+                alert(isExternalFundsTransfer ? "Please enter a valid, non-zero amount." : "Please enter a valid amount greater than zero.");
                 return;
             }
 
@@ -11047,8 +11061,8 @@
             if (txIdInput !== "") {
                 const existingTxs = await readAllDB(STORES.TRANSACTIONS);
                 existingTxForEdit = existingTxs.find(t => t.id === parseInt(txIdInput)) || null;
-                if (document.getElementById("txType").value === "transfer" && existingTxForEdit && existingTxForEdit.cat === "Fixed Deposit") {
-                    preservedTransferCat = "Fixed Deposit";
+                if (document.getElementById("txType").value === "transfer" && existingTxForEdit && (existingTxForEdit.cat === "Fixed Deposit" || existingTxForEdit.cat === "Opening Balance")) {
+                    preservedTransferCat = existingTxForEdit.cat;
                 }
             }
 

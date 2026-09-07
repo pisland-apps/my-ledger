@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v309";
+        const APP_VERSION = "v310";
         const APP_VERSION_DATE = "2026-09-07";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -12799,6 +12799,20 @@
             });
             document.getElementById("netWorthDisplay").innerHTML = formatBalanceHTML(globalBaseNetWorth, baseCurrency);
 
+            // v309: Dashboard hero badge for the same "compare also in" preference the Net Worth
+            // by Currency report uses — see activeSecondaryCurrency() for why this reads through
+            // that helper rather than the raw reportSecondaryCurrency variable. globalBaseNetWorth
+            // is already the sum of every account converted to baseCurrency above; converting that
+            // single number again to the secondary currency is equivalent to summing native
+            // amounts straight to the secondary (conversions here are just cross-multiplication
+            // through fxRates), so this doesn't need its own pass over `accounts`.
+            const secondaryBadge = document.getElementById("netWorthSecondaryBadge");
+            const activeSecondary = activeSecondaryCurrency();
+            secondaryBadge.classList.toggle("hidden", !activeSecondary);
+            if (activeSecondary) {
+                secondaryBadge.innerHTML = "≈ " + formatCurrency(convertCurrency(globalBaseNetWorth, baseCurrency, activeSecondary), activeSecondary);
+            }
+
             // v157: Financial Assets vs Real Estate split row under the main figure — reuses the
             // same summarizeOwnerAssetSplit() the "Financial Assets vs Real Estate" owner report
             // already relies on, so this always reconciles to globalBaseNetWorth above. Hidden
@@ -14777,6 +14791,17 @@
         // and % of Net Worth for comparison, plus a Grand Total row. Optional Member filter
         // (same "all" / "joint" / one member convention as Spending/Income Breakdown and the
         // Unit Trust Portfolio report) narrows the account subset before summing.
+        // v309: single source of truth for "is a secondary compare currency actually active right
+        // now" — used by both the Net Worth by Currency report and the Dashboard hero badge, so
+        // neither has to duplicate the equals-base guard. Covers the case where the user picked a
+        // secondary on the report page, then later changed baseCurrency in Settings without
+        // revisiting the report (which is the only other place reportSecondaryCurrency gets
+        // normalized) — reading through this function instead of the raw variable means both
+        // call sites self-correct immediately rather than only on the report's next open.
+        function activeSecondaryCurrency() {
+            return reportSecondaryCurrency && reportSecondaryCurrency !== baseCurrency ? reportSecondaryCurrency : "";
+        }
+
         // v308: populates the "Compare also in" select with every currency fxRates knows about
         // (same universe openCurrencyConfig's baseCurrencySelect draws from), minus whichever
         // currency is the current base — comparing base against itself is a no-op column. Value
@@ -14819,7 +14844,7 @@
             // regardless of which currency it's computed in, so it is NOT duplicated per column —
             // see remark-2 discussion: this is what keeps the extra column from compounding the
             // table's existing horizontal-scroll width problem.
-            const secondary = reportSecondaryCurrency;
+            const secondary = activeSecondaryCurrency();
 
             const subset = filterMember !== "all"
                 ? (() => { const ids = accountIdsForMemberFilter(accounts, filterMember); return accounts.filter(a => ids.has(a.id)); })()
@@ -15752,10 +15777,18 @@
             // second tap (now revealed) navigates as before. The navigateToNetWorthStatementPage
             // entry above is left in place — the function itself is still called directly
             // elsewhere (accountsPageBackTarget handling), independent of this dispatch table.
-            netWorthCardTap: () => {
+            // v309: reveal check/toggle now covers every .privacy-amount-value inside this tap
+            // target (currently #netWorthDisplay + the optional #netWorthSecondaryBadge), not
+            // just #netWorthDisplay alone — added so the secondary-currency badge shares the same
+            // reveal state as the main figure instead of a state of its own that this handler had
+            // no path back to (second tap already navigates once the main figure is revealed, so
+            // an independently-blurred badge would never get its own turn). Gated off the SAME
+            // element (amountEl = #netWorthDisplay) it always was, so behavior when the badge is
+            // hidden (no secondary currency set) is unchanged.
+            netWorthCardTap: (el) => {
                 const amountEl = document.getElementById("netWorthDisplay");
                 if (isPrivacyModeEnabled() && amountEl && !amountEl.classList.contains("revealed")) {
-                    togglePrivacyAmountReveal(amountEl);
+                    el.querySelectorAll(".privacy-amount-value").forEach(togglePrivacyAmountReveal);
                     return;
                 }
                 navigateToNetWorthStatementPage();

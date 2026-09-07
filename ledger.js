@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v314";
+        const APP_VERSION = "v315";
         const APP_VERSION_DATE = "2026-09-07";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -13381,8 +13381,8 @@
                                 <span class="item-meta">Account Opening Initial Vault Point</span>
                             </div>
                             <div class="item-right">
-                                <div class="item-value" style="color: var(--text-main);">
-                                    ${formatCurrency(viewingAcc.initialBalance, viewingAcc.currency)}
+                                <div class="item-value">
+                                    ${formatBalanceHTML(viewingAcc.initialBalance, viewingAcc.currency)}
                                     ${subText}
                                 </div>
                             </div>
@@ -13413,8 +13413,8 @@
                                     <span class="item-meta">Brought forward from ${accountLedgerYearsCache[accountYearIdx - 1]}</span>
                                 </div>
                                 <div class="item-right">
-                                    <div class="item-value" style="color: var(--text-main);">
-                                        ${formatCurrency(bf, viewingAcc.currency)}
+                                    <div class="item-value">
+                                        ${formatBalanceHTML(bf, viewingAcc.currency)}
                                         ${subText}
                                     </div>
                                 </div>
@@ -13433,8 +13433,8 @@
                                     <span class="item-meta">Carried forward to ${accountLedgerYearsCache[accountYearIdx + 1]}</span>
                                 </div>
                                 <div class="item-right">
-                                    <div class="item-value" style="color: var(--text-main);">
-                                        ${formatCurrency(cf, viewingAcc.currency)}
+                                    <div class="item-value">
+                                        ${formatBalanceHTML(cf, viewingAcc.currency)}
                                         ${subText}
                                     </div>
                                 </div>

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v324";
+        const APP_VERSION = "v325";
         const APP_VERSION_DATE = "2026-09-08";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -4407,6 +4407,26 @@
 
         // "All Transactions" — used to be a sidebar item, now a bottom-of-dashboard button (v34).
         function navigateToAllLedgerPage() {
+            navigateToLedgerPage("all");
+        }
+
+        // v325: Dashboard's "Recent Transactions" widget → 📅 Calendar shortcut. Jumps straight
+        // into the same Transactions page reached via sidebar → Transactions, but pre-set to its
+        // Calendar view (see setLedgerViewMode()) instead of landing on the default List view
+        // and requiring an extra tap on the in-page toggle. Mirrors setLedgerViewMode()'s own
+        // "first time entering calendar mode" defaulting so today's month/date are pre-selected
+        // the same way whether the user arrives via this shortcut or the in-page toggle.
+        function navigateToLedgerCalendarView() {
+            if (ledgerViewMode !== "calendar") {
+                ledgerViewMode = "calendar";
+                writeDB(STORES.SETTINGS, { key: "ledgerViewMode", value: "calendar" });
+            }
+            if (ledgerCalSelectedDate === null) {
+                const today = new Date();
+                ledgerCalYear = today.getFullYear();
+                ledgerCalMonth = today.getMonth();
+                ledgerCalSelectedDate = localDateStr(today);
+            }
             navigateToLedgerPage("all");
         }
 
@@ -16617,6 +16637,7 @@
             ledgerYearPrev: () => ledgerYearPrev(),
             ledgerYearNext: () => ledgerYearNext(),
             setLedgerViewMode: (el) => setLedgerViewMode(el),
+            navigateToLedgerCalendarView: () => navigateToLedgerCalendarView(),
             ledgerCalendarPrevMonth: () => ledgerCalendarPrevMonth(),
             ledgerCalendarNextMonth: () => ledgerCalendarNextMonth(),
             ledgerCalendarGoToday: () => ledgerCalendarGoToday(),

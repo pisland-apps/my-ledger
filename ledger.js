@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v315";
-        const APP_VERSION_DATE = "2026-09-07";
+        const APP_VERSION = "v316";
+        const APP_VERSION_DATE = "2026-09-08";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -2443,6 +2443,34 @@
             const color = nettedTowardSavings ? "var(--income-color)" : "var(--expense-color)";
             const sign = nettedTowardSavings ? "+" : "-";
             return `<span style="color:${color}; font-weight:700;">${sign}${formatCurrency(Math.abs(value), baseCurrency)}</span>`;
+        }
+
+        // v316: renders the "≈ RM16,991" style native-currency subtext under a Net Savings
+        // Statement row, for any category whose transactions were originally posted in a
+        // currency OTHER than the base currency (e.g. base=SGD, ASNB Dividend always posted in
+        // MYR). nativeMap is {currency: nativeAmountSum} accumulated alongside the base total in
+        // renderSavingsStatement — entries in the base currency itself are skipped since they're
+        // already fully represented by the row's main (base-currency) figure and would just be a
+        // redundant repeat of it. A category funded from more than one foreign currency (rare)
+        // shows each on its own line. Reuses the existing .converted-subtext class (already used
+        // for the same "≈" pattern on Account Activity balances) for visual consistency.
+        function nativeSubtextHTML(nativeMap) {
+            if (!nativeMap) return "";
+            const parts = Object.keys(nativeMap)
+                .filter(cur => cur !== baseCurrency && Math.abs(nativeMap[cur]) >= SAVINGS_ZERO_EPS)
+                .sort((a, b) => a.localeCompare(b))
+                .map(cur => `≈ ${formatCurrency(nativeMap[cur], cur)}`);
+            if (parts.length === 0) return "";
+            return `<span class="converted-subtext">${parts.join(" · ")}</span>`;
+        }
+
+        // Adds every {currency: amount} entry in `source` into `target` in place — used to roll
+        // a Main Category's own native totals together with its Subcategories' when building the
+        // combined row (mirrors how `combined` sums the plain base-currency numbers above it).
+        function mergeNativeInto(target, source) {
+            if (!source) return target;
+            Object.keys(source).forEach(cur => { target[cur] = (target[cur] || 0) + source[cur]; });
+            return target;
         }
 
         function convertCurrency(amount, fromCurr, toCurr) {
@@ -13872,7 +13900,7 @@
         // Previously only the year was passed, so a category clicked from a month-scoped visit
         // (report card's "Total" click — see navigateToSavingsPage/savingsFilterMonth) opened
         // that category's whole-year history instead of just the month actually being viewed.
-        function buildSavingsSectionRowsHTML(catSummary, type, filterY, filterM) {
+        function buildSavingsSectionRowsHTML(catSummary, type, filterY, filterM, catNative = {}) {
             const catRecords = dynamicCategories.filter(c => c.type === type);
             const mains = catRecords.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
             const subsByMainId = new Map();
@@ -13889,12 +13917,14 @@
                 rendered.add(main.name);
                 const directVal = catSummary[main.name] || 0;
                 let combined = directVal;
+                const combinedNative = mergeNativeInto({}, catNative[main.name]);
                 const subRowsData = [];
                 subs.forEach(s => {
                     rendered.add(s.name);
                     const v = catSummary[s.name] || 0;
                     combined += v;
-                    if (Math.abs(v) >= SAVINGS_ZERO_EPS) subRowsData.push({ name: s.name, value: v, icon: s.icon });
+                    mergeNativeInto(combinedNative, catNative[s.name]);
+                    if (Math.abs(v) >= SAVINGS_ZERO_EPS) subRowsData.push({ name: s.name, value: v, icon: s.icon, native: catNative[s.name] });
                 });
 
                 if (Math.abs(combined) < SAVINGS_ZERO_EPS && subRowsData.length === 0) return;
@@ -13909,7 +13939,10 @@
                             <strong>${icon} ${escapeHtml(main.name)}</strong>
                         </span>
                         <span style="display:flex; align-items:center; gap:8px;">
-                            ${savingsAmountHTML(combined, type)}
+                            <span style="display:flex; flex-direction:column; align-items:flex-end;">
+                                ${savingsAmountHTML(combined, type)}
+                                ${nativeSubtextHTML(combinedNative)}
+                            </span>
                             ${hasSubs ? `<button type="button" class="trash-btn" data-click="toggleSavingsMainExpand" data-id="${escapeHtml(main.id)}" title="${expanded ? 'Hide subcategories' : 'Show subcategories'}" style="padding:2px 6px; font-size:0.7rem;">${expanded ? '▲' : '▼'}</button>` : ''}
                         </span>
                     </div>
@@ -13920,7 +13953,10 @@
                         html += `
                             <div class="statement-row" data-click="navigateToCategoryPage" data-category="${escapeHtml(s.name)}" data-back="savings" data-year="${escapeHtml(filterY)}" data-month="${escapeHtml(filterM)}" style="padding-left:22px; border-left:2px solid var(--border-color); margin-left:6px;">
                                 <span><span style="color:var(--text-muted);">↳</span> ${s.icon} ${escapeHtml(s.name)}</span>
-                                ${savingsAmountHTML(s.value, type)}
+                                <span style="display:flex; flex-direction:column; align-items:flex-end;">
+                                    ${savingsAmountHTML(s.value, type)}
+                                    ${nativeSubtextHTML(s.native)}
+                                </span>
                             </div>
                         `;
                     });
@@ -13935,7 +13971,10 @@
                 html += `
                     <div class="statement-row" data-click="navigateToCategoryPage" data-category="${escapeHtml(name)}" data-back="savings" data-year="${escapeHtml(filterY)}" data-month="${escapeHtml(filterM)}">
                         <strong>${icon} ${escapeHtml(name)}</strong>
-                        ${savingsAmountHTML(val, type)}
+                        <span style="display:flex; flex-direction:column; align-items:flex-end;">
+                            ${savingsAmountHTML(val, type)}
+                            ${nativeSubtextHTML(catNative[name])}
+                        </span>
                     </div>
                 `;
             });
@@ -13974,6 +14013,21 @@
             currentIncomeCategories.forEach(c => catSummary.income[c] = 0);
             currentExpenseCategories.forEach(c => catSummary.expense[c] = 0);
 
+            // v316: parallel {currency: nativeAmount} accumulator per category, kept alongside
+            // catSummary's base-currency totals purely for display (the "≈ RM16,991" subtext on
+            // each row — see nativeSubtextHTML()). Never used for Surplus/Deficit math, which
+            // stays exactly as before, in base currency only.
+            const catNative = { income: {}, expense: {} };
+            function addNative(bucket, cat, currency, amount) {
+                bucket[cat] = bucket[cat] || {};
+                bucket[cat][currency] = (bucket[cat][currency] || 0) + amount;
+            }
+            // excludedSummary entries are shaped {value, type, native} rather than a plain
+            // {currency: amount} map, so they need their own accumulator instead of addNative().
+            function addExcludedNative(cat, currency, amount) {
+                excludedSummary[cat].native[currency] = (excludedSummary[cat].native[currency] || 0) + amount;
+            }
+
             const excludedSummary = {};
             let excludedNetTotal = 0;
 
@@ -13992,44 +14046,50 @@
                     // same "exclude from savings" category setting an ordinary expense in that
                     // category would.
                     if (excludedCatNames.has(t.cat)) {
-                        excludedSummary[t.cat] = excludedSummary[t.cat] || { value: 0, type: "expense" };
+                        excludedSummary[t.cat] = excludedSummary[t.cat] || { value: 0, type: "expense", native: {} };
                         excludedSummary[t.cat].value -= tBase;
                         excludedNetTotal += tBase;
+                        addExcludedNative(t.cat, t.currency, -t.amount);
                         return;
                     }
                     expBaseTotal -= tBase;
                     catSummary.expense[t.cat] = (catSummary.expense[t.cat] || 0) - tBase;
+                    addNative(catNative.expense, t.cat, t.currency, -t.amount);
                     return;
                 }
                 if (t.type === "income") {
                     if (excludedCatNames.has(t.cat)) {
-                        excludedSummary[t.cat] = excludedSummary[t.cat] || { value: 0, type: "income" };
+                        excludedSummary[t.cat] = excludedSummary[t.cat] || { value: 0, type: "income", native: {} };
                         excludedSummary[t.cat].value += tBase;
                         excludedNetTotal += tBase;
+                        addExcludedNative(t.cat, t.currency, t.amount);
                         return;
                     }
                     incBaseTotal += tBase;
                     catSummary.income[t.cat] = (catSummary.income[t.cat] || 0) + tBase;
+                    addNative(catNative.income, t.cat, t.currency, t.amount);
                 }
                 if (t.type === "expense") {
                     if (excludedCatNames.has(t.cat)) {
-                        excludedSummary[t.cat] = excludedSummary[t.cat] || { value: 0, type: "expense" };
+                        excludedSummary[t.cat] = excludedSummary[t.cat] || { value: 0, type: "expense", native: {} };
                         excludedSummary[t.cat].value += tBase;
                         excludedNetTotal -= tBase;
+                        addExcludedNative(t.cat, t.currency, t.amount);
                         return;
                     }
                     expBaseTotal += tBase;
                     catSummary.expense[t.cat] = (catSummary.expense[t.cat] || 0) + tBase;
+                    addNative(catNative.expense, t.cat, t.currency, t.amount);
                 }
             });
 
-            let incRowsHTML = buildSavingsSectionRowsHTML(catSummary.income, "income", filterY, savingsFilterMonth);
+            let incRowsHTML = buildSavingsSectionRowsHTML(catSummary.income, "income", filterY, savingsFilterMonth, catNative.income);
             document.getElementById("savingsIncomeRows").innerHTML = incRowsHTML || '<p style="font-size:0.75rem; color:var(--text-muted);">No income entries logged.</p>';
             const incTotalDisplay = Math.abs(incBaseTotal) < SAVINGS_ZERO_EPS ? 0 : incBaseTotal;
             document.getElementById("savingsIncomeTotal").textContent = `${incTotalDisplay < 0 ? "-" : "+"}${formatCurrency(Math.abs(incTotalDisplay), baseCurrency)}`;
             document.getElementById("savingsIncomeTotal").style.color = incTotalDisplay < 0 ? "var(--expense-color)" : "var(--income-color)";
 
-            let expRowsHTML = buildSavingsSectionRowsHTML(catSummary.expense, "expense", filterY, savingsFilterMonth);
+            let expRowsHTML = buildSavingsSectionRowsHTML(catSummary.expense, "expense", filterY, savingsFilterMonth, catNative.expense);
             document.getElementById("savingsExpenseRows").innerHTML = expRowsHTML || '<p style="font-size:0.75rem; color:var(--text-muted);">No expense entries logged.</p>';
             const expTotalDisplay = Math.abs(expBaseTotal) < SAVINGS_ZERO_EPS ? 0 : expBaseTotal;
             document.getElementById("savingsExpenseTotal").textContent = `${expTotalDisplay < 0 ? "+" : "-"}${formatCurrency(Math.abs(expTotalDisplay), baseCurrency)}`;
@@ -14062,7 +14122,10 @@
                 excludedRowsHTML += `
                     <div class="statement-row" data-click="navigateToCategoryPage" data-category="${escapeHtml(c)}" data-back="savings" data-year="${escapeHtml(filterY)}" data-month="${escapeHtml(savingsFilterMonth)}">
                         <strong>${icon} ${escapeHtml(c)}</strong>
-                        ${savingsAmountHTML(entry.value, entry.type)}
+                        <span style="display:flex; flex-direction:column; align-items:flex-end;">
+                            ${savingsAmountHTML(entry.value, entry.type)}
+                            ${nativeSubtextHTML(entry.native)}
+                        </span>
                     </div>
                 `;
             });

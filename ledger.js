@@ -4776,7 +4776,7 @@
                 let filled = 0;
                 others.forEach(c => {
                     const rate = data.rates[c];
-                    if (rate && rate > 0) { merged[c] = rate; filled++; }
+                    if (typeof rate === "number" && Number.isFinite(rate) && rate > 0) { merged[c] = rate; filled++; }
                 });
                 renderFxRatesInputs(merged);
                 const missed = others.length - filled;

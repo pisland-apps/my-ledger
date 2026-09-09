@@ -1794,6 +1794,15 @@
             font-size: 1.3rem;
             flex-shrink: 0;
         }
+        /* Inventory list only: on phones (<768px, same breakpoint where the sidebar switches
+           from a permanent column back to a drawer — see the "RESPONSIVE LAYOUT" block above),
+           hide each row's 📦 icon circle to free up horizontal space for the item's details
+           (name/vendor/spec/warranty lines). Tablet & desktop (768px+) keep the icon — plenty of
+           width there already. Scoped to #page-inventory so every other .tx-icon-circle user
+           (main Ledger list, Quick View, etc.) is unaffected. */
+        @media (max-width: 767px) {
+            #page-inventory .tx-icon-circle { display: none; }
+        }
         .tx-row-body {
             flex: 1;
             min-width: 0;
@@ -3282,7 +3291,7 @@
         </div>
 
         <div id="inventoryPageList"></div>
-        <div id="inventoryPageFooter" style="display:none; justify-content:space-between; align-items:center; padding:14px 4px 0; margin-top:6px; border-top:2px dashed var(--border-color);"></div>
+        <div id="inventoryPageFooter" style="display:none; justify-content:space-between; align-items:center; padding:14px 4px 88px; margin-top:6px; border-top:2px dashed var(--border-color);"></div>
 
         <button class="fab-btn" data-click="openInventoryItemModalNew" aria-label="Add inventory item" title="Add inventory item">+</button>
     </div>

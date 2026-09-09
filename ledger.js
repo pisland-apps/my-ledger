@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v327";
+        const APP_VERSION = "v328";
         const APP_VERSION_DATE = "2026-09-09";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1654,6 +1654,12 @@
             // but style-src does allow 'unsafe-inline', so an injected <style> block or a fake
             // <a href> / modal overlay was a real, no-code-execution-needed phishing path.
             // escapeHtml() doesn't touch emoji, so this is a no-op for every legitimate icon.
+            // v327: syncAndLoadCategories() now ALSO escapes `icon` when it loads categories
+            // into `dynamicCategories` (some render sites read `.icon` straight off that array,
+            // bypassing this function entirely — that was the actual gap). Escaping here too is
+            // deliberate defense-in-depth, not redundant dead code: escapeHtml() is idempotent
+            // for every real value this field ever holds (a bare emoji has no & < > " ' to
+            // double-encode), so keep both layers rather than removing either one.
             if (matched) return escapeHtml(matched.icon);
             return escapeHtml(fallbackIcons[clean] || (type === "income" ? "🟢" : "🔴"));
         }
@@ -8724,7 +8730,22 @@
             // predictable order without each call site needing to sort separately. Income
             // and expense categories are filtered by type at each use site, so this single
             // alphabetical sort keeps both lists sorted within their own type.
-            dynamicCategories = customCats.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+            //
+            // v327 security fix: sanitize `icon` here, at the single point every category
+            // record enters memory, rather than only inside getCategoryIcon(). Several render
+            // sites (category picker <optgroup>/<option> in the transaction form, the "parent
+            // category" select, the Categories manager list, the Savings breakdown rows) read
+            // `.icon` straight off these objects and interpolate it into innerHTML directly,
+            // bypassing getCategoryIcon() entirely — so escaping only inside that helper left
+            // those call sites exposed to whatever a tampered backup's `icon` field contained
+            // (importBackup() writes bundle.categories with no field validation beyond checking
+            // accounts/transactions exist). Escaping here means every current AND future reader
+            // of `dynamicCategories` gets an already-safe value with no per-call-site opt-in
+            // required. No-op for real icons: normal Add/Edit Category only ever writes a plain
+            // emoji from the fixed picker grid, and escapeHtml() doesn't touch emoji.
+            dynamicCategories = customCats
+                .map(c => ({ ...c, icon: escapeHtml(c.icon) }))
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
         }
 
         // --- TAGS SYSTEM (v257, showOnDashboard added v281) ---

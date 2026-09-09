@@ -4669,7 +4669,28 @@
                 <input type="hidden" id="tagEditId" value="">
                 <div class="form-row">
                     <label>Tag Name</label>
-                    <input type="text" id="tagName" placeholder="e.g. Japan Holiday Aug 2026" required>
+                    <input type="text" id="tagName" placeholder="e.g. Japan Holiday Aug 2026" data-input="updateTagPreviewBadge" required>
+                </div>
+                <!-- v332: icon + color pickers — grids are drawn by renderTagIconGrid()/
+                     renderTagColorGrid() in ledger.js (openTagFormModal()/editTag()), which also
+                     keep the highlighted swatch in sync as one is tapped (selectTagIcon()/
+                     selectTagColor()). #tagIcon/#tagColor are the values actually saved
+                     (handleSaveTagMobile()); this app's markup convention is a hidden input
+                     holding the "real" value with a rendered grid/list next to it, same as the
+                     account/category picker rows elsewhere. -->
+                <div class="form-row">
+                    <label>Icon</label>
+                    <div id="tagIconGrid" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+                    <input type="hidden" id="tagIcon" value="🔖">
+                </div>
+                <div class="form-row">
+                    <label>Color</label>
+                    <div id="tagColorGrid" style="display:flex; flex-wrap:wrap; gap:10px;"></div>
+                    <input type="hidden" id="tagColor" value="purple">
+                </div>
+                <div class="form-row">
+                    <label>Preview</label>
+                    <span id="tagPreviewBadge" class="category-display-badge" style="padding:3px 8px; border-radius:5px; width:fit-content;">🔖 <strong>Tag name</strong></span>
                 </div>
                 <!-- v281: "Show on Dashboard" — when on, a Dashboard reminder widget shows how many
                      transactions currently carry this tag (see renderTagReminderWidget()). Purely a

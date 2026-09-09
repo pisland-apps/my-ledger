@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v329";
+        const APP_VERSION = "v330";
         const APP_VERSION_DATE = "2026-09-09";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -11962,6 +11962,62 @@
             }).join("");
         }
 
+        // v329: CSV export for Inventory — same csvEscape()/BOM convention as exportLedgerCsv()
+        // and exportTotalSummaryCsv() (see exportLedgerCsv()'s own comment for why plain CSV
+        // rather than a real xlsx library). Scoped to whatever the on-screen status filter
+        // (All/Active/Disposed/Lost) currently shows, matching the "Total Value" footer just
+        // above it — same reasoning as exportLedgerCsv() only ever exporting what the page
+        // itself represents, so the file never silently includes/excludes something the user
+        // wouldn't expect from looking at the screen.
+        async function exportInventoryCsv() {
+            const [items, accounts] = await Promise.all([
+                readAllDB(STORES.INVENTORY),
+                readAllDB(STORES.ACCOUNTS)
+            ]);
+            const accountName = id => { if (!id) return ""; const a = accounts.find(acc => acc.id === id); return a ? accountOptionLabel(a, accounts) : "(deleted account)"; };
+
+            const filtered = items.filter(it => inventoryStatusFilter === "all" || it.status === inventoryStatusFilter)
+                .sort((a, b) => (b.purchaseDate || "").localeCompare(a.purchaseDate || ""));
+
+            if (filtered.length === 0) {
+                showToast("No inventory items to export");
+                return;
+            }
+
+            const warrantyText = it => (it.warranties || [])
+                .map(w => `${w.label || "Warranty"} (ends ${w.endDate || "?"})`)
+                .join("; ");
+
+            const header = ["Name", "Vendor", "Model", "Serial Number", "Purchase Date", "Purchase Price", "Currency", "Status", "Paid From", "Note", "Warranty", "Attachments"];
+            const rows = filtered.map(it => [
+                it.name || "",
+                it.vendor || "",
+                it.model || "",
+                it.serialNumber || "",
+                it.purchaseDate || "",
+                (it.purchasePrice || 0).toFixed(2),
+                it.currency || baseCurrency,
+                INV_STATUS_LABELS[it.status] || it.status || "",
+                accountName(it.srcAccountId),
+                it.note || "",
+                warrantyText(it),
+                (it.attachments || []).length
+            ]);
+
+            const csv = [header, ...rows].map(r => r.map(csvEscape).join(",")).join("\r\n");
+            // Leading BOM: same reasoning as exportLedgerCsv() — makes Excel detect UTF-8
+            // correctly instead of garbling non-ASCII text (e.g. a vendor name or note).
+            const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const scopeLabel = inventoryStatusFilter === "all" ? "all" : inventoryStatusFilter;
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `inventory_export_${scopeLabel}_${todayLocalStr()}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast(`\ud83d\udce4 Exported ${filtered.length} item${filtered.length === 1 ? "" : "s"} to CSV`);
+        }
+
         // --- Inventory item add/edit modal ---
 
         let invExistingAttachments = [];
@@ -16795,6 +16851,7 @@
             openCreditCardPaymentFromLedgerHeader: () => openCreditCardPaymentFromLedgerHeader(),
             navigateToLinkedAccountFromLedgerHeader: (el) => { if (el.dataset.id) navigateToLedgerPage(el.dataset.id, "workspace"); },
             exportLedgerCsv: () => exportLedgerCsv(),
+            exportInventoryCsv: () => exportInventoryCsv(),
             exportTotalSummaryCsv: () => exportTotalSummaryCsv(),
             exportBackup: () => exportBackup(),
             exportBackupQuick: () => exportBackupQuick(),

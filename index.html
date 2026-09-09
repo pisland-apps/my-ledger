@@ -3269,8 +3269,13 @@
     <div id="page-inventory" class="page hidden">
         <div class="nav-header">
             <button class="back-btn" data-click="navigateToWorkspace">&larr; Back</button>
-            <div>
-                <h3 style="font-weight:800; font-size:1.2rem;">Inventory</h3>
+            <div style="flex:1;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <h3 style="font-weight:800; font-size:1.2rem;">Inventory</h3>
+                    <!-- v329: exports whatever the All/Active/Disposed/Lost filter below currently
+                         shows — see exportInventoryCsv()'s own comment. -->
+                    <button id="inventoryExportCsvBtn" class="icon-edit-btn" data-click="exportInventoryCsv" title="Export to CSV">📤</button>
+                </div>
                 <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">What you own — purchase details &amp; warranty tracking</p>
             </div>
         </div>

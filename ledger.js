@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v332";
-        const APP_VERSION_DATE = "2026-09-09";
+        const APP_VERSION = "v333";
+        const APP_VERSION_DATE = "2026-09-10";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -1466,7 +1466,7 @@
         // simply lack .icon/.color — getTagMeta() below falls back to the same 🔖/purple look
         // every tag used to have, so nothing changes for a tag until someone deliberately picks a
         // different icon/color for it.
-        const TAG_ICON_CHOICES = ["🔖", "🏷️", "📌", "🎫", "📎", "🗂️", "⭐", "💠", "🔗", "🚩", "🔸", "#"];
+        const TAG_ICON_CHOICES = ["🔖", "🏷️", "📌", "🎫", "📎", "🗂️", "⭐", "💠", "🔗", "✅", "✈️", "🚩", "🔸", "#"];
         const TAG_COLOR_PALETTE = {
             purple: { text: "#6d28d9", bg: "#ede9fe" },
             red:    { text: "#b91c1c", bg: "#fee2e2" },
@@ -1558,7 +1558,7 @@
         const DEFAULT_CATEGORIES = [
             { name: "Salary", type: "income", icon: "💼" },
             { name: "Housing Allowance", type: "income", icon: "🏠", parent: "Salary" },
-            { name: "Handphone Claim", type: "income", icon: "📱", parent: "Salary" },
+            { name: "Phone Allowance", type: "income", icon: "📱", parent: "Salary" },
             { name: "Overseas Allowance", type: "income", icon: "✈️", parent: "Salary" },
             { name: "Backpay", type: "income", icon: "🕒", parent: "Salary" },
             { name: "Investments", type: "income", icon: "📈" },
@@ -1586,6 +1586,7 @@
             { name: "Gift Given", type: "expense", icon: "🎁" },
             { name: "Subscription", type: "expense", icon: "📡" },
             { name: "Tech Appliances", type: "expense", icon: "💻" },
+            { name: "Mobile", type: "expense", icon: "📱" },
             { name: "Travelling", type: "expense", icon: "✈️" },
             { name: "Tax", type: "expense", icon: "🧾" },
             { name: "Offering", type: "expense", icon: "🙏" },
@@ -9505,6 +9506,7 @@
             await migrateStaleDestFieldCleanup();
             await migrateStaleCategoryOnTransfersCleanup();
             await migrateAccountGroupRename();
+            await migrateHandphoneClaimRename();
             // migrateFdInterestDuplicateCleanup()/migrateRemoveEmptyClaimableCategory() may have
             // deleted a Categories record (the legacy "FD Interest" duplicate / the retired
             // "Company Expenses (Claimable)" category), so dynamicCategories — loaded further
@@ -9569,6 +9571,28 @@
                 if (t.cat === "Interest Income") {
                     t.cat = "FD Interest Income";
                     await writeDB(STORES.TRANSACTIONS, t);
+                }
+            }
+        }
+
+        // One-time migration: the "Handphone Claim" Salary subcategory was renamed to
+        // "Phone Allowance". Only touches the record if it still has the auto-seeded id
+        // ("cat_handphone_claim"), never a category the user has since renamed away from
+        // "Handphone Claim". Existing transactions filed under the old name are updated too
+        // (mirrors migrateOthersCategoryRename()'s approach above), so nothing shows up as an
+        // orphaned "Handphone Claim" string in reports.
+        async function migrateHandphoneClaimRename() {
+            const cats = await readAllDB(STORES.CATEGORIES);
+            const legacy = cats.find(c => c.id === "cat_handphone_claim");
+            if (legacy && legacy.name.toLowerCase() === "handphone claim") {
+                legacy.name = "Phone Allowance";
+                await writeDB(STORES.CATEGORIES, legacy);
+                const txs = await readAllDB(STORES.TRANSACTIONS);
+                for (const t of txs) {
+                    if (t.cat === "Handphone Claim") {
+                        t.cat = "Phone Allowance";
+                        await writeDB(STORES.TRANSACTIONS, t);
+                    }
                 }
             }
         }
@@ -12647,7 +12671,7 @@
                 }
                 const allowanceLegs = [
                     { amount: housing, cat: "Housing Allowance", notes: null },
-                    { amount: handphone, cat: "Handphone Claim", notes: null },
+                    { amount: handphone, cat: "Phone Allowance", notes: null },
                     { amount: overseas, cat: "Overseas Allowance", notes: null },
                     { amount: backpay, cat: "Backpay", notes: backpayNote }
                 ];

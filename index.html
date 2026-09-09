@@ -5257,6 +5257,21 @@
         </div>
     </div>
 
+    <!-- MODAL: Tag picker for Quick View (v331) — opened from the "+ Add" button on the Tags row
+         inside txQuickViewModal. Same ✓-tick "ticked = attached" list style as accountPickerModal
+         above, but multi-select: tapping a row toggles that tag on/off the transaction right away
+         instead of picking one value and closing. See openTxTagPickerFromQuickView() in ledger.js. -->
+    <div class="modal" id="txTagPickerModal" style="z-index:1450;">
+        <div class="modal-sheet" style="max-width:400px;">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                <h3 style="font-weight:800;">Tags</h3>
+                <button data-click="closeModal" data-modal="txTagPickerModal" style="background:none; border:none; font-size:1.5rem; padding:8px;">&times;</button>
+            </div>
+            <input type="text" id="txTagPickerInput" data-input="filterTxTagPickerList" class="form-input" placeholder="Search or create a tag..." style="margin-bottom:10px;">
+            <div id="txTagPickerList" style="display:flex; flex-direction:column; gap:8px; max-height:50vh; overflow-y:auto;"></div>
+        </div>
+    </div>
+
     <!-- MODAL: Resolve Fixed Deposit Maturity (renew or withdraw) -->
     <div class="modal" id="resolveFdModal">
         <div class="modal-sheet">

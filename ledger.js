@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v326";
-        const APP_VERSION_DATE = "2026-09-08";
+        const APP_VERSION = "v327";
+        const APP_VERSION_DATE = "2026-09-09";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -750,20 +750,61 @@
         // Re-encrypts every record in every store under a new AES-GCM key — the bulk-data half of
         // Change Passcode. Every store is fully read (decrypted under whichever key is currently
         // in `appKey`, i.e. the OLD one) before `appKey` is swapped to the new one, then every
-        // record is written back (encryptRecord() inside writeDB() picks up the new global
-        // `appKey` automatically). Reading everything up front, then swapping once, then writing
-        // everything — never interleaved — avoids a partial state where some stores are already
-        // readable only with the new key while others still need the old one.
+        // record is re-encrypted under the new key.
+        //
+        // v326 security fix: the write-back used to go through writeDB() store-by-store,
+        // record-by-record — each call opening its own separate IndexedDB transaction. If the
+        // app was interrupted partway (tab killed by the OS, battery died, browser crash —
+        // realistic on a mobile PWA), some records would already be re-encrypted under the new
+        // key while others weren't, yet the persisted lock config (saved by the caller, only
+        // *after* this function returns) would still expect the OLD one — the old passcode
+        // would keep unlocking, but a subset of records would silently fail to decrypt under
+        // the key it derives.
+        //
+        // Fixed by pre-computing every encrypted record first (encryptRecord() is async and
+        // can't safely run *inside* an IndexedDB transaction — awaiting anything beyond a
+        // microtask auto-closes the transaction in most browsers), then writing all of them in
+        // ONE transaction spanning every object store. IndexedDB transactions are atomic:
+        // either every put() in it commits, or — on any error, or the page dying before it
+        // settles — none of them do, and the whole re-encryption rolls back to the untouched
+        // old-key state. If that happens, `appKey` is rolled back too, so it still matches what
+        // is actually on disk; the caller's own try/catch shows an error and never calls
+        // saveLockConfig(), so the old passcode/old key remain the source of truth throughout.
         async function reencryptAllStoresWithKey(newKey) {
+            const oldKey = appKey;
             const snapshots = {};
             for (const storeName of Object.values(STORES)) {
                 snapshots[storeName] = await readAllDB(storeName);
             }
             appKey = newKey;
-            for (const storeName of Object.values(STORES)) {
-                for (const rec of snapshots[storeName]) {
-                    await writeDB(storeName, rec);
+
+            try {
+                const encryptedByStore = {};
+                for (const storeName of Object.values(STORES)) {
+                    encryptedByStore[storeName] = await Promise.all(
+                        snapshots[storeName].map(rec => encryptRecord(storeName, rec))
+                    );
                 }
+
+                await new Promise((resolve, reject) => {
+                    const tx = db.transaction(Object.values(STORES), "readwrite");
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error);
+                    tx.onabort = () => reject(tx.error || new Error("re-encryption transaction aborted"));
+                    for (const storeName of Object.values(STORES)) {
+                        const store = tx.objectStore(storeName);
+                        for (const encrypted of encryptedByStore[storeName]) {
+                            store.put(encrypted);
+                        }
+                    }
+                });
+            } catch (err) {
+                // Nothing on disk changed (that's the transaction guarantee above), so appKey
+                // must be rolled back to match — otherwise the very next unrelated write
+                // elsewhere in the app would start encrypting under a key nothing on disk uses
+                // yet, recreating the exact mixed-key problem this fix exists to prevent.
+                appKey = oldKey;
+                throw err;
             }
         }
 
@@ -1604,8 +1645,17 @@
         function getCategoryIcon(catName, type = "expense") {
             const clean = catName.toLowerCase().trim();
             const matched = dynamicCategories.find(c => c.name.toLowerCase() === clean);
-            if (matched) return matched.icon;
-            return fallbackIcons[clean] || (type === "income" ? "🟢" : "🔴");
+            // v326 security fix: matched.icon used to be returned raw. Every call site below
+            // interpolates the result straight into innerHTML, and while the normal Add/Edit
+            // Category UI only ever lets a user pick from a fixed emoji grid (never free text),
+            // importBackup() doesn't validate field contents beyond checking accounts/
+            // transactions exist — so a tampered backup file could set a category's icon to
+            // arbitrary markup. script-src has no 'unsafe-inline', so that couldn't run <script>,
+            // but style-src does allow 'unsafe-inline', so an injected <style> block or a fake
+            // <a href> / modal overlay was a real, no-code-execution-needed phishing path.
+            // escapeHtml() doesn't touch emoji, so this is a no-op for every legitimate icon.
+            if (matched) return escapeHtml(matched.icon);
+            return escapeHtml(fallbackIcons[clean] || (type === "income" ? "🟢" : "🔴"));
         }
 
         // v101: shared builder for every <select> that lists categories for picking on a

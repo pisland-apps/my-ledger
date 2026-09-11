@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v349";
+        const APP_VERSION = "v350";
         const APP_VERSION_DATE = "2026-09-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -12963,7 +12963,12 @@
             if (accounts.length === 0) { alert("Add an account first!"); return; }
 
             const now = new Date();
-            document.getElementById("salaryDate").value = now.toISOString().slice(0, 10);
+            // v350: was `now.toISOString().slice(0, 10)` — reads the date in UTC, so for the
+            // first ~8 hours after local midnight in a UTC+ timezone (e.g. Malaysia, UTC+8) this
+            // defaulted to YESTERDAY's date instead of today. Switched to todayLocalStr() (same
+            // local-calendar-date helper used everywhere else "today" means "today where the
+            // user is sitting" — see its comment near the top of this file).
+            document.getElementById("salaryDate").value = todayLocalStr();
             const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
             document.getElementById("salaryDesc").value = `${monthNames[now.getMonth()]} ${now.getFullYear()} Salary`;
 

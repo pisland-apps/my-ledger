@@ -2287,3 +2287,43 @@ from the export bundle. Requested: make it carry over to a new device.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v347.
+
+## v348: Companion custom photo — save up to 20, pick between them,
+remove individually
+
+Previously "Custom" was one fixed slot — uploading a new photo
+silently replaced whatever was there before. Requested: save several,
+switch between them later, and remove one at a time.
+
+- **New "My Photos" group** in Setting > 🐾 Companion, below the
+  built-in Chinese Zodiac/Other icons — shows every photo you've
+  saved (up to 20), each as its own selectable swatch, with an
+  "＋ Add" tile at the end for as long as there's room. The group
+  heading shows a running count, e.g. "My Photos (3/20)".
+- **Tap a saved photo** to make it the active companion — switching
+  back and forth between saved photos no longer means re-uploading.
+- **Each photo has its own "×" badge** (top-right corner of its
+  thumbnail) to remove just that one, with a confirmation prompt
+  first. If the one you remove was the active companion, it falls
+  back to None.
+- **At 20 saved photos**, the "＋ Add" tile disappears and tapping an
+  already-full library's upload path (shouldn't be reachable, but
+  guarded anyway) shows an alert asking you to remove one first.
+- **Storage**: replaced the single `companionCustomImage` settings row
+  with `companionCustomImages` — one settings row holding an array of
+  `{id, dataUrl}`, still in the same IndexedDB `settings` store as
+  before, so the whole library continues to travel with Backup &
+  Restore (v347) with no further changes needed there. A saved photo's
+  Companion pick is now the string `"custom:<photoId>"` instead of the
+  old flat `"custom"`.
+- **Migration** (`migrateCompanionSingleImageToLibrary()`, called from
+  `bootstrap()` right after v347's localStorage migration): anyone
+  upgrading from v343-v347 has their one existing custom photo carried
+  over automatically as the first "My Photos" entry, with their pick
+  remapped from `"custom"` to `"custom:<newId>"` to match. No-op on a
+  fresh v348+ install.
+- Verified with `node --check` plus the data-click/data-change/
+  `getElementById` cross-reference script (0 missing).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v348.

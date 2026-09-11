@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v347";
+        const APP_VERSION = "v348";
         const APP_VERSION_DATE = "2026-09-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7680,10 +7680,11 @@
         // list either way, nothing else reads it.
         const COMPANIONS = [
             { id: "none", name: "None" },
-            // v343: "custom" is special-cased throughout (applyCompanionPet, the swatch grid
-            // builder) rather than carrying a fixed `svg` — its artwork is whatever image the
-            // user uploads (see COMPANION_CUSTOM_IMAGE_SETTINGS_KEY below), not baked-in line-art.
-            { id: "custom", name: "Custom", group: "Other" },
+            // v348: the old single static "custom" entry is gone — custom photos are now a
+            // dynamic, multi-item library (see COMPANION_PHOTOS_SETTINGS_KEY / "My Photos" group
+            // below), not a fixed slot in this array. A saved photo's pet id is "custom:<photoId>"
+            // — see applyCompanionPet()/getSavedCompanionId(), which special-case that prefix the
+            // same way this array's `svg`-less entries are special-cased.
             {
                 id: "cat", name: "Cat", group: "Other",
                 svg: `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -7841,24 +7842,44 @@
                 </svg>`
             },
         ];
-        // v347: custom-uploaded companion image AND the selected pet id both moved from
-        // localStorage into the IndexedDB `settings` store (STORES.SETTINGS) — the same store
-        // defaultPaymentAccount/recentTxTypeFilter/etc. already live in — specifically so both
-        // travel with Backup & Restore's export/import (exportBackup() already dumps the entire
-        // settings store; see the `bundle.settings` handling in importBackup()). This is the one
-        // exception to "Companion/theme settings stay device-local" noted in earlier versions'
-        // changelogs — a custom photo is exactly the kind of thing someone wants to carry to a
-        // new device, unlike a built-in Background/Net-Worth-Card-Style preset that's already
-        // available on any install. Every getter/setter below is now async (IndexedDB, unlike
-        // localStorage, has no synchronous API) — see migrateCompanionPrefsFromLocalStorage()
-        // and its call in bootstrap() for the one-time upgrade path from v341-v346 installs.
+        // v347: Companion's selected pet id moved from localStorage into the IndexedDB `settings`
+        // store (STORES.SETTINGS) — the same store defaultPaymentAccount/recentTxTypeFilter/etc.
+        // already live in — specifically so it travels with Backup & Restore's export/import
+        // (exportBackup() already dumps the entire settings store; see the `bundle.settings`
+        // handling in importBackup()). This is the one exception to "Companion/theme settings
+        // stay device-local" noted in earlier versions' changelogs.
+        // v348: custom photos are now a *library* of up to MAX_COMPANION_PHOTOS saved images
+        // (COMPANION_PHOTOS_SETTINGS_KEY, one settings row holding an array of {id, dataUrl}) —
+        // replacing v343-v347's single fixed "custom" slot that a new upload silently overwrote.
+        // A saved photo's pet id is the string "custom:<photoId>"; applyCompanionPet() and
+        // getSavedCompanionId() special-case that prefix the same way they special-case a
+        // COMPANIONS entry with no `svg`. Every getter/setter below is async — IndexedDB, unlike
+        // localStorage, has no synchronous API — see migrateCompanionPrefsFromLocalStorage() /
+        // migrateCompanionSingleImageToLibrary() and their calls in bootstrap() for the one-time
+        // upgrade paths from v341-v346 (localStorage) and v343-v347 (single-slot) installs.
         const COMPANION_SETTINGS_KEY = "companionPetId";
-        const COMPANION_CUSTOM_IMAGE_SETTINGS_KEY = "companionCustomImage";
-        async function getCompanionCustomImage() {
-            const rec = await readKeyDB("settings", COMPANION_CUSTOM_IMAGE_SETTINGS_KEY);
-            return rec ? rec.value : null;
+        const COMPANION_PHOTOS_SETTINGS_KEY = "companionCustomImages";
+        const MAX_COMPANION_PHOTOS = 20;
+        async function getCompanionCustomPhotos() {
+            const rec = await readKeyDB("settings", COMPANION_PHOTOS_SETTINGS_KEY);
+            return (rec && Array.isArray(rec.value)) ? rec.value : [];
         }
-        function triggerCompanionCustomImageUpload() {
+        async function saveCompanionCustomPhotos(list) {
+            await writeDB(STORES.SETTINGS, { key: COMPANION_PHOTOS_SETTINGS_KEY, value: list });
+        }
+        function genCompanionPhotoId() {
+            if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+            return "cp" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        }
+        async function triggerCompanionCustomImageUpload() {
+            // Checked here too (not just inside handleCompanionCustomImageSelected) so tapping
+            // "＋" when the library is already full says so immediately, before the person even
+            // gets to the file picker, rather than after they've already chosen a photo.
+            const photos = await getCompanionCustomPhotos();
+            if (photos.length >= MAX_COMPANION_PHOTOS) {
+                alert(`You can save up to ${MAX_COMPANION_PHOTOS} custom photos. Remove one first to add another.`);
+                return;
+            }
             const input = document.getElementById("companionCustomImageInput");
             if (input) input.click();
         }
@@ -7866,6 +7887,12 @@
             const file = input.files && input.files[0];
             input.value = ""; // allow re-picking the same file later (e.g. after Remove)
             if (!file) return;
+            const photos = await getCompanionCustomPhotos();
+            if (photos.length >= MAX_COMPANION_PHOTOS) {
+                alert(`You can save up to ${MAX_COMPANION_PHOTOS} custom photos. Remove one first to add another.`);
+                return;
+            }
+            let newPhoto;
             try {
                 const rawDataUrl = await readFileAsDataUrl(file);
                 if (!rawDataUrl) return;
@@ -7874,86 +7901,89 @@
                 // photo, however wide or tall, already fills its box exactly with no stretching
                 // needed at display time.
                 const squared = await cropImageToSquare(rawDataUrl, 160, 0.9);
-                await writeDB(STORES.SETTINGS, { key: COMPANION_CUSTOM_IMAGE_SETTINGS_KEY, value: squared });
+                newPhoto = { id: genCompanionPhotoId(), dataUrl: squared };
+                await saveCompanionCustomPhotos([...photos, newPhoto]);
             } catch (e) {
                 alert("Couldn't read that image — please try a different file.");
                 return;
             }
-            await applyCompanionPet("custom");
+            // v348: a freshly uploaded photo is selected right away — matches v343-v347's
+            // behavior where uploading always became the active companion, and saves an extra
+            // tap versus uploading then having to go find and select the new thumbnail.
+            await applyCompanionPet("custom:" + newPhoto.id);
             await buildCompanionSwatchGrid();
         }
-        async function removeCompanionCustomImage() {
-            try { await deleteDB(STORES.SETTINGS, COMPANION_CUSTOM_IMAGE_SETTINGS_KEY); } catch (e) {}
-            // If Custom was the active companion, there's no image left to show it with — fall
-            // back to None rather than leaving the hero card's slot pointing at nothing.
-            if ((await getSavedCompanionId()) === "custom") await applyCompanionPet("none");
+        // v348: replaces v343-v347's single removeCompanionCustomImage() (which cleared the one
+        // fixed slot) — this removes one specific photo from the library, identified by the "×"
+        // badge's data-photo-id on its swatch (see buildCompanionSwatchGrid()).
+        async function removeCompanionCustomPhoto(el) {
+            const photoId = el.dataset.photoId;
+            if (!photoId) return;
+            const confirmed = await customConfirm("Remove this photo? This can't be undone.");
+            if (!confirmed) return;
+            const photos = await getCompanionCustomPhotos();
+            await saveCompanionCustomPhotos(photos.filter(p => p.id !== photoId));
+            // If the photo being removed was the active companion, there's nothing left to show
+            // it with — fall back to None rather than leaving the hero card's slot pointing at a
+            // deleted image.
+            if ((await getSavedCompanionId()) === "custom:" + photoId) await applyCompanionPet("none");
             await buildCompanionSwatchGrid();
         }
         async function getSavedCompanionId() {
             const rec = await readKeyDB("settings", COMPANION_SETTINGS_KEY);
             const id = rec ? rec.value : null;
-            if (id === "custom" && !(await getCompanionCustomImage())) return "none";
+            if (typeof id === "string" && id.startsWith("custom:")) {
+                const photos = await getCompanionCustomPhotos();
+                return photos.some(p => p.id === id.slice(7)) ? id : "none";
+            }
             return COMPANIONS.some(c => c.id === id) ? id : "none";
         }
         async function applyCompanionPet(petId, { save = true } = {}) {
-            const pet = COMPANIONS.find(c => c.id === petId) || COMPANIONS[0];
+            let resolvedId = petId;
+            let displayImg = null, displaySvg = null, displayTitle = "";
+            if (typeof petId === "string" && petId.startsWith("custom:")) {
+                const photos = await getCompanionCustomPhotos();
+                const photo = photos.find(p => p.id === petId.slice(7));
+                if (photo) { displayImg = photo.dataUrl; displayTitle = "Custom photo — tap to change in Settings"; }
+                else { resolvedId = "none"; } // photo was deleted elsewhere — fall through to None below
+            }
+            if (!displayImg) {
+                const pet = COMPANIONS.find(c => c.id === resolvedId) || COMPANIONS[0];
+                resolvedId = pet.id;
+                if (pet.svg) { displaySvg = pet.svg; displayTitle = pet.name + " — tap to change in Settings"; }
+            }
             const el = document.getElementById("netWorthCompanion");
             if (el) {
-                if (pet.id === "custom") {
-                    const img = await getCompanionCustomImage();
-                    if (img) {
-                        // v346: fills the full 52x52 chip now (was fixed at 34x34, like the SVG
-                        // icons, leaving a visible ring of the chip's translucent background
-                        // around the photo — reported via screenshot). A real photo reads better
-                        // filling its box edge-to-edge than sitting inset like a small glyph; the
-                        // SVG mascots keep their 34px inset look via the .net-worth-companion svg
-                        // rule, untouched. border-radius matches the chip's own 14px minus its
-                        // 1px border so the photo's corners sit flush with the chip's.
-                        el.innerHTML = `<img src="${img}" alt="Companion" style="width:100%; height:100%; object-fit:cover; border-radius:13px;">`;
-                        el.style.display = "flex";
-                        el.title = "Custom — tap to change in Settings";
-                    } else {
-                        el.innerHTML = ""; el.style.display = "none";
-                    }
-                } else if (pet.svg) {
-                    el.innerHTML = pet.svg; el.style.display = "flex"; el.title = pet.name + " — tap to change in Settings";
+                if (displayImg) {
+                    // v346: fills the full 52x52 chip (was fixed at 34x34 like the SVG icons,
+                    // leaving a visible ring of the chip's translucent background around the
+                    // photo). border-radius matches the chip's own 14px minus its 1px border so
+                    // the photo's corners sit flush with the chip's.
+                    el.innerHTML = `<img src="${displayImg}" alt="Companion" style="width:100%; height:100%; object-fit:cover; border-radius:13px;">`;
+                    el.style.display = "flex"; el.title = displayTitle;
+                } else if (displaySvg) {
+                    el.innerHTML = displaySvg; el.style.display = "flex"; el.title = displayTitle;
                 } else {
                     el.innerHTML = ""; el.style.display = "none";
                 }
             }
             if (save) {
-                try { await writeDB(STORES.SETTINGS, { key: COMPANION_SETTINGS_KEY, value: pet.id }); } catch (e) {}
+                try { await writeDB(STORES.SETTINGS, { key: COMPANION_SETTINGS_KEY, value: resolvedId }); } catch (e) {}
             }
-            return pet;
+            return resolvedId;
         }
         async function buildCompanionSwatchGrid() {
             const grid = document.getElementById("companionSwatchGrid");
             if (!grid) return;
             const selectedId = await getSavedCompanionId();
-            const customImg = await getCompanionCustomImage();
-            const swatchHTML = c => {
-                // The "Custom" tile behaves differently depending on whether an image has been
-                // uploaded yet: no image → tapping it opens the file picker directly (nothing to
-                // "select" otherwise); an image → it's an ordinary swatch like any other pet.
-                if (c.id === "custom") {
-                    const inner = customImg
-                        ? `<img src="${customImg}" alt="Custom" style="width:100%; height:100%; object-fit:cover; border-radius:12px;">`
-                        : `<span style="color:#fff; font-size:1.3rem; line-height:1;">＋</span>`;
-                    const clickAction = customImg ? "selectCompanion" : "triggerCompanionCustomImageUpload";
-                    return `
-                        <span class="companion-swatch-wrap">
-                            <span class="companion-swatch${c.id === selectedId ? ' selected' : ''}" data-click="${clickAction}" data-pet-id="${c.id}" title="${customImg ? 'Custom' : 'Upload your own image'}">${inner}</span>
-                            <span class="companion-swatch-label">${customImg ? 'Custom' : 'Upload'}</span>
-                        </span>`;
-                }
-                return `
+            const photos = await getCompanionCustomPhotos();
+            const swatchHTML = c => `
                 <span class="companion-swatch-wrap">
                     <span class="companion-swatch${c.id === selectedId ? ' selected' : ''}" data-click="selectCompanion" data-pet-id="${c.id}" title="${c.name}">${c.svg || '<span style="color:#fff; font-size:0.65rem; font-weight:700;">None</span>'}</span>
                     <span class="companion-swatch-label">${c.name}</span>
                 </span>`;
-            };
             // v342: group into sections (undefined `group` — just "None" — gets no heading and
-            // sits on its own row above everything else) instead of one flat 15-item grid, so the
+            // sits on its own row above everything else) instead of one flat grid, so the
             // 12-strong Chinese Zodiac set doesn't read as one undifferentiated wall of icons.
             const ungrouped = COMPANIONS.filter(c => !c.group);
             const groups = [...new Set(COMPANIONS.filter(c => c.group).map(c => c.group))];
@@ -7962,11 +7992,38 @@
                 html += `<p class="companion-group-label">${g}</p>`;
                 html += `<div class="companion-swatch-grid">${COMPANIONS.filter(c => c.group === g).map(swatchHTML).join("")}</div>`;
             });
+            // v348: "My Photos" — a dynamic group built from the library, not from COMPANIONS.
+            // Each saved photo gets its own removable swatch (the "×" badge, positioned via
+            // .companion-swatch-photo-holder); an "＋ Add" tile follows for as long as there's
+            // room left (hidden once the library hits MAX_COMPANION_PHOTOS, with a plain count
+            // in the heading telling the person why — the "×" on any thumbnail is then the only
+            // way to make room again).
+            html += `<p class="companion-group-label">My Photos (${photos.length}/${MAX_COMPANION_PHOTOS})</p>`;
+            html += `<div class="companion-swatch-grid">`;
+            html += photos.map(p => {
+                const petId = "custom:" + p.id;
+                return `
+                    <span class="companion-swatch-wrap">
+                        <span class="companion-swatch-photo-holder">
+                            <span class="companion-swatch${petId === selectedId ? ' selected' : ''}" data-click="selectCompanion" data-pet-id="${petId}" title="Custom photo">
+                                <img src="${p.dataUrl}" alt="Custom" style="width:100%; height:100%; object-fit:cover; border-radius:12px;">
+                            </span>
+                            <button type="button" class="companion-swatch-remove" data-click="removeCompanionCustomPhoto" data-photo-id="${p.id}" title="Remove this photo" aria-label="Remove this photo">×</button>
+                        </span>
+                        <span class="companion-swatch-label">Photo</span>
+                    </span>`;
+            }).join("");
+            if (photos.length < MAX_COMPANION_PHOTOS) {
+                html += `
+                    <span class="companion-swatch-wrap">
+                        <span class="companion-swatch" data-click="triggerCompanionCustomImageUpload" title="Upload a new photo">
+                            <span style="color:#fff; font-size:1.3rem; line-height:1;">＋</span>
+                        </span>
+                        <span class="companion-swatch-label">Add</span>
+                    </span>`;
+            }
+            html += `</div>`;
             grid.innerHTML = html;
-            // v343: "Change photo" / "Remove" links — only shown once an image actually exists,
-            // so a never-used install sees just the "＋ Upload" tile above with nothing extra.
-            const controls = document.getElementById("companionCustomImageControls");
-            if (controls) controls.style.display = customImg ? "flex" : "none";
         }
         async function selectCompanion(el) {
             await applyCompanionPet(el.dataset.petId);
@@ -7989,12 +8046,10 @@
                 panel && panel.scrollIntoView({ behavior: "smooth", block: "center" });
             }, 50);
         }
-        // v347: one-time upgrade path for anyone who picked a Companion (or uploaded a custom
-        // image) on v341-v346, back when both lived in localStorage — copies them into the new
-        // IndexedDB settings-store keys above, then clears the old localStorage entries so
-        // there's nothing left to fall out of sync. Safe to call every launch: it's a no-op the
-        // moment the new key already exists (either because this migration already ran, or
-        // because this is a fresh v347+ install with nothing to migrate).
+        // v347: one-time upgrade path for anyone who picked a Companion on v341-v346, back when
+        // the pick lived in localStorage — copies it into the new IndexedDB settings-store key
+        // above, then clears the old localStorage entries. Safe to call every launch: it's a
+        // no-op the moment the new key already exists.
         async function migrateCompanionPrefsFromLocalStorage() {
             try {
                 const already = await readKeyDB("settings", COMPANION_SETTINGS_KEY);
@@ -8002,12 +8057,42 @@
                 const oldId = localStorage.getItem("ledgerCompanionPetId");
                 const oldImg = localStorage.getItem("ledgerCompanionCustomImageDataUrl");
                 if (!oldId && !oldImg) return;
-                if (oldImg) await writeDB(STORES.SETTINGS, { key: COMPANION_CUSTOM_IMAGE_SETTINGS_KEY, value: oldImg });
-                if (oldId) await writeDB(STORES.SETTINGS, { key: COMPANION_SETTINGS_KEY, value: oldId });
+                // v348: an old localStorage custom image lands straight in the new photo library
+                // (not the retired single-slot settings key) so it shows up as an ordinary "My
+                // Photos" entry once migrated — and the pick itself becomes "custom:<newId>" to
+                // match, same remap migrateCompanionSingleImageToLibrary() does for v343-v347
+                // installs that were already on the IndexedDB single-slot key.
+                let newId = null;
+                if (oldImg) {
+                    newId = genCompanionPhotoId();
+                    await saveCompanionCustomPhotos([{ id: newId, dataUrl: oldImg }]);
+                }
+                if (oldId) await writeDB(STORES.SETTINGS, { key: COMPANION_SETTINGS_KEY, value: (oldId === "custom" && newId) ? ("custom:" + newId) : oldId });
                 localStorage.removeItem("ledgerCompanionPetId");
                 localStorage.removeItem("ledgerCompanionCustomImageDataUrl");
             } catch (e) {}
         }
+        // v348: one-time upgrade path for anyone on v343-v347, where a custom photo lived in the
+        // single now-retired "companionCustomImage" settings row — moves it into the new
+        // "My Photos" library as its first entry, and remaps a "custom" pick to "custom:<newId>"
+        // to match. No-op once the library key already exists (including right after
+        // migrateCompanionPrefsFromLocalStorage() above has already populated it).
+        async function migrateCompanionSingleImageToLibrary() {
+            try {
+                const alreadyLib = await readKeyDB("settings", COMPANION_PHOTOS_SETTINGS_KEY);
+                if (alreadyLib) return;
+                const oldSingle = await readKeyDB("settings", "companionCustomImage");
+                if (!oldSingle || !oldSingle.value) return;
+                const newId = genCompanionPhotoId();
+                await saveCompanionCustomPhotos([{ id: newId, dataUrl: oldSingle.value }]);
+                const currentPick = await readKeyDB("settings", COMPANION_SETTINGS_KEY);
+                if (currentPick && currentPick.value === "custom") {
+                    await writeDB(STORES.SETTINGS, { key: COMPANION_SETTINGS_KEY, value: "custom:" + newId });
+                }
+                await deleteDB(STORES.SETTINGS, "companionCustomImage");
+            } catch (e) {}
+        }
+
 
         // v247: manual toggle (Settings > Background Theme > "Handwritten font (Kalam)") for
         // whether the 蠟筆小新 preset uses the self-hosted Kalam font or the app's normal
@@ -16974,6 +17059,12 @@
             // Style just above bootstrap(), which are localStorage-only and applied synchronously
             // at script parse) since this now reads IndexedDB.
             await migrateCompanionPrefsFromLocalStorage();
+            // v348: then the single-slot -> multi-photo library upgrade, for anyone who was
+            // already on the IndexedDB key (v343-v347) — order matters here: this one only
+            // proceeds if the library key is still absent, which the localStorage migration just
+            // above may have just populated for a different set of installs (v341-v342, which
+            // predate the custom-image feature entirely, would have neither and both are no-ops).
+            await migrateCompanionSingleImageToLibrary();
             await applyCompanionPet(await getSavedCompanionId(), { save: false });
 
             const storedBase = await readKeyDB("settings", "baseCurrency");
@@ -17810,7 +17901,7 @@
             toggleCompanionSettingsFromDashboard: () => toggleCompanionSettingsFromDashboard(),
             selectCompanion: (el) => selectCompanion(el),
             triggerCompanionCustomImageUpload: () => triggerCompanionCustomImageUpload(),
-            removeCompanionCustomImage: () => removeCompanionCustomImage(),
+            removeCompanionCustomPhoto: (el) => removeCompanionCustomPhoto(el),
             toggleMemberPageCurrencyBreakdown: () => toggleMemberPageCurrencyBreakdown(),
             ledgerYearPrev: () => ledgerYearPrev(),
             ledgerYearNext: () => ledgerYearNext(),

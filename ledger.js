@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v346";
+        const APP_VERSION = "v347";
         const APP_VERSION_DATE = "2026-09-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7673,7 +7673,6 @@
         // pet works against every Net Worth Card Style gradient (Classic/Sunset/Ocean/etc.) —
         // same translucent-white chip treatment the card's Financial Assets/Real Estate rows
         // already use, so there's no separate "light theme" / "dark theme" asset to maintain.
-        const COMPANION_KEY = "ledgerCompanionPetId";
         // Each pet is one small hand-built SVG (viewBox 0 0 48 48, stroke=currentColor, round
         // caps/joins — same Feather-style outline language the header's Save/Lock icons use).
         // v342: added the 12 Chinese zodiac animals as their own group, alongside the original 4.
@@ -7683,7 +7682,7 @@
             { id: "none", name: "None" },
             // v343: "custom" is special-cased throughout (applyCompanionPet, the swatch grid
             // builder) rather than carrying a fixed `svg` — its artwork is whatever image the
-            // user uploads (see COMPANION_CUSTOM_IMAGE_KEY below), not baked-in line-art.
+            // user uploads (see COMPANION_CUSTOM_IMAGE_SETTINGS_KEY below), not baked-in line-art.
             { id: "custom", name: "Custom", group: "Other" },
             {
                 id: "cat", name: "Cat", group: "Other",
@@ -7842,15 +7841,22 @@
                 </svg>`
             },
         ];
-        // v343: custom-uploaded companion image. Stored as a compressed data URL in localStorage
-        // (device-only, like every other Companion/theme preference — not part of Backup &
-        // Restore's IndexedDB bundle) rather than IndexedDB, since it's a single small string and
-        // every other setting on this exact panel already uses localStorage. Reuses this app's
-        // existing readFileAsDataUrl()/compressImage() helpers (built for receipt attachments) —
-        // capped small (160px, 0.82 quality) since this only ever renders at 34px.
-        const COMPANION_CUSTOM_IMAGE_KEY = "ledgerCompanionCustomImageDataUrl";
-        function getCompanionCustomImage() {
-            try { return localStorage.getItem(COMPANION_CUSTOM_IMAGE_KEY); } catch (e) { return null; }
+        // v347: custom-uploaded companion image AND the selected pet id both moved from
+        // localStorage into the IndexedDB `settings` store (STORES.SETTINGS) — the same store
+        // defaultPaymentAccount/recentTxTypeFilter/etc. already live in — specifically so both
+        // travel with Backup & Restore's export/import (exportBackup() already dumps the entire
+        // settings store; see the `bundle.settings` handling in importBackup()). This is the one
+        // exception to "Companion/theme settings stay device-local" noted in earlier versions'
+        // changelogs — a custom photo is exactly the kind of thing someone wants to carry to a
+        // new device, unlike a built-in Background/Net-Worth-Card-Style preset that's already
+        // available on any install. Every getter/setter below is now async (IndexedDB, unlike
+        // localStorage, has no synchronous API) — see migrateCompanionPrefsFromLocalStorage()
+        // and its call in bootstrap() for the one-time upgrade path from v341-v346 installs.
+        const COMPANION_SETTINGS_KEY = "companionPetId";
+        const COMPANION_CUSTOM_IMAGE_SETTINGS_KEY = "companionCustomImage";
+        async function getCompanionCustomImage() {
+            const rec = await readKeyDB("settings", COMPANION_CUSTOM_IMAGE_SETTINGS_KEY);
+            return rec ? rec.value : null;
         }
         function triggerCompanionCustomImageUpload() {
             const input = document.getElementById("companionCustomImageInput");
@@ -7868,32 +7874,33 @@
                 // photo, however wide or tall, already fills its box exactly with no stretching
                 // needed at display time.
                 const squared = await cropImageToSquare(rawDataUrl, 160, 0.9);
-                localStorage.setItem(COMPANION_CUSTOM_IMAGE_KEY, squared);
+                await writeDB(STORES.SETTINGS, { key: COMPANION_CUSTOM_IMAGE_SETTINGS_KEY, value: squared });
             } catch (e) {
                 alert("Couldn't read that image — please try a different file.");
                 return;
             }
-            applyCompanionPet("custom");
-            buildCompanionSwatchGrid();
+            await applyCompanionPet("custom");
+            await buildCompanionSwatchGrid();
         }
-        function removeCompanionCustomImage() {
-            try { localStorage.removeItem(COMPANION_CUSTOM_IMAGE_KEY); } catch (e) {}
+        async function removeCompanionCustomImage() {
+            try { await deleteDB(STORES.SETTINGS, COMPANION_CUSTOM_IMAGE_SETTINGS_KEY); } catch (e) {}
             // If Custom was the active companion, there's no image left to show it with — fall
             // back to None rather than leaving the hero card's slot pointing at nothing.
-            if (getSavedCompanionId() === "custom") applyCompanionPet("none");
-            buildCompanionSwatchGrid();
+            if ((await getSavedCompanionId()) === "custom") await applyCompanionPet("none");
+            await buildCompanionSwatchGrid();
         }
-        function getSavedCompanionId() {
-            const id = localStorage.getItem(COMPANION_KEY);
-            if (id === "custom" && !getCompanionCustomImage()) return "none";
+        async function getSavedCompanionId() {
+            const rec = await readKeyDB("settings", COMPANION_SETTINGS_KEY);
+            const id = rec ? rec.value : null;
+            if (id === "custom" && !(await getCompanionCustomImage())) return "none";
             return COMPANIONS.some(c => c.id === id) ? id : "none";
         }
-        function applyCompanionPet(petId, { save = true } = {}) {
+        async function applyCompanionPet(petId, { save = true } = {}) {
             const pet = COMPANIONS.find(c => c.id === petId) || COMPANIONS[0];
             const el = document.getElementById("netWorthCompanion");
             if (el) {
                 if (pet.id === "custom") {
-                    const img = getCompanionCustomImage();
+                    const img = await getCompanionCustomImage();
                     if (img) {
                         // v346: fills the full 52x52 chip now (was fixed at 34x34, like the SVG
                         // icons, leaving a visible ring of the chip's translucent background
@@ -7915,15 +7922,15 @@
                 }
             }
             if (save) {
-                try { localStorage.setItem(COMPANION_KEY, pet.id); } catch (e) {}
+                try { await writeDB(STORES.SETTINGS, { key: COMPANION_SETTINGS_KEY, value: pet.id }); } catch (e) {}
             }
             return pet;
         }
-        function buildCompanionSwatchGrid() {
+        async function buildCompanionSwatchGrid() {
             const grid = document.getElementById("companionSwatchGrid");
             if (!grid) return;
-            const selectedId = getSavedCompanionId();
-            const customImg = getCompanionCustomImage();
+            const selectedId = await getSavedCompanionId();
+            const customImg = await getCompanionCustomImage();
             const swatchHTML = c => {
                 // The "Custom" tile behaves differently depending on whether an image has been
                 // uploaded yet: no image → tapping it opens the file picker directly (nothing to
@@ -7961,14 +7968,14 @@
             const controls = document.getElementById("companionCustomImageControls");
             if (controls) controls.style.display = customImg ? "flex" : "none";
         }
-        function selectCompanion(el) {
-            applyCompanionPet(el.dataset.petId);
+        async function selectCompanion(el) {
+            await applyCompanionPet(el.dataset.petId);
             document.querySelectorAll("#companionSwatchGrid .companion-swatch").forEach(s => s.classList.toggle("selected", s.dataset.petId === el.dataset.petId));
         }
-        function toggleCompanionSettings() {
+        async function toggleCompanionSettings() {
             const panel = document.getElementById("companionSettingsPanel");
             const isHidden = panel.style.display === "none";
-            if (isHidden) buildCompanionSwatchGrid();
+            if (isHidden) await buildCompanionSwatchGrid();
             panel.style.display = isHidden ? "flex" : "none";
         }
         // Tapping the mascot itself on the dashboard jumps straight to Setting > Companion
@@ -7976,11 +7983,30 @@
         // (e.g. the header currency pill) already double as shortcuts into Settings.
         function toggleCompanionSettingsFromDashboard() {
             navigateToDataSecurityPage();
-            setTimeout(() => {
+            setTimeout(async () => {
                 const panel = document.getElementById("companionSettingsPanel");
-                if (panel && panel.style.display === "none") toggleCompanionSettings();
+                if (panel && panel.style.display === "none") await toggleCompanionSettings();
                 panel && panel.scrollIntoView({ behavior: "smooth", block: "center" });
             }, 50);
+        }
+        // v347: one-time upgrade path for anyone who picked a Companion (or uploaded a custom
+        // image) on v341-v346, back when both lived in localStorage — copies them into the new
+        // IndexedDB settings-store keys above, then clears the old localStorage entries so
+        // there's nothing left to fall out of sync. Safe to call every launch: it's a no-op the
+        // moment the new key already exists (either because this migration already ran, or
+        // because this is a fresh v347+ install with nothing to migrate).
+        async function migrateCompanionPrefsFromLocalStorage() {
+            try {
+                const already = await readKeyDB("settings", COMPANION_SETTINGS_KEY);
+                if (already) return;
+                const oldId = localStorage.getItem("ledgerCompanionPetId");
+                const oldImg = localStorage.getItem("ledgerCompanionCustomImageDataUrl");
+                if (!oldId && !oldImg) return;
+                if (oldImg) await writeDB(STORES.SETTINGS, { key: COMPANION_CUSTOM_IMAGE_SETTINGS_KEY, value: oldImg });
+                if (oldId) await writeDB(STORES.SETTINGS, { key: COMPANION_SETTINGS_KEY, value: oldId });
+                localStorage.removeItem("ledgerCompanionPetId");
+                localStorage.removeItem("ledgerCompanionCustomImageDataUrl");
+            } catch (e) {}
         }
 
         // v247: manual toggle (Settings > Background Theme > "Handwritten font (Kalam)") for
@@ -8089,11 +8115,10 @@
         // Background Theme re-apply just above (no <head> no-flash snippet for this one since
         // the hero card only ever appears after unlock, not before first paint).
         applyNetWorthCardStyle(getSavedNetWorthCardStyleId(), { save: false });
-        // v341: same "apply the saved pick immediately on script parse" treatment — the mascot
-        // slot (#netWorthCompanion) is static markup in index.html (like #netWorthDisplay), so
-        // it only ever needs to be (re)painted here and whenever the user picks a new one in
-        // Settings, not on every renderApp() dashboard rebuild.
-        applyCompanionPet(getSavedCompanionId(), { save: false });
+        // v347: Companion's "apply the saved pick immediately" call moved into bootstrap() (see
+        // there) — it now reads from the IndexedDB settings store (so it travels with Backup &
+        // Restore), which isn't open yet at this point in script parse, unlike the localStorage-
+        // based Background Theme / Net Worth Card Style calls just above.
 
         // v249: syncs the header button's icon/title with the persisted Privacy Mode choice —
         // the <head> no-flash script already set the CSS-facing attribute before first paint,
@@ -16943,6 +16968,14 @@
             }
             initBiometricToggleRow();
 
+            // v347: Companion — migrate any v341-v346 localStorage pick/custom-image into the
+            // IndexedDB settings store, then (re)paint the dashboard's mascot slot from whatever
+            // ends up there. Must happen after initDB() (unlike Background Theme / Net Worth Card
+            // Style just above bootstrap(), which are localStorage-only and applied synchronously
+            // at script parse) since this now reads IndexedDB.
+            await migrateCompanionPrefsFromLocalStorage();
+            await applyCompanionPet(await getSavedCompanionId(), { save: false });
+
             const storedBase = await readKeyDB("settings", "baseCurrency");
             if (storedBase) baseCurrency = storedBase.value;
 
@@ -17586,6 +17619,8 @@
                     // baseCurrency/fxRates rows are included in this dump too but are already
                     // applied above from bundle.baseCurrency/bundle.fxRates; writing them again here
                     // is harmless (same values, same store row).
+                    // v347: this dump also now carries companionPetId/companionCustomImage — see
+                    // the dedicated reapply call right after this block, not a switch case here.
                     if (bundle.settings && Array.isArray(bundle.settings)) {
                         for (const rec of bundle.settings) {
                             if (!rec || !rec.key) continue;
@@ -17615,6 +17650,17 @@
                             }
                         }
                     }
+
+                    // v347: Companion (companionPetId / companionCustomImage) is handled outside
+                    // the switch above rather than with a case per key — unlike every other
+                    // setting here, it isn't mirrored into a plain in-memory variable; it's read
+                    // straight from IndexedDB each time it's applied. Reapplying once, after every
+                    // row above has already been written, is also order-independent: if
+                    // companionCustomImage happened to appear after companionPetId in bundle.settings,
+                    // a per-key case would risk re-painting the chip before the image it needs was
+                    // actually in the store yet. Safe to run even on a backup with no Companion
+                    // settings at all — it just reflects whatever this device already had.
+                    await applyCompanionPet(await getSavedCompanionId(), { save: false });
 
                     await syncAndLoadCategories();
                     await loadMembersCache();

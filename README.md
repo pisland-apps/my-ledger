@@ -2233,3 +2233,57 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v346.
+
+## v347: Companion (pet pick + custom image) now travels with Backup &
+Restore
+
+Previously Companion was deliberately device-local, like Background
+Theme and Net Worth Card Style — stored in `localStorage`
+(`ledgerCompanionPetId` / `ledgerCompanionCustomImageDataUrl`), excluded
+from the export bundle. Requested: make it carry over to a new device.
+
+- **Moved into the IndexedDB `settings` store** — the same store
+  `defaultPaymentAccount`/`recentTxTypeFilter`/etc. already live in —
+  under new keys `companionPetId` / `companionCustomImage`.
+  `exportBackup()` already dumps this entire store
+  (`settings: await readAllDB(STORES.SETTINGS)`, since v65), so both
+  values are now included in every export automatically — no bundle
+  format change needed.
+- **`importBackup()`** writes every `bundle.settings` row back via the
+  existing generic `writeDB(STORES.SETTINGS, rec)` call (unchanged),
+  then — after every row has been written — calls
+  `applyCompanionPet(await getSavedCompanionId(), { save: false })`
+  once to repaint the dashboard's mascot slot immediately, instead of
+  only taking effect on the next launch. This is a single reapply
+  after the whole settings loop, not a per-key `switch` case like most
+  other settings here, specifically so it's order-independent: if
+  `companionCustomImage` happens to appear after `companionPetId` in
+  the bundle array, a per-key case could try to paint "custom" before
+  its image was actually in the store yet.
+- **One-time migration** (`migrateCompanionPrefsFromLocalStorage()`,
+  called from `bootstrap()`): copies a v341-v346 install's existing
+  `localStorage` pick/custom image into the new IndexedDB keys once,
+  then clears the old `localStorage` entries. No-op on a fresh v347+
+  install or once already migrated.
+- **Every Companion getter/setter is now `async`** (`getSavedCompanionId()`,
+  `getCompanionCustomImage()`, `applyCompanionPet()`,
+  `buildCompanionSwatchGrid()`, `selectCompanion()`,
+  `toggleCompanionSettings()`, `removeCompanionCustomImage()`,
+  `handleCompanionCustomImageSelected()`) — IndexedDB, unlike
+  `localStorage`, has no synchronous read. The one-time "apply the
+  saved pick" call also moved out of the top-level script-parse code
+  (where it ran synchronously before v347, alongside Background Theme/
+  Net Worth Card Style) into `bootstrap()`, since it now needs
+  `initDB()` to have already run — timing-safe here because the
+  mascot slot only ever appears after unlock anyway, never on the lock
+  screen itself.
+- Background Theme and Net Worth Card Style remain `localStorage`-only
+  and still do **not** travel with a backup — that's an intentional,
+  unchanged distinction: those are built-in presets already available
+  on any install, whereas a custom photo has nowhere else to come
+  from.
+- Verified with `node --check` plus the data-click/data-change/
+  `getElementById` cross-reference script (0 missing).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v347.

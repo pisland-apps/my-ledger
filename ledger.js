@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v366";
+        const APP_VERSION = "v367";
         const APP_VERSION_DATE = "2026-09-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -13655,9 +13655,24 @@
             const sign = p.type === "income" ? "+" : "-";
             const color = p.type === "income" ? "var(--income-color)" : "var(--expense-color)";
             const rowOpacity = p.paused ? "opacity:0.6;" : "";
+            const icon = p.paused ? "⏸" : (p.recur ? "🔁" : "🕒");
+            // v367: same icon + stacked-text "badge" layout as the Transaction Templates list
+            // (renderTemplatesPage()) — bold title on top, muted meta line underneath — instead
+            // of cramming name/category/recurrence onto one line. Meta line mirrors Templates'
+            // "amount · account" pattern with "category · recurrence" (either half optional).
+            const metaParts = [];
+            if (p.cat) metaParts.push(escapeHtml(p.cat));
+            if (p.recur && !p.paused) metaParts.push(escapeHtml(recurLabel(p.recur)));
+            const metaLine = metaParts.join(" · ");
             return `
                 <div class="config-item" data-click="plannedPaymentRowTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; ${rowOpacity}">
-                    <span class="category-display-badge">${p.paused ? "⏸" : (p.recur ? "🔁" : "🕒")} <strong>${escapeHtml(p.desc)}</strong>${p.cat ? " — " + escapeHtml(p.cat) : ""}${(p.recur && !p.paused) ? ` <span style="font-weight:400; color:var(--text-muted);">(${escapeHtml(recurLabel(p.recur))})</span>` : ""}</span>
+                    <span class="category-display-badge">
+                        <span>${icon}</span>
+                        <span style="display:flex; flex-direction:column;">
+                            <strong>${escapeHtml(p.desc)}</strong>
+                            ${metaLine ? `<span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">${metaLine}</span>` : ""}
+                        </span>
+                    </span>
                     <span style="text-align:right;">
                         <span style="display:block; font-size:0.85rem; font-weight:700; color:${color};">${sign}${formatCurrency(p.amount, p.currency)}</span>
                         <span style="font-size:0.75rem; font-weight:700; color:${(overdue && !p.paused) ? "var(--expense-color)" : "var(--text-muted)"};">${dueLabel}</span>

@@ -1545,8 +1545,21 @@
             overflow-y: auto;
         }
         @media (min-width: 1400px) {
-            .desktop-insights-rail { display: block; }
+            .desktop-insights-rail { display: block; right: calc(50vw - 694px); }
         }
+        /* v364: at 1400px+ the sidebar (336px) + content column (720px) + this rail (300px) stop
+           filling the viewport, leaving leftover space. Previously the content column was pinned
+           directly after the sidebar (margin-right:auto) and the rail was pinned to the true
+           right edge (right:0) — so ALL the leftover space piled up as a single empty gap between
+           content and rail. Fix: treat "content + 32px gap + rail" (720+32+300=1052px) as one
+           block and center that block within the space right of the sidebar, by giving both the
+           body's margin-left (below) and this rail's right offset the same
+           calc(50vw - 694px) formula — derived from ((100vw - 336px sidebar) - 1052px block) / 2,
+           simplified. Keeping both offsets equal is what makes the block symmetric instead of
+           re-centering the content column alone (which would just move the empty space to one
+           side of it rather than removing it). At exactly 1400px this evaluates to a 6px offset
+           (matches the existing rail-appears breakpoint almost flush); below 1400px the rail is a
+           drawer instead (see the max-width:1399px block) so this formula never needs to apply. */
         /* v182: on phones (<768px, same breakpoint the sidebar drawer uses) the insights rail
            doubles as a right-edge slide-in drawer — same element/ids/render function as the
            1400px+ rail above, just off-canvas by default and toggled via .open instead of always
@@ -1653,6 +1666,13 @@
                underneath the sidebar, completely covered and unclickable. Shift it past the
                sidebar's own width (336px, matching body's margin-left right above) instead. */
             .print-fab-btn { left: 356px; }
+        }
+        /* v364: see the .desktop-insights-rail comment above (min-width:1400px block) for the
+           full derivation — this overrides margin-right:auto from the 768px+ rule right above so
+           the content column shares the leftover space evenly with the rail instead of hugging
+           the sidebar. */
+        @media (min-width: 1400px) {
+            body { margin-left: calc(50vw - 358px); margin-right: 0; }
         }
 
         /* v256: #insightsRailOverlay (id, not just .sidebar-overlay's class) reasserts itself over

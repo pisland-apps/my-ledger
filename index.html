@@ -1545,7 +1545,7 @@
             overflow-y: auto;
         }
         @media (min-width: 1400px) {
-            .desktop-insights-rail { display: block; right: calc(50vw - 694px); }
+            .desktop-insights-rail { display: block; right: calc(50% - 694px); }
         }
         /* v364: at 1400px+ the sidebar (336px) + content column (720px) + this rail (300px) stop
            filling the viewport, leaving leftover space. Previously the content column was pinned
@@ -1554,12 +1554,18 @@
            content and rail. Fix: treat "content + 32px gap + rail" (720+32+300=1052px) as one
            block and center that block within the space right of the sidebar, by giving both the
            body's margin-left (below) and this rail's right offset the same
-           calc(50vw - 694px) formula — derived from ((100vw - 336px sidebar) - 1052px block) / 2,
+           calc(50% - 694px) formula — derived from ((100% - 336px sidebar) - 1052px block) / 2,
            simplified. Keeping both offsets equal is what makes the block symmetric instead of
            re-centering the content column alone (which would just move the empty space to one
-           side of it rather than removing it). At exactly 1400px this evaluates to a 6px offset
-           (matches the existing rail-appears breakpoint almost flush); below 1400px the rail is a
-           drawer instead (see the max-width:1399px block) so this formula never needs to apply. */
+           side of it rather than removing it). Deliberately % here, not vw: this rail is
+           position:fixed, so % resolves against the initial containing block (the scrollbar-
+           corrected visible viewport) — same basis as body's own margin-left % below — whereas
+           vw would measure the full document width INCLUDING the area under the scrollbar,
+           throwing both sides off by the scrollbar's width (~7-8px each side on Windows) and
+           making the "centered" block drift slightly. At exactly 1400px this evaluates to a 6px
+           offset (matches the existing rail-appears breakpoint almost flush); below 1400px the
+           rail is a drawer instead (see the max-width:1399px block) so this formula never needs
+           to apply. */
         /* v182: on phones (<768px, same breakpoint the sidebar drawer uses) the insights rail
            doubles as a right-edge slide-in drawer — same element/ids/render function as the
            1400px+ rail above, just off-canvas by default and toggled via .open instead of always
@@ -1668,11 +1674,14 @@
             .print-fab-btn { left: 356px; }
         }
         /* v364: see the .desktop-insights-rail comment above (min-width:1400px block) for the
-           full derivation — this overrides margin-right:auto from the 768px+ rule right above so
-           the content column shares the leftover space evenly with the rail instead of hugging
-           the sidebar. */
+           full derivation, including why % rather than vw — this overrides margin-right:auto
+           from the 768px+ rule right above so the content column shares the leftover space evenly
+           with the rail instead of hugging the sidebar. This % resolves against html's content
+           box, which (like the rail's fixed-position %) is already scrollbar-corrected, so it
+           lines up exactly with the rail's offset on both Windows (scrollbar present) and
+           scrollbar-less platforms alike. */
         @media (min-width: 1400px) {
-            body { margin-left: calc(50vw - 358px); margin-right: 0; }
+            body { margin-left: calc(50% - 358px); margin-right: 0; }
         }
 
         /* v256: #insightsRailOverlay (id, not just .sidebar-overlay's class) reasserts itself over

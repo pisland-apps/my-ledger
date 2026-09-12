@@ -1545,27 +1545,32 @@
             overflow-y: auto;
         }
         @media (min-width: 1400px) {
-            .desktop-insights-rail { display: block; right: calc(50% - 694px); }
+            .desktop-insights-rail {
+                display: block;
+                position: sticky;
+                top: 24px;
+                right: auto;
+                bottom: auto;
+                align-self: flex-start;
+                flex-shrink: 0;
+                max-height: calc(100vh - 48px);
+            }
         }
-        /* v364: at 1400px+ the sidebar (336px) + content column (720px) + this rail (300px) stop
-           filling the viewport, leaving leftover space. Previously the content column was pinned
-           directly after the sidebar (margin-right:auto) and the rail was pinned to the true
-           right edge (right:0) — so ALL the leftover space piled up as a single empty gap between
-           content and rail. Fix: treat "content + 32px gap + rail" (720+32+300=1052px) as one
-           block and center that block within the space right of the sidebar, by giving both the
-           body's margin-left (below) and this rail's right offset the same
-           calc(50% - 694px) formula — derived from ((100% - 336px sidebar) - 1052px block) / 2,
-           simplified. Keeping both offsets equal is what makes the block symmetric instead of
-           re-centering the content column alone (which would just move the empty space to one
-           side of it rather than removing it). Deliberately % here, not vw: this rail is
-           position:fixed, so % resolves against the initial containing block (the scrollbar-
-           corrected visible viewport) — same basis as body's own margin-left % below — whereas
-           vw would measure the full document width INCLUDING the area under the scrollbar,
-           throwing both sides off by the scrollbar's width (~7-8px each side on Windows) and
-           making the "centered" block drift slightly. At exactly 1400px this evaluates to a 6px
-           offset (matches the existing rail-appears breakpoint almost flush); below 1400px the
-           rail is a drawer instead (see the max-width:1399px block) so this formula never needs
-           to apply. */
+        /* v364/v365 (superseded): first tried centering "content + gap + rail" as one 1052px
+           block by giving the content column's margin-left and this (position:fixed) rail's
+           right offset the same calc(50vw - Npx) / calc(50% - Npx) formula, so the leftover space
+           at 1400px+ split evenly on both sides instead of piling up as a single gap. Dropped
+           after a real screenshot showed the two sides still off by ~50px even with %, which a
+           pure %-basis mismatch doesn't fully explain (the measured gap and rail width had also
+           drifted from their expected 32px/300px) — rather than keep patching two independently-
+           computed values that only work if they happen to agree, v366 removes the dependency
+           entirely: the rail is no longer position:fixed at 1400px+ at all. It's now a normal
+           flex item inside #contentRow (see that div's CSS + the body 1400px+ rule below),
+           sitting beside #pagesWrapper in one ordinary flex row — its horizontal position comes
+           from the SAME box as the content column's, by construction, so there's no separate
+           formula left to drift out of sync. position:sticky (rather than static) keeps its old
+           "stays put while the page scrolls" behavior, just resolved within #contentRow's normal
+           flow instead of against the viewport. */
         /* v182: on phones (<768px, same breakpoint the sidebar drawer uses) the insights rail
            doubles as a right-edge slide-in drawer — same element/ids/render function as the
            1400px+ rail above, just off-canvas by default and toggled via .open instead of always
@@ -1673,15 +1678,15 @@
                sidebar's own width (336px, matching body's margin-left right above) instead. */
             .print-fab-btn { left: 356px; }
         }
-        /* v364: see the .desktop-insights-rail comment above (min-width:1400px block) for the
-           full derivation, including why % rather than vw — this overrides margin-right:auto
-           from the 768px+ rule right above so the content column shares the leftover space evenly
-           with the rail instead of hugging the sidebar. This % resolves against html's content
-           box, which (like the rail's fixed-position %) is already scrollbar-corrected, so it
-           lines up exactly with the rail's offset on both Windows (scrollbar present) and
-           scrollbar-less platforms alike. */
+        /* v366: see the .desktop-insights-rail CSS comment (min-width:1400px block) for why this
+           replaced the v364/v365 calc(50% - Npx) formula. At 1400px+, body just docks against the
+           sidebar with no width cap of its own — #contentRow (a plain unstyled div at <1400px)
+           becomes the flex row that does the actual centering, with #pagesWrapper (not body)
+           carrying the 720px cap that used to live on body. */
         @media (min-width: 1400px) {
-            body { margin-left: calc(50% - 358px); margin-right: 0; }
+            body { margin-left: 336px; margin-right: 0; max-width: none; }
+            #contentRow { display: flex; justify-content: center; gap: 32px; align-items: flex-start; }
+            #pagesWrapper { width: 100%; max-width: 720px; }
         }
 
         /* v256: #insightsRailOverlay (id, not just .sidebar-overlay's class) reasserts itself over
@@ -2418,6 +2423,12 @@
                 margin: 0 !important;
                 padding: 0 !important;
             }
+            /* v366: the 720px cap that used to live on body (killed above) now lives on
+               #pagesWrapper instead (see the min-width:1400px CSS + the .desktop-insights-rail
+               comment) — strip it here too, and flatten #contentRow's flex row back to a plain
+               block, so a "Save as PDF" triggered from a 1400px+ window doesn't inherit either. */
+            #contentRow { display: block !important; }
+            #pagesWrapper { max-width: 100% !important; width: 100% !important; }
             /* Only the currently active page prints — every other .page is already display:none
                via .page.hidden; this just reaffirms it and strips the fixed/mobile-app framing
                (max-width column, bottom padding reserved for a FAB, etc.) from the one that's
@@ -2615,29 +2626,11 @@
          .sidebar-overlay's dim+blur styling as-is. -->
     <div class="sidebar-overlay" id="insightsRailOverlay" data-click="closeInsightsDrawer"></div>
 
-    <!-- v181: Desktop "Insights" right rail — see the matching CSS comment above for why this
-         only shows permanently-docked at 1400px+. Lives outside every .page div (same reasoning
-         as the back-to-top button above) and is refreshed by renderDesktopInsightsRail(), called
-         from renderApp(). v182/v256: same element also serves as the <1400px slide-in drawer —
-         see the CSS comment. -->
-    <div class="desktop-insights-rail" id="desktopInsightsRail">
-        <div class="insights-rail-header">
-            <span class="insights-rail-title">Insights</span>
-            <button type="button" class="insights-rail-close-btn" data-click="closeInsightsDrawer" aria-label="Close insights panel">&times;</button>
-        </div>
-        <div class="insights-card">
-            <h4>Spending Breakdown (This Month)</h4>
-            <div id="insightsSpendingDonutWrap"></div>
-        </div>
-        <div class="insights-card">
-            <h4>Top Categories This Month</h4>
-            <div id="insightsTopCategoriesList"></div>
-        </div>
-        <div class="insights-card">
-            <h4>Recent Large Transactions</h4>
-            <div id="insightsLargeTxList"></div>
-        </div>
-    </div>
+    <!-- v366: the .desktop-insights-rail element itself moved further down (now just before
+         SYSTEM MODALS, as a sibling of #pagesWrapper inside #contentRow) — see the CSS comment
+         on .desktop-insights-rail for why. This overlay stays here since it's independent of that
+         move (it's the dimmed backdrop for the <1400px drawer mode, unrelated to the 1400px+
+         dock's horizontal position). -->
 
     <!-- ================= SIDEBAR NAVIGATION DRAWER ================= -->
     <div class="sidebar-overlay" id="sidebarOverlay" data-click="closeSidebar"></div>
@@ -2785,6 +2778,14 @@
     </div>
 
     <!-- ================= PAGE 1: PORTFOLIO MAIN WORKSPACE ================= -->
+    <!-- v366: #contentRow / #pagesWrapper — see the .desktop-insights-rail CSS comment for why
+         these exist. At <1400px both are plain unstyled divs (no visual effect, single-column
+         layout untouched); at 1400px+ #contentRow becomes the flex row that centers
+         #pagesWrapper (capped at 720px, same as before) alongside the insights rail, so the two
+         share one real layout parent instead of two independently-computed CSS formulas that
+         have to agree by coincidence. -->
+    <div id="contentRow">
+    <div id="pagesWrapper">
     <div id="page-workspace" class="page">
         <header>
             <!-- v162: header-controls-group pulled back OUT of .top-bar to be its sibling under
@@ -4407,6 +4408,33 @@
         </div>
         <div class="config-list" id="memberPageAccountsList" style="padding-bottom:24px;"></div>
     </div>
+    </div> <!-- /pagesWrapper -->
+
+    <!-- v181/v366: Desktop "Insights" right rail — see the .desktop-insights-rail CSS comment for
+         why this now lives here (as #pagesWrapper's flex sibling inside #contentRow) instead of
+         up near the sidebar. Outside every .page div still, same as before, so it persists across
+         page navigation; refreshed by renderDesktopInsightsRail(), called from renderApp().
+         v182/v256: same element also serves as the <1400px slide-in drawer — see the CSS
+         comment. -->
+    <div class="desktop-insights-rail" id="desktopInsightsRail">
+        <div class="insights-rail-header">
+            <span class="insights-rail-title">Insights</span>
+            <button type="button" class="insights-rail-close-btn" data-click="closeInsightsDrawer" aria-label="Close insights panel">&times;</button>
+        </div>
+        <div class="insights-card">
+            <h4>Spending Breakdown (This Month)</h4>
+            <div id="insightsSpendingDonutWrap"></div>
+        </div>
+        <div class="insights-card">
+            <h4>Top Categories This Month</h4>
+            <div id="insightsTopCategoriesList"></div>
+        </div>
+        <div class="insights-card">
+            <h4>Recent Large Transactions</h4>
+            <div id="insightsLargeTxList"></div>
+        </div>
+    </div>
+    </div> <!-- /contentRow -->
 
     <!-- ================= SYSTEM MODALS ================= -->
     <!-- MODAL: Advanced Multi-Currency Core Configuration -->

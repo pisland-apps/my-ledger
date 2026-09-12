@@ -2592,3 +2592,35 @@ series without deleting it outright.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v360.
+
+## v361: Planned Payments — moved to its own sidebar page; Dashboard
+now only shows what's due within 3 days
+
+Requested directly: narrow the Dashboard widget to near-term items
+only, and give everything else (further out, or paused) a proper home
+instead of just disappearing.
+
+- **New sidebar entry "🕒 Planned Payments"** — a full list page
+  showing every saved payment, however far off, including paused ones
+  (`getAllPlannedPayments()` already sorts paused to the bottom; this
+  page just doesn't filter by date at all). No "+" button on this
+  page — a Planned Payment is still only ever created from the
+  Income/Expense entry form's "🕒 Save as Planned" button. Rows reuse
+  the exact same tap → action-sheet flow as the Dashboard widget
+  (`renderPlannedPaymentRowHtml()`, now shared by both instead of
+  duplicated).
+- **Dashboard widget narrowed**: only shows an entry that's due within
+  3 days or already overdue — anything further out, and anything
+  paused (regardless of date), no longer appears there at all. The
+  widget's title is now a link to the new full page (same pattern as
+  Warranty Reminders → Inventory).
+- **New `refreshPlannedPaymentsViews()`** — every action that changes
+  a Planned Payment (save, pause, resume, edit series, delete, mark
+  as paid) now calls this instead of refreshing the Dashboard widget
+  directly, so the full list page stays in sync too on the occasions
+  it's the one actually on screen when the change happens.
+- Verified with `node --check` plus the data-click/data-change/
+  `getElementById` cross-reference script (0 missing).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v361.

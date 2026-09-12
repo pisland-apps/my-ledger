@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v360";
+        const APP_VERSION = "v361";
         const APP_VERSION_DATE = "2026-09-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -4822,9 +4822,11 @@
             const currencyReportHidden = document.getElementById("page-currency-report").classList.contains("hidden");
             const navUpdateHidden = document.getElementById("page-navupdate").classList.contains("hidden");
             const inventoryHidden = document.getElementById("page-inventory").classList.contains("hidden");
+            const plannedPaymentsHidden = document.getElementById("page-plannedpayments").classList.contains("hidden");
             let target = null;
             if (!savingsHidden) target = "savings";
             else if (!inventoryHidden) target = "inventory";
+            else if (!plannedPaymentsHidden) target = "plannedpayments";
             else if (!accountsHidden) target = "accounts";
             else if (!categoriesHidden) target = "categories";
             else if (!backupHidden) target = "backup";
@@ -4875,6 +4877,7 @@
             else if (target === "tag-report") navigateToTagReportPage();
             else if (target === "budget") navigateToBudgetPage();
             else if (target === "inventory") navigateToInventoryPage();
+            else if (target === "plannedpayments") navigateToPlannedPaymentsPage();
             else if (target === "lock") lockAppNow();
         }
 
@@ -13632,42 +13635,87 @@
                 return;
             }
             closeModal("txModal");
-            await renderPlannedPaymentsWidget();
+            await refreshPlannedPaymentsViews();
             showToast("Saved as a planned payment");
         }
 
+        // Shared row markup — used by both the Dashboard widget (filtered, see
+        // renderPlannedPaymentsWidget()) and the full list page (unfiltered, see
+        // renderPlannedPaymentsPage()), so the two only ever differ in which payments they pass
+        // in, never in how a row looks or behaves. `today` is passed in rather than recomputed
+        // per row for the (admittedly minor) cost of calling todayLocalStr() once per render
+        // instead of once per row.
+        function renderPlannedPaymentRowHtml(p, today) {
+            const daysDiff = Math.round((new Date(p.dueDate + "T00:00:00") - new Date(today + "T00:00:00")) / (1000 * 60 * 60 * 24));
+            const overdue = daysDiff < 0;
+            const dueLabel = p.paused ? "⏸ Paused" : (overdue ? `Overdue ${Math.abs(daysDiff)}d` : (daysDiff === 0 ? "Due today" : `${daysDiff}d left`));
+            const sign = p.type === "income" ? "+" : "-";
+            const color = p.type === "income" ? "var(--income-color)" : "var(--expense-color)";
+            const rowOpacity = p.paused ? "opacity:0.6;" : "";
+            return `
+                <div class="config-item" data-click="plannedPaymentRowTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; ${rowOpacity}">
+                    <span class="category-display-badge">${p.paused ? "⏸" : (p.recur ? "🔁" : "🕒")} <strong>${escapeHtml(p.desc)}</strong>${p.cat ? " — " + escapeHtml(p.cat) : ""}${(p.recur && !p.paused) ? ` <span style="font-weight:400; color:var(--text-muted);">(${escapeHtml(recurLabel(p.recur))})</span>` : ""}</span>
+                    <span style="text-align:right;">
+                        <span style="display:block; font-size:0.85rem; font-weight:700; color:${color};">${sign}${formatCurrency(p.amount, p.currency)}</span>
+                        <span style="font-size:0.75rem; font-weight:700; color:${(overdue && !p.paused) ? "var(--expense-color)" : "var(--text-muted)"};">${dueLabel}</span>
+                    </span>
+                </div>
+            `;
+        }
+
         // Dashboard "Planned Payments" widget — same visual language as renderWarrantyReminderWidget()
-        // just above (a .config-item row per entry, hidden entirely when the list is empty). Rows
-        // ARE clickable, like Warranty Reminders — tapping one opens the small Mark as Paid/Delete
-        // action sheet (see plannedPaymentRowTap() below) rather than navigating anywhere, since
-        // there's no dedicated Planned Payments page (this widget doubles as the only "list view").
+        // just above (a .config-item row per entry, hidden entirely when nothing qualifies).
+        // v361: narrowed to only what's actually due within 3 days or overdue (a paused entry
+        // never qualifies, regardless of date) — everything else (further out, or paused) lives
+        // on the full list page instead (navigateToPlannedPaymentsPage(), linked from this
+        // widget's own title, same as Warranty Reminders links to Inventory).
         async function renderPlannedPaymentsWidget() {
             const wrap = document.getElementById("dashboardPlannedPaymentsWidget");
             const list = document.getElementById("plannedPaymentsList");
             if (!wrap || !list) return;
 
-            const payments = await getAllPlannedPayments();
+            const today = todayLocalStr();
+            const payments = (await getAllPlannedPayments()).filter(p => {
+                if (p.paused) return false;
+                const daysDiff = Math.round((new Date(p.dueDate + "T00:00:00") - new Date(today + "T00:00:00")) / (1000 * 60 * 60 * 24));
+                return daysDiff <= 3; // includes overdue (negative) and "due today" (0)
+            });
             wrap.style.display = payments.length ? "" : "none";
             if (!payments.length) return;
 
+            list.innerHTML = payments.map(p => renderPlannedPaymentRowHtml(p, today)).join("");
+        }
+
+        // Full list page (Sidebar > Planned Payments) — everything saved, no 3-day/paused filter,
+        // so anything further out or on hold stays reachable/manageable (Edit Series, Pause,
+        // Delete) even though it's deliberately absent from the Dashboard. getAllPlannedPayments()
+        // already sorts paused entries to the bottom, same ordering as the widget uses.
+        async function renderPlannedPaymentsPage() {
+            const list = document.getElementById("plannedPaymentsPageList");
+            const empty = document.getElementById("plannedPaymentsPageEmpty");
+            if (!list || !empty) return;
             const today = todayLocalStr();
-            list.innerHTML = payments.map(p => {
-                const daysDiff = Math.round((new Date(p.dueDate + "T00:00:00") - new Date(today + "T00:00:00")) / (1000 * 60 * 60 * 24));
-                const overdue = daysDiff < 0;
-                const dueLabel = p.paused ? "⏸ Paused" : (overdue ? `Overdue ${Math.abs(daysDiff)}d` : (daysDiff === 0 ? "Due today" : `${daysDiff}d left`));
-                const sign = p.type === "income" ? "+" : "-";
-                const color = p.type === "income" ? "var(--income-color)" : "var(--expense-color)";
-                const rowOpacity = p.paused ? "opacity:0.6;" : "";
-                return `
-                    <div class="config-item" data-click="plannedPaymentRowTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; ${rowOpacity}">
-                        <span class="category-display-badge">${p.paused ? "⏸" : (p.recur ? "🔁" : "🕒")} <strong>${escapeHtml(p.desc)}</strong>${p.cat ? " — " + escapeHtml(p.cat) : ""}${(p.recur && !p.paused) ? ` <span style="font-weight:400; color:var(--text-muted);">(${escapeHtml(recurLabel(p.recur))})</span>` : ""}</span>
-                        <span style="text-align:right;">
-                            <span style="display:block; font-size:0.85rem; font-weight:700; color:${color};">${sign}${formatCurrency(p.amount, p.currency)}</span>
-                            <span style="font-size:0.75rem; font-weight:700; color:${(overdue && !p.paused) ? "var(--expense-color)" : "var(--text-muted)"};">${dueLabel}</span>
-                        </span>
-                    </div>
-                `;
-            }).join("");
+            const payments = await getAllPlannedPayments();
+            empty.style.display = payments.length ? "none" : "block";
+            list.innerHTML = payments.map(p => renderPlannedPaymentRowHtml(p, today)).join("");
+        }
+
+        function navigateToPlannedPaymentsPage() {
+            showPage("page-plannedpayments");
+            pushVirtualState("plannedpayments");
+            renderPlannedPaymentsPage();
+        }
+
+        // Every action that changes a Planned Payment (save, pause, resume, edit series, delete,
+        // mark as paid) calls this instead of renderPlannedPaymentsWidget() directly — so if the
+        // full list page (navigateToPlannedPaymentsPage()) happens to be the one currently on
+        // screen when the change happens, it stays in sync too, not just the Dashboard widget.
+        async function refreshPlannedPaymentsViews() {
+            await renderPlannedPaymentsWidget();
+            const pageEl = document.getElementById("page-plannedpayments");
+            if (pageEl && !pageEl.classList.contains("hidden")) {
+                await renderPlannedPaymentsPage();
+            }
         }
 
         // Which Planned Payment id the action sheet (plannedPaymentActionsModal) is currently
@@ -13703,7 +13751,7 @@
             if (!payment) return;
             payment.paused = true;
             await writeDB(STORES.PLANNED_PAYMENTS, payment);
-            await renderPlannedPaymentsWidget();
+            await refreshPlannedPaymentsViews();
         }
 
         // Resuming fast-forwards a dueDate that's fallen into the past (e.g. paused for a
@@ -13726,7 +13774,7 @@
             }
             payment.paused = false;
             await writeDB(STORES.PLANNED_PAYMENTS, payment);
-            await renderPlannedPaymentsWidget();
+            await refreshPlannedPaymentsViews();
         }
 
         // "✏️ Edit Series" — the recurrence RULE itself (frequency/interval/next due date), not
@@ -13767,7 +13815,7 @@
             payment.recur = { freq, interval, anchorDay: parseInt(dueDateVal.split("-")[2], 10) };
             await writeDB(STORES.PLANNED_PAYMENTS, payment);
             closeModal("editPlannedSeriesModal");
-            await renderPlannedPaymentsWidget();
+            await refreshPlannedPaymentsViews();
         }
 
         // "Mark as Paid" — opens the ordinary Income/Expense entry form pre-filled with
@@ -13835,7 +13883,7 @@
             const confirmed = await customConfirm(message);
             if (!confirmed) return;
             try { await deleteDB(STORES.PLANNED_PAYMENTS, paymentId); } catch (err) {}
-            await renderPlannedPaymentsWidget();
+            await refreshPlannedPaymentsViews();
         }
 
         // --- SALARY ENTRY (Gross Salary → Net Bank + EPF(Malaysia)/CPF(Singapore) split) ---
@@ -15471,7 +15519,7 @@
             renderRecentTransactionsWidget(accounts, txs);
             renderTagReminderWidget(txs, accounts);
             await renderWarrantyReminderWidget();
-            await renderPlannedPaymentsWidget();
+            await refreshPlannedPaymentsViews();
             applyDashboardWidgetOrder();
             renderDesktopInsightsRail(accounts, txs);
 
@@ -18960,6 +19008,7 @@
             toggleDonutSlice: (el) => toggleDonutSlice(el),
             // v318: INVENTORY
             navigateToInventoryPage: () => navigateToInventoryPage(),
+            navigateToPlannedPaymentsPage: () => navigateToPlannedPaymentsPage(),
             inventorySetStatusFilter: (el) => inventorySetStatusFilter(el),
             inventoryWarrantyStripTap: () => inventoryWarrantyStripTap(),
             inventoryItemCardTap: (el) => openInventoryItemModal(el.dataset.id),

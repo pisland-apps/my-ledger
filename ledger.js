@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v362";
+        const APP_VERSION = "v363";
         const APP_VERSION_DATE = "2026-09-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -13784,18 +13784,21 @@
         // any one occurrence's amount/category/account (that's what Mark as Paid is for). See the
         // #editPlannedSeriesModal comment in index.html for why "Next Due Date" living here (and
         // re-anchoring on save) is the intended way to fix a wrong or auto-guessed anchorDay.
+        // v363: closeModalAndThen() — same "opened underneath a still-active actions modal" bug
+        // as confirmPlannedPaymentFromActionsModal() above; see that function's comment.
         async function openEditPlannedSeriesModal() {
             const paymentId = activePlannedPaymentId;
-            closeModal("plannedPaymentActionsModal");
-            if (!paymentId) return;
-            const payments = await getAllPlannedPayments();
-            const payment = payments.find(p => p.id === paymentId);
-            if (!payment || !payment.recur) return;
-            document.getElementById("editSeriesFreq").value = payment.recur.freq || "monthly";
-            document.getElementById("editSeriesInterval").value = payment.recur.interval || 1;
-            document.getElementById("editSeriesDueDate").value = payment.dueDate;
-            document.getElementById("editSeriesAnchorWarning").style.display = payment.recur.anchorDayBackfilled ? "block" : "none";
-            openModal("editPlannedSeriesModal");
+            if (!paymentId) { closeModal("plannedPaymentActionsModal"); return; }
+            closeModalAndThen("plannedPaymentActionsModal", async () => {
+                const payments = await getAllPlannedPayments();
+                const payment = payments.find(p => p.id === paymentId);
+                if (!payment || !payment.recur) return;
+                document.getElementById("editSeriesFreq").value = payment.recur.freq || "monthly";
+                document.getElementById("editSeriesInterval").value = payment.recur.interval || 1;
+                document.getElementById("editSeriesDueDate").value = payment.dueDate;
+                document.getElementById("editSeriesAnchorWarning").style.display = payment.recur.anchorDayBackfilled ? "block" : "none";
+                openModal("editPlannedSeriesModal");
+            });
         }
         function closeEditPlannedSeriesModal() {
             closeModal("editPlannedSeriesModal");
@@ -13827,66 +13830,81 @@
         // (set last, after openTransactionForm() has already reset it to null — see that
         // function's own comment) is what tells handleTransactionSubmitMobile() to delete this
         // Planned Payment once that Commit Entry actually succeeds.
+        // v363: uses closeModalAndThen() (not a plain closeModal() + open sequence) — this hands
+        // off into a freshly-opened txModal, and closeModal()'s history.back() doesn't actually
+        // remove plannedPaymentActionsModal's "active" class until its popstate event fires on a
+        // later tick (see closeModalAndThen()'s own comment). Without waiting for that, txModal
+        // opened immediately underneath a still-visually-active actions modal — exactly the "new
+        // screen looks like it opened behind the old one" bug that helper exists to prevent
+        // (reported via screenshot: tapping Mark as Paid left the action sheet stuck on top of
+        // the transaction form it had just opened).
         async function confirmPlannedPaymentFromActionsModal() {
             const paymentId = activePlannedPaymentId;
-            closeModal("plannedPaymentActionsModal");
-            if (!paymentId) return;
-            const payments = await getAllPlannedPayments();
-            const payment = payments.find(p => p.id === paymentId);
-            if (!payment || payment.paused) return; // defensive — the button is hidden while paused too
+            if (!paymentId) { closeModal("plannedPaymentActionsModal"); return; }
+            closeModalAndThen("plannedPaymentActionsModal", async () => {
+                const payments = await getAllPlannedPayments();
+                const payment = payments.find(p => p.id === paymentId);
+                if (!payment || payment.paused) return; // defensive — the button is hidden while paused too
 
-            await openTransactionForm(payment.type, null, payment.accountId || null);
+                await openTransactionForm(payment.type, null, payment.accountId || null);
 
-            document.getElementById("txDesc").value = payment.desc;
-            document.getElementById("txAmount").value = payment.amount;
-            if (payment.currency && [...document.getElementById("txCurrency").options].some(o => o.value === payment.currency)) {
-                document.getElementById("txCurrency").value = payment.currency;
-            }
-            if (payment.accountId && [...document.getElementById("srcAccount").options].some(o => o.value === payment.accountId)) {
-                document.getElementById("srcAccount").value = payment.accountId;
-                syncAccountPickerButtonText("srcAccount");
-            }
-            if (payment.cat && [...document.getElementById("txCategory").options].some(o => o.value === payment.cat)) {
-                document.getElementById("txCategory").value = payment.cat;
-                syncAccountPickerButtonText("txCategory");
-            }
-            document.getElementById("txNotes").value = payment.notes || "";
-            // Defaults to today (when it's actually being paid) rather than the original due
-            // date — adjustable, like every other field here, before Commit Entry.
-            document.getElementById("txDate").value = todayLocalStr();
-            if (Array.isArray(payment.attachments) && payment.attachments.length) {
-                existingTxAttachments = payment.attachments.map(a => ({ ...a }));
-                renderTxAttachmentPreview();
-            }
-            // This is a confirm, not a fresh entry — re-saving it as (another) Planned Payment
-            // from here would just leave a duplicate behind once this one gets advanced/deleted
-            // below. Same reasoning for the Repeat block — this record's own recur (if any)
-            // already carries forward automatically in advanceOrDeletePlannedPaymentAfterConfirm(),
-            // it's not something to re-decide at confirm time.
-            const savePlannedBtn = document.getElementById("txSavePlannedBtn");
-            if (savePlannedBtn) savePlannedBtn.style.display = "none";
-            const repeatWrap = document.getElementById("txPlannedRepeatWrap");
-            if (repeatWrap) repeatWrap.style.display = "none";
+                document.getElementById("txDesc").value = payment.desc;
+                document.getElementById("txAmount").value = payment.amount;
+                if (payment.currency && [...document.getElementById("txCurrency").options].some(o => o.value === payment.currency)) {
+                    document.getElementById("txCurrency").value = payment.currency;
+                }
+                if (payment.accountId && [...document.getElementById("srcAccount").options].some(o => o.value === payment.accountId)) {
+                    document.getElementById("srcAccount").value = payment.accountId;
+                    syncAccountPickerButtonText("srcAccount");
+                }
+                if (payment.cat && [...document.getElementById("txCategory").options].some(o => o.value === payment.cat)) {
+                    document.getElementById("txCategory").value = payment.cat;
+                    syncAccountPickerButtonText("txCategory");
+                }
+                document.getElementById("txNotes").value = payment.notes || "";
+                // Defaults to today (when it's actually being paid) rather than the original due
+                // date — adjustable, like every other field here, before Commit Entry.
+                document.getElementById("txDate").value = todayLocalStr();
+                if (Array.isArray(payment.attachments) && payment.attachments.length) {
+                    existingTxAttachments = payment.attachments.map(a => ({ ...a }));
+                    renderTxAttachmentPreview();
+                }
+                // This is a confirm, not a fresh entry — re-saving it as (another) Planned Payment
+                // from here would just leave a duplicate behind once this one gets advanced/deleted
+                // below. Same reasoning for the Repeat block — this record's own recur (if any)
+                // already carries forward automatically in advanceOrDeletePlannedPaymentAfterConfirm(),
+                // it's not something to re-decide at confirm time.
+                const savePlannedBtn = document.getElementById("txSavePlannedBtn");
+                if (savePlannedBtn) savePlannedBtn.style.display = "none";
+                const repeatWrap = document.getElementById("txPlannedRepeatWrap");
+                if (repeatWrap) repeatWrap.style.display = "none";
 
-            currentPlannedPaymentIdBeingConfirmed = paymentId;
+                currentPlannedPaymentIdBeingConfirmed = paymentId;
+            });
         }
 
+        // v363: same closeModalAndThen() fix as confirmPlannedPaymentFromActionsModal() above —
+        // customConfirm() is a plain classList-toggle overlay (not part of the modalStack/history
+        // system openModal()/closeModal() use), but it renders immediately, with no wait for
+        // anything — so without this, it could appear stacked behind/alongside the still-"active"
+        // actions modal for the same reason.
         async function deletePlannedPaymentFromActionsModal() {
             const paymentId = activePlannedPaymentId;
-            closeModal("plannedPaymentActionsModal");
-            if (!paymentId) return;
-            const payments = await getAllPlannedPayments();
-            const payment = payments.find(p => p.id === paymentId);
-            // v357: since there's only ever one record per recurring series (see this section's
-            // top comment), Delete always means "stop the whole series" for a recurring one —
-            // said explicitly here so that's never a surprise.
-            const message = (payment && payment.recur)
-                ? "Delete this recurring planned payment? This stops the whole series — it can't be undone."
-                : "Delete this planned payment? This can't be undone.";
-            const confirmed = await customConfirm(message);
-            if (!confirmed) return;
-            try { await deleteDB(STORES.PLANNED_PAYMENTS, paymentId); } catch (err) {}
-            await refreshPlannedPaymentsViews();
+            if (!paymentId) { closeModal("plannedPaymentActionsModal"); return; }
+            closeModalAndThen("plannedPaymentActionsModal", async () => {
+                const payments = await getAllPlannedPayments();
+                const payment = payments.find(p => p.id === paymentId);
+                // v357: since there's only ever one record per recurring series (see this section's
+                // top comment), Delete always means "stop the whole series" for a recurring one —
+                // said explicitly here so that's never a surprise.
+                const message = (payment && payment.recur)
+                    ? "Delete this recurring planned payment? This stops the whole series — it can't be undone."
+                    : "Delete this planned payment? This can't be undone.";
+                const confirmed = await customConfirm(message);
+                if (!confirmed) return;
+                try { await deleteDB(STORES.PLANNED_PAYMENTS, paymentId); } catch (err) {}
+                await refreshPlannedPaymentsViews();
+            });
         }
 
         // --- SALARY ENTRY (Gross Salary → Net Bank + EPF(Malaysia)/CPF(Singapore) split) ---

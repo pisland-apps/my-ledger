@@ -2658,3 +2658,32 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v362.
+
+## v363: fixed Mark as Paid / Edit Series / Delete opening behind the
+Planned Payment action sheet
+
+- **Fixed** (reported via screenshot): tapping "✅ Mark as Paid" opened
+  the transaction entry form, but the action sheet (Mark as Paid /
+  Pause / Edit Series / Delete / Cancel) stayed stuck on top of it
+  instead of closing. Root cause: `closeModal()` doesn't actually
+  remove a modal's "active" class immediately — it triggers
+  `history.back()` and waits for that `popstate` event to do the
+  actual removal, one tick later (this is documented on `closeModal()`
+  itself, and there's an existing helper — `closeModalAndThen()` —
+  built specifically for this: "closing a modal, then handing off to
+  a freshly-opened one"). `confirmPlannedPaymentFromActionsModal()`
+  used a plain `closeModal()` immediately followed by
+  `openTransactionForm()` instead of that helper, so the new form
+  opened underneath a still-visually-active action sheet.
+- Same fix applied to **"✏️ Edit Series"** (`openEditPlannedSeriesModal()`)
+  and **"🗑 Delete"**'s confirmation prompt
+  (`deletePlannedPaymentFromActionsModal()`) — both had the identical
+  pattern and the identical latent bug, just not yet reported.
+  Pause/Resume were already safe — neither opens another modal
+  right after closing this one, so there was nothing for them to race
+  against.
+- Verified with `node --check` plus the data-click/`getElementById`
+  cross-reference script (0 missing).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v363.

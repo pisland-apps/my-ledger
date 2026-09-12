@@ -2624,3 +2624,37 @@ instead of just disappearing.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v361.
+
+## v362: fixed blank Planned Payments page
+
+- **Fixed**: opening Planned Payments from the sidebar showed a
+  completely blank screen (reported via screenshot). Cause:
+  `showPage(id)` only toggles visibility for pages listed in a
+  hardcoded `APP_PAGE_IDS` array — v361 added the new
+  `page-plannedpayments` container and its sidebar entry, but never
+  added it to this array. The practical effect was worse than "does
+  nothing": `showPage()` still hid every *other* known page (since
+  none of them equal `"page-plannedpayments"`), while never revealing
+  the new one (since it isn't in the array `forEach` iterates), so
+  the result was every page hidden and nothing shown at all.
+- **Also fixed**: the hardware/browser Back button handler has its
+  own separate hardcoded "which page is currently open" check (a
+  second, independent list from `APP_PAGE_IDS`) — same gap, same fix.
+  Pressing Back from Planned Payments would previously have matched
+  no branch and done nothing.
+- Also added the missing case to `getActivePageTitle()` (used for the
+  printed-document header and PDF filename while printing) —
+  cosmetic, not the cause of the blank screen, but the same category
+  of "forgot to add the new page id to an existing hardcoded list."
+- Takeaway for future new pages in this codebase: adding a page needs
+  updating at least 3 separate hardcoded lists (`APP_PAGE_IDS`, the
+  popstate Back handler's page-detection block, `getActivePageTitle()`)
+  — not just the sidebar button + page container + navigate function.
+  Verified this time by grepping every existing reference to a sibling
+  page id (`"page-inventory"`) and confirming each one now has a
+  matching Planned Payments entry.
+- Verified with `node --check` plus the data-click/`getElementById`
+  cross-reference script (0 missing).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v362.

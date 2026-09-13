@@ -2687,3 +2687,54 @@ Planned Payment action sheet
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v363.
+
+## v369: fixed "Split Total" showing the previous entry's amount right
+after opening a new transaction form
+
+- **Fixed** (reported via screenshot): committing a plain (non-split)
+  Income/Expense entry, then opening a fresh "+" entry form right
+  after, briefly showed the *previous* entry's amount in the
+  "Split Total: RMxx.xx" line even though `#txAmount` itself was
+  correctly blank and nothing about the actual split rows/save logic
+  was affected.
+- **Cause**: `openTransactionForm()` calls `resetTxSplitRows()` (which
+  clears the split rows AND recalculates the Split Total display) near
+  the very top of the function — *before* `#txAmount` is cleared (new
+  entry) or set to the record's own amount (editing), further down in
+  the same function. So the recalculation baked in whatever amount was
+  still sitting in the field from the previous time the form was open.
+- **Fix**: added one more `recalcTxSplitTotal()` call at the end of
+  `openTransactionForm()`, once `#txAmount` holds its final value for
+  this open, so the displayed Split Total always reflects the current
+  entry rather than a stale leftover.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v369.
+
+## v370: added Vietnamese Dong (VND) as a held currency
+
+- **Added** `VND` to the default currency set: `fxRates`,
+  `HELD_CURRENCIES`, and `DEFAULT_FX_RATES_BY_CURRENCY` (placeholder
+  ≈6,440 VND per 1 MYR — edit the real value any time via Sidebar →
+  Settings → Global Currency Settings → Save FX Values, or "🔄 Fetch
+  Live Rates"). `mergeInDefaultCurrencies()` picks it up automatically
+  on next load for existing installs, same as every other held
+  currency — no separate migration needed.
+- Also added a `₫` symbol entry for VND to both `currencySymbols`
+  (amount formatting) and `CURRENCY_ICON_GLYPHS` (the round coin icon
+  used on Multi-Currency account rows), plus a dedicated red/gold
+  `CURRENCY_BADGE_COLORS` entry so its flat badge/coin never falls
+  back to the generic hash-based palette.
+- The "Add Account" currency `<select>`, per-transaction Currency
+  field, and the Currency Settings FX-rate form are all populated
+  dynamically from `fxRates`/`HELD_CURRENCIES` already, so VND appears
+  in every one of them automatically — no additional hardcoded
+  `<option>` lists needed.
+- Left the small 5-currency "Main Base Currency" `<select>` (USD/EUR/
+  GBP/SGD/MYR) as-is — that's a deliberately short curated shortlist
+  and already doesn't include most other held currencies (HKD, CNY,
+  TWD, THB, KRW, JPY, BND) either, so VND not being offered as a base
+  currency matches existing behavior rather than being an oversight.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v370.

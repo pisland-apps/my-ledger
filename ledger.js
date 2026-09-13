@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v370";
+        const APP_VERSION = "v371";
         const APP_VERSION_DATE = "2026-09-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -214,6 +214,37 @@
                 themeColor: "#0a0a0f",
             },
             {
+                // Black & Gold — third dark preset, alongside 暗夜描边/midnight and Slate above.
+                // Warm near-black base (not midnight's cool blue-black) with an antique-gold
+                // primary color carried through borders, active/hover states, chips and the
+                // progress-track fill, so gold reads as this preset's identity rather than a
+                // single accent bolted onto midnight. income/expense/transfer keep their usual
+                // hues (unchanged meaning across themes); salaryColor stays the same amber used
+                // by midnight/slate rather than matching primary, so salary entries don't get
+                // visually confused with ordinary UI chrome.
+                id: "noir", name: "尊爵黑金",
+                bg: "#0b0906", cardBg: "#171208", textMain: "#f0e6d2", textMuted: "#a99c7f",
+                borderColor: "rgba(212,175,55,0.22)",
+                cardTopBorderColor: "rgba(212,175,55,0.38)",
+                neuLight: "rgba(255,255,255,0.04)", neuDark: "rgba(0,0,0,0.55)",
+                neuPrimaryLight: "rgba(212,175,55,0.14)", neuPrimaryDark: "rgba(0,0,0,0.5)",
+                glassBg: "rgba(23,18,8,0.72)", glassBgStrong: "rgba(23,18,8,0.85)",
+                glassBgModal: "#1a1509", glassBorder: "rgba(212,175,55,0.20)", modalSheetBorder: "#8a6d1f",
+                hoverBg: "rgba(212,175,55,0.08)", pressBg: "rgba(212,175,55,0.14)",
+                activeBg: "rgba(212,175,55,0.16)", activeBorder: "rgba(212,175,55,0.45)", chipBg: "rgba(255,255,255,0.06)",
+                incomeChipBg: "rgba(52,211,153,0.15)", incomeChipBorder: "rgba(52,211,153,0.35)",
+                expenseChipBg: "rgba(248,113,113,0.15)", expenseChipBorder: "rgba(248,113,113,0.35)",
+                primaryChipBg: "rgba(212,175,55,0.16)",
+                cardShadow: "none",
+                hardwareTrackBg: "#241d0f", hardwareTrackBorder: "#4a3c1e",
+                hardwareFillStart: "#8a6d1f", hardwareFillEnd: "#e6c352",
+                dropdownOptionBg: "#241d10",
+                primary: "#d4af37", incomeColor: "#34d399", expenseColor: "#f87171",
+                transferColor: "#60a5fa", salaryColor: "#fbbf24",
+                colorScheme: "dark",
+                themeColor: "#0b0906",
+            },
+            {
                 // 蠟筆小新風格 (Crayon Shin-chan style) — a full override like midnight/slate
                 // above, not a bg-only preset, since the crayon look needs its own primary/
                 // income/expense/salary hues (Shin-chan's blue/green/red/yellow) plus a warm
@@ -255,12 +286,12 @@
         const BG_THEME_AUTO_KEY = "ledgerBgThemeAuto";
         const BG_THEME_AUTO_LIGHT_KEY = "ledgerBgThemeAutoLightId";
         // v206: was `const BG_THEME_DARK_ID = "midnight";` (a single hardcoded id) back when
-        // 暗夜描边 was the only dark preset — now that "slate" is also a full dark preset, Auto
-        // needs to know which *of the two* to land on, and that pick needs to be changeable any
-        // time (not just while setting Auto up), mirroring how the light side already remembers
-        // "whichever light preset was last active" — see BG_THEME_AUTO_DARK_KEY and
-        // getAutoDarkThemeId()/setAutoDarkThemeId() below.
-        const BG_THEME_DARK_IDS = ["midnight", "slate"];
+        // 暗夜描边 was the only dark preset — now that "slate" (and, since Black & Gold, "noir")
+        // are also full dark presets, Auto needs to know which *of the three* to land on, and
+        // that pick needs to be changeable any time (not just while setting Auto up), mirroring
+        // how the light side already remembers "whichever light preset was last active" — see
+        // BG_THEME_AUTO_DARK_KEY and getAutoDarkThemeId()/setAutoDarkThemeId() below.
+        const BG_THEME_DARK_IDS = ["midnight", "slate", "noir"];
         function isDarkBgThemeId(id) { return BG_THEME_DARK_IDS.indexOf(id) !== -1; }
         const BG_THEME_AUTO_DARK_KEY = "ledgerBgThemeAutoDarkId";
 
@@ -7560,10 +7591,11 @@
 
         // --- v202: Auto (follow system day/night) for Background Theme ---------------------
         // Piggybacks on the OS's own light/dark switch (prefers-color-scheme) instead of a
-        // fixed clock — mirrors how the phone's own auto day/night toggle works. v206: either
-        // dark preset (暗夜描边 or Slate) can be the dark side now — whichever was tapped most
-        // recently — and whichever light preset was active when Auto was turned on (or last
-        // manually picked while system-light) is remembered as the light side.
+        // fixed clock — mirrors how the phone's own auto day/night toggle works. v206: any of
+        // the dark presets (暗夜描边, Slate, or 尊爵黑金/Black & Gold) can be the dark side now —
+        // whichever was tapped most recently — and whichever light preset was active when Auto
+        // was turned on (or last manually picked while system-light) is remembered as the light
+        // side.
         function isBgThemeAutoEnabled() {
             return localStorage.getItem(BG_THEME_AUTO_KEY) === "1";
         }
@@ -7575,7 +7607,7 @@
         }
         // v206: mirrors getAutoLightThemeId()/setAutoLightThemeId() above for the dark side —
         // falls back to "midnight" (暗夜描边) if nothing's been picked yet, or if a stored value
-        // somehow doesn't name a current dark preset.
+        // somehow doesn't name a current dark preset (now three: midnight, slate, noir).
         function getAutoDarkThemeId() {
             const id = localStorage.getItem(BG_THEME_AUTO_DARK_KEY);
             return isDarkBgThemeId(id) ? id : "midnight";

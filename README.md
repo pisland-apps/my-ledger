@@ -2738,3 +2738,35 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v370.
+
+## v371: added a third dark Background Theme, "尊爵黑金" (Black & Gold)
+
+- **Added** a new full-override dark preset to `BG_THEMES` (ledger.js),
+  id `"noir"`, name `"尊爵黑金"` — sits between 暗夜描边/midnight and
+  蠟筆小新/crayon in the Background Theme swatch grid. Warm near-black
+  page/card background (not midnight's cool blue-black), off-white
+  text with a gold tint, and an antique-gold `primary` color
+  (`#d4af37`) carried through borders, hover/active states, chips, and
+  the settings-page hardware slider fill/track — so the gold reads as
+  the preset's identity rather than a single accent bolted onto
+  midnight. `incomeColor`/`expenseColor`/`transferColor`/`salaryColor`
+  keep the same hues used by every other dark preset, so category
+  meaning stays consistent across themes.
+- **Auto (day/night) support**: added `"noir"` to `BG_THEME_DARK_IDS`,
+  so it's picked up automatically everywhere that array already gates
+  dark-preset behavior (`isDarkBgThemeId()`, `applyBgTheme()`'s
+  auto-dark-id bookkeeping) — tapping the new swatch, any time, sets
+  it as Auto's dark side exactly like 暗夜描边/Slate already did, no
+  separate wiring needed.
+- **Pre-first-paint mirror**: added a matching `NOIR_THEME` object to
+  `theme-init.js` (which can't reach `ledger.js`'s `BG_THEMES` — it
+  runs before that file loads) and extended its Auto-dark resolution
+  from a 2-way `slate`-or-`midnight` check to a 3-way check including
+  `noir`, so Auto correctly no-flash-applies Black & Gold on relaunch
+  when it's the remembered dark pick.
+- Updated the Setting page's Background Theme helper text
+  (index.html) to name all three dark presets instead of just the
+  first two.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v371.

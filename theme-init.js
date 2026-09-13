@@ -44,7 +44,7 @@
                 var SLATE_THEME = {
                     id: "slate", bg: "#0f172a", cardBg: "#1e293b", textMain: "#e2e8f0", textMuted: "#94a3b8",
                     borderColor: "rgba(255,255,255,0.12)",
-                    cardTopBorderColor: "rgba(255,255,255,0.12)", /* v209: reverted, lockstep with ledger.js */
+                    cardTopBorderColor: "rgba(255,255,255,0.12)",
                     neuLight: "rgba(255,255,255,0.04)", neuDark: "rgba(0,0,0,0.55)",
                     neuPrimaryLight: "rgba(255,255,255,0.10)", neuPrimaryDark: "rgba(0,0,0,0.5)",
                     glassBg: "rgba(30,41,59,0.72)", glassBgStrong: "rgba(30,41,59,0.85)",
@@ -62,6 +62,30 @@
                     transferColor: "#60a5fa", salaryColor: "#fbbf24",
                     colorScheme: "dark", themeColor: "#0f172a",
                 };
+                // Third dark preset (Black & Gold / 尊爵黑金), duplicated here in lockstep with
+                // ledger.js's BG_THEMES "noir" entry — same reasoning as MIDNIGHT_THEME/SLATE_THEME
+                // above.
+                var NOIR_THEME = {
+                    id: "noir", bg: "#0b0906", cardBg: "#171208", textMain: "#f0e6d2", textMuted: "#a99c7f",
+                    borderColor: "rgba(212,175,55,0.22)",
+                    cardTopBorderColor: "rgba(212,175,55,0.38)",
+                    neuLight: "rgba(255,255,255,0.04)", neuDark: "rgba(0,0,0,0.55)",
+                    neuPrimaryLight: "rgba(212,175,55,0.14)", neuPrimaryDark: "rgba(0,0,0,0.5)",
+                    glassBg: "rgba(23,18,8,0.72)", glassBgStrong: "rgba(23,18,8,0.85)",
+                    glassBgModal: "#1a1509", glassBorder: "rgba(212,175,55,0.20)", modalSheetBorder: "#8a6d1f",
+                    hoverBg: "rgba(212,175,55,0.08)", pressBg: "rgba(212,175,55,0.14)",
+                    activeBg: "rgba(212,175,55,0.16)", activeBorder: "rgba(212,175,55,0.45)", chipBg: "rgba(255,255,255,0.06)",
+                    incomeChipBg: "rgba(52,211,153,0.15)", incomeChipBorder: "rgba(52,211,153,0.35)",
+                    expenseChipBg: "rgba(248,113,113,0.15)", expenseChipBorder: "rgba(248,113,113,0.35)",
+                    primaryChipBg: "rgba(212,175,55,0.16)",
+                    cardShadow: "none",
+                    hardwareTrackBg: "#241d0f", hardwareTrackBorder: "#4a3c1e",
+                    hardwareFillStart: "#8a6d1f", hardwareFillEnd: "#e6c352",
+                    dropdownOptionBg: "#241d10",
+                    primary: "#d4af37", incomeColor: "#34d399", expenseColor: "#f87171",
+                    transferColor: "#60a5fa", salaryColor: "#fbbf24",
+                    colorScheme: "dark", themeColor: "#0b0906",
+                };
                 var isAuto = localStorage.getItem("ledgerBgThemeAuto") === "1";
                 var systemPrefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
                 var saved = JSON.parse(localStorage.getItem("ledgerBgTheme"));
@@ -69,10 +93,11 @@
                     if (systemPrefersDark) {
                         // v206: which dark preset Auto lands on is itself a saved choice now
                         // (see ledger.js's getAutoDarkThemeId()/setAutoDarkThemeId() — tapping
-                        // either dark swatch, any time, updates this) — was unconditionally
-                        // MIDNIGHT_THEME back when it was the only dark preset offered.
+                        // any dark swatch, any time, updates this) — was unconditionally
+                        // MIDNIGHT_THEME back when it was the only dark preset offered. Now
+                        // three dark presets exist (midnight, slate, noir/Black & Gold).
                         var autoDarkId = localStorage.getItem("ledgerBgThemeAutoDarkId");
-                        saved = (autoDarkId === "slate") ? SLATE_THEME : MIDNIGHT_THEME;
+                        saved = (autoDarkId === "slate") ? SLATE_THEME : (autoDarkId === "noir") ? NOIR_THEME : MIDNIGHT_THEME;
                     } else {
                         var lightSnapshot = JSON.parse(localStorage.getItem("ledgerBgThemeLightSnapshot"));
                         if (lightSnapshot && lightSnapshot.bg) saved = lightSnapshot;

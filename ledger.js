@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v367";
-        const APP_VERSION_DATE = "2026-09-12";
+        const APP_VERSION = "v368";
+        const APP_VERSION_DATE = "2026-09-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -18488,10 +18488,21 @@
                 if (!proceed) return;
             }
 
+            // Filename uses the first owner's (member's) name in place of "backup" — bundle.members
+            // is already in the same order as everywhere else in the app (Manage Members list,
+            // sidebar, etc.), since it comes straight from readAllDB(STORES.MEMBERS) above, so
+            // bundle.members[0] IS "the 1st owner". Sanitized the same way as the other CSV
+            // exports' scopeLabel (accounts_export, ledger_export, etc.) for filename safety.
+            // Falls back to "backup" if there are no members yet, or the name sanitizes to nothing.
+            const ownerLabel = (bundle.members[0] && bundle.members[0].name)
+                ? bundle.members[0].name.replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-+|-+$/g, "")
+                : "";
+            const filenameOwnerPart = ownerLabel || "backup";
+
             const blob = new Blob([JSON.stringify(outputPayload)], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
-            a.href = url; a.download = `ledger_backup_${todayLocalStr()}${filenameSuffix}.json`;
+            a.href = url; a.download = `ledger_${filenameOwnerPart}_${todayLocalStr()}${filenameSuffix}.json`;
             a.click(); URL.revokeObjectURL(url);
             showToast(wantsEncryption ? "🔒 Encrypted backup downloaded" : "📄 Backup downloaded (unencrypted)");
         }

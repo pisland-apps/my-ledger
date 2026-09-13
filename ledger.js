@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v368";
+        const APP_VERSION = "v369";
         const APP_VERSION_DATE = "2026-09-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -11084,6 +11084,16 @@
 
                 syncTransactionCurrency();
             }
+
+            // v369: resetTxSplitRows() runs near the very top of this function (before txAmount
+            // is set/cleared in either branch above), so the Split Total display it computes at
+            // that point still reflects whatever amount was left in the field from the PREVIOUS
+            // time this form was open — e.g. after committing a plain (non-split) entry, the next
+            // "+" tap would briefly show that old amount as "Split Total" even though #txAmount
+            // itself is correctly blank and nothing about the actual split rows/save logic is
+            // affected. Recalculating once more here, now that txAmount holds its final value for
+            // this open, keeps the display honest without touching resetTxSplitRows() itself.
+            recalcTxSplitTotal();
 
             // v99: the visible Account/To Account buttons show a snapshot of the <select>'s
             // current option text (see openAccountPicker()) — refresh it here, once, after every

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v373";
+        const APP_VERSION = "v374";
         const APP_VERSION_DATE = "2026-09-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1582,8 +1582,9 @@
         // one mechanism instead of two, and it already works on mobile since v215.
         let monthlyTrendAutoScale = false;
         // v373: persisted show/hide for the Month/Income/Expense/Balance table under the Monthly
-        // Trend chart (toggled by clicking the "Monthly Trend" title) — defaults to shown, same
-        // reasoning as monthlyTrendAutoScale just above re: not caching this across renders.
+        // Trend chart (toggled by clicking the "Monthly Trend" title) — this initial value only
+        // matters before bootstrap() runs its own width-aware default (see storedMonthlyTrendTableExpanded
+        // below), so it's effectively just the desktop/SSR-safe fallback.
         let monthlyTrendTableExpanded = true;
 
         // Built-in starter categories (auto-provisioned if missing; user can still
@@ -18216,7 +18217,12 @@
             if (storedMonthlyTrendAutoScale) monthlyTrendAutoScale = !!storedMonthlyTrendAutoScale.value;
 
             const storedMonthlyTrendTableExpanded = await readKeyDB("settings", "monthlyTrendTableExpanded");
+            // v374: only when nothing's been explicitly saved yet does the initial default depend
+            // on screen width (collapsed on phones, expanded on tablet/desktop) — the moment the
+            // user taps the title once, their choice is saved and wins on every device from then
+            // on, same as every other persisted setting here.
             if (storedMonthlyTrendTableExpanded) monthlyTrendTableExpanded = storedMonthlyTrendTableExpanded.value !== false;
+            else monthlyTrendTableExpanded = window.innerWidth > 480;
 
             const storedRecentTxType = await readKeyDB("settings", "recentTxTypeFilter");
             if (storedRecentTxType) recentTxTypeFilter = storedRecentTxType.value || "both";

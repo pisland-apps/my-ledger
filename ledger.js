@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v375";
+        const APP_VERSION = "v376";
         const APP_VERSION_DATE = "2026-09-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -4578,13 +4578,12 @@
             return Math.round(val).toString();
         }
 
-        // v375: below 480px the 4-column table (Month/Income/Expense/Balance) doesn't fit a
-        // phone's width at readable figures — 5-6 digit RM amounts either shrink to the point of
-        // being unreadable or clip off the right edge (the Balance column, worst-hit). Rather
-        // than shrinking further, mobile gets a stacked one-value-per-line layout instead: same
-        // data, same colors, just Month as a heading with Income/Expense/Balance underneath it
-        // as label-left/value-right rows, each with the full row's width to itself. Desktop/
-        // tablet keeps the original 4-column table.
+        // v376: v375's fully-stacked mobile layout (Month heading, Income/Expense/Balance each
+        // on their own line) fixed the clipping but made it hard to compare Income vs Expense at
+        // a glance since they're no longer side by side. This keeps Month/Income/Expense as a
+        // 3-column table row (glanceable, and narrow enough to fit without clipping even at full
+        // RM figures) and demotes only Balance — the widest value and the one that was actually
+        // clipping — to its own full-width line directly under that row.
         function renderMonthlyTrendTable(months) {
             const wrap = document.getElementById("monthlyTrendTableWrap");
             if (!wrap) return;
@@ -4597,21 +4596,35 @@
             const totalExpense = months.reduce((s, mo) => s + mo.expense, 0);
 
             if (isMobile) {
-                const line = (label, value, color, bold) => `
-                    <div style="display:flex; justify-content:space-between; align-items:baseline; padding:2px 0;">
-                        <span style="font-size:0.72rem; color:var(--text-muted); ${bold ? "font-weight:700;" : ""}">${escapeHtml(label)}</span>
-                        <span style="font-size:0.86rem; color:${color}; ${bold ? "font-weight:800;" : ""}">${formatCurrency(value, baseCurrency)}</span>
-                    </div>`;
-                const monthBlock = (label, income, expense, opts = {}) => `
-                    <div style="padding:10px 4px; ${opts.bold ? "background:rgba(127,127,127,0.06); border-radius:8px;" : "border-bottom:1px solid var(--border-color);"}">
-                        <div style="font-size:0.78rem; font-weight:800; margin-bottom:3px;">${escapeHtml(label)}</div>
-                        ${line("Income", income, "var(--income-color)")}
-                        ${line("Expense", expense, "var(--expense-color)")}
-                        ${line("Balance", income - expense, balanceColor(income - expense), true)}
-                    </div>`;
-                let blocks = months.map(mo => monthBlock(mo.label, mo.income, mo.expense)).join("");
-                blocks += monthBlock("Total", totalIncome, totalExpense, { bold: true });
-                wrap.innerHTML = `<div>${blocks}</div>`;
+                const monthRows = (label, income, expense, opts = {}) => {
+                    const balance = income - expense;
+                    const weight = opts.bold ? "font-weight:800;" : "";
+                    const shade = opts.bold ? "background:rgba(127,127,127,0.06);" : "";
+                    return `
+                        <tr style="${shade}">
+                            <td style="padding:8px 8px 0; ${weight}">${escapeHtml(label)}</td>
+                            <td style="padding:8px 8px 0; text-align:right; color:var(--income-color); ${weight}">${formatCurrency(income, baseCurrency)}</td>
+                            <td style="padding:8px 8px 0; text-align:right; color:var(--expense-color); ${weight}">${formatCurrency(expense, baseCurrency)}</td>
+                        </tr>
+                        <tr style="${shade}">
+                            <td colspan="3" style="padding:1px 8px 8px; text-align:right; ${opts.bold ? "border-bottom:none;" : "border-bottom:1px solid var(--border-color);"}">
+                                <span style="font-size:0.68rem; color:var(--text-muted); margin-right:6px;">Balance</span><span style="color:${balanceColor(balance)}; ${weight}">${formatCurrency(balance, baseCurrency)}</span>
+                            </td>
+                        </tr>`;
+                };
+                let rows = months.map(mo => monthRows(mo.label, mo.income, mo.expense)).join("");
+                rows += monthRows("Total", totalIncome, totalExpense, { bold: true });
+                wrap.innerHTML = `
+                    <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+                        <thead>
+                            <tr style="text-align:left; color:var(--text-muted); font-size:0.64rem; text-transform:uppercase; border-bottom:2px solid var(--border-color);">
+                                <th style="padding:6px 8px;">Month</th>
+                                <th style="padding:6px 8px; text-align:right;">Income</th>
+                                <th style="padding:6px 8px; text-align:right;">Expense</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>`;
                 return;
             }
 

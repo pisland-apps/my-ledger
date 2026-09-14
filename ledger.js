@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v371";
+        const APP_VERSION = "v372";
         const APP_VERSION_DATE = "2026-09-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -4573,6 +4573,78 @@
             return Math.round(val).toString();
         }
 
+        // v372: same Period/Income/Expense/Balance row shape as renderTotalSummaryPage()'s
+        // rowHTML() (bold shaded Total row, balance colored + right-aligned), just fed monthly
+        // buckets instead of yearly ones and with no drill-through click (a single month doesn't
+        // map onto the Net Savings Statement's year-scoped view the way a year row does).
+        function renderMonthlyTrendTable(months) {
+            const wrap = document.getElementById("monthlyTrendTableWrap");
+            if (!wrap) return;
+            const hasAnyData = months.some(mo => mo.income > 0 || mo.expense > 0);
+            if (!hasAnyData) { wrap.innerHTML = ""; return; }
+
+            const balanceColor = (v) => v >= 0 ? "var(--income-color)" : "var(--expense-color)";
+            const row = (label, income, expense, opts = {}) => {
+                const balance = income - expense;
+                const weight = opts.bold ? "font-weight:800;" : "";
+                const shade = opts.bold ? "background:rgba(127,127,127,0.06);" : "";
+                return `
+                    <tr style="${shade}">
+                        <td style="padding:8px 10px; ${weight}">${escapeHtml(label)}</td>
+                        <td style="padding:8px 10px; text-align:right; color:var(--income-color); ${weight}">${formatCurrency(income, baseCurrency)}</td>
+                        <td style="padding:8px 10px; text-align:right; color:var(--expense-color); ${weight}">${formatCurrency(expense, baseCurrency)}</td>
+                        <td style="padding:8px 10px; text-align:right; color:${balanceColor(balance)}; ${weight}">${formatCurrency(balance, baseCurrency)}</td>
+                    </tr>`;
+            };
+
+            let rows = months.map(mo => row(mo.label, mo.income, mo.expense)).join("");
+            const totalIncome = months.reduce((s, mo) => s + mo.income, 0);
+            const totalExpense = months.reduce((s, mo) => s + mo.expense, 0);
+            rows += row("Total", totalIncome, totalExpense, { bold: true });
+
+            wrap.innerHTML = `
+                <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+                    <thead>
+                        <tr style="text-align:left; color:var(--text-muted); font-size:0.66rem; text-transform:uppercase; border-bottom:2px solid var(--border-color);">
+                            <th style="padding:6px 10px;">Month</th>
+                            <th style="padding:6px 10px; text-align:right;">Income</th>
+                            <th style="padding:6px 10px; text-align:right;">Expense</th>
+                            <th style="padding:6px 10px; text-align:right;">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+        }
+
+        // v372: purely decorative echo of whatever's picked in Settings > Companion, sitting next
+        // to the "Monthly Trend" title. Reuses the exact same resolution order as
+        // applyCompanionPet() (custom photo -> COMPANIONS svg -> nothing) but never writes
+        // anything back to storage — it's a read-only mirror, not a second place to change it.
+        async function renderMonthlyTrendMascotIcon() {
+            const el = document.getElementById("monthlyTrendMascot");
+            if (!el) return;
+            const petId = await getSavedCompanionId();
+            let displayImg = null, displaySvg = null;
+            if (typeof petId === "string" && petId.startsWith("custom:")) {
+                const photos = await getCompanionCustomPhotos();
+                const photo = photos.find(p => p.id === petId.slice(7));
+                if (photo) displayImg = photo.dataUrl;
+            }
+            if (!displayImg) {
+                const pet = COMPANIONS.find(c => c.id === petId);
+                if (pet && pet.svg) displaySvg = pet.svg;
+            }
+            if (displayImg) {
+                el.innerHTML = `<img src="${displayImg}" alt="" style="width:100%; height:100%; object-fit:cover; border-radius:6px;">`;
+                el.style.display = "block";
+            } else if (displaySvg) {
+                el.innerHTML = displaySvg;
+                el.style.display = "block";
+            } else {
+                el.innerHTML = ""; el.style.display = "none";
+            }
+        }
+
         function renderMonthlyTrendChart(txs, accounts) {
             populateMonthlyTrendYearOptions(txs);
             const year = parseInt(document.getElementById("monthlyTrendYearSelect").value, 10);
@@ -4590,6 +4662,8 @@
                 toggleBtn.textContent = monthlyTrendAutoScale ? "⤢ Auto-scale: On" : "⤢ Auto-scale";
                 toggleBtn.classList.toggle("active-filter-btn", monthlyTrendAutoScale);
             }
+            renderMonthlyTrendTable(months);
+            renderMonthlyTrendMascotIcon();
         }
 
         async function changeMonthlyTrendYear(el) {
@@ -8082,6 +8156,9 @@
         async function selectCompanion(el) {
             await applyCompanionPet(el.dataset.petId);
             document.querySelectorAll("#companionSwatchGrid .companion-swatch").forEach(s => s.classList.toggle("selected", s.dataset.petId === el.dataset.petId));
+            // v372: keep the Monthly Trend title's mascot mirror in sync immediately, in case
+            // the dashboard is still mounted behind Settings (no page reload happens here).
+            renderMonthlyTrendMascotIcon();
         }
         async function toggleCompanionSettings() {
             const panel = document.getElementById("companionSettingsPanel");

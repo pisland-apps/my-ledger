@@ -2955,7 +2955,13 @@
         </div>
 
         <div class="section-header">
-            <span class="section-title">Monthly Trend</span>
+            <span class="section-title" style="display:flex; align-items:center; gap:6px;">
+                Monthly Trend
+                <!-- v372: mirrors whatever's currently picked in Settings > Companion (applyCompanionPet());
+                     kept tiny and purely decorative, unlike the 52x52 #netWorthCompanion chip. Populated by
+                     renderMonthlyTrendMascotIcon(), called from renderMonthlyTrendChart(). -->
+                <span id="monthlyTrendMascot" style="display:none; width:18px; height:18px; flex-shrink:0;"></span>
+            </span>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
                 <button type="button" id="monthlyTrendAutoScaleToggle" class="text-btn" data-click="toggleMonthlyTrendAutoScale" style="white-space:nowrap; padding:6px 10px; font-size:0.75rem;" title="Rescale the axis to the second-highest bar so one outlier month doesn't flatten the rest — the outlier bar still shows, just clipped with a notch; tap/hover it for its real value.">⤢ Auto-scale</button>
                 <select id="monthlyTrendYearSelect" class="period-select" data-change="changeMonthlyTrendYear"></select>
@@ -2966,6 +2972,10 @@
                 <div id="monthlyTrendChartWrap"></div>
                 <div id="monthlyTrendTooltip" style="display:none; position:absolute; z-index:20; pointer-events:none; background:var(--card-bg); border:1.5px solid var(--border-color); border-radius:8px; padding:7px 11px; font-size:12px; line-height:1.5; box-shadow:0 4px 14px rgba(0,0,0,0.14); white-space:nowrap; color:var(--text-main);"></div>
             </div>
+            <!-- v372: month-by-month income/expense/balance table + totals row underneath the chart,
+                 same idea as the Total Bill Summary report's table but per-month for the selected year.
+                 Populated by renderMonthlyTrendTable() from within renderMonthlyTrendChart(). -->
+            <div id="monthlyTrendTableWrap" style="overflow-x:auto; margin-top:14px; border-top:1px solid var(--border-color); padding-top:12px;"></div>
         </div>
 
         <!-- v281: Tag Reminders — one row per tag with "Show on Dashboard" enabled (see the Tag

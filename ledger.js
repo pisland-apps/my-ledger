@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v378";
+        const APP_VERSION = "v379";
         const APP_VERSION_DATE = "2026-09-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -464,13 +464,63 @@
             ["#10b981", "#14b8a6"], ["#0ea5e9", "#38bdf8"], ["#ef4444", "#f87171"],
             ["#8b5cf6", "#c084fc"], ["#0891b2", "#22d3ee"],
         ];
-        function accountAvatarHTML(name) {
+        // v379: optional `logo` (a center-cropped square PNG data URL, set via the Add/Edit
+        // Account form's Upload button — see handleAccLogoFileSelected() below, which reuses
+        // cropImageToSquare() from the Receipt Attachments/Companion features) overrides the
+        // gradient-letter avatar wherever an account is listed. Falls back to the letter avatar
+        // exactly as before when no logo is set, so existing accounts are unaffected.
+        function accountAvatarHTML(name, logo) {
+            if (logo) {
+                return `<div class="account-avatar" style="padding:0; overflow:hidden; background:var(--chip-bg);"><img src="${logo}" alt="" style="width:100%; height:100%; object-fit:cover; display:block;"></div>`;
+            }
             const str = String(name || "").trim();
             let hash = 0;
             for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
             const [c1, c2] = ACCOUNT_AVATAR_GRADIENTS[hash % ACCOUNT_AVATAR_GRADIENTS.length];
             const initial = escapeHtml((str.charAt(0) || "?").toUpperCase());
             return `<div class="account-avatar" style="background:linear-gradient(135deg, ${c1}, ${c2});">${initial}</div>`;
+        }
+
+        // --- Account Logo upload (form-local staging, same shape as the Companion custom-photo
+        // upload above) — held in a module-level var rather than written straight to IndexedDB,
+        // since the account record itself isn't saved until the form's Save button is tapped.
+        let stagedAccLogoDataUrl = null; // null = unchanged from whatever editAccount() loaded; "" = explicitly removed
+
+        function triggerAccLogoUpload() {
+            document.getElementById("newAccLogoFile").click();
+        }
+
+        function renderAccLogoPreview(dataUrl) {
+            const preview = document.getElementById("newAccLogoPreview");
+            const removeBtn = document.getElementById("newAccLogoRemoveBtn");
+            if (dataUrl) {
+                preview.innerHTML = `<img src="${dataUrl}" alt="" style="width:100%; height:100%; object-fit:cover; display:block;">`;
+                removeBtn.style.display = "";
+            } else {
+                preview.innerHTML = "None";
+                removeBtn.style.display = "none";
+            }
+        }
+
+        async function handleAccLogoFileSelected(el) {
+            const file = el.files && el.files[0];
+            el.value = ""; // allow re-selecting the same file later
+            if (!file) return;
+            try {
+                const raw = await readFileAsDataUrl(file);
+                // Same square-crop + PNG (transparency-preserving) treatment as the Companion
+                // custom photo upload — 128px is plenty for a small avatar-sized logo.
+                const squared = await cropImageToSquare(raw, 128, 0.9);
+                stagedAccLogoDataUrl = squared;
+                renderAccLogoPreview(squared);
+            } catch (err) {
+                alert("Couldn't read that image — please try a different file.");
+            }
+        }
+
+        function removeAccLogo() {
+            stagedAccLogoDataUrl = "";
+            renderAccLogoPreview(null);
         }
 
         // v163 美化方案 point 5: icon + color for an account Group's section-header pill on the
@@ -5620,6 +5670,8 @@
             document.getElementById("newAccGroup").value = DEFAULT_ACCOUNT_GROUP;
             handleAccGroupChange();
             document.getElementById("newAccBal").value = "0";
+            stagedAccLogoDataUrl = null;
+            renderAccLogoPreview(null);
             populateNewAccountCurrencySelect(baseCurrency);
             document.getElementById("accountFormHeaderTitle").textContent = "Create New Account";
             document.getElementById("accFormSubmitBtn").textContent = "Create Account";
@@ -5698,6 +5750,21 @@
                 defaultPaymentAccountId: (type === "creditcard") ? (document.getElementById("newAccCcPaymentAccount").value || null) : null,
                 memberIds: getCheckedAccountMemberIds()
             };
+
+            // Logo (v379): stagedAccLogoDataUrl is null when the form's Upload/Remove controls
+            // were never touched this time round — for an existing account that means "keep
+            // whatever was already saved" (looked up fresh rather than trusted from an earlier
+            // in-memory list, same caution as the rest of this save path), for a brand-new
+            // account it just means "no logo". "" means the Remove button was explicitly tapped.
+            if (stagedAccLogoDataUrl !== null) {
+                record.logo = stagedAccLogoDataUrl;
+            } else if (!isNewAccount) {
+                const existingAccounts = await readAllDB(STORES.ACCOUNTS);
+                const existing = existingAccounts.find(a => a.id === id);
+                record.logo = (existing && existing.logo) || "";
+            } else {
+                record.logo = "";
+            }
 
             if (type === "normal" || type === "creditcard") {
                 const balInput = document.getElementById("newAccBal").value;
@@ -6199,7 +6266,7 @@
 
                 html += `
                     <div class="config-item account-card" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="accounts">
-                        ${accountAvatarHTML(a.name)}
+                        ${accountAvatarHTML(a.name, a.logo)}
                         <div class="account-card-body">
                             <div class="account-card-toprow">
                                 <span class="account-card-name">${escapeHtml(a.name)}</span>
@@ -6273,6 +6340,8 @@
 
             document.getElementById("editAccountId").value = account.id;
             document.getElementById("newAccName").value = account.name;
+            stagedAccLogoDataUrl = null; // unchanged unless the user picks/removes a new one below
+            renderAccLogoPreview(account.logo || null);
             document.getElementById("newAccRef").value = account.accountRef || "";
             document.getElementById("newAccGroup").value = account.group || DEFAULT_ACCOUNT_GROUP;
             await handleAccGroupChange(
@@ -9205,7 +9274,7 @@
 
                 html += `
                     <div class="config-item account-card" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="member">
-                        ${accountAvatarHTML(a.name)}
+                        ${accountAvatarHTML(a.name, a.logo)}
                         <div class="account-card-body">
                             <div class="account-card-toprow">
                                 <span class="account-card-name">${escapeHtml(a.name)}</span>
@@ -19102,6 +19171,8 @@
             selectCompanion: (el) => selectCompanion(el),
             triggerCompanionCustomImageUpload: () => triggerCompanionCustomImageUpload(),
             removeCompanionCustomPhoto: (el) => removeCompanionCustomPhoto(el),
+            triggerAccLogoUpload: () => triggerAccLogoUpload(),
+            removeAccLogo: () => removeAccLogo(),
             savePlannedPaymentFromTxForm: () => savePlannedPaymentFromTxForm(),
             plannedPaymentRowTap: (el) => plannedPaymentRowTap(el),
             closePlannedPaymentActionsModal: () => closePlannedPaymentActionsModal(),
@@ -19292,6 +19363,7 @@
             syncTransactionCurrency: () => syncTransactionCurrency(),
             handleTxAttachmentsSelected: (el, e) => handleTxAttachmentsSelected(e),
             handleCompanionCustomImageSelected: (el) => handleCompanionCustomImageSelected(el),
+            handleAccLogoFileSelected: (el) => handleAccLogoFileSelected(el),
             toggleTxPlannedRepeatFields: () => toggleTxPlannedRepeatFields(),
             recalcResolveFdMaturity: () => recalcResolveFdMaturity(),
             recalcFdOpeningRowMaturity: (el) => recalcFdOpeningRowMaturity(el.dataset.rowId),

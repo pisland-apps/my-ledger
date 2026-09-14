@@ -4552,6 +4552,20 @@
                     <input type="text" id="newAccName" placeholder="e.g. DBS Bank, Cash Wallet" required>
                 </div>
 
+                <!-- Bank Logo (optional): overrides the auto-generated gradient-letter avatar
+                     everywhere this account is listed. Uploaded image is center-cropped to a
+                     square and stored as a small PNG on the account record itself (see
+                     handleAccLogoFileSelected() / accountAvatarHTML() in ledger.js). -->
+                <div class="form-row">
+                    <label>Logo (optional)</label>
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div id="newAccLogoPreview" style="width:52px; height:52px; border-radius:14px; overflow:hidden; flex-shrink:0; background:var(--chip-bg); display:flex; align-items:center; justify-content:center; font-size:0.65rem; color:var(--text-muted); text-align:center;">None</div>
+                        <input type="file" id="newAccLogoFile" accept="image/*" style="display:none;" data-change="handleAccLogoFileSelected">
+                        <button type="button" class="submit-btn" style="margin-top:0; flex:0; background:var(--chip-bg); color:var(--text-main); font-size:0.75rem; padding:8px 12px;" data-click="triggerAccLogoUpload">Upload</button>
+                        <button type="button" id="newAccLogoRemoveBtn" class="submit-btn" style="margin-top:0; flex:0; background:var(--chip-bg); color:var(--text-main); font-size:0.75rem; padding:8px 12px; display:none;" data-click="removeAccLogo">Remove</button>
+                    </div>
+                </div>
+
                 <!-- Account No. / Ref (v130): purely informational, optional — shown in small
                      text under the account name wherever it's listed (see accountExtraInfoLine
                      in ledger.js), same treatment as Real Estate's Property Type. Any account

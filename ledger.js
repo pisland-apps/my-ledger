@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v377";
+        const APP_VERSION = "v378";
         const APP_VERSION_DATE = "2026-09-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -17955,6 +17955,10 @@
             }
 
             const balanceColor = (v) => v >= 0 ? "var(--income-color)" : "var(--expense-color)";
+            // v378: the Period column is sticky (position:sticky; left:0) so once you've scrolled
+            // right to read Balance on a narrow phone, the row's year doesn't scroll away with it —
+            // every row still needs its own solid background behind the sticky cell (matching this
+            // row's shade, not just the card's) or the columns scrolling underneath show through.
             // v268: the Balance cell drills through to the Net Savings Statement (income/expense
             // by category) scoped to that same row's year — "Total" maps to "all" years, and each
             // year row maps to that specific year. "Yearly Average" is a computed metric with no
@@ -17968,9 +17972,14 @@
                 const balanceAttrs = clickable
                     ? `style="padding:9px 10px; text-align:right; color:${balanceColor(balance)}; ${weight} cursor:pointer; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px;" data-click="totalSummaryBalanceClick" data-year="${escapeHtml(opts.year)}" title="View Net Savings Statement"`
                     : `style="padding:9px 10px; text-align:right; color:${balanceColor(balance)}; ${weight}"`;
+                // v378: the sticky cell paints its own background (var(--card-bg), plus the row's
+                // own shade tint layered on top for shaded/bold rows) — position:sticky doesn't
+                // inherit the <tr>'s background the way a normal static cell does, so without this
+                // the amount columns would show through the "frozen" Period cell while scrolling.
+                const periodBgLayer = opts.shade ? "linear-gradient(rgba(127,127,127,0.06), rgba(127,127,127,0.06)), var(--card-bg)" : "var(--card-bg)";
                 return `
                     <tr style="${shade}">
-                        <td style="padding:9px 10px; ${weight}">${escapeHtml(label)}</td>
+                        <td style="padding:9px 10px; ${weight} position:sticky; left:0; background:${periodBgLayer}; box-shadow: 2px 0 4px -2px rgba(0,0,0,0.3);">${escapeHtml(label)}</td>
                         <td style="padding:9px 10px; text-align:right; color:var(--income-color); ${weight}">${formatCurrency(income, baseCurrency)}</td>
                         <td style="padding:9px 10px; text-align:right; color:var(--expense-color); ${weight}">${formatCurrency(expense, baseCurrency)}</td>
                         <td ${balanceAttrs}>${formatCurrency(balance, baseCurrency)}</td>
@@ -17988,7 +17997,7 @@
                 <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
                     <thead>
                         <tr style="text-align:left; color:var(--text-muted); font-size:0.68rem; text-transform:uppercase; border-bottom:2px solid var(--border-color);">
-                            <th style="padding:6px 10px;">Period</th>
+                            <th style="padding:6px 10px; position:sticky; left:0; background:var(--card-bg); box-shadow: 2px 0 4px -2px rgba(0,0,0,0.3);">Period</th>
                             <th style="padding:6px 10px; text-align:right;">Income</th>
                             <th style="padding:6px 10px; text-align:right;">Expense</th>
                             <th style="padding:6px 10px; text-align:right;">Balance</th>

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v376";
+        const APP_VERSION = "v377";
         const APP_VERSION_DATE = "2026-09-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2682,6 +2682,17 @@
             return `${isNeg ? "-" : ""}${sym}${absStr}`;
         }
 
+        // v377: same formatting as formatCurrency() (thousands separators, 2dp, sign placement)
+        // but without the currency symbol — used only by the mobile Monthly Trend table, where
+        // dropping "RM"/"S$"/etc. off every cell is what makes Month/Income/Expense/Balance fit
+        // back on one row instead of wrapping Balance onto its own line. The currency itself is
+        // stated once, in the caption under the table, instead of repeated on every figure.
+        function formatCurrencyNumberOnly(amount) {
+            const isNeg = amount < 0;
+            const absStr = Math.abs(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return `${isNeg ? "-" : ""}${absStr}`;
+        }
+
         // Formats a balance-type amount (net worth, account balance, member totals — anything
         // that can legitimately sit in deficit) as HTML: negative amounts render in red,
         // parenthesized on the absolute value (accounting convention), e.g. (S$8,648.94).
@@ -4578,12 +4589,11 @@
             return Math.round(val).toString();
         }
 
-        // v376: v375's fully-stacked mobile layout (Month heading, Income/Expense/Balance each
-        // on their own line) fixed the clipping but made it hard to compare Income vs Expense at
-        // a glance since they're no longer side by side. This keeps Month/Income/Expense as a
-        // 3-column table row (glanceable, and narrow enough to fit without clipping even at full
-        // RM figures) and demotes only Balance — the widest value and the one that was actually
-        // clipping — to its own full-width line directly under that row.
+        // v377: dropping the "RM"/currency-symbol prefix off every cell (formatCurrencyNumberOnly)
+        // shrinks each figure enough that Month/Income/Expense/Balance fit back on a single row
+        // on a phone screen — no more demoting Balance to its own line (v376). The currency is
+        // stated once instead, in a small caption under the table, same idea as the "Figures are
+        // in ... base currency" caption already used on the Total Bill Summary report page.
         function renderMonthlyTrendTable(months) {
             const wrap = document.getElementById("monthlyTrendTableWrap");
             if (!wrap) return;
@@ -4596,35 +4606,33 @@
             const totalExpense = months.reduce((s, mo) => s + mo.expense, 0);
 
             if (isMobile) {
-                const monthRows = (label, income, expense, opts = {}) => {
+                const row = (label, income, expense, opts = {}) => {
                     const balance = income - expense;
                     const weight = opts.bold ? "font-weight:800;" : "";
                     const shade = opts.bold ? "background:rgba(127,127,127,0.06);" : "";
                     return `
                         <tr style="${shade}">
-                            <td style="padding:8px 8px 0; ${weight}">${escapeHtml(label)}</td>
-                            <td style="padding:8px 8px 0; text-align:right; color:var(--income-color); ${weight}">${formatCurrency(income, baseCurrency)}</td>
-                            <td style="padding:8px 8px 0; text-align:right; color:var(--expense-color); ${weight}">${formatCurrency(expense, baseCurrency)}</td>
-                        </tr>
-                        <tr style="${shade}">
-                            <td colspan="3" style="padding:1px 8px 8px; text-align:right; ${opts.bold ? "border-bottom:none;" : "border-bottom:1px solid var(--border-color);"}">
-                                <span style="font-size:0.68rem; color:var(--text-muted); margin-right:6px;">Balance</span><span style="color:${balanceColor(balance)}; ${weight}">${formatCurrency(balance, baseCurrency)}</span>
-                            </td>
+                            <td style="padding:8px 6px; ${weight}">${escapeHtml(label)}</td>
+                            <td style="padding:8px 6px; text-align:right; color:var(--income-color); ${weight}">${formatCurrencyNumberOnly(income)}</td>
+                            <td style="padding:8px 6px; text-align:right; color:var(--expense-color); ${weight}">${formatCurrencyNumberOnly(expense)}</td>
+                            <td style="padding:8px 6px; text-align:right; color:${balanceColor(balance)}; ${weight}">${formatCurrencyNumberOnly(balance)}</td>
                         </tr>`;
                 };
-                let rows = months.map(mo => monthRows(mo.label, mo.income, mo.expense)).join("");
-                rows += monthRows("Total", totalIncome, totalExpense, { bold: true });
+                let rows = months.map(mo => row(mo.label, mo.income, mo.expense)).join("");
+                rows += row("Total", totalIncome, totalExpense, { bold: true });
                 wrap.innerHTML = `
-                    <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.78rem;">
                         <thead>
-                            <tr style="text-align:left; color:var(--text-muted); font-size:0.64rem; text-transform:uppercase; border-bottom:2px solid var(--border-color);">
-                                <th style="padding:6px 8px;">Month</th>
-                                <th style="padding:6px 8px; text-align:right;">Income</th>
-                                <th style="padding:6px 8px; text-align:right;">Expense</th>
+                            <tr style="text-align:left; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; border-bottom:2px solid var(--border-color);">
+                                <th style="padding:6px 6px;">Month</th>
+                                <th style="padding:6px 6px; text-align:right;">Income</th>
+                                <th style="padding:6px 6px; text-align:right;">Expense</th>
+                                <th style="padding:6px 6px; text-align:right;">Balance</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
-                    </table>`;
+                    </table>
+                    <p style="font-size:0.66rem; color:var(--text-muted); text-align:right; margin:6px 4px 0;">Figures in ${escapeHtml(baseCurrency)}</p>`;
                 return;
             }
 

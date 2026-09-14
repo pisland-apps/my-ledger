@@ -2239,6 +2239,11 @@
            get this class. */
         .subrow-toggle-btn .chevron-icon { transition: transform 0.2s ease; }
         .subrow-toggle-btn.collapsed .chevron-icon { transform: rotate(-90deg); }
+        /* v373: Monthly Trend title's own chevron toggles the "collapsed" class directly on
+           itself (no .subrow-toggle-btn wrapper — the whole title text is the tap target here,
+           not a separate small button), so it needs its own rule rather than reusing the one
+           above. Same -90deg convention: expanded points down, collapsed points right. */
+        #monthlyTrendTableChevron.collapsed { transform: rotate(-90deg); }
         .util-row { display: flex; gap: 8px; margin-top: 24px; }
         .btn-util { flex: 1; padding: 12px; font-size: 0.8rem; border-radius: 8px; background: var(--chip-bg); border: none; font-weight: 600; cursor: pointer; }
 
@@ -2955,12 +2960,18 @@
         </div>
 
         <div class="section-header">
-            <span class="section-title" style="display:flex; align-items:center; gap:6px;">
+            <span class="section-title" data-click="toggleMonthlyTrendTable" style="display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;" title="Tap to show/hide the monthly table">
                 Monthly Trend
                 <!-- v372: mirrors whatever's currently picked in Settings > Companion (applyCompanionPet());
                      kept tiny and purely decorative, unlike the 52x52 #netWorthCompanion chip. Populated by
                      renderMonthlyTrendMascotIcon(), called from renderMonthlyTrendChart(). -->
                 <span id="monthlyTrendMascot" style="display:none; width:18px; height:18px; flex-shrink:0;"></span>
+                <!-- v373: reuses the same rotating-chevron convention as the sidebar's Financial
+                     Accounts toggle (.subrow-toggle-btn .chevron-icon) — see toggleMonthlyTrendTable()
+                     / applyMonthlyTrendTableExpandedState() in ledger.js. -->
+                <span id="monthlyTrendTableChevron" class="chevron-icon" style="display:inline-flex; color:var(--text-muted); transition: transform 0.2s ease;">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </span>
             </span>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
                 <button type="button" id="monthlyTrendAutoScaleToggle" class="text-btn" data-click="toggleMonthlyTrendAutoScale" style="white-space:nowrap; padding:6px 10px; font-size:0.75rem;" title="Rescale the axis to the second-highest bar so one outlier month doesn't flatten the rest — the outlier bar still shows, just clipped with a notch; tap/hover it for its real value.">⤢ Auto-scale</button>

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v372";
+        const APP_VERSION = "v373";
         const APP_VERSION_DATE = "2026-09-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1581,6 +1581,10 @@
         // height), so tapping a clipped bar is how you see the true number on any screen size —
         // one mechanism instead of two, and it already works on mobile since v215.
         let monthlyTrendAutoScale = false;
+        // v373: persisted show/hide for the Month/Income/Expense/Balance table under the Monthly
+        // Trend chart (toggled by clicking the "Monthly Trend" title) — defaults to shown, same
+        // reasoning as monthlyTrendAutoScale just above re: not caching this across renders.
+        let monthlyTrendTableExpanded = true;
 
         // Built-in starter categories (auto-provisioned if missing; user can still
         // rename/remove via the Categories manager same as any custom category).
@@ -4664,6 +4668,23 @@
             }
             renderMonthlyTrendTable(months);
             renderMonthlyTrendMascotIcon();
+            applyMonthlyTrendTableExpandedState();
+        }
+
+        // v373: click-to-collapse for the table under the Monthly Trend chart, toggled from the
+        // "Monthly Trend" title itself. Just flips display + the chevron's rotate class — the
+        // table's own <tbody> markup is untouched, so re-expanding doesn't need a re-render.
+        function applyMonthlyTrendTableExpandedState() {
+            const wrap = document.getElementById("monthlyTrendTableWrap");
+            const chevron = document.getElementById("monthlyTrendTableChevron");
+            if (wrap) wrap.style.display = monthlyTrendTableExpanded ? "" : "none";
+            if (chevron) chevron.classList.toggle("collapsed", !monthlyTrendTableExpanded);
+        }
+
+        async function toggleMonthlyTrendTable() {
+            monthlyTrendTableExpanded = !monthlyTrendTableExpanded;
+            applyMonthlyTrendTableExpandedState();
+            await writeDB(STORES.SETTINGS, { key: "monthlyTrendTableExpanded", value: monthlyTrendTableExpanded });
         }
 
         async function changeMonthlyTrendYear(el) {
@@ -18194,6 +18215,9 @@
             const storedMonthlyTrendAutoScale = await readKeyDB("settings", "monthlyTrendAutoScale");
             if (storedMonthlyTrendAutoScale) monthlyTrendAutoScale = !!storedMonthlyTrendAutoScale.value;
 
+            const storedMonthlyTrendTableExpanded = await readKeyDB("settings", "monthlyTrendTableExpanded");
+            if (storedMonthlyTrendTableExpanded) monthlyTrendTableExpanded = storedMonthlyTrendTableExpanded.value !== false;
+
             const storedRecentTxType = await readKeyDB("settings", "recentTxTypeFilter");
             if (storedRecentTxType) recentTxTypeFilter = storedRecentTxType.value || "both";
 
@@ -18837,6 +18861,7 @@
                                 case "reportCardPeriod2": reportCardPeriod2 = rec.value || "thisMonth"; break;
                                 case "monthlyTrendYear": monthlyTrendYear = rec.value || new Date().getFullYear().toString(); break;
                                 case "monthlyTrendAutoScale": monthlyTrendAutoScale = !!rec.value; break;
+                                case "monthlyTrendTableExpanded": monthlyTrendTableExpanded = rec.value !== false; break;
                                 case "defaultIncomeCategory": defaultIncomeCategory = rec.value || ""; break;
                                 case "defaultExpenseCategory": defaultExpenseCategory = rec.value || ""; break;
                                 case "ledgerViewMode": ledgerViewMode = rec.value === "calendar" ? "calendar" : "list"; break;
@@ -18897,6 +18922,7 @@
             monthlyTrendBarTap: (el, e) => { e.stopPropagation(); showMonthlyTrendTooltip(e, el); },
             hideMonthlyTrendTooltip: () => hideMonthlyTrendTooltip(),
             toggleMonthlyTrendAutoScale: () => toggleMonthlyTrendAutoScale(),
+            toggleMonthlyTrendTable: () => toggleMonthlyTrendTable(),
             navigateToNetWorthStatementPage: () => navigateToNetWorthStatementPage(),
             // v249: replaces navigateToNetWorthStatementPage as the net-worth card's own
             // data-click target — same destination, but while Privacy Mode is on and the figure

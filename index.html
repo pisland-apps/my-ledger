@@ -365,7 +365,8 @@
         .companion-swatch.selected { border-color: var(--text-main); box-shadow: none; }
         .companion-swatch svg { width: 30px; height: 30px; display: block; }
         .companion-swatch-label { font-size: 0.65rem; color: var(--text-muted); font-weight: 600; text-align: center; line-height: 1.2; }
-        /* v342: section heading between groups (e.g. "Chinese Zodiac") inside #companionSwatchGrid
+        /* v342: section heading between groups inside #companionSwatchGrid (v385: with the built-in
+           Chinese Zodiac set removed, "My Photos" is the only group left using this)
            — that element is now a plain block wrapper; only each group's own nested
            .companion-swatch-grid row is flex, so labels stack above their row correctly. */
         .companion-group-label { font-size: 0.7rem; color: var(--text-muted); font-weight: 700; margin: 10px 0 2px; }
@@ -4269,7 +4270,7 @@
                 <span style="color:var(--text-muted);">›</span>
             </div>
             <div id="companionSettingsPanel" style="display:none; flex-direction:column; gap:10px; background:var(--card-bg); border:1.5px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:10px;">
-                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">A small mascot next to your Portfolio Net Worth figure. Each preview shows how it actually looks on the card. Save up to 20 of your own photos below and switch between them any time — tap the "×" on a photo to remove it.</p>
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">A small mascot next to your Portfolio Net Worth figure. Save up to 20 of your own photos below and switch between them any time — each preview shows how it actually looks on the card. Tap the "×" on a photo to remove it.</p>
                 <div id="companionSwatchGrid"></div>
                 <!-- v343: hidden file input behind the "My Photos" group's "＋ Add" tile — same
                      accept="image/*" pattern the transaction-attachment inputs use. No `capture`

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v383";
+        const APP_VERSION = "v384";
         const APP_VERSION_DATE = "2026-09-15";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -8224,6 +8224,10 @@
             // tap versus uploading then having to go find and select the new thumbnail.
             await applyCompanionPet("custom:" + newPhoto.id);
             await buildCompanionSwatchGrid();
+            // v383: keep the Monthly Trend Mascot grid's "My Photos" count/list in sync if it's
+            // also open right now — same reasoning as removeCompanionCustomPhoto()'s matching call.
+            const trendPanel = document.getElementById("monthlyTrendMascotSettingsPanel");
+            if (trendPanel && trendPanel.style.display !== "none") await buildMonthlyTrendMascotSwatchGrid();
         }
         // v348: replaces v343-v347's single removeCompanionCustomImage() (which cleared the one
         // fixed slot) — this removes one specific photo from the library, identified by the "×"
@@ -8345,7 +8349,9 @@
             // way to make room again). v382: the upload tile only renders in the Companion grid
             // (clickHandler === "selectCompanion") — both pickers share the same 20-photo library
             // (getCompanionCustomPhotos/MAX_COMPANION_PHOTOS), so a second upload entry point on
-            // the Monthly Trend grid would just be a duplicate of the same control.
+            // the Monthly Trend grid would just be a duplicate of the same control. The "×" remove
+            // button, unlike Add, is NOT restricted this way — it's just a delete on the shared
+            // library, not a second instance of any control, so it's available from either grid.
             html += `<p class="companion-group-label">My Photos (${photos.length}/${MAX_COMPANION_PHOTOS})</p>`;
             html += `<div class="companion-swatch-grid">`;
             html += photos.map(p => {
@@ -8356,7 +8362,7 @@
                             <span class="companion-swatch${petId === selectedId ? ' selected' : ''}" data-click="${clickHandler}" data-pet-id="${petId}" title="Custom photo">
                                 <img src="${p.dataUrl}" alt="Custom" style="width:100%; height:100%; object-fit:cover; border-radius:12px;">
                             </span>
-                            ${clickHandler === "selectCompanion" ? `<button type="button" class="companion-swatch-remove" data-click="removeCompanionCustomPhoto" data-photo-id="${p.id}" title="Remove this photo" aria-label="Remove this photo">×</button>` : ""}
+                            <button type="button" class="companion-swatch-remove" data-click="removeCompanionCustomPhoto" data-photo-id="${p.id}" title="Remove this photo" aria-label="Remove this photo">×</button>
                         </span>
                         <span class="companion-swatch-label">Photo</span>
                     </span>`;

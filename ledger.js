@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v385";
+        const APP_VERSION = "v386";
         const APP_VERSION_DATE = "2026-09-15";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1994,6 +1994,7 @@
             // than introducing a one-off exception.
             const attachmentReviewPage = document.getElementById("page-attachment-review");
             const totalSummaryPage = document.getElementById("page-total-summary");
+            const monthlyTrendPage = document.getElementById("page-monthly-trend");
             const spendingBreakdownPage = document.getElementById("page-spending-breakdown");
             const incomeBreakdownPage = document.getElementById("page-income-breakdown");
             const portfolioReportPage = document.getElementById("page-portfolio-report");
@@ -2040,6 +2041,7 @@
                 !databasePage.classList.contains("hidden") ||
                 !attachmentReviewPage.classList.contains("hidden") ||
                 !totalSummaryPage.classList.contains("hidden") ||
+                !monthlyTrendPage.classList.contains("hidden") ||
                 !spendingBreakdownPage.classList.contains("hidden") ||
                 !incomeBreakdownPage.classList.contains("hidden") ||
                 !portfolioReportPage.classList.contains("hidden") ||
@@ -2183,6 +2185,15 @@
         // first — configured from Setting > Dashboard Widgets, applied via
         // applyDashboardWidgetOrder(). Persisted via SETTINGS like the filters above.
         let dashboardWidgetOrder = "accounts-first"; // "accounts-first" | "recenttx-first"
+        // v386: whether the Monthly Trend block is shown on the Dashboard at all. It's now also
+        // its own Reports page, so hiding it here isn't "losing" it — the very same DOM node is
+        // moved to that page on navigation (see placeMonthlyTrendSection()), which is why this
+        // flag hides the SLOT (#monthlyTrendDashboardSlot) rather than the section itself: when
+        // the section has been moved out to the report page, the empty slot's display is
+        // irrelevant, so the report page is never accidentally blanked by this setting.
+        // Persisted via SETTINGS like the widget settings above; defaults to true (unchanged
+        // behaviour for existing installs).
+        let showMonthlyTrendOnDashboard = true;
         // v334: which of the current month's Category Budgets (if any) also get their own mini
         // progress row on the Dashboard's "Remaining Budget" widget, opted in one-by-one via the
         // Dashboard Widgets settings panel — see renderDashboardBudgetCategoryToggles(). Empty by
@@ -2447,6 +2458,8 @@
                 const orderSel = document.getElementById("dashboardWidgetOrderSelect");
                 if (orderSel) orderSel.value = dashboardWidgetOrder;
                 syncAccountPickerButtonText("dashboardWidgetOrderSelect");
+                const trendToggle = document.getElementById("dashboardMonthlyTrendToggle");
+                if (trendToggle) trendToggle.checked = showMonthlyTrendOnDashboard;
                 const budgetToggle = document.getElementById("dashboardBudgetWidgetToggle");
                 if (budgetToggle) budgetToggle.checked = dashboardBudgetWidgetEnabled;
                 renderDashboardBudgetCategoryToggles();
@@ -2546,6 +2559,34 @@
             } else {
                 accountsWidget.parentNode.insertBefore(accountsWidget, recentTxWidget);
             }
+        }
+
+        // v386: the Monthly Trend block is a single live node that lives on the Dashboard by
+        // default and is moved into the Reports > Monthly Trend page while that page is open.
+        // appendChild() moves rather than copies, so there's only ever one #monthlyTrendSection
+        // in the document — no duplicate ids, and no second chart/table render path to keep in
+        // sync with the first. Idempotent: re-appending a node that's already the host's child
+        // is a no-op, so this is safe to call on every showPage().
+        function placeMonthlyTrendSection(pageId) {
+            const section = document.getElementById("monthlyTrendSection");
+            if (!section) return;
+            const host = pageId === "page-monthly-trend"
+                ? document.getElementById("monthlyTrendReportHost")
+                : document.getElementById("monthlyTrendDashboardSlot");
+            if (host && section.parentNode !== host) host.appendChild(section);
+        }
+
+        // v386: hides/shows the Dashboard's slot only — see showMonthlyTrendOnDashboard above for
+        // why this deliberately isn't applied to the section itself.
+        function applyMonthlyTrendDashboardVisibility() {
+            const slot = document.getElementById("monthlyTrendDashboardSlot");
+            if (slot) slot.style.display = showMonthlyTrendOnDashboard ? "" : "none";
+        }
+
+        async function handleDashboardMonthlyTrendToggleChange(el) {
+            showMonthlyTrendOnDashboard = !!el.checked;
+            await writeDB(STORES.SETTINGS, { key: "showMonthlyTrendOnDashboard", value: showMonthlyTrendOnDashboard });
+            applyMonthlyTrendDashboardVisibility();
         }
 
         // v181: Desktop "Insights" right rail (only visible at 1400px+, see the matching CSS).
@@ -2985,12 +3026,17 @@
         // --- SPA NAVIGATION PIPELINE ---
         // Every top-level page div's id — used by showPage() to hide all but the target,
         // so adding a new page never risks leaving a stale one visible underneath.
-        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-backup", "page-autolock", "page-database", "page-attachment-review", "page-total-summary", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity", "page-inventory", "page-plannedpayments"];
+        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-backup", "page-autolock", "page-database", "page-attachment-review", "page-total-summary", "page-monthly-trend", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity", "page-inventory", "page-plannedpayments"];
         function showPage(id) {
             APP_PAGE_IDS.forEach(p => {
                 const el = document.getElementById(p);
                 if (el) el.classList.toggle("hidden", p !== id);
             });
+            // v386: done here rather than in navigateToMonthlyTrendPage() alone so EVERY exit
+            // route (on-screen Back, hardware/gesture back, a sidebar jump straight to another
+            // page) returns the node to the Dashboard — there's no code path that shows a page
+            // without going through showPage().
+            placeMonthlyTrendSection(id);
             // Keeps the sidebar's active-item highlight correct even when it's persistently
             // visible (desktop/tablet) rather than only refreshed on drawer-open (mobile).
             updateSidebarActiveState();
@@ -3018,6 +3064,7 @@
                 case "page-database": return "Database";
                 case "page-attachment-review": return "Review Attachments";
                 case "page-total-summary": return "Total Bill Summary";
+                case "page-monthly-trend": return "Monthly Trend";
                 case "page-spending-breakdown": return "Spending Breakdown";
                 case "page-income-breakdown": return "Income Breakdown";
                 case "page-savings": return "Savings Statement";
@@ -5089,6 +5136,7 @@
             const autolockHidden = document.getElementById("page-autolock").classList.contains("hidden");
             const databaseHidden = document.getElementById("page-database").classList.contains("hidden");
             const totalSummaryHidden = document.getElementById("page-total-summary").classList.contains("hidden");
+            const monthlyTrendHidden = document.getElementById("page-monthly-trend").classList.contains("hidden");
             const spendingHidden = document.getElementById("page-spending-breakdown").classList.contains("hidden");
             const incomeHidden = document.getElementById("page-income-breakdown").classList.contains("hidden");
             const portfolioReportHidden = document.getElementById("page-portfolio-report").classList.contains("hidden");
@@ -5107,6 +5155,7 @@
             else if (!autolockHidden) target = "autolock";
             else if (!databaseHidden) target = "database";
             else if (!totalSummaryHidden) target = "total-summary";
+            else if (!monthlyTrendHidden) target = "monthly-trend";
             else if (!spendingHidden) target = "spending-breakdown";
             else if (!incomeHidden) target = "income-breakdown";
             else if (!portfolioReportHidden) target = "portfolio-report";
@@ -5143,6 +5192,7 @@
             else if (target === "autolock") navigateToAutoLockPage();
             else if (target === "database") navigateToDatabasePage();
             else if (target === "total-summary") navigateToTotalSummaryPage();
+            else if (target === "monthly-trend") navigateToMonthlyTrendPage();
             else if (target === "spending-breakdown") navigateToSpendingBreakdownPage();
             else if (target === "income-breakdown") navigateToIncomeBreakdownPage();
             else if (target === "portfolio-report") navigateToPortfolioReportPage();
@@ -15816,6 +15866,7 @@
             await renderWarrantyReminderWidget();
             await refreshPlannedPaymentsViews();
             applyDashboardWidgetOrder();
+            applyMonthlyTrendDashboardVisibility();
             renderDesktopInsightsRail(accounts, txs);
 
             // v264/v266/v269: Dashboard "Remaining Budget" teaser — always the CURRENT month
@@ -18120,6 +18171,18 @@
             renderTotalSummaryPage();
         }
 
+        // v386: the section node itself is relocated by showPage() -> placeMonthlyTrendSection();
+        // all that's left here is to (re)render it against fresh balances, which also re-measures
+        // the chart for this page's width rather than reusing the Dashboard's last layout.
+        async function navigateToMonthlyTrendPage() {
+            workspaceScrollY = window.scrollY;
+            showPage("page-monthly-trend");
+            window.scrollTo(0, 0);
+            pushVirtualState("monthly-trend");
+            const { accounts, txs } = await computeAccountBalances();
+            renderMonthlyTrendChart(txs, accounts);
+        }
+
         function navigateToAutoLockPage() {
             workspaceScrollY = window.scrollY;
             showPage("page-autolock");
@@ -18370,6 +18433,8 @@
             const storedRecentTxCount = await readKeyDB("settings", "recentTxCount");
             if (storedRecentTxCount) recentTxCount = storedRecentTxCount.value || 5;
 
+            const storedShowMonthlyTrend = await readKeyDB("settings", "showMonthlyTrendOnDashboard");
+            if (storedShowMonthlyTrend) showMonthlyTrendOnDashboard = storedShowMonthlyTrend.value !== false;
             const storedDashboardWidgetOrder = await readKeyDB("settings", "dashboardWidgetOrder");
             if (storedDashboardWidgetOrder) dashboardWidgetOrder = storedDashboardWidgetOrder.value === "recenttx-first" ? "recenttx-first" : "accounts-first";
 
@@ -18999,6 +19064,7 @@
                                 case "recentTxTypeFilter": recentTxTypeFilter = rec.value || "both"; break;
                                 case "recentTxAccountFilter": recentTxAccountFilter = rec.value || "all"; break;
                                 case "recentTxCount": recentTxCount = rec.value || 5; break;
+                                case "showMonthlyTrendOnDashboard": showMonthlyTrendOnDashboard = rec.value !== false; break;
                                 case "dashboardWidgetOrder": dashboardWidgetOrder = rec.value === "recenttx-first" ? "recenttx-first" : "accounts-first"; break;
                                 case "dashboardBudgetCategoriesShown": dashboardBudgetCategoriesShown = Array.isArray(rec.value) ? rec.value : []; break;
                                 case "dashboardBudgetWidgetEnabled": dashboardBudgetWidgetEnabled = rec.value !== false; break;
@@ -19164,6 +19230,7 @@
             selectMemberColor: (el) => selectMemberColor(el),
             toggleBgThemeSettings: () => toggleBgThemeSettings(),
             toggleDashboardWidgetsSettings: () => toggleDashboardWidgetsSettings(),
+            navigateToMonthlyTrendPage: () => navigateToMonthlyTrendPage(),
             toggleDefaultAccountsSettings: () => toggleDefaultAccountsSettings(),
             selectBgTheme: (el) => selectBgTheme(el),
             toggleNetWorthCardStyleSettings: () => toggleNetWorthCardStyleSettings(),
@@ -19391,6 +19458,7 @@
             handleRecentTxSettingChange: () => handleRecentTxSettingChange(),
             handlePinnedAccountCountChange: () => handlePinnedAccountCountChange(),
             handleDashboardWidgetOrderChange: () => handleDashboardWidgetOrderChange(),
+            handleDashboardMonthlyTrendToggleChange: (el) => handleDashboardMonthlyTrendToggleChange(el),
             handleDashboardBudgetCategoryToggleChange: (el) => handleDashboardBudgetCategoryToggleChange(el),
             handleDashboardBudgetWidgetToggleChange: (el) => handleDashboardBudgetWidgetToggleChange(el),
             handlePinnedAccountSlotChange: (el) => handlePinnedAccountSlotChange(el),

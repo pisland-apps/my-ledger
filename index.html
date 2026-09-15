@@ -2756,6 +2756,13 @@
             <button class="sidebar-item" data-click="sidebarGo" data-target="total-summary">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg></span> Total Bill Summary
             </button>
+            <!-- v386: Monthly Trend — the Dashboard's month-by-month income/expense chart + table,
+                 now also reachable as its own report page (the same DOM node is moved here; see
+                 placeMonthlyTrendSection()). Sits next to Total Bill Summary since the two are the
+                 same rollup at different granularity — per-month vs per-year. -->
+            <button class="sidebar-item" data-click="sidebarGo" data-target="monthly-trend">
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> Monthly Trend
+            </button>
             <button class="sidebar-item" data-click="sidebarGo" data-target="spending-breakdown">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></span> Spending Breakdown
             </button>
@@ -3012,6 +3019,15 @@
             </div>
         </div>
 
+        <!-- v386: the whole Monthly Trend block (header + chart + table) now lives inside this
+             slot so it can be (a) hidden from the Dashboard via Setting > Dashboard Widgets >
+             Monthly Trend, and (b) physically MOVED into the new Reports > Monthly Trend page
+             (#monthlyTrendReportHost) rather than duplicated there. Moving the one real node
+             keeps a single set of ids/state — the year select, auto-scale button, mascot and
+             collapsible table all work identically in either place, with no second render path
+             to keep in sync. See placeMonthlyTrendSection() / applyMonthlyTrendDashboardVisibility(). -->
+        <div id="monthlyTrendDashboardSlot">
+            <div id="monthlyTrendSection">
         <div class="section-header">
             <span class="section-title" data-click="toggleMonthlyTrendTable" style="display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;" title="Tap to show/hide the monthly table">
                 Monthly Trend
@@ -3046,6 +3062,8 @@
                  same idea as the Total Bill Summary report's table but per-month for the selected year.
                  Populated by renderMonthlyTrendTable() from within renderMonthlyTrendChart(). -->
             <div id="monthlyTrendTableWrap" style="overflow-x:auto; margin-top:14px; border-top:1px solid var(--border-color); padding-top:12px;"></div>
+        </div>
+            </div>
         </div>
 
         <!-- v281: Tag Reminders — one row per tag with "Show on Dashboard" enabled (see the Tag
@@ -3767,6 +3785,29 @@
         </p>
     </div>
 
+    <!-- ================= PAGE: MONTHLY TREND (v386) =================
+         Deliberately empty in the markup: navigating here moves the live #monthlyTrendSection node
+         out of the Dashboard and into #monthlyTrendReportHost below (and showPage() moves it back
+         on the way out), so this page and the Dashboard always show the exact same chart, year
+         picker, auto-scale state and collapsible table — one node, one set of ids, one render
+         path. See placeMonthlyTrendSection() / navigateToMonthlyTrendPage() in ledger.js. -->
+    <div id="page-monthly-trend" class="page hidden">
+        <div class="nav-header">
+            <button class="back-btn" data-click="navigateToWorkspace">&larr; Back</button>
+            <div style="flex:1;">
+                <h3 style="font-weight:800; font-size:1.2rem;">Monthly Trend</h3>
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Income and expense, month by month</p>
+            </div>
+        </div>
+
+        <div id="monthlyTrendReportHost"></div>
+
+        <p style="font-size:0.68rem; color:var(--text-muted); margin-top:10px;">
+            Tap the "Monthly Trend" title to show or hide the table. Use Setting &gt; Dashboard Widgets
+            to control whether this same block also appears on your Dashboard.
+        </p>
+    </div>
+
     <!-- ================= PAGE: SPENDING BREAKDOWN (moved out of Dashboard, v32) ================= -->
     <div id="page-spending-breakdown" class="page hidden">
         <div class="nav-header">
@@ -4352,6 +4393,20 @@
                      their own mini progress row on the Dashboard's Remaining Budget widget, which
                      otherwise only ever shows the overall Monthly/Yearly total. Pool is built live
                      from the current month's budget record — see renderDashboardBudgetCategoryToggles(). -->
+                <!-- v386: Monthly Trend is now also its own Reports page, so it no longer has to
+                     be on the Dashboard — off here just hides #monthlyTrendDashboardSlot; the block
+                     itself (and all its state) stays live and fully usable at Reports > Monthly Trend. -->
+                <div>
+                    <p style="font-size:0.75rem; font-weight:700; color:var(--text-muted); margin:0 0 8px;">MONTHLY TREND</p>
+                    <div class="toggle-switch-row" style="margin-top:0;">
+                        <span class="toggle-switch-label">Show on Dashboard</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="dashboardMonthlyTrendToggle" data-change="handleDashboardMonthlyTrendToggleChange">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <p style="font-size:0.75rem; color:var(--text-muted); margin:8px 0 0;">When off, it stays available under Reports &gt; Monthly Trend in the sidebar.</p>
+                </div>
                 <div>
                     <p style="font-size:0.75rem; font-weight:700; color:var(--text-muted); margin:0 0 8px;">BUDGET WIDGET</p>
                     <div class="toggle-switch-row" style="margin-top:0;">

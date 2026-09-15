@@ -2562,6 +2562,58 @@
             90% { transform: rotate(-6deg); }
             95% { transform: rotate(6deg); }
         }
+
+        /* Liquid Glass preset — scoped under html[data-bg-theme="glass"], same pattern as the
+           crayon block above. Two things CSS vars alone can't give this preset:
+           1) A static (no animation, deliberately — see BG_THEMES' "glass" entry in ledger.js)
+              soft pastel gradient behind the page, so the existing --glass-bg/-strong/-modal
+              translucency has actual color to pick up instead of blurring flat white into gray.
+              background-attachment:fixed keeps it steady under scroll rather than scrolling with
+              content, closer to how a real frosted pane reads a fixed scene behind it.
+           2) Extra blur/saturate + a brighter top edge on the handful of container-level cards
+              per screen (report cards, statement cards, stat boxes). Deliberately NOT applied to
+              .ledger-item/.statement-row/.config-item — those repeat many times per screen (a
+              long transaction list, a long Settings list), and backdrop-filter on every one of
+              them while scrolling is a real jank risk on older phones. Those keep the theme's
+              (already lighter/near-white) --card-bg with no blur of their own. */
+        html[data-bg-theme="glass"] body {
+            background-image:
+                radial-gradient(ellipse 90% 60% at 15% 8%, rgba(165,180,252,0.55), transparent 60%),
+                radial-gradient(ellipse 80% 55% at 88% 18%, rgba(249,168,212,0.40), transparent 60%),
+                radial-gradient(ellipse 85% 60% at 25% 92%, rgba(153,246,228,0.45), transparent 60%),
+                radial-gradient(ellipse 75% 55% at 95% 96%, rgba(196,181,253,0.40), transparent 60%);
+            background-color: var(--bg-color);
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+        }
+        html[data-bg-theme="glass"] .report-card,
+        html[data-bg-theme="glass"] .report-card-mini,
+        html[data-bg-theme="glass"] .statement-card,
+        html[data-bg-theme="glass"] .stat-box {
+            background: var(--glass-bg);
+            backdrop-filter: blur(22px) saturate(180%);
+            -webkit-backdrop-filter: blur(22px) saturate(180%);
+            border-radius: 20px;
+            box-shadow: var(--card-shadow), inset 0 1px 0 rgba(255,255,255,0.8);
+        }
+        /* The three already-frosted chrome elements (top nav, sidebar drawer, modal sheets) get
+           a bit more blur/roundness under this preset than their shared default — everywhere
+           else's blur amount is unconditional so it stays as-is for every other theme. */
+        html[data-bg-theme="glass"] .nav-header {
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border-radius: 18px;
+        }
+        html[data-bg-theme="glass"] .sidebar-drawer {
+            backdrop-filter: blur(28px) saturate(180%);
+            -webkit-backdrop-filter: blur(28px) saturate(180%);
+        }
+        html[data-bg-theme="glass"] .modal-sheet {
+            backdrop-filter: blur(26px) saturate(180%);
+            -webkit-backdrop-filter: blur(26px) saturate(180%);
+            border-radius: 22px;
+        }
+
         /* v249: Privacy Mode — frosted-glass blur over Net Worth / Financial Assets / Real
            Estate figures. Scoped by html[data-privacy-mode="on"] (set by
            applyPrivacyModeAttr()) rather than a class directly on the amounts, so turning

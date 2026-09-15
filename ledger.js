@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v379";
-        const APP_VERSION_DATE = "2026-09-14";
+        const APP_VERSION = "v380";
+        const APP_VERSION_DATE = "2026-09-15";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -274,6 +274,49 @@
                 transferColor: "#8b5cf6", salaryColor: "#E8A400",
                 colorScheme: "light",
                 themeColor: "#E63946",
+            },
+            {
+                // Liquid Glass — full override like crayon above, not a bg-only preset. Real
+                // glassmorphism needs something behind the frosted surfaces worth refracting, so
+                // this pairs with a static (non-animated, see html[data-bg-theme="glass"] rules in
+                // index.html) soft pastel gradient painted behind the page — cheap to render once,
+                // unlike an animated version, and gives the existing --glass-bg/-strong/-modal
+                // translucency (already used by .nav-header/.sidebar-drawer/.modal-sheet) actual
+                // color to pick up instead of just blurring flat white.
+                //
+                // Deliberately does NOT push backdrop-filter blur onto scrolling list rows
+                // (.ledger-item/.statement-row) — only container-level cards that appear a handful
+                // of times per screen (.report-card/.report-card-mini/.statement-card/.stat-box,
+                // scoped in index.html) get the extra blur, since blurring every row of a long
+                // transaction list on scroll is a real jank risk on older phones. .config-item
+                // (Settings page, many rows) is left on plain --card-bg for the same reason.
+                //
+                // glassBgModal stays high-opacity (0.90) rather than as translucent as glassBg —
+                // keeps the v204 double-modal-stacking fix intact (a second modal opened on top of
+                // an already-open one needs real contrast against the first, not another layer of
+                // see-through).
+                id: "glass", name: "Liquid Glass",
+                bg: "#eef2f8", cardBg: "#ffffff", textMain: "#1c2333", textMuted: "#5b6472",
+                borderColor: "rgba(255,255,255,0.55)",
+                cardTopBorderColor: "rgba(255,255,255,0.85)",
+                neuLight: "rgba(255,255,255,0.90)", neuDark: "rgba(148,163,184,0.35)",
+                neuPrimaryLight: "rgba(255,255,255,0.40)", neuPrimaryDark: "rgba(79,70,229,0.35)",
+                glassBg: "rgba(255,255,255,0.42)", glassBgStrong: "rgba(255,255,255,0.60)",
+                glassBgModal: "rgba(255,255,255,0.90)", glassBorder: "rgba(255,255,255,0.65)",
+                modalSheetBorder: "#c7d2e0",
+                hoverBg: "rgba(255,255,255,0.35)", pressBg: "rgba(255,255,255,0.55)",
+                activeBg: "rgba(99,102,241,0.16)", activeBorder: "rgba(99,102,241,0.35)", chipBg: "rgba(255,255,255,0.50)",
+                incomeChipBg: "rgba(16,185,129,0.14)", incomeChipBorder: "rgba(16,185,129,0.35)",
+                expenseChipBg: "rgba(239,68,68,0.14)", expenseChipBorder: "rgba(239,68,68,0.35)",
+                primaryChipBg: "rgba(99,102,241,0.14)",
+                cardShadow: "0 8px 32px rgba(31,38,135,0.12)",
+                hardwareTrackBg: "rgba(255,255,255,0.50)", hardwareTrackBorder: "rgba(255,255,255,0.70)",
+                hardwareFillStart: "#a5b4fc", hardwareFillEnd: "#6366f1",
+                dropdownOptionBg: "#ffffff",
+                primary: "#6366f1", incomeColor: "#10b981", expenseColor: "#ef4444",
+                transferColor: "#3b82f6", salaryColor: "#d97706",
+                colorScheme: "light",
+                themeColor: "#eef2f8",
             },
         ];
         const BG_THEME_STORAGE_KEY = "ledgerBgTheme";

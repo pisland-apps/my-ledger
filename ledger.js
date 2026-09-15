@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v382";
+        const APP_VERSION = "v383";
         const APP_VERSION_DATE = "2026-09-15";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -8419,6 +8419,10 @@
             if (isHidden) await buildMonthlyTrendMascotSwatchGrid();
             panel.style.display = isHidden ? "flex" : "none";
         }
+        // v382: sibling to toggleCompanionSettingsFromDashboard() above — tapping the mascot next
+        // to "Monthly Trend" itself (not the title/chevron around it, which still toggles the
+        // table — see the span's own data-click in index.html, which shadows the parent's during
+        // event delegation's closest() walk) jumps to its own settings panel the same way.
         // Tapping the mascot itself on the dashboard jumps straight to Setting > Companion
         // (expanded) rather than just being decorative — mirrors how other dashboard chips
         // (e.g. the header currency pill) already double as shortcuts into Settings.
@@ -8427,6 +8431,14 @@
             setTimeout(async () => {
                 const panel = document.getElementById("companionSettingsPanel");
                 if (panel && panel.style.display === "none") await toggleCompanionSettings();
+                panel && panel.scrollIntoView({ behavior: "smooth", block: "center" });
+            }, 50);
+        }
+        function toggleMonthlyTrendMascotSettingsFromDashboard() {
+            navigateToDataSecurityPage();
+            setTimeout(async () => {
+                const panel = document.getElementById("monthlyTrendMascotSettingsPanel");
+                if (panel && panel.style.display === "none") await toggleMonthlyTrendMascotSettings();
                 panel && panel.scrollIntoView({ behavior: "smooth", block: "center" });
             }, 50);
         }
@@ -19288,6 +19300,9 @@
             selectCompanion: (el) => selectCompanion(el),
             triggerCompanionCustomImageUpload: () => triggerCompanionCustomImageUpload(),
             removeCompanionCustomPhoto: (el) => removeCompanionCustomPhoto(el),
+            toggleMonthlyTrendMascotSettings: () => toggleMonthlyTrendMascotSettings(),
+            toggleMonthlyTrendMascotSettingsFromDashboard: (el, e) => { e.stopPropagation(); toggleMonthlyTrendMascotSettingsFromDashboard(); },
+            selectMonthlyTrendMascot: (el) => selectMonthlyTrendMascot(el),
             triggerAccLogoUpload: () => triggerAccLogoUpload(),
             removeAccLogo: () => removeAccLogo(),
             savePlannedPaymentFromTxForm: () => savePlannedPaymentFromTxForm(),

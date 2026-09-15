@@ -3016,8 +3016,14 @@
                 Monthly Trend
                 <!-- v372: mirrors whatever's currently picked in Settings > Companion (applyCompanionPet());
                      kept tiny and purely decorative, unlike the 52x52 #netWorthCompanion chip. Populated by
-                     renderMonthlyTrendMascotIcon(), called from renderMonthlyTrendChart(). -->
-                <span id="monthlyTrendMascot" style="display:none; width:18px; height:18px; flex-shrink:0;"></span>
+                     renderMonthlyTrendMascotIcon(), called from renderMonthlyTrendChart().
+                     v382: no longer purely decorative — now its own independent Settings > Monthly Trend
+                     Mascot pick (defaults to mirroring Companion, same as before, until changed there).
+                     Its own data-click (toggleMonthlyTrendMascotSettingsFromDashboard) takes over the
+                     click on just this span — closest("[data-click]") in the delegated listener resolves
+                     to the nearest match walking up from the event target, so this shadows the parent
+                     .section-title's data-click="toggleMonthlyTrendTable" rather than triggering both. -->
+                <span id="monthlyTrendMascot" data-click="toggleMonthlyTrendMascotSettingsFromDashboard" title="Monthly Trend Mascot — tap to change in Settings" style="display:none; width:18px; height:18px; flex-shrink:0; cursor:pointer;"></span>
                 <!-- v373: reuses the same rotating-chevron convention as the sidebar's Financial
                      Accounts toggle (.subrow-toggle-btn .chevron-icon) — see toggleMonthlyTrendTable()
                      / applyMonthlyTrendTableExpandedState() in ledger.js. -->

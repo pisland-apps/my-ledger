@@ -4271,6 +4271,19 @@
                      as likely to come from the gallery as the camera. -->
                 <input type="file" id="companionCustomImageInput" accept="image/*" style="display:none;" data-change="handleCompanionCustomImageSelected">
             </div>
+            <!-- v382: independent mascot pick for the Monthly Trend title, decoupled from the
+                 Companion above on request — previously this was a read-only mirror of whatever
+                 Companion had picked (see the old v372 comment on renderMonthlyTrendMascotIcon in
+                 ledger.js), with no way to show something different in the two spots. Defaults to
+                 "Match Companion" (mirrors the setting above, same as before) unless changed here. -->
+            <div class="config-item" style="cursor:pointer;" data-click="toggleMonthlyTrendMascotSettings">
+                <span>📈 <strong>Monthly Trend Mascot</strong></span>
+                <span style="color:var(--text-muted);">›</span>
+            </div>
+            <div id="monthlyTrendMascotSettingsPanel" style="display:none; flex-direction:column; gap:10px; background:var(--card-bg); border:1.5px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:10px;">
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">The small mascot next to the "Monthly Trend" title on your Dashboard. Leave this on "Match Companion" to always mirror the pick above, or choose something different just for this spot.</p>
+                <div id="monthlyTrendMascotSwatchGrid"></div>
+            </div>
             <div class="config-item" style="cursor:pointer;" data-click="toggleDashboardWidgetsSettings">
                 <span>📊 <strong>Dashboard Widgets</strong></span>
                 <span style="color:var(--text-muted);">›</span>

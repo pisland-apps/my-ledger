@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v381";
+        const APP_VERSION = "v382";
         const APP_VERSION_DATE = "2026-09-15";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -4759,14 +4759,18 @@
                 </table>`;
         }
 
-        // v372: purely decorative echo of whatever's picked in Settings > Companion, sitting next
-        // to the "Monthly Trend" title. Reuses the exact same resolution order as
-        // applyCompanionPet() (custom photo -> COMPANIONS svg -> nothing) but never writes
-        // anything back to storage — it's a read-only mirror, not a second place to change it.
+        // v372: echo of whatever's picked next to the "Monthly Trend" title. Reuses the exact
+        // same resolution order as applyCompanionPet() (custom photo -> COMPANIONS svg ->
+        // nothing) but never writes anything back to storage from here — Companion is still
+        // edited only from its own picker.
+        // v382: was a straight, always-on mirror of Settings > Companion. Now checks its own
+        // independent pick first (getSavedMonthlyTrendMascotId, Settings > Monthly Trend Mascot)
+        // and only falls through to mirroring Companion when that's left on the default "match".
         async function renderMonthlyTrendMascotIcon() {
             const el = document.getElementById("monthlyTrendMascot");
             if (!el) return;
-            const petId = await getSavedCompanionId();
+            const ownId = await getSavedMonthlyTrendMascotId();
+            const petId = ownId === "match" ? await getSavedCompanionId() : ownId;
             let displayImg = null, displaySvg = null;
             if (typeof petId === "string" && petId.startsWith("custom:")) {
                 const photos = await getCompanionCustomPhotos();
@@ -7999,7 +8003,7 @@
         // `group` just drives the section heading in buildCompanionSwatchGrid() — same option
         // list either way, nothing else reads it.
         const COMPANIONS = [
-            { id: "none", name: "None" },
+            { id: "none", name: "None", short: "None" },
             // v348: the old single static "custom" entry is gone — custom photos are now a
             // dynamic, multi-item library (see COMPANION_PHOTOS_SETTINGS_KEY / "My Photos" group
             // below), not a fixed slot in this array. A saved photo's pet id is "custom:<photoId>"
@@ -8165,6 +8169,7 @@
         // migrateCompanionSingleImageToLibrary() and their calls in bootstrap() for the one-time
         // upgrade paths from v341-v346 (localStorage) and v343-v347 (single-slot) installs.
         const COMPANION_SETTINGS_KEY = "companionPetId";
+        const MONTHLY_TREND_MASCOT_SETTINGS_KEY = "monthlyTrendMascotId"; // v382
         const COMPANION_PHOTOS_SETTINGS_KEY = "companionCustomImages";
         const MAX_COMPANION_PHOTOS = 20;
         async function getCompanionCustomPhotos() {
@@ -8234,7 +8239,17 @@
             // it with — fall back to None rather than leaving the hero card's slot pointing at a
             // deleted image.
             if ((await getSavedCompanionId()) === "custom:" + photoId) await applyCompanionPet("none");
+            // v382: same idea for the independent Monthly Trend Mascot pick — getSavedMonthlyTrendMascotId()
+            // would self-heal to "match" on its own next read anyway, but writing it back here keeps
+            // the stored value honest rather than leaving a dangling "custom:<deleted-id>" in settings.
+            const rec = await readKeyDB("settings", MONTHLY_TREND_MASCOT_SETTINGS_KEY);
+            if (rec && rec.value === "custom:" + photoId) {
+                await writeDB(STORES.SETTINGS, { key: MONTHLY_TREND_MASCOT_SETTINGS_KEY, value: "match" });
+            }
             await buildCompanionSwatchGrid();
+            const trendPanel = document.getElementById("monthlyTrendMascotSettingsPanel");
+            if (trendPanel && trendPanel.style.display !== "none") await buildMonthlyTrendMascotSwatchGrid();
+            renderMonthlyTrendMascotIcon();
         }
         async function getSavedCompanionId() {
             const rec = await readKeyDB("settings", COMPANION_SETTINGS_KEY);
@@ -8244,6 +8259,22 @@
                 return photos.some(p => p.id === id.slice(7)) ? id : "none";
             }
             return COMPANIONS.some(c => c.id === id) ? id : "none";
+        }
+        // v382: independent from getSavedCompanionId() above — "match" (the default, including
+        // for anyone who never opens this new picker) means "use whatever Companion resolves to",
+        // same as the old always-mirrored behavior. Any other value is a companion id/custom:
+        // photo id picked specifically for this spot, validated the same way getSavedCompanionId()
+        // validates its own value (falls back to "match", not "none", if the saved pick no longer
+        // exists — e.g. a custom photo it pointed to was since removed).
+        async function getSavedMonthlyTrendMascotId() {
+            const rec = await readKeyDB("settings", MONTHLY_TREND_MASCOT_SETTINGS_KEY);
+            const id = rec ? rec.value : null;
+            if (id == null || id === "match") return "match";
+            if (typeof id === "string" && id.startsWith("custom:")) {
+                const photos = await getCompanionCustomPhotos();
+                return photos.some(p => p.id === id.slice(7)) ? id : "match";
+            }
+            return COMPANIONS.some(c => c.id === id) ? id : "match";
         }
         async function applyCompanionPet(petId, { save = true } = {}) {
             let resolvedId = petId;
@@ -8283,10 +8314,17 @@
             const grid = document.getElementById("companionSwatchGrid");
             if (!grid) return;
             const selectedId = await getSavedCompanionId();
+            grid.innerHTML = await buildMascotSwatchGridHTML(selectedId, "selectCompanion", []);
+        }
+        // v382: shared by both the Companion grid and the (independent) Monthly Trend Mascot
+        // grid below — `leadingOptions` lets a caller prepend extra hand-written swatches (the
+        // Monthly Trend picker uses this for its "Match Companion" option) ahead of the regular
+        // None/Zodiac/My Photos groups that both pickers share.
+        async function buildMascotSwatchGridHTML(selectedId, clickHandler, leadingOptions) {
             const photos = await getCompanionCustomPhotos();
             const swatchHTML = c => `
                 <span class="companion-swatch-wrap">
-                    <span class="companion-swatch${c.id === selectedId ? ' selected' : ''}" data-click="selectCompanion" data-pet-id="${c.id}" title="${c.name}">${c.svg || '<span style="color:#fff; font-size:0.65rem; font-weight:700;">None</span>'}</span>
+                    <span class="companion-swatch${c.id === selectedId ? ' selected' : ''}" data-click="${clickHandler}" data-pet-id="${c.id}" title="${c.name}">${c.svg || '<span style="color:#fff; font-size:0.65rem; font-weight:700;">' + c.short + '</span>'}</span>
                     <span class="companion-swatch-label">${c.name}</span>
                 </span>`;
             // v342: group into sections (undefined `group` — just "None" — gets no heading and
@@ -8294,7 +8332,7 @@
             // 12-strong Chinese Zodiac set doesn't read as one undifferentiated wall of icons.
             const ungrouped = COMPANIONS.filter(c => !c.group);
             const groups = [...new Set(COMPANIONS.filter(c => c.group).map(c => c.group))];
-            let html = `<div class="companion-swatch-grid">${ungrouped.map(swatchHTML).join("")}</div>`;
+            let html = `<div class="companion-swatch-grid">${leadingOptions.map(swatchHTML).join("")}${ungrouped.map(swatchHTML).join("")}</div>`;
             groups.forEach(g => {
                 html += `<p class="companion-group-label">${g}</p>`;
                 html += `<div class="companion-swatch-grid">${COMPANIONS.filter(c => c.group === g).map(swatchHTML).join("")}</div>`;
@@ -8304,7 +8342,10 @@
             // .companion-swatch-photo-holder); an "＋ Add" tile follows for as long as there's
             // room left (hidden once the library hits MAX_COMPANION_PHOTOS, with a plain count
             // in the heading telling the person why — the "×" on any thumbnail is then the only
-            // way to make room again).
+            // way to make room again). v382: the upload tile only renders in the Companion grid
+            // (clickHandler === "selectCompanion") — both pickers share the same 20-photo library
+            // (getCompanionCustomPhotos/MAX_COMPANION_PHOTOS), so a second upload entry point on
+            // the Monthly Trend grid would just be a duplicate of the same control.
             html += `<p class="companion-group-label">My Photos (${photos.length}/${MAX_COMPANION_PHOTOS})</p>`;
             html += `<div class="companion-swatch-grid">`;
             html += photos.map(p => {
@@ -8312,15 +8353,15 @@
                 return `
                     <span class="companion-swatch-wrap">
                         <span class="companion-swatch-photo-holder">
-                            <span class="companion-swatch${petId === selectedId ? ' selected' : ''}" data-click="selectCompanion" data-pet-id="${petId}" title="Custom photo">
+                            <span class="companion-swatch${petId === selectedId ? ' selected' : ''}" data-click="${clickHandler}" data-pet-id="${petId}" title="Custom photo">
                                 <img src="${p.dataUrl}" alt="Custom" style="width:100%; height:100%; object-fit:cover; border-radius:12px;">
                             </span>
-                            <button type="button" class="companion-swatch-remove" data-click="removeCompanionCustomPhoto" data-photo-id="${p.id}" title="Remove this photo" aria-label="Remove this photo">×</button>
+                            ${clickHandler === "selectCompanion" ? `<button type="button" class="companion-swatch-remove" data-click="removeCompanionCustomPhoto" data-photo-id="${p.id}" title="Remove this photo" aria-label="Remove this photo">×</button>` : ""}
                         </span>
                         <span class="companion-swatch-label">Photo</span>
                     </span>`;
             }).join("");
-            if (photos.length < MAX_COMPANION_PHOTOS) {
+            if (photos.length < MAX_COMPANION_PHOTOS && clickHandler === "selectCompanion") {
                 html += `
                     <span class="companion-swatch-wrap">
                         <span class="companion-swatch" data-click="triggerCompanionCustomImageUpload" title="Upload a new photo">
@@ -8330,19 +8371,52 @@
                     </span>`;
             }
             html += `</div>`;
-            grid.innerHTML = html;
+            return html;
         }
         async function selectCompanion(el) {
             await applyCompanionPet(el.dataset.petId);
             document.querySelectorAll("#companionSwatchGrid .companion-swatch").forEach(s => s.classList.toggle("selected", s.dataset.petId === el.dataset.petId));
             // v372: keep the Monthly Trend title's mascot mirror in sync immediately, in case
             // the dashboard is still mounted behind Settings (no page reload happens here).
+            // v382: only actually changes anything on screen there if Monthly Trend Mascot is
+            // still on "Match Companion" — renderMonthlyTrendMascotIcon() checks that itself, so
+            // this call is safe (a harmless no-op re-render) either way.
             renderMonthlyTrendMascotIcon();
         }
         async function toggleCompanionSettings() {
             const panel = document.getElementById("companionSettingsPanel");
             const isHidden = panel.style.display === "none";
             if (isHidden) await buildCompanionSwatchGrid();
+            panel.style.display = isHidden ? "flex" : "none";
+        }
+        // v382: sibling picker to selectCompanion/toggleCompanionSettings/buildCompanionSwatchGrid
+        // above, for the independent Monthly Trend Mascot setting — same shape, writing to
+        // MONTHLY_TREND_MASCOT_SETTINGS_KEY instead of COMPANION_SETTINGS_KEY, and with a leading
+        // "Match Companion" swatch (id "match") that isn't in the COMPANIONS list itself since it
+        // has no meaning for the Companion picker.
+        async function selectMonthlyTrendMascot(el) {
+            const id = el.dataset.petId;
+            try { await writeDB(STORES.SETTINGS, { key: MONTHLY_TREND_MASCOT_SETTINGS_KEY, value: id }); } catch (e) {}
+            document.querySelectorAll("#monthlyTrendMascotSwatchGrid .companion-swatch").forEach(s => s.classList.toggle("selected", s.dataset.petId === id));
+            renderMonthlyTrendMascotIcon();
+        }
+        async function buildMonthlyTrendMascotSwatchGrid() {
+            const grid = document.getElementById("monthlyTrendMascotSwatchGrid");
+            if (!grid) return;
+            const selectedId = await getSavedMonthlyTrendMascotId();
+            const matchOption = {
+                id: "match", name: "Match Companion", short: "🔗",
+                svg: `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 24a6 6 0 0 1 6-6h6" /><path d="M30 24a6 6 0 0 1-6 6h-6" />
+                    <path d="M20 14l4 4-4 4" /><path d="M28 26l-4 4 4 4" />
+                </svg>`,
+            };
+            grid.innerHTML = await buildMascotSwatchGridHTML(selectedId, "selectMonthlyTrendMascot", [matchOption]);
+        }
+        async function toggleMonthlyTrendMascotSettings() {
+            const panel = document.getElementById("monthlyTrendMascotSettingsPanel");
+            const isHidden = panel.style.display === "none";
+            if (isHidden) await buildMonthlyTrendMascotSwatchGrid();
             panel.style.display = isHidden ? "flex" : "none";
         }
         // Tapping the mascot itself on the dashboard jumps straight to Setting > Companion

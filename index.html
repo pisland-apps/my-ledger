@@ -5162,9 +5162,19 @@
          Expenses with several rows added, or several attachments) both the title bar and the
          Commit Entry button scrolled out of view along with the fields — needing a scroll to the
          very bottom just to save or close. Header and the Commit/Delete footer are now
-         flex-shrink:0 (never scroll away); only the form-fields div in between scrolls. -->
+         flex-shrink:0 (never scroll away); only the form-fields div in between scrolls.
+         v381: that only works once the sheet itself has a height cap — flex-shrink:0 keeps the
+         header/footer from scrolling away, but without a max-height on the sheet there was
+         nothing forcing the *middle* div to actually stop growing and start scrolling instead, so
+         it just kept expanding past the viewport. Unnoticeable on a short form/short footer, but
+         once "🔁 Repeat" + "🕒 Save as Planned" are visible (new Income/Expense entries — see
+         txPlannedRepeatWrap/txSavePlannedBtn below) the footer grows tall enough to push the whole
+         sheet past screen height, and the overflow had nowhere defined to go — it just rendered
+         past the bottom of the viewport, overlapping whatever was there. Capped at
+         calc(100vh - 32px) (matches .modal's own 16px top+bottom padding) below, same idiom
+         templatePickerModal above already uses at 75vh. -->
     <div class="modal" id="txModal">
-        <div class="modal-sheet" style="padding:0; display:flex; flex-direction:column; overflow:hidden;">
+        <div class="modal-sheet" style="padding:0; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 32px);">
             <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:20px 20px 12px; flex-shrink:0; border-bottom:1px solid var(--border-color);">
                 <h3 id="txModalTitle" style="font-weight: 800; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Log Ledger Item</h3>
                 <button type="button" id="txTemplateStarBtn" data-click="openTemplatePicker" title="Use a transaction template" style="background:none; border:none; font-size:1.35rem; padding:6px; flex:0 0 auto; line-height:1; display:flex;">⭐</button>

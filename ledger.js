@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v387";
+        const APP_VERSION = "v388";
         const APP_VERSION_DATE = "2026-09-15";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -17743,7 +17743,14 @@
             detailWrap.innerHTML = accNames.map(accName => `
                 <div style="margin-bottom:14px;">
                     <div style="font-size:0.72rem; font-weight:800; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">📊 ${escapeHtml(accName)}</div>
-                    <table style="width:100%; border-collapse:collapse; font-size:0.78rem; white-space:nowrap;">
+                    <table style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:0.78rem; white-space:nowrap;">
+                        <colgroup>
+                            <col style="width:34%;">
+                            <col style="width:18%;">
+                            <col style="width:18%;">
+                            <col style="width:18%;">
+                            <col style="width:12%;">
+                        </colgroup>
                         <thead>
                             <tr style="text-align:left; color:var(--text-muted); font-size:0.68rem; text-transform:uppercase;">
                                 <th style="padding:6px 10px;">Fund</th>

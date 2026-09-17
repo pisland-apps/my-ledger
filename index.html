@@ -2418,6 +2418,17 @@
             align-items: center;
             gap: 4px;
         }
+        /* v410: on a .config-item row (Categories, Templates, …) the label
+           (.category-display-badge) and the action-button group sit side by side with no
+           flex-shrink control, so when the row is too narrow to fit both at full size,
+           flexbox's default shrink-everything-proportionally behavior could shrink the BUTTON
+           GROUP itself — its buttons don't wrap, so the group's overflow (typically the last
+           button, e.g. 🗑) got silently clipped by the row's overflow:hidden instead of ever
+           reaching a wrapped line. The label's text already wraps fine on its own (see multi-line
+           category names), so it should absorb 100% of any shrinking; the action buttons should
+           never shrink at all. */
+        .config-item > .category-display-badge { min-width: 0; flex: 1 1 auto; }
+        .config-item > .category-display-badge ~ div { flex-shrink: 0; }
 
         /* ===== App Lock (PBKDF2 + AES-GCM) ===== */
         #lockOverlay {

@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v388";
-        const APP_VERSION_DATE = "2026-09-15";
+        const APP_VERSION = "v407";
+        const APP_VERSION_DATE = "2026-09-17";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -1403,14 +1403,6 @@
         let portfolioLedgerYearsCache = [];
         let ledgerBackToPage = "workspace"; 
 
-        // v86: which page the Backup & Restore page's Back button should return to — set by
-        // navigateToBackupPage()'s optional param. "datasecurity" (the default, matching the
-        // pre-v86 behavior) when reached via the Data Security hub's own "Backup & Restore" row;
-        // "workspace" when reached via the dashboard header's 💾 shortcut, which used to always
-        // land back on the Data Security hub regardless — a page the user may never have actually
-        // visited — forcing a second Back tap to actually get back to the dashboard.
-        let backupBackToPage = "datasecurity";
-
         // Fund's own Activity page (v48) — mirrors an account's Activity page, but scoped to one
         // fund's Buy/Sell/Dividend/Contribution transactions only.
         let activeFundActivityId = null;
@@ -1983,15 +1975,12 @@
             const tagsPage = document.getElementById("page-tags");
             const tagReportPage = document.getElementById("page-tag-report");
             const budgetPage = document.getElementById("page-budget");
-            const backupPage = document.getElementById("page-backup");
-            const autolockPage = document.getElementById("page-autolock");
             const databasePage = document.getElementById("page-database");
             // v278: bucketed with databasePage below rather than given its own dedicated
-            // handleAttachmentReviewBackClick() — matches the existing shortcut already used for
-            // databasePage itself (whose on-screen "← Back" goes to Data & Security, yet hardware
-            // back here still falls through to navigateToWorkspace() same as this whole bucket),
-            // so hardware back from this new page follows that same established precedent rather
-            // than introducing a one-off exception.
+            // handleAttachmentReviewBackClick() — matches databasePage itself, whose on-screen
+            // "← Back" and hardware/gesture back both land on navigateToWorkspace() (as of v394;
+            // previously the on-screen button went to Data & Security while hardware back here
+            // already jumped straight to the Dashboard — that mismatch is what v394 fixed).
             const attachmentReviewPage = document.getElementById("page-attachment-review");
             const totalSummaryPage = document.getElementById("page-total-summary");
             const monthlyTrendPage = document.getElementById("page-monthly-trend");
@@ -2002,7 +1991,26 @@
             const currencyReportPage = document.getElementById("page-currency-report");
             const navUpdatePage = document.getElementById("page-navupdate");
             const dataSecurityPage = document.getElementById("page-datasecurity");
-            const membersPage = document.getElementById("page-members");
+            // v394: the items that used to be inline panels on page-datasecurity (Background
+            // Theme/Net Worth Card Style/Companion/Dashboard Widgets) are now
+            // their own pages, bucketed below with Categories/Backup/etc. — same treatment as
+            // those, since their on-screen "← Back" also now goes straight to navigateToWorkspace()
+            // (see the "v394" comment on that bucket below). v397: Monthly Trend Mascot's own
+            // separate page was merged into page-companion (a toggle now picks which of the two
+            // settings that one page's grid edits) — no separate page-id to bucket here anymore.
+            // v398: Default Accounts' own page was folded back into page-categories (grouped with
+            // the other add-transaction defaults) — no separate page-id here either.
+            // v402: Manage Members/Backup & Restore/Auto-Lock's own pages were folded into
+            // page-datasecurity itself (embedded inline, not just linked to) — no separate
+            // page-ids for those either now.
+            // v403: Companion's own page was folded into page-networthcardstyle (both only ever
+            // customized the Portfolio Net Worth card) — no separate page-id for it either now.
+            // v405: Currency Setting used to be #currencyModal, a popup dialog rather than a
+            // page — it's page-currencyconfig now, bucketed here with the others.
+            const bgThemePage = document.getElementById("page-bgtheme");
+            const netWorthCardStylePage = document.getElementById("page-networthcardstyle");
+            const dashboardWidgetsPage = document.getElementById("page-dashboardwidgets");
+            const currencyConfigPage = document.getElementById("page-currencyconfig");
             const memberPage = document.getElementById("page-member");
             const fundActivityPage = document.getElementById("page-fundactivity");
             const currencyActivityPage = document.getElementById("page-currencyactivity");
@@ -2015,8 +2023,6 @@
                 handleCurrencyActivityBackClick();
             } else if (!fundActivityPage.classList.contains("hidden")) {
                 handleFundActivityBackClick();
-            } else if (!membersPage.classList.contains("hidden")) {
-                navigateToDataSecurityPage();
             } else if (!memberPage.classList.contains("hidden")) {
                 navigateToWorkspace();
             } else if (!accountsPage.classList.contains("hidden")) {
@@ -2036,8 +2042,6 @@
                 !tagsPage.classList.contains("hidden") ||
                 !tagReportPage.classList.contains("hidden") ||
                 !budgetPage.classList.contains("hidden") ||
-                !backupPage.classList.contains("hidden") ||
-                !autolockPage.classList.contains("hidden") ||
                 !databasePage.classList.contains("hidden") ||
                 !attachmentReviewPage.classList.contains("hidden") ||
                 !totalSummaryPage.classList.contains("hidden") ||
@@ -2049,6 +2053,10 @@
                 !currencyReportPage.classList.contains("hidden") ||
                 !navUpdatePage.classList.contains("hidden") ||
                 !dataSecurityPage.classList.contains("hidden") ||
+                !bgThemePage.classList.contains("hidden") ||
+                !netWorthCardStylePage.classList.contains("hidden") ||
+                !dashboardWidgetsPage.classList.contains("hidden") ||
+                !currencyConfigPage.classList.contains("hidden") ||
                 !inventoryPage.classList.contains("hidden") ||
                 !plannedPaymentsPage.classList.contains("hidden")
             ) {
@@ -2445,26 +2453,27 @@
             navigateToTagReportForTag(el.dataset.name);
         }
 
-        // v224: single toggle for the relocated Dashboard Widgets settings panel (Setting hub) —
-        // replaces the two separate inline "⚙ Settings" buttons that used to sit directly on the
-        // Dashboard's Accounts/Recent Transactions widgets. Syncs the order <select> to the
-        // current setting each time the panel opens, same as toggleBgThemeSettings() does for
-        // its swatch grid.
-        function toggleDashboardWidgetsSettings() {
-            const panel = document.getElementById("dashboardWidgetsSettingsPanel");
-            if (!panel) return;
-            const isHidden = panel.style.display === "none";
-            if (isHidden) {
-                const orderSel = document.getElementById("dashboardWidgetOrderSelect");
-                if (orderSel) orderSel.value = dashboardWidgetOrder;
-                syncAccountPickerButtonText("dashboardWidgetOrderSelect");
-                const trendToggle = document.getElementById("dashboardMonthlyTrendToggle");
-                if (trendToggle) trendToggle.checked = showMonthlyTrendOnDashboard;
-                const budgetToggle = document.getElementById("dashboardBudgetWidgetToggle");
-                if (budgetToggle) budgetToggle.checked = dashboardBudgetWidgetEnabled;
-                renderDashboardBudgetCategoryToggles();
-            }
-            panel.style.display = isHidden ? "flex" : "none";
+        // v224: settings for the Dashboard's widgets (Accounts/Recent Transactions/Monthly
+        // Trend/Budget) — replaces the two separate inline "⚙ Settings" buttons that used to sit
+        // directly on the Dashboard's Accounts/Recent Transactions widgets. Syncs the order
+        // <select> and toggles to the current setting each time the page opens.
+        // v394: this used to be a toggle*Settings() function that expanded/collapsed an inline
+        // panel on page-datasecurity itself; now page-dashboardwidgets is its own full page (see
+        // the other 6 navigateTo*Page() functions below for the same change) so this just does
+        // the same field-syncing then navigates there, no open/close branching needed.
+        function navigateToDashboardWidgetsPage() {
+            workspaceScrollY = window.scrollY;
+            showPage("page-dashboardwidgets");
+            window.scrollTo(0, 0);
+            pushVirtualState("dashboardwidgets");
+            const orderSel = document.getElementById("dashboardWidgetOrderSelect");
+            if (orderSel) orderSel.value = dashboardWidgetOrder;
+            syncAccountPickerButtonText("dashboardWidgetOrderSelect");
+            const trendToggle = document.getElementById("dashboardMonthlyTrendToggle");
+            if (trendToggle) trendToggle.checked = showMonthlyTrendOnDashboard;
+            const budgetToggle = document.getElementById("dashboardBudgetWidgetToggle");
+            if (budgetToggle) budgetToggle.checked = dashboardBudgetWidgetEnabled;
+            renderDashboardBudgetCategoryToggles();
         }
 
         async function handleDashboardBudgetWidgetToggleChange(el) {
@@ -2521,21 +2530,9 @@
             await renderApp();
         }
 
-        // v227: single toggle for the relocated Default Payment/Receive Account settings panel
-        // (Setting hub) — these used to live in a card at the top of the Accounts page; moved
-        // here since they're app-wide preferences, not something specific to browsing accounts.
-        // Re-populates both pickers from the accounts list each time the panel opens, same as
-        // toggleDashboardWidgetsSettings() does for its own select.
-        async function toggleDefaultAccountsSettings() {
-            const panel = document.getElementById("defaultAccountsSettingsPanel");
-            if (!panel) return;
-            const isHidden = panel.style.display === "none";
-            if (isHidden) {
-                await populateDefaultPaymentAccountSelect();
-                await populateDefaultReceiveAccountSelect();
-            }
-            panel.style.display = isHidden ? "flex" : "none";
-        }
+        // v398: Default Payment/Receive Account settings moved into page-categories (as a
+        // "Default Accounts" block above "Default Category") — grouping it with the other
+        // add-transaction defaults instead of its own separate page. See renderCategoriesPage().
 
         // v224: persists the chosen Dashboard widget order and re-renders so it takes effect
         // immediately, even though the Dashboard itself isn't the visible page right now.
@@ -3026,7 +3023,31 @@
         // --- SPA NAVIGATION PIPELINE ---
         // Every top-level page div's id — used by showPage() to hide all but the target,
         // so adding a new page never risks leaving a stale one visible underneath.
-        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-backup", "page-autolock", "page-database", "page-attachment-review", "page-total-summary", "page-monthly-trend", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-members", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity", "page-inventory", "page-plannedpayments"];
+        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-database", "page-attachment-review", "page-total-summary", "page-monthly-trend", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-bgtheme", "page-networthcardstyle", "page-dashboardwidgets", "page-currencyconfig", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity", "page-inventory", "page-plannedpayments"];
+        // v406: which rail icon (by its data-click, and data-target for the one that uses
+        // sidebarGo instead of its own navigateTo*Page()) corresponds to which Settings page —
+        // used by updateSettingsIconRailActiveState() below to highlight the icon for whichever
+        // page is currently on screen. Deliberately has no entry for page-datasecurity itself
+        // (the Setting hub the rail's icons branch out from) or any non-Settings page — both
+        // fall through to "clear every icon's highlight", per request.
+        const SETTINGS_ICON_PAGE_MAP = {
+            "page-bgtheme": { click: "navigateToBgThemePage" },
+            "page-networthcardstyle": { click: "navigateToNetWorthCardStylePage" },
+            "page-dashboardwidgets": { click: "navigateToDashboardWidgetsPage" },
+            "page-currencyconfig": { click: "navigateToCurrencyConfigPage" },
+            "page-categories": { click: "navigateToCategoriesPage" },
+            "page-templates": { click: "navigateToTemplatesPage" },
+            "page-tags": { click: "navigateToTagsPage" },
+            "page-database": { click: "sidebarGo", target: "database" },
+        };
+        function updateSettingsIconRailActiveState(pageId) {
+            const match = SETTINGS_ICON_PAGE_MAP[pageId];
+            document.querySelectorAll(".settings-icon-btn").forEach(btn => {
+                const isMatch = !!match && btn.dataset.click === match.click && (match.target === undefined || btn.dataset.target === match.target);
+                btn.classList.toggle("active", isMatch);
+            });
+        }
+
         function showPage(id) {
             APP_PAGE_IDS.forEach(p => {
                 const el = document.getElementById(p);
@@ -3040,6 +3061,13 @@
             // Keeps the sidebar's active-item highlight correct even when it's persistently
             // visible (desktop/tablet) rather than only refreshed on drawer-open (mobile).
             updateSidebarActiveState();
+            // v396: only does anything on the 13 Settings pages (the ones with a .settings-split
+            // rail + content layout) — a no-op elsewhere, see the function itself.
+            sizeSettingsSplitColumns();
+            // v406: highlights the rail icon matching `id`, or clears every icon's highlight if
+            // `id` has no entry in SETTINGS_ICON_PAGE_MAP (non-Settings pages, and the Setting
+            // hub page itself) — cheap query, safe to run unconditionally on every navigation.
+            updateSettingsIconRailActiveState(id);
         }
 
         // Human-readable title for whichever page is currently on screen — used for the printed
@@ -3059,8 +3087,6 @@
                 case "page-tags": return "Manage Tags";
                 case "page-tag-report": return document.getElementById("tagReportTitle")?.textContent || "Spending by Tag";
                 case "page-budget": return "Budget — " + (document.getElementById("budgetPageMonthLabel")?.textContent || "");
-                case "page-backup": return "Export & Import";
-                case "page-autolock": return "Auto-Lock Settings";
                 case "page-database": return "Database";
                 case "page-attachment-review": return "Review Attachments";
                 case "page-total-summary": return "Total Bill Summary";
@@ -3074,7 +3100,6 @@
                 case "page-currency-report": return "Net Worth by Currency";
                 case "page-datasecurity": return "Settings";
                 case "page-navupdate": return "Daily NAV Update";
-                case "page-members": return "Manage Members";
                 case "page-member": return document.getElementById("memberPageTitle")?.textContent || "Member";
                 case "page-inventory": return "Inventory";
                 case "page-plannedpayments": return "Planned Payments";
@@ -4966,20 +4991,6 @@
             await renderCategoriesPage();
         }
 
-        function navigateToBackupPage(backTarget = "datasecurity") {
-            workspaceScrollY = window.scrollY;
-            backupBackToPage = backTarget;
-            showPage("page-backup");
-            window.scrollTo(0, 0);
-            pushVirtualState("backup");
-            calculateStorageMetrics();
-        }
-
-        function handleBackupBackClick() {
-            if (backupBackToPage === "workspace") navigateToWorkspace();
-            else navigateToDataSecurityPage();
-        }
-
         // "All Transactions" — used to be a sidebar item, now a bottom-of-dashboard button (v34).
         function navigateToAllLedgerPage() {
             navigateToLedgerPage("all");
@@ -5019,14 +5030,9 @@
             showPage("page-datasecurity");
             window.scrollTo(0, 0);
             pushVirtualState("datasecurity");
-        }
-
-        function navigateToMembersPage() {
-            closeSidebar();
-            workspaceScrollY = window.scrollY;
-            showPage("page-members");
-            window.scrollTo(0, 0);
-            pushVirtualState("members");
+            // v402: Manage Members is now embedded directly on this page (see the
+            // "widget-setting-card" block in index.html) rather than its own destination, so its
+            // list needs refreshing here the same way navigateToMembersPage() used to.
             renderMembersPage();
         }
 
@@ -5132,8 +5138,6 @@
             const ledgerHidden = document.getElementById("page-ledger").classList.contains("hidden");
             const accountsHidden = document.getElementById("page-accounts").classList.contains("hidden");
             const categoriesHidden = document.getElementById("page-categories").classList.contains("hidden");
-            const backupHidden = document.getElementById("page-backup").classList.contains("hidden");
-            const autolockHidden = document.getElementById("page-autolock").classList.contains("hidden");
             const databaseHidden = document.getElementById("page-database").classList.contains("hidden");
             const totalSummaryHidden = document.getElementById("page-total-summary").classList.contains("hidden");
             const monthlyTrendHidden = document.getElementById("page-monthly-trend").classList.contains("hidden");
@@ -5151,8 +5155,6 @@
             else if (!plannedPaymentsHidden) target = "plannedpayments";
             else if (!accountsHidden) target = "accounts";
             else if (!categoriesHidden) target = "categories";
-            else if (!backupHidden) target = "backup";
-            else if (!autolockHidden) target = "autolock";
             else if (!databaseHidden) target = "database";
             else if (!totalSummaryHidden) target = "total-summary";
             else if (!monthlyTrendHidden) target = "monthly-trend";
@@ -5172,9 +5174,11 @@
             }
         }
 
-        // Routes a sidebar tap to the matching page/modal. Backup & Restore, Accounts/Categories,
-        // Auto-Lock, App Local Database, and Spending/Income Breakdown are all full pages (not
-        // modals) — see the matching navigateTo*Page functions.
+        // Routes a sidebar tap to the matching page/modal. Accounts/Categories, App Local
+        // Database, and Spending/Income Breakdown are all full pages (not modals) — see the
+        // matching navigateTo*Page functions. (Backup & Restore/Manage Members/Auto-Lock no
+        // longer route here — v402 embedded them directly on page-datasecurity, reached only via
+        // navigateToDataSecurityPage()/the Setting sidebar entry.)
         function sidebarGo(el) {
             const target = el.dataset.target;
             closeSidebar();
@@ -5187,9 +5191,6 @@
             else if (target === "savings") navigateToSavingsPage();
             else if (target === "accounts") navigateToAccountsPage();
             else if (target === "categories") navigateToCategoriesPage();
-            else if (target === "backup") navigateToBackupPage();
-            else if (target === "members") navigateToMembersPage();
-            else if (target === "autolock") navigateToAutoLockPage();
             else if (target === "database") navigateToDatabasePage();
             else if (target === "total-summary") navigateToTotalSummaryPage();
             else if (target === "monthly-trend") navigateToMonthlyTrendPage();
@@ -5231,13 +5232,19 @@
         }
 
         // --- CURRENCY SETTINGS CONTROLS ---
-        function openCurrencyConfig() {
+        // v405: own full page now (page-currencyconfig) — used to be openCurrencyConfig()
+        // opening #currencyModal as a popup, inconsistent with every other Settings item's
+        // full-page treatment. Same setup logic, just showPage() instead of openModal().
+        function navigateToCurrencyConfigPage() {
+            workspaceScrollY = window.scrollY;
+            showPage("page-currencyconfig");
+            window.scrollTo(0, 0);
+            pushVirtualState("currencyconfig");
             const baseSelect = document.getElementById("baseCurrencySelect");
             baseSelect.innerHTML = Object.keys(fxRates).map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
             baseSelect.value = baseCurrency;
             renderFxRatesInputs();
             document.getElementById("fetchFxRatesStatus").textContent = "";
-            openModal("currencyModal");
         }
 
         // Renders one row per non-base currency in `rates` (defaults to the saved fxRates when
@@ -5315,8 +5322,11 @@
                 return;
             }
 
-            document.getElementById("settingsBasePill").textContent = baseCurrency;
-            closeModal("currencyModal");
+            const settingsBasePillEl = document.getElementById("settingsBasePill"); if (settingsBasePillEl) settingsBasePillEl.textContent = baseCurrency;
+            // v405: page-currencyconfig is a full page now, not a modal — stay put instead of
+            // closing anything; showToast() replaces the old closeModal("currencyModal") as the
+            // save confirmation.
+            showToast("Currency settings saved");
             renderApp();
         }
 
@@ -7975,11 +7985,60 @@
             buildBgThemeSwatchGrid();
         }
 
-        function toggleBgThemeSettings() {
-            const panel = document.getElementById("bgThemeSettingsPanel");
-            const isHidden = panel.style.display === "none";
-            if (isHidden) buildBgThemeSwatchGrid();
-            panel.style.display = isHidden ? "flex" : "none";
+        // v394: enterSettingsDetail/backToSettingsGrid/ensureOnDataSecurityPage (v392/v393) are
+        // gone — the 6 swatch-picker items (Background Theme, Net Worth Card Style, Companion,
+        // Monthly Trend Mascot, Dashboard Widgets, Default Accounts) are now full pages of their
+        // own (page-bgtheme etc.), same as Members/Categories/Templates/Tags/Backup/Auto-Lock/
+        // Database always were, instead of panels inside a shared #settingsDetailView on
+        // page-datasecurity. Each has a single "‹ Back" (straight to Dashboard, see
+        // navigateToWorkspace below) and the icon rail cloned in via cloneSettingsIconRails().
+
+        // v393/v394: clones the canonical #settingsIconGrid (page-datasecurity's icon rail) into
+        // every ".settings-icon-rail-slot" placeholder on every other Settings page so the rail
+        // stays visible no matter which Settings page you're on, instead of only on
+        // page-datasecurity itself. Runs once at bootstrap — the rail's buttons never change at
+        // runtime, so a one-time clone is enough; no id attributes are cloned (the source grid's
+        // own id is only used here, not read elsewhere), so there's no collision from having
+        // several copies of it in the DOM.
+        function cloneSettingsIconRails() {
+            const source = document.getElementById("settingsIconGrid");
+            if (!source) return;
+            document.querySelectorAll(".settings-icon-rail-slot").forEach(slot => {
+                slot.className = "settings-icon-grid";
+                slot.innerHTML = source.innerHTML;
+            });
+        }
+
+        // v396: the icon rail and detail pane inside every Settings page's .settings-split row
+        // used to scroll together as part of the whole document (body itself scrolls — see the
+        // top-level CSS reset). Bounds both columns to whatever viewport space is actually left
+        // below the nav-header (measured live, so it's correct regardless of nav-header height at
+        // any given breakpoint or however long its subtitle wraps to) and lets CSS's
+        // `overflow-y: auto` on each column (see .settings-icon-grid/.settings-page-content)
+        // handle the rest — each one now scrolls independently within that space. A no-op on any
+        // page without a .settings-split, so calling this from showPage() unconditionally on
+        // every navigation is cheap and safe. Re-run on resize/orientation change too, since the
+        // available space (and which breakpoint's nav-header height applies) can change without a
+        // navigation happening.
+        function sizeSettingsSplitColumns() {
+            const activePage = document.querySelector(".page:not(.hidden)");
+            const split = activePage ? activePage.querySelector(".settings-split") : null;
+            if (!split) return;
+            const top = split.getBoundingClientRect().top;
+            const available = Math.max(200, Math.round(window.innerHeight - top - 16));
+            split.querySelectorAll(":scope > .settings-icon-grid, :scope > .settings-page-content").forEach(col => {
+                col.style.maxHeight = available + "px";
+            });
+        }
+        window.addEventListener("resize", sizeSettingsSplitColumns);
+
+        // v394: own full page now (page-bgtheme), see the block comment above.
+        function navigateToBgThemePage() {
+            workspaceScrollY = window.scrollY;
+            showPage("page-bgtheme");
+            window.scrollTo(0, 0);
+            pushVirtualState("bgtheme");
+            buildBgThemeSwatchGrid();
         }
 
         // --- v326: Net Worth Card Style (Setting page) --------------------------------------
@@ -8032,11 +8091,19 @@
             applyNetWorthCardStyle(el.dataset.styleId);
             document.querySelectorAll("#netWorthCardStyleSwatchGrid .color-swatch").forEach(s => s.classList.toggle("selected", s.dataset.styleId === el.dataset.styleId));
         }
-        function toggleNetWorthCardStyleSettings() {
-            const panel = document.getElementById("netWorthCardStyleSettingsPanel");
-            const isHidden = panel.style.display === "none";
-            if (isHidden) buildNetWorthCardStyleSwatchGrid();
-            panel.style.display = isHidden ? "flex" : "none";
+        // v394: own full page now (page-networthcardstyle). v403: merged with what used to be
+        // the separate Companion page — `mascotTarget` ("companion" or "trend", same as
+        // navigateToCompanionPage() used to take) picks which of the two Companion settings the
+        // page's mascot picker opens on; omit it (e.g. from the rail icon, which has no opinion)
+        // to leave the Companion section on whichever tab it last showed.
+        function navigateToNetWorthCardStylePage(mascotTarget) {
+            workspaceScrollY = window.scrollY;
+            showPage("page-networthcardstyle");
+            window.scrollTo(0, 0);
+            pushVirtualState("networthcardstyle");
+            buildNetWorthCardStyleSwatchGrid();
+            applyMascotTargetUI(mascotTarget || mascotSettingsTarget);
+            buildCompanionSwatchGrid();
         }
 
         // --- v341: Companion (Setting page) --------------------------------------------------
@@ -8089,6 +8156,28 @@
         const MONTHLY_TREND_MASCOT_SETTINGS_KEY = "monthlyTrendMascotId"; // v382
         const COMPANION_PHOTOS_SETTINGS_KEY = "companionCustomImages";
         const MAX_COMPANION_PHOTOS = 20;
+        // v397: which spot the merged Companion page's one swatch grid (#companionSwatchGrid) is
+        // currently editing — "companion" (the Net Worth card mascot) or "trend" (the Monthly
+        // Trend title mascot). Both settings still live in their own separate keys above (and
+        // both still resolve/render independently everywhere else in the app, e.g.
+        // renderMonthlyTrendMascotIcon()'s "Match Companion" fallback) — this variable only
+        // controls which one this one page is showing/editing right now, reset by
+        // navigateToCompanionPage()'s target argument every time the page opens.
+        let mascotSettingsTarget = "companion";
+        const MASCOT_TARGET_HINTS = {
+            companion: 'A small mascot next to your Portfolio Net Worth figure. Save up to 20 of your own photos below and switch between them any time — each preview shows how it actually looks on the card. Tap the "×" on a photo to remove it.',
+            trend: 'The small mascot next to the "Monthly Trend" title on your Dashboard. Leave this on "Match Companion" to always mirror the Net Worth card pick, or choose something different just for this spot.',
+        };
+        function applyMascotTargetUI(target) {
+            mascotSettingsTarget = target;
+            document.querySelectorAll("#mascotTargetToggle .btn-util").forEach(b => b.classList.toggle("active", b.dataset.target === target));
+            const hint = document.getElementById("mascotTargetHint");
+            if (hint) hint.textContent = MASCOT_TARGET_HINTS[target] || MASCOT_TARGET_HINTS.companion;
+        }
+        function selectMascotTarget(el) {
+            applyMascotTargetUI(el.dataset.target);
+            buildCompanionSwatchGrid();
+        }
         async function getCompanionCustomPhotos() {
             const rec = await readKeyDB("settings", COMPANION_PHOTOS_SETTINGS_KEY);
             return (rec && Array.isArray(rec.value)) ? rec.value : [];
@@ -8139,12 +8228,16 @@
             // v348: a freshly uploaded photo is selected right away — matches v343-v347's
             // behavior where uploading always became the active companion, and saves an extra
             // tap versus uploading then having to go find and select the new thumbnail.
-            await applyCompanionPet("custom:" + newPhoto.id);
+            // v397: "active" now means whichever target the merged page's toggle is currently on
+            // (Net Worth card vs Monthly Trend), since a single upload control is now shared by
+            // both instead of the Companion grid always claiming it.
+            if (mascotSettingsTarget === "trend") {
+                try { await writeDB(STORES.SETTINGS, { key: MONTHLY_TREND_MASCOT_SETTINGS_KEY, value: "custom:" + newPhoto.id }); } catch (e) {}
+                renderMonthlyTrendMascotIcon();
+            } else {
+                await applyCompanionPet("custom:" + newPhoto.id);
+            }
             await buildCompanionSwatchGrid();
-            // v383: keep the Monthly Trend Mascot grid's "My Photos" count/list in sync if it's
-            // also open right now — same reasoning as removeCompanionCustomPhoto()'s matching call.
-            const trendPanel = document.getElementById("monthlyTrendMascotSettingsPanel");
-            if (trendPanel && trendPanel.style.display !== "none") await buildMonthlyTrendMascotSwatchGrid();
         }
         // v348: replaces v343-v347's single removeCompanionCustomImage() (which cleared the one
         // fixed slot) — this removes one specific photo from the library, identified by the "×"
@@ -8168,8 +8261,6 @@
                 await writeDB(STORES.SETTINGS, { key: MONTHLY_TREND_MASCOT_SETTINGS_KEY, value: "match" });
             }
             await buildCompanionSwatchGrid();
-            const trendPanel = document.getElementById("monthlyTrendMascotSettingsPanel");
-            if (trendPanel && trendPanel.style.display !== "none") await buildMonthlyTrendMascotSwatchGrid();
             renderMonthlyTrendMascotIcon();
         }
         async function getSavedCompanionId() {
@@ -8231,16 +8322,35 @@
             }
             return resolvedId;
         }
+        // v397: single grid for the merged Companion page — reads mascotSettingsTarget to decide
+        // which of the two independent settings (Net Worth card companion vs Monthly Trend
+        // mascot) it's currently showing/editing. Replaces the old separate
+        // buildMonthlyTrendMascotSwatchGrid() (deleted) — that page's whole body is now just this
+        // same grid rendered with a different selectedId/clickHandler/leadingOptions.
         async function buildCompanionSwatchGrid() {
             const grid = document.getElementById("companionSwatchGrid");
             if (!grid) return;
-            const selectedId = await getSavedCompanionId();
-            grid.innerHTML = await buildMascotSwatchGridHTML(selectedId, "selectCompanion", []);
+            if (mascotSettingsTarget === "trend") {
+                const selectedId = await getSavedMonthlyTrendMascotId();
+                const matchOption = {
+                    id: "match", name: "Match Companion", short: "🔗",
+                    svg: `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 24a6 6 0 0 1 6-6h6" /><path d="M30 24a6 6 0 0 1-6 6h-6" />
+                        <path d="M20 14l4 4-4 4" /><path d="M28 26l-4 4 4 4" />
+                    </svg>`,
+                };
+                grid.innerHTML = await buildMascotSwatchGridHTML(selectedId, "selectMonthlyTrendMascot", [matchOption]);
+            } else {
+                const selectedId = await getSavedCompanionId();
+                grid.innerHTML = await buildMascotSwatchGridHTML(selectedId, "selectCompanion", []);
+            }
         }
-        // v382: shared by both the Companion grid and the (independent) Monthly Trend Mascot
-        // grid below — `leadingOptions` lets a caller prepend extra hand-written swatches (the
-        // Monthly Trend picker uses this for its "Match Companion" option) ahead of the regular
-        // None/Zodiac/My Photos groups that both pickers share.
+        // v382: shared by both the Companion pick and the (independent) Monthly Trend Mascot pick
+        // — `leadingOptions` lets a caller prepend extra hand-written swatches (the Monthly Trend
+        // picker uses this for its "Match Companion" option) ahead of the regular None/My Photos
+        // groups both pickers share. v397: both used to be rendered into two separate grids on two
+        // separate pages; now buildCompanionSwatchGrid() above calls this once for whichever
+        // target the merged page's toggle is on, into the one shared #companionSwatchGrid.
         async function buildMascotSwatchGridHTML(selectedId, clickHandler, leadingOptions) {
             const photos = await getCompanionCustomPhotos();
             const swatchHTML = c => `
@@ -8263,12 +8373,13 @@
             // .companion-swatch-photo-holder); an "＋ Add" tile follows for as long as there's
             // room left (hidden once the library hits MAX_COMPANION_PHOTOS, with a plain count
             // in the heading telling the person why — the "×" on any thumbnail is then the only
-            // way to make room again). v382: the upload tile only renders in the Companion grid
-            // (clickHandler === "selectCompanion") — both pickers share the same 20-photo library
-            // (getCompanionCustomPhotos/MAX_COMPANION_PHOTOS), so a second upload entry point on
-            // the Monthly Trend grid would just be a duplicate of the same control. The "×" remove
-            // button, unlike Add, is NOT restricted this way — it's just a delete on the shared
-            // library, not a second instance of any control, so it's available from either grid.
+            // way to make room again). v397: the upload tile used to only render for the Companion
+            // grid specifically (clickHandler === "selectCompanion") back when Companion and
+            // Monthly Trend Mascot were two separate pages each with their own copy of this grid —
+            // now there's only ever one physical grid on screen at a time (the merged Companion
+            // page's toggle just swaps which target it's editing), so the upload tile always
+            // renders; handleCompanionCustomImageSelected() checks mascotSettingsTarget itself to
+            // decide which of the two settings a fresh upload actually applies to.
             html += `<p class="companion-group-label">My Photos (${photos.length}/${MAX_COMPANION_PHOTOS})</p>`;
             html += `<div class="companion-swatch-grid">`;
             html += photos.map(p => {
@@ -8284,7 +8395,7 @@
                         <span class="companion-swatch-label">Photo</span>
                     </span>`;
             }).join("");
-            if (photos.length < MAX_COMPANION_PHOTOS && clickHandler === "selectCompanion") {
+            if (photos.length < MAX_COMPANION_PHOTOS) {
                 html += `
                     <span class="companion-swatch-wrap">
                         <span class="companion-swatch" data-click="triggerCompanionCustomImageUpload" title="Upload a new photo">
@@ -8306,64 +8417,46 @@
             // this call is safe (a harmless no-op re-render) either way.
             renderMonthlyTrendMascotIcon();
         }
-        async function toggleCompanionSettings() {
-            const panel = document.getElementById("companionSettingsPanel");
-            const isHidden = panel.style.display === "none";
-            if (isHidden) await buildCompanionSwatchGrid();
-            panel.style.display = isHidden ? "flex" : "none";
+        // v394: own full page now (page-companion); v397: page merged with what used to be the
+        // separate Monthly Trend Mascot page — `target` ("companion" or "trend") picks which of
+        // the two settings the merged toggle/grid opens on, defaulting to the Net Worth card one.
+        // v403: page-companion itself was folded into page-networthcardstyle — this now just
+        // forwards there with the same target argument, kept as a thin wrapper so
+        // toggleCompanionSettingsFromDashboard()/toggleMonthlyTrendMascotSettingsFromDashboard()
+        // below didn't need to change.
+        function navigateToCompanionPage(target = "companion") {
+            navigateToNetWorthCardStylePage(target);
         }
-        // v382: sibling picker to selectCompanion/toggleCompanionSettings/buildCompanionSwatchGrid
-        // above, for the independent Monthly Trend Mascot setting — same shape, writing to
+        // v382: sibling picker to selectCompanion/buildCompanionSwatchGrid above, for the
+        // independent Monthly Trend Mascot setting — same shape, writing to
         // MONTHLY_TREND_MASCOT_SETTINGS_KEY instead of COMPANION_SETTINGS_KEY, and with a leading
         // "Match Companion" swatch (id "match") that isn't in the COMPANIONS list itself since it
-        // has no meaning for the Companion picker.
+        // has no meaning for the Companion picker. v397: both pickers render into the same
+        // #companionSwatchGrid now (see buildCompanionSwatchGrid()'s mascotSettingsTarget branch),
+        // so this updates `.selected` there too, not a separate #monthlyTrendMascotSwatchGrid
+        // (deleted along with the standalone page).
         async function selectMonthlyTrendMascot(el) {
             const id = el.dataset.petId;
             try { await writeDB(STORES.SETTINGS, { key: MONTHLY_TREND_MASCOT_SETTINGS_KEY, value: id }); } catch (e) {}
-            document.querySelectorAll("#monthlyTrendMascotSwatchGrid .companion-swatch").forEach(s => s.classList.toggle("selected", s.dataset.petId === id));
+            document.querySelectorAll("#companionSwatchGrid .companion-swatch").forEach(s => s.classList.toggle("selected", s.dataset.petId === id));
             renderMonthlyTrendMascotIcon();
-        }
-        async function buildMonthlyTrendMascotSwatchGrid() {
-            const grid = document.getElementById("monthlyTrendMascotSwatchGrid");
-            if (!grid) return;
-            const selectedId = await getSavedMonthlyTrendMascotId();
-            const matchOption = {
-                id: "match", name: "Match Companion", short: "🔗",
-                svg: `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M18 24a6 6 0 0 1 6-6h6" /><path d="M30 24a6 6 0 0 1-6 6h-6" />
-                    <path d="M20 14l4 4-4 4" /><path d="M28 26l-4 4 4 4" />
-                </svg>`,
-            };
-            grid.innerHTML = await buildMascotSwatchGridHTML(selectedId, "selectMonthlyTrendMascot", [matchOption]);
-        }
-        async function toggleMonthlyTrendMascotSettings() {
-            const panel = document.getElementById("monthlyTrendMascotSettingsPanel");
-            const isHidden = panel.style.display === "none";
-            if (isHidden) await buildMonthlyTrendMascotSwatchGrid();
-            panel.style.display = isHidden ? "flex" : "none";
         }
         // v382: sibling to toggleCompanionSettingsFromDashboard() above — tapping the mascot next
         // to "Monthly Trend" itself (not the title/chevron around it, which still toggles the
         // table — see the span's own data-click in index.html, which shadows the parent's during
-        // event delegation's closest() walk) jumps to its own settings panel the same way.
-        // Tapping the mascot itself on the dashboard jumps straight to Setting > Companion
-        // (expanded) rather than just being decorative — mirrors how other dashboard chips
-        // (e.g. the header currency pill) already double as shortcuts into Settings.
+        // event delegation's closest() walk) jumps to its own settings the same way.
+        // Tapping the mascot itself on the dashboard jumps straight to Settings rather than just
+        // being decorative — mirrors how other dashboard chips (e.g. the header currency pill)
+        // already double as shortcuts into Settings.
+        // v394: was a two-step "navigate to hub, then setTimeout to open the panel there" dance
+        // back when these were inline panels on page-datasecurity; now they're real pages so this
+        // is just a direct call. v397: both dashboard mascot taps now land on the same merged
+        // Companion page, just defaulting to a different tab of its toggle.
         function toggleCompanionSettingsFromDashboard() {
-            navigateToDataSecurityPage();
-            setTimeout(async () => {
-                const panel = document.getElementById("companionSettingsPanel");
-                if (panel && panel.style.display === "none") await toggleCompanionSettings();
-                panel && panel.scrollIntoView({ behavior: "smooth", block: "center" });
-            }, 50);
+            navigateToCompanionPage("companion");
         }
         function toggleMonthlyTrendMascotSettingsFromDashboard() {
-            navigateToDataSecurityPage();
-            setTimeout(async () => {
-                const panel = document.getElementById("monthlyTrendMascotSettingsPanel");
-                if (panel && panel.style.display === "none") await toggleMonthlyTrendMascotSettings();
-                panel && panel.scrollIntoView({ behavior: "smooth", block: "center" });
-            }, 50);
+            navigateToCompanionPage("trend");
         }
         // v347: one-time upgrade path for anyone who picked a Companion on v341-v346, back when
         // the pick lived in localStorage — copies it into the new IndexedDB settings-store key
@@ -8622,7 +8715,7 @@
             await loadMembersCache();
             renderSidebarMembers();
             renderSidebarAccountTypeShortcuts();
-            if (!document.getElementById("page-members").classList.contains("hidden")) {
+            if (!document.getElementById("page-datasecurity").classList.contains("hidden")) {
                 await renderMembersPage();
             }
             if (!document.getElementById("page-workspace").classList.contains("hidden")) {
@@ -9565,6 +9658,10 @@
         // indented directly beneath, followed by any remaining Main Categories that have none.
         async function renderCategoriesPage() {
             populateDefaultCategorySelects();
+            // v398: Default Payment/Receive Account moved here from its own page — see comment
+            // on populateDefaultPaymentAccountSelect()/populateDefaultReceiveAccountSelect().
+            await populateDefaultPaymentAccountSelect();
+            await populateDefaultReceiveAccountSelect();
 
             // v72: the 📊 toggle flips excludeFromSavings in place — solid + labeled when a
             // category is currently excluded, dim when it counts normally in the report.
@@ -15805,7 +15902,7 @@
 
             const { accounts, txs, nativeBalances } = await computeAccountBalances();
 
-            document.getElementById("settingsBasePill").textContent = baseCurrency;
+            const settingsBasePillEl = document.getElementById("settingsBasePill"); if (settingsBasePillEl) settingsBasePillEl.textContent = baseCurrency;
 
             let globalBaseNetWorth = 0;
             const currencyTotals = {}; // native (unconverted) sum per currency actually held, across every account
@@ -18190,13 +18287,6 @@
             renderMonthlyTrendChart(txs, accounts);
         }
 
-        function navigateToAutoLockPage() {
-            workspaceScrollY = window.scrollY;
-            showPage("page-autolock");
-            window.scrollTo(0, 0);
-            pushVirtualState("autolock");
-        }
-
         function navigateToDatabasePage() {
             workspaceScrollY = window.scrollY;
             showPage("page-database");
@@ -18348,6 +18438,7 @@
         }
 
         async function bootstrap() {
+            cloneSettingsIconRails();
             const lockResult = await runLockFlow();
             await initDB();
             if (lockResult.isNewSetup) {
@@ -19186,7 +19277,7 @@
             handleChangePasscodeSubmit: () => handleChangePasscodeSubmit(),
             openResetAppDataModal: () => openResetAppDataModal(),
             handleResetAppDataSubmit: () => handleResetAppDataSubmit(),
-            openCurrencyConfig: () => openCurrencyConfig(),
+            navigateToCurrencyConfigPage: () => navigateToCurrencyConfigPage(),
             lockAppNow: () => lockAppNow(),
             navigateToSavingsPage: () => navigateToSavingsPage(),
             handleSavingsBackClick: () => handleSavingsBackClick(),
@@ -19211,8 +19302,6 @@
             openTemplatePicker: () => openTemplatePicker(),
             closeTemplatePicker: () => closeTemplatePicker(),
             selectTemplateFromPicker: (el) => selectTemplateFromPicker(el),
-            navigateToBackupPage: () => navigateToBackupPage(),
-            handleBackupBackClick: () => handleBackupBackClick(),
             navigateToAllLedgerPage: () => navigateToAllLedgerPage(),
             navigateToDataSecurityPage: () => navigateToDataSecurityPage(),
             // v278: page-database's own back button used to only be reachable via sidebarGo's
@@ -19222,7 +19311,6 @@
             // needs its own dispatch entry now too.
             navigateToDatabasePage: () => navigateToDatabasePage(),
             navigateToAttachmentReviewPage: () => navigateToAttachmentReviewPage(),
-            navigateToMembersPage: () => navigateToMembersPage(),
             sidebarGoMember: (el) => sidebarGoMember(el),
             sidebarFilterAccountsByType: (el) => sidebarFilterAccountsByType(el),
             clearAccountsPageTypeFilter: () => clearAccountsPageTypeFilter(),
@@ -19235,19 +19323,25 @@
             openAddAccountForMember: () => openAddAccountForMember(),
             toggleMemberNetWorthCollapse: () => toggleMemberNetWorthCollapse(),
             selectMemberColor: (el) => selectMemberColor(el),
-            toggleBgThemeSettings: () => toggleBgThemeSettings(),
-            toggleDashboardWidgetsSettings: () => toggleDashboardWidgetsSettings(),
+            // v394: the 6 Setting items below (Background Theme, Net Worth Card Style, Companion,
+            // Monthly Trend Mascot, Dashboard Widgets, Default Accounts) are now their own full
+            // pages (page-bgtheme etc.) instead of inline panels on page-datasecurity — see the
+            // navigateTo*Page() functions themselves for the v392/v393/v394 history.
+            navigateToBgThemePage: () => navigateToBgThemePage(),
+            navigateToDashboardWidgetsPage: () => navigateToDashboardWidgetsPage(),
             navigateToMonthlyTrendPage: () => navigateToMonthlyTrendPage(),
-            toggleDefaultAccountsSettings: () => toggleDefaultAccountsSettings(),
             selectBgTheme: (el) => selectBgTheme(el),
-            toggleNetWorthCardStyleSettings: () => toggleNetWorthCardStyleSettings(),
+            // v403: navigateToCompanionPage() has no data-click of its own anymore (Companion's
+            // rail icon/page merged into Net Worth Card's) — it's still called directly from JS
+            // by toggleCompanionSettingsFromDashboard()/toggleMonthlyTrendMascotSettingsFromDashboard()
+            // below, so no dispatch entry is needed here.
+            navigateToNetWorthCardStylePage: () => navigateToNetWorthCardStylePage(),
             selectNetWorthCardStyle: (el) => selectNetWorthCardStyle(el),
-            toggleCompanionSettings: () => toggleCompanionSettings(),
+            selectMascotTarget: (el) => selectMascotTarget(el),
             toggleCompanionSettingsFromDashboard: () => toggleCompanionSettingsFromDashboard(),
             selectCompanion: (el) => selectCompanion(el),
             triggerCompanionCustomImageUpload: () => triggerCompanionCustomImageUpload(),
             removeCompanionCustomPhoto: (el) => removeCompanionCustomPhoto(el),
-            toggleMonthlyTrendMascotSettings: () => toggleMonthlyTrendMascotSettings(),
             toggleMonthlyTrendMascotSettingsFromDashboard: (el, e) => { e.stopPropagation(); toggleMonthlyTrendMascotSettingsFromDashboard(); },
             selectMonthlyTrendMascot: (el) => selectMonthlyTrendMascot(el),
             triggerAccLogoUpload: () => triggerAccLogoUpload(),

@@ -2428,7 +2428,17 @@
            category names), so it should absorb 100% of any shrinking; the action buttons should
            never shrink at all. */
         .config-item > .category-display-badge { min-width: 0; flex: 1 1 auto; }
-        .config-item > .category-display-badge ~ div { flex-shrink: 0; }
+        .config-item > .category-display-badge ~ div { flex-shrink: 0; margin-left: auto; }
+        /* v411: min-width:0 above stopped the button group from ever being clipped, but on a row
+           whose label is itself long/multi-part (e.g. a Template's name + amount + account line,
+           or a Category with its 🚫 "Not in Report" badge) that just pushed the squeeze onto the
+           label instead — text wrapped down to a few characters per line, or overlapped the
+           buttons, well before the row was actually out of room. flex-wrap here lets a label that
+           can't fit *anything* of the button group alongside it drop the button group to a second
+           line of its own (full label width to wrap normally on line one; margin-left:auto above
+           keeps the now-solo button group right-aligned, matching where it sits when both fit on
+           one line). Short labels are unaffected — they still share the single line as before. */
+        .config-item:has(> .category-display-badge) { flex-wrap: wrap; }
 
         /* ===== App Lock (PBKDF2 + AES-GCM) ===== */
         #lockOverlay {

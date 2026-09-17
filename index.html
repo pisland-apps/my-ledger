@@ -1988,6 +1988,17 @@
         }
         .form-row { margin-bottom: 12px; }
         .form-row-inline { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+        /* v408: grid items default to min-width:auto, which — combined with white-space:nowrap on
+           .account-picker-btn span:first-child's ellipsis truncation — let long text (e.g. a long
+           account name) force the 1fr track wider than intended, overflowing the row/card instead
+           of actually eliding. min-width:0 makes every .form-row-inline column respect its track
+           width so text-overflow:ellipsis can do its job. */
+        .form-row-inline > div { min-width: 0; }
+        /* v408: stacked variant — same row/label styling as .form-row-inline but single column, for
+           rows whose values can be long enough that even ellipsis truncation would hide the useful
+           part of the name (e.g. Default Payment/Receive Account) and full-width room reads better
+           than a squeezed two-column layout. */
+        .form-row-stack { display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 12px; }
         label { display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; }
         /* Icon-beside-field rows (Account / Date / Description / Notes on the transaction form) —
            an icon sits to the left of the field itself instead of as text inside a label above it,
@@ -3491,7 +3502,7 @@
             <div class="section-header" style="margin-top:0;">
                 <span class="section-title">Default Accounts</span>
             </div>
-            <div class="form-row-inline" style="margin-bottom:0;">
+            <div class="form-row-stack" style="margin-bottom:0;">
                 <div>
                     <label>Default Payment Account</label>
                     <button type="button" id="defaultPaymentAccountSelectBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="defaultPaymentAccountSelect" data-title="Default Payment Account">

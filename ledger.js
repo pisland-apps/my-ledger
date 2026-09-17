@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v411";
+        const APP_VERSION = "v412";
         const APP_VERSION_DATE = "2026-09-17";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -16117,21 +16117,27 @@
                 const upcoming = ccDueDateFor(anchor.getFullYear(), anchor.getMonth() + 1, a.paymentDueDay);
                 const daysUntilUpcoming = Math.round((upcoming - todayDate) / MS_PER_DAY);
 
-                // v230: how much of the current balance was actually billed by `anchor`'s
-                // statement (and therefore genuinely overdue), vs. freshly added afterwards and
-                // not yet due. Without statementDay set there's no way to draw that line, so it
-                // falls back to the old "whole balance" behavior.
-                let billedDebt = amountDueAsOfToday;
-                if (a.statementDay) {
-                    // The statement that produced `anchor`'s due date is the most recent
+                // v412: how much of the current balance was actually billed by a GIVEN due
+                // date's own statement (and therefore genuinely payable on that date), vs.
+                // freshly added afterwards and not yet due. Without statementDay set there's no
+                // way to draw that line, so it falls back to the old "whole balance" behavior.
+                // Genuinely per-due-date now (v230/v275 only ever computed this for `anchor`,
+                // the most recent PAST due date — the "due soon" advance-notice branch below
+                // was still stamping the upcoming due date with the full running balance,
+                // which double-counts next cycle's not-yet-billed spending as if it were due on
+                // the date being announced; e.g. charges made after this card's own statement
+                // day belong to the FOLLOWING statement/due date, not the one coming up next).
+                function billedDebtFor(dueDateObj, fallbackAmount) {
+                    if (!a.statementDay) return fallbackAmount;
+                    // The statement that produced dueDateObj's due date is the most recent
                     // statementDay occurrence on or before that due date — same month as the due
                     // date when statementDay comes first (e.g. closes day 3, due day 23), or the
                     // prior month when the due date falls before statementDay within the month
                     // (e.g. closes day 25, due day 10 of the following month).
-                    let closeDate = ccDueDateFor(anchor.getFullYear(), anchor.getMonth(), a.statementDay);
-                    if (closeDate > anchor) closeDate = ccDueDateFor(anchor.getFullYear(), anchor.getMonth() - 1, a.statementDay);
+                    let closeDate = ccDueDateFor(dueDateObj.getFullYear(), dueDateObj.getMonth(), a.statementDay);
+                    if (closeDate > dueDateObj) closeDate = ccDueDateFor(dueDateObj.getFullYear(), dueDateObj.getMonth() - 1, a.statementDay);
                     const closeStr = localDateStr(closeDate);
-                    billedDebt = Math.max(0, -ccBalanceAsOf(a, closeStr));
+                    let billed = Math.max(0, -ccBalanceAsOf(a, closeStr));
                     // v275: subtract anything already paid toward THIS cycle's billed debt
                     // specifically, rather than the old approach of taking min(current total
                     // balance, billed debt) — that couldn't tell "old debt still outstanding"
@@ -16141,15 +16147,21 @@
                     // purchase: min() mistook the $58.40 for leftover old debt). Subtracting the
                     // actual payment from the actual billed amount gets this right regardless of
                     // what new spending has piled up since.
-                    billedDebt = Math.max(0, billedDebt - ccPaymentsAfter(closeStr));
+                    return Math.max(0, billed - ccPaymentsAfter(closeStr));
                 }
-                const overdueAmount = billedDebt;
+                const overdueAmount = billedDebtFor(anchor, amountDueAsOfToday);
 
-                let overdue, daysOverdue, dueDateStr, dueToday;
+                let overdue, daysOverdue, dueDateStr, dueToday, dueSoonAmount;
                 if (daysSinceAnchor === 0) {
+                    // anchor IS today, so it's the same statement/due-date pair overdueAmount
+                    // already covers.
                     overdue = false; dueToday = true; dueDateStr = localDateStr(anchor);
+                    dueSoonAmount = overdueAmount;
+                    if (dueSoonAmount <= 0.005) return; // today's bill was already settled (incl. paid in advance) — nothing genuinely due
                 } else if (daysUntilUpcoming <= 7) {
                     overdue = false; dueToday = (daysUntilUpcoming === 0); dueDateStr = localDateStr(upcoming);
+                    dueSoonAmount = billedDebtFor(upcoming, amountDue);
+                    if (dueSoonAmount <= 0.005) return; // nothing has been billed for the upcoming statement yet, or it's already settled — new spending since the last statement close isn't due on this date
                 } else {
                     if (overdueAmount <= 0.005) return; // nothing was billed by the last due date — new spending isn't due yet, and we're outside the 1-week advance window for the next one
                     overdue = true; daysOverdue = daysSinceAnchor; dueDateStr = localDateStr(anchor);
@@ -16157,7 +16169,7 @@
                 const daysAway = overdue ? null : (dueToday ? 0 : daysUntilUpcoming);
                 if (!overdue && !dueToday && daysAway > 7) return; // outside the 1-week advance window
 
-                const displayAmount = overdue ? overdueAmount : amountDue;
+                const displayAmount = overdue ? overdueAmount : dueSoonAmount;
                 const bg = overdue ? "#fee2e2" : "#fef3c7";
                 const border = overdue ? "#fecaca" : "#fde68a";
                 const textCol = overdue ? "#b91c1c" : "#92400e";

@@ -2198,6 +2198,7 @@
                runs, or on a page that opts out for some reason) this has no visible effect since
                the box just grows to fit its content, same as before. */
             overflow-y: auto;
+            overflow-x: hidden; /* v409: same hidden-auto-axis fix as .settings-page-content below */
         }
         .settings-icon-btn {
             display: flex;
@@ -2224,7 +2225,18 @@
            in ledger.js bounds both to whatever viewport space is actually left below the
            nav-header (recalculated on navigation and on resize), so each one scrolls on its own
            within that space instead. */
-        .settings-page-content { flex: 1; min-width: 0; overflow-y: auto; }
+        /* v409: only overflow-y was ever set here, but per spec an axis left at its `visible`
+           default gets silently computed to `auto` (never stays `visible`) whenever the OTHER
+           axis is non-visible — so this container was secretly horizontally scrollable too. Every
+           settings sub-page (Categories, Templates, Accounts, etc.) shares this one scroll
+           container for its whole row list, so if anything nudges that hidden horizontal
+           scrollbar sideways even once — a native "scroll focused/tapped row into view", or a
+           `.config-item` briefly forced wider than the viewport by one long unbreakable category/
+           template name — the whole container stays scrolled right, cropping every row's left
+           edge on every page that reuses it, not just the one row that caused it. overflow-x:
+           hidden removes that hidden scroll axis outright; only intentional vertical scrolling
+           remains. */
+        .settings-page-content { flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; }
         .settings-icon-btn:hover {
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
             transform: translateY(-1px);

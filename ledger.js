@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v412";
+        const APP_VERSION = "v413";
         const APP_VERSION_DATE = "2026-09-17";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -5469,6 +5469,50 @@
             sel.value = (preselectId && candidates.some(a => a.id === preselectId)) ? preselectId : "";
         }
 
+        // Credit Card "Shares Credit Limit With" (v412): same exclude-self pattern as
+        // populateCcPaymentAccountSelect, but restricted to other Credit Card accounts only —
+        // sharing a limit only makes sense between cards, not with a normal bank account.
+        async function populateCcShareLimitSelect(preselectId) {
+            const sel = document.getElementById("newAccCcShareLimitWith");
+            const excludeId = document.getElementById("editAccountId").value;
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const candidates = accounts
+                .filter(a => a.type === "creditcard" && a.id !== excludeId)
+                .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+            sel.innerHTML = `<option value="">(None — independent limit)</option>` + candidates.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a, accounts))}</option>`).join("");
+            sel.value = (preselectId && candidates.some(a => a.id === preselectId)) ? preselectId : "";
+        }
+
+        // Resolves whichever card the user picked in "Shares Credit Limit With" down to the
+        // actual group anchor — if that card is itself already sharing with a third card, follow
+        // that one level instead of creating a chain (A→B→C). A visited-set guards against any
+        // legacy/corrupt data that somehow formed a cycle. Anchor = the card whose own
+        // creditLimit is treated as the group's combined total.
+        function resolveCreditLimitAnchorId(pickedId, accounts) {
+            if (!pickedId) return null;
+            const visited = new Set();
+            let currentId = pickedId;
+            while (!visited.has(currentId)) {
+                visited.add(currentId);
+                const acc = accounts.find(a => a.id === currentId);
+                if (!acc || !acc.sharedLimitAccountId) return currentId;
+                currentId = acc.sharedLimitAccountId;
+            }
+            return pickedId; // cycle detected in stored data — fall back to the raw pick rather than looping
+        }
+
+        // Given any credit card account, returns every account in its shared-limit group
+        // (anchor first, then every other card pointing at that anchor) — [account] alone when
+        // it isn't part of a group. Used by accountExtraInfoLine to compute a combined
+        // Limit/Available figure that reads the same on every member card.
+        function getCreditLimitGroupMembers(a, accounts) {
+            if (a.type !== "creditcard") return [a];
+            const anchorId = a.sharedLimitAccountId ? resolveCreditLimitAnchorId(a.sharedLimitAccountId, accounts) : a.id;
+            const anchor = accounts.find(x => x.id === anchorId) || a;
+            const members = accounts.filter(x => x.type === "creditcard" && x.id !== anchor.id && resolveCreditLimitAnchorId(x.sharedLimitAccountId, accounts) === anchor.id);
+            return [anchor, ...members];
+        }
+
         function setAccountTypeUI(type) {
             document.getElementById("newAccType").value = type;
             const normalBtn = document.getElementById("accTypeBtnNormal");
@@ -5522,6 +5566,7 @@
                 populateDaySelect(document.getElementById("newAccCcStatementDay"));
                 populateDaySelect(document.getElementById("newAccCcDueDay"));
                 populateCcPaymentAccountSelect();
+                populateCcShareLimitSelect();
             } else if (type === "multi") {
                 multiBtn.style.background = "var(--transfer-color)"; multiBtn.style.color = "white";
                 hint.textContent = "Holds separate currency balances under one account name — e.g. \"Bank A\" with its own SGD and MYR balances side by side, never mixed together.";
@@ -5817,6 +5862,13 @@
             if(!name) { alert("Please enter an account name."); return; }
 
             const group = document.getElementById("newAccGroup").value || DEFAULT_ACCOUNT_GROUP;
+            // Credit Card "Shares Credit Limit With" (v412): flatten whatever the user picked
+            // down to the actual group anchor (see resolveCreditLimitAnchorId's comment) using
+            // the accounts as they stand right now, so a chain never gets written to disk even
+            // transiently.
+            const sharedLimitPickedId = (type === "creditcard") ? (document.getElementById("newAccCcShareLimitWith").value || null) : null;
+            const accountsForShareResolve = sharedLimitPickedId ? await readAllDB(STORES.ACCOUNTS) : [];
+            const sharedLimitAccountId = sharedLimitPickedId ? resolveCreditLimitAnchorId(sharedLimitPickedId, accountsForShareResolve) : null;
             const record = {
                 id, name, type, group,
                 // Account No. / Ref (v130): purely informational free-text, independent of
@@ -5851,10 +5903,17 @@
                 // #ccWrap for why none of this affects balance/due-amount math. Cleared out (same
                 // as Real Estate/Bank Loan's fields above) when the account isn't a Credit Card,
                 // so re-typing an account away from Credit Card doesn't leave stale values behind.
-                creditLimit: (type === "creditcard") ? (parseFloat(document.getElementById("newAccCcLimit").value) || 0) : 0,
+                // v412: when this card shares its limit with another (sharedLimitAccountId set),
+                // its own Credit Limit field is meaningless — the anchor card's creditLimit is
+                // the group's combined total (see getCreditLimitGroupMembers). Force it to 0 here
+                // (bug class #2: a hidden-but-not-cleared field silently surviving) rather than
+                // leaving whatever stale number was last typed into the input sitting unused in
+                // the record.
+                creditLimit: (type === "creditcard" && !sharedLimitAccountId) ? (parseFloat(document.getElementById("newAccCcLimit").value) || 0) : 0,
                 statementDay: (type === "creditcard") ? (parseInt(document.getElementById("newAccCcStatementDay").value, 10) || null) : null,
                 paymentDueDay: (type === "creditcard") ? (parseInt(document.getElementById("newAccCcDueDay").value, 10) || null) : null,
                 defaultPaymentAccountId: (type === "creditcard") ? (document.getElementById("newAccCcPaymentAccount").value || null) : null,
+                sharedLimitAccountId: sharedLimitAccountId,
                 memberIds: getCheckedAccountMemberIds()
             };
 
@@ -6259,7 +6318,7 @@
                 const acctRefLine = a.accountRef
                     ? `<div class="account-card-refline">${escapeHtml(a.accountRef)}</div>`
                     : "";
-                const extraInfoLine = accountExtraInfoLine(a, nativeBalances, false);
+                const extraInfoLine = accountExtraInfoLine(a, nativeBalances, false, accounts);
 
                 // Credit Card (v127): "Amount due" line + 💳 Pay button, both only shown when
                 // there's actually something owed (a card paid off in full, or never used, has
@@ -6475,6 +6534,7 @@
                 populateDaySelect(document.getElementById("newAccCcStatementDay"), account.statementDay);
                 populateDaySelect(document.getElementById("newAccCcDueDay"), account.paymentDueDay);
                 await populateCcPaymentAccountSelect(account.defaultPaymentAccountId || "");
+                await populateCcShareLimitSelect(account.sharedLimitAccountId || "");
             }
             renderAccountMemberCheckboxes(Array.isArray(account.memberIds) ? account.memberIds : []);
 
@@ -7524,27 +7584,39 @@
         // wants to show the Account No./Ref in its own separate spot — see the Accounts-page
         // .account-card-refline below the account name — opt out of it here, so it isn't also
         // repeated in whatever this function returns for the rest of the row/banner.
-        function accountExtraInfoLine(a, nativeBalances, includeRef = true) {
+        function accountExtraInfoLine(a, nativeBalances, includeRef = true, accounts = null) {
             const group = a.group || DEFAULT_ACCOUNT_GROUP;
             // Account No. / Ref (v130): plain informational text, independent of group/type, so
             // it's built separately here and prepended ahead of whichever type-specific line (if
             // any) applies below, rather than living inside one of those mutually-exclusive
             // branches.
             const refLine = (includeRef && a.accountRef) ? `<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${escapeHtml(a.accountRef)}</span>` : "";
-            if (a.type === "creditcard" && (a.creditLimit || a.statementDay || a.paymentDueDay)) {
+            // v412: "Shares Credit Limit With" — when set, Limit/Available are computed across
+            // the whole group (this card's anchor + every other card pointing at that same
+            // anchor) instead of just this one account, so every card in the group shows the
+            // identical combined figure (same bank, one real credit facility split across
+            // several physical cards). Falls back to this account alone, exactly as before, when
+            // it isn't part of a group or the caller didn't pass `accounts` (a couple of call
+            // sites don't have it handy — same optionality nativeBalances already has below).
+            const ccGroupMembers = (a.type === "creditcard" && accounts) ? getCreditLimitGroupMembers(a, accounts) : [a];
+            const ccAnchor = ccGroupMembers[0];
+            const ccIsGroup = ccGroupMembers.length > 1;
+            if (a.type === "creditcard" && (ccAnchor.creditLimit || a.statementDay || a.paymentDueDay)) {
                 const bits = [];
-                if (a.creditLimit) bits.push(`Limit ${formatBalanceHTML(a.creditLimit, a.currency || baseCurrency)}`);
+                if (ccAnchor.creditLimit) bits.push(`Limit ${formatBalanceHTML(ccAnchor.creditLimit, a.currency || baseCurrency)}${ccIsGroup ? " (shared)" : ""}`);
                 if (a.statementDay) bits.push(`Statement day ${a.statementDay}`);
                 if (a.paymentDueDay) bits.push(`Due day ${a.paymentDueDay}`);
-                // v127: "Available" = credit limit minus whatever's currently owed (same amountDue
-                // math used everywhere else on the card, i.e. this account's balance negated and
-                // floored at 0). Only computable when both a limit is set AND balances were passed
-                // in by the caller — accountExtraInfoLine() is also called from a couple of spots
-                // that don't have nativeBalances handy (e.g. before it's been computed yet), so this
-                // stays optional rather than breaking those call sites.
-                if (a.creditLimit && nativeBalances) {
-                    const ccAmountDueForAvail = Math.max(0, -(nativeBalances[a.id] || 0));
-                    const available = Math.max(0, a.creditLimit - ccAmountDueForAvail);
+                // v127/v412: "Available" = credit limit minus whatever's currently owed. For a
+                // group, "owed" is summed across every member card (spending on any one of them
+                // draws down the same shared facility) — same amountDue math used everywhere else
+                // on a card (balance negated, floored at 0), just totalled. Only computable when
+                // both a limit is set AND balances were passed in by the caller —
+                // accountExtraInfoLine() is also called from a couple of spots that don't have
+                // nativeBalances handy (e.g. before it's been computed yet), so this stays
+                // optional rather than breaking those call sites.
+                if (ccAnchor.creditLimit && nativeBalances) {
+                    const ccAmountDueForAvail = ccGroupMembers.reduce((sum, m) => sum + Math.max(0, -(nativeBalances[m.id] || 0)), 0);
+                    const available = Math.max(0, ccAnchor.creditLimit - ccAmountDueForAvail);
                     bits.push(`Available ${formatBalanceHTML(available, a.currency || baseCurrency)}`);
                 }
                 return refLine + (bits.length ? `<br><span style="font-size:0.7rem; color:#9d174d; font-weight:600;">💳 ${bits.join(" · ")}</span>` : "");
@@ -9340,7 +9412,7 @@
                 const acctRefLine = a.accountRef
                     ? `<div class="account-card-refline">${escapeHtml(a.accountRef)}</div>`
                     : "";
-                const extraInfoLine = accountExtraInfoLine(a, nativeBalances, false);
+                const extraInfoLine = accountExtraInfoLine(a, nativeBalances, false, accounts);
 
                 // Credit Card (v127): same "Amount due" line + 💳 Pay button as the main Accounts
                 // page (renderAccountsPage) — see that copy's comment for what amountDue means.
@@ -10387,7 +10459,7 @@
                     accountRef: "", subgroup: "", linkedAccountId: null, includeInNetWorth: true,
                     propertyType: "", holdingStartDate: "", tenureType: "", leaseTermYears: 0, leaseExpiryDate: "",
                     hasRedrawFacility: false, redrawAmount: 0, redrawAsOfDate: "",
-                    creditLimit: 0, statementDay: null, paymentDueDay: null, defaultPaymentAccountId: null,
+                    creditLimit: 0, statementDay: null, paymentDueDay: null, defaultPaymentAccountId: null, sharedLimitAccountId: null,
                     memberIds: [], initialBalance: 0, currency: baseCurrency
                 });
             }
@@ -16343,7 +16415,7 @@
             const extraInfoBanner = document.getElementById("ledgerExtraInfoBanner");
             if (showFullAccountHistory) {
                 const viewingAcc = accounts.find(a => a.id === activeLedgerAccountView);
-                const infoHtml = viewingAcc ? accountExtraInfoLine(viewingAcc, nativeBalances).replace(/^<br>/, "") : "";
+                const infoHtml = viewingAcc ? accountExtraInfoLine(viewingAcc, nativeBalances, true, accounts).replace(/^<br>/, "") : "";
                 if (infoHtml) {
                     extraInfoBanner.innerHTML = infoHtml;
                     extraInfoBanner.style.display = "block";

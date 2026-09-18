@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v417";
+        const APP_VERSION = "v418";
         const APP_VERSION_DATE = "2026-09-18";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -63,12 +63,12 @@
         // active/disposed/lost status). Created either inline from an Expense entry (see the
         // "📦 Add to Inventory" block on the transaction form) or manually from the Inventory
         // page's own + button. See the "--- INVENTORY ---" section below.
-        const DB_VERSION = 11;
-        const STORES = { ACCOUNTS: "accounts", TRANSACTIONS: "transactions", SETTINGS: "settings", CATEGORIES: "categories", MEMBERS: "members", FUNDS: "funds", NAV_HISTORY: "navHistory", ATTACHMENTS: "attachments", TEMPLATES: "templates", TAGS: "tags", BUDGETS: "budgets", INVENTORY: "inventory", PLANNED_PAYMENTS: "plannedPayments" };
+        const DB_VERSION = 12;
+        const STORES = { ACCOUNTS: "accounts", TRANSACTIONS: "transactions", SETTINGS: "settings", CATEGORIES: "categories", MEMBERS: "members", FUNDS: "funds", NAV_HISTORY: "navHistory", ATTACHMENTS: "attachments", TEMPLATES: "templates", TAGS: "tags", BUDGETS: "budgets", INVENTORY: "inventory", PLANNED_PAYMENTS: "plannedPayments", REMINDERS: "reminders" };
         // Maps each object store to the field IndexedDB uses as its keyPath. That field must stay
         // unencrypted on the stored record (IndexedDB needs to read it directly to index/generate keys);
         // every other field on the record is encrypted as a single AES-GCM blob.
-        const STORE_KEYPATHS = { accounts: "id", transactions: "id", settings: "key", categories: "id", members: "id", funds: "id", navHistory: "date", attachments: "id", templates: "id", tags: "id", budgets: "id", inventory: "id", plannedPayments: "id" };
+        const STORE_KEYPATHS = { accounts: "id", transactions: "id", settings: "key", categories: "id", members: "id", funds: "id", navHistory: "date", attachments: "id", templates: "id", tags: "id", budgets: "id", inventory: "id", plannedPayments: "id", reminders: "id" };
 
         // Fixed palette offered when picking a member's color (sidebar dot, net-worth rows, etc.)
         const MEMBER_COLORS = ["#3b82f6", "#ec4899", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#0ea5e9", "#14b8a6", "#f97316", "#64748b"];
@@ -2026,6 +2026,7 @@
             const currencyActivityPage = document.getElementById("page-currencyactivity");
             const inventoryPage = document.getElementById("page-inventory");
             const plannedPaymentsPage = document.getElementById("page-plannedpayments");
+            const remindersPage = document.getElementById("page-reminders");
 
             if (!ledgerPage.classList.contains("hidden")) {
                 handleLedgerBackClick();
@@ -2068,7 +2069,8 @@
                 !dashboardWidgetsPage.classList.contains("hidden") ||
                 !currencyConfigPage.classList.contains("hidden") ||
                 !inventoryPage.classList.contains("hidden") ||
-                !plannedPaymentsPage.classList.contains("hidden")
+                !plannedPaymentsPage.classList.contains("hidden") ||
+                !remindersPage.classList.contains("hidden")
             ) {
                 navigateToWorkspace();
             }
@@ -2152,6 +2154,16 @@
                         // savePlannedPaymentFromTxForm()/confirmPlannedPayment() in the
                         // "--- PLANNED PAYMENTS ---" section.
                         database.createObjectStore(STORES.PLANNED_PAYMENTS, { keyPath: "id" });
+                    }
+                    if (!database.objectStoreNames.contains(STORES.REMINDERS)) {
+                        // v418: one record per renewal-type reminder (passport, driving license,
+                        // PR renewal, insurance, credit card, etc.) — keyPath "id" (app-generated,
+                        // see makeReminderId()). Shape: { id, name, category, issueDate, dueDate,
+                        // leadDays, repeats (bool), recurMonths, notes, history: [{oldDueDate,
+                        // newDueDate, actionDate}], archived (bool), createdAt }. Not tied to a
+                        // family member (user's explicit choice) — one unified list. See the
+                        // "--- REMINDERS ---" section for the full model.
+                        database.createObjectStore(STORES.REMINDERS, { keyPath: "id" });
                     }
                 };
                 request.onerror = (e) => reject(e.target.error);
@@ -3033,7 +3045,7 @@
         // --- SPA NAVIGATION PIPELINE ---
         // Every top-level page div's id — used by showPage() to hide all but the target,
         // so adding a new page never risks leaving a stale one visible underneath.
-        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-database", "page-attachment-review", "page-total-summary", "page-monthly-trend", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-bgtheme", "page-networthcardstyle", "page-dashboardwidgets", "page-currencyconfig", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity", "page-inventory", "page-plannedpayments"];
+        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-database", "page-attachment-review", "page-total-summary", "page-monthly-trend", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-bgtheme", "page-networthcardstyle", "page-dashboardwidgets", "page-currencyconfig", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity", "page-inventory", "page-plannedpayments", "page-reminders"];
         // v406: which rail icon (by its data-click, and data-target for the one that uses
         // sidebarGo instead of its own navigateTo*Page()) corresponds to which Settings page —
         // used by updateSettingsIconRailActiveState() below to highlight the icon for whichever
@@ -5213,6 +5225,7 @@
             else if (target === "budget") navigateToBudgetPage();
             else if (target === "inventory") navigateToInventoryPage();
             else if (target === "plannedpayments") navigateToPlannedPaymentsPage();
+            else if (target === "reminders") navigateToRemindersPage();
             else if (target === "lock") lockAppNow();
         }
 
@@ -14604,6 +14617,344 @@
             });
         }
 
+        // --- REMINDERS (v418) --- renewal-type dates (passport, driving license, PR renewal,
+        // insurance, credit card, etc.). Deliberately NOT tied to a family member (user's explicit
+        // choice, unlike Accounts/Funds) — one unified list. Design settled via chat discussion
+        // before building:
+        // - `leadDays`: a single, manually-set, per-item lead time (not a two-stage amber/red
+        //   threshold) — a reminder only surfaces on the Dashboard widget once inside
+        //   `dueDate - leadDays`, otherwise it just sits quietly on the full Reminders page.
+        // - `repeats` (bool) + `recurMonths`: recurrence interval is in MONTHS (more flexible than
+        //   years) and fully per-item editable, never hardcoded — real cycles vary a lot (passport
+        //   5/10yr, license 6/10yr, credit card 3yr, insurance 1yr). `repeats: false` is a genuine
+        //   one-off (a visa, an event registration) — it archives instead of recurring.
+        // - Renewal flow (see openRenewReminderModal/saveRenewedReminder below): the next due date
+        //   is computed as RENEWAL-ACTION-DATE + recurMonths, not old-due-date + recurMonths (a
+        //   late renewal would otherwise silently shorten the next cycle) — and it's shown in an
+        //   editable confirm step, never silently committed.
+        // - A history array keeps every past renewal (oldDueDate → newDueDate → actionDate)
+        //   instead of a silent overwrite.
+        // Known limitation (already communicated to the user): this is an offline PWA with no
+        // backend, so a "reminder" here can only ever be an in-app badge/highlight shown when the
+        // app is opened — not a true OS push notification while the app is closed.
+
+        function makeReminderId() {
+            return "rem_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+        }
+
+        // recurMonths is always treated as a plain month count — reuses the existing
+        // computeNextDueDate()'s "monthly" branch (see the PLANNED PAYMENTS section above) by
+        // passing { freq: "monthly", interval: recurMonths, anchorDay }, so the same
+        // clamp-to-end-of-month logic (31 Jan + 1mo → 28/29 Feb, not an overflow into March)
+        // applies here too — a renewal reminder is exactly the same "which day of the month"
+        // problem a recurring bill is.
+        function computeReminderNextDueDate(baseDateStr, recurMonths) {
+            const anchorDay = parseInt(baseDateStr.split("-")[2], 10);
+            return computeNextDueDate(baseDateStr, { freq: "monthly", interval: recurMonths, anchorDay });
+        }
+
+        // Friendly "Renews every X" label — converts a raw month count into years/months instead
+        // of always saying "months" (e.g. a 5-year passport reads as "Renews every 5 years", not
+        // "Renews every 60 months"). Not reusing recurLabel() (Planned Payments) as-is since that
+        // one is month-count-agnostic and would show raw month totals for anything past 12.
+        function reminderRecurLabel(recurMonths) {
+            const n = Math.max(1, parseInt(recurMonths, 10) || 1);
+            if (n % 12 === 0) {
+                const years = n / 12;
+                return years === 1 ? "Renews every year" : `Renews every ${years} years`;
+            }
+            if (n > 12) {
+                const years = Math.floor(n / 12);
+                const months = n % 12;
+                return `Renews every ${years}y ${months}mo`;
+            }
+            return n === 1 ? "Renews every month" : `Renews every ${n} months`;
+        }
+
+        async function getAllReminders() {
+            const list = await readAllDB(STORES.REMINDERS);
+            // Archived entries sort to the bottom (same convention as Planned Payments' paused
+            // entries) — still reachable, just out of the way of what's actually upcoming.
+            return list.sort((a, b) => {
+                if (!!a.archived !== !!b.archived) return a.archived ? 1 : -1;
+                return (a.dueDate || "").localeCompare(b.dueDate || "");
+            });
+        }
+
+        function navigateToRemindersPage() {
+            showPage("page-reminders");
+            pushVirtualState("reminders");
+            renderRemindersPage();
+        }
+
+        // Every action that changes a Reminder (save, renew, archive, restore, delete) calls this
+        // instead of renderRemindersWidget() directly — same "keep both views in sync" pattern as
+        // refreshPlannedPaymentsViews().
+        async function refreshRemindersViews() {
+            await renderRemindersWidget();
+            const pageEl = document.getElementById("page-reminders");
+            if (pageEl && !pageEl.classList.contains("hidden")) {
+                await renderRemindersPage();
+            }
+        }
+
+        // Shared row markup — used by both the Dashboard widget (filtered to what's due) and the
+        // full list page (unfiltered), so the two only ever differ in which reminders they pass
+        // in, never in how a row looks or behaves.
+        function renderReminderRowHtml(r, today) {
+            const daysDiff = Math.round((new Date(r.dueDate + "T00:00:00") - new Date(today + "T00:00:00")) / (1000 * 60 * 60 * 24));
+            const overdue = daysDiff < 0;
+            const dueLabel = r.archived ? "📦 Archived" : (overdue ? `Overdue ${Math.abs(daysDiff)}d` : (daysDiff === 0 ? "Due today" : `${daysDiff}d left`));
+            const icon = r.archived ? "📦" : (r.repeats ? "🔁" : "🔔");
+            const metaParts = [];
+            if (r.category) metaParts.push(escapeHtml(r.category));
+            if (r.repeats && !r.archived) metaParts.push(escapeHtml(reminderRecurLabel(r.recurMonths)));
+            const metaLine = metaParts.join(" · ");
+            return `
+                <div class="config-item" data-click="reminderRowTap" data-id="${escapeHtml(r.id)}" style="cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; ${r.archived ? "opacity:0.6;" : ""}">
+                    <span class="category-display-badge">
+                        <span>${icon}</span>
+                        <span style="display:flex; flex-direction:column;">
+                            <strong>${escapeHtml(r.name)}</strong>
+                            ${metaLine ? `<span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">${metaLine}</span>` : ""}
+                        </span>
+                    </span>
+                    <span style="text-align:right;">
+                        <span style="display:block; font-size:0.8rem; font-weight:700; color:var(--text-muted);">${r.dueDate}</span>
+                        <span style="font-size:0.75rem; font-weight:700; color:${(overdue && !r.archived) ? "var(--expense-color)" : "var(--text-muted)"};">${dueLabel}</span>
+                    </span>
+                </div>
+            `;
+        }
+
+        // Dashboard "Reminders" widget — only shows a reminder once it's within ITS OWN leadDays
+        // of its dueDate, or overdue (an archived one never qualifies). Hidden entirely when
+        // nothing currently qualifies. Sorted soonest/most-overdue first.
+        async function renderRemindersWidget() {
+            const wrap = document.getElementById("dashboardRemindersWidget");
+            const list = document.getElementById("remindersWidgetList");
+            if (!wrap || !list) return;
+
+            const today = todayLocalStr();
+            const reminders = (await getAllReminders()).filter(r => {
+                if (r.archived) return false;
+                const daysDiff = Math.round((new Date(r.dueDate + "T00:00:00") - new Date(today + "T00:00:00")) / (1000 * 60 * 60 * 24));
+                return daysDiff <= (r.leadDays || 0);
+            }).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+            wrap.style.display = reminders.length ? "" : "none";
+            if (!reminders.length) return;
+
+            list.innerHTML = reminders.map(r => renderReminderRowHtml(r, today)).join("");
+        }
+
+        // Full list page (Sidebar > Reminders) — everything saved. reminderStatusFilter narrows
+        // between "active" (default — everything not archived, regardless of how far off) and
+        // "archived" (one-off reminders already handled) — same two-state idea as Planned
+        // Payments' paused/not-paused, just surfaced as an explicit toggle here since Reminders
+        // has no dashboard-widget "3 day" cutoff to fall back on for what belongs on the full page.
+        let reminderStatusFilter = "active"; // "active" | "archived"
+
+        function reminderSetStatusFilter(el) {
+            reminderStatusFilter = el.dataset.status;
+            document.querySelectorAll('#page-reminders .nav-view-toggle-btn').forEach(b => b.classList.toggle("active", b.dataset.status === reminderStatusFilter));
+            renderRemindersPage();
+        }
+
+        async function renderRemindersPage() {
+            const list = document.getElementById("remindersPageList");
+            const empty = document.getElementById("remindersPageEmpty");
+            if (!list || !empty) return;
+            const today = todayLocalStr();
+            const all = await getAllReminders();
+            const filtered = all.filter(r => reminderStatusFilter === "archived" ? r.archived : !r.archived);
+            empty.style.display = filtered.length ? "none" : "block";
+            empty.textContent = reminderStatusFilter === "archived" ? "No archived reminders." : "No reminders yet — tap + to add one (passport, driving license, PR renewal, etc.).";
+            list.innerHTML = filtered.map(r => renderReminderRowHtml(r, today)).join("");
+        }
+
+        // --- Add/Edit modal ---
+
+        function toggleReminderRepeatFields() {
+            document.getElementById("reminderRecurMonthsRow").style.display = document.getElementById("reminderRepeatToggle").checked ? "block" : "none";
+        }
+
+        function openReminderModal(id) {
+            document.getElementById("reminderId").value = id || "";
+            document.getElementById("reminderModalTitle").textContent = id ? "Edit Reminder" : "Add Reminder";
+            document.getElementById("reminderName").value = "";
+            document.getElementById("reminderCategory").value = "";
+            document.getElementById("reminderIssueDate").value = "";
+            document.getElementById("reminderDueDate").value = "";
+            document.getElementById("reminderLeadDays").value = 90;
+            document.getElementById("reminderRepeatToggle").checked = false;
+            document.getElementById("reminderRecurMonths").value = 12;
+            document.getElementById("reminderNotes").value = "";
+            toggleReminderRepeatFields();
+            document.getElementById("reminderDeleteBtn").style.display = id ? "block" : "none";
+
+            if (id) {
+                getAllReminders().then(list => {
+                    const r = list.find(x => x.id === id);
+                    if (!r) return;
+                    document.getElementById("reminderName").value = r.name || "";
+                    document.getElementById("reminderCategory").value = r.category || "";
+                    document.getElementById("reminderIssueDate").value = r.issueDate || "";
+                    document.getElementById("reminderDueDate").value = r.dueDate || "";
+                    document.getElementById("reminderLeadDays").value = (r.leadDays != null) ? r.leadDays : 90;
+                    document.getElementById("reminderRepeatToggle").checked = !!r.repeats;
+                    document.getElementById("reminderRecurMonths").value = r.recurMonths || 12;
+                    document.getElementById("reminderNotes").value = r.notes || "";
+                    toggleReminderRepeatFields();
+                });
+            }
+            openModal("reminderModal");
+        }
+
+        async function handleSaveReminder() {
+            const id = document.getElementById("reminderId").value || null;
+            const name = document.getElementById("reminderName").value.trim();
+            const dueDate = document.getElementById("reminderDueDate").value;
+            if (!name) { alert("Please enter a name (e.g. Passport, Driving License)."); return; }
+            if (!dueDate) { alert("Please select a due/expiry date."); return; }
+            const repeats = document.getElementById("reminderRepeatToggle").checked;
+            const recurMonths = Math.max(1, parseInt(document.getElementById("reminderRecurMonths").value, 10) || 12);
+            const leadDays = Math.max(0, parseInt(document.getElementById("reminderLeadDays").value, 10) || 0);
+
+            let record;
+            if (id) {
+                const list = await getAllReminders();
+                record = list.find(r => r.id === id) || { id, history: [], createdAt: todayLocalStr() };
+            } else {
+                record = { id: makeReminderId(), history: [], createdAt: todayLocalStr() };
+            }
+            record.name = name;
+            record.category = document.getElementById("reminderCategory").value.trim();
+            record.issueDate = document.getElementById("reminderIssueDate").value || "";
+            record.dueDate = dueDate;
+            record.leadDays = leadDays;
+            record.repeats = repeats;
+            record.recurMonths = repeats ? recurMonths : null;
+            record.notes = document.getElementById("reminderNotes").value.trim();
+            if (!record.archived) record.archived = false;
+
+            try {
+                await writeDB(STORES.REMINDERS, record);
+            } catch (err) {
+                alert("Could not save reminder: " + (err && err.message ? err.message : err));
+                return;
+            }
+            closeModal("reminderModal");
+            await refreshRemindersViews();
+            showToast("Reminder saved");
+        }
+
+        async function handleDeleteReminderFromModal() {
+            const id = document.getElementById("reminderId").value;
+            if (!id) { closeModal("reminderModal"); return; }
+            closeModalAndThen("reminderModal", async () => {
+                const confirmed = await customConfirm("Delete this reminder? This can't be undone.");
+                if (!confirmed) return;
+                try { await deleteDB(STORES.REMINDERS, id); } catch (err) {}
+                await refreshRemindersViews();
+            });
+        }
+
+        // --- Action sheet (tapping a row) ---
+
+        let activeReminderId = null;
+
+        async function reminderRowTap(el) {
+            activeReminderId = el.dataset.id;
+            const list = await getAllReminders();
+            const r = list.find(x => x.id === activeReminderId);
+            if (!r) return;
+            document.getElementById("reminderActionRenewBtn").style.display = (r.repeats && !r.archived) ? "block" : "none";
+            document.getElementById("reminderActionArchiveBtn").style.display = (!r.repeats && !r.archived) ? "block" : "none";
+            document.getElementById("reminderActionRestoreBtn").style.display = r.archived ? "block" : "none";
+            openModal("reminderActionsModal");
+        }
+        function closeReminderActionsModal() {
+            closeModal("reminderActionsModal");
+        }
+        function editReminderFromActionsModal() {
+            const id = activeReminderId;
+            if (!id) { closeModal("reminderActionsModal"); return; }
+            closeModalAndThen("reminderActionsModal", () => openReminderModal(id));
+        }
+        async function archiveReminderFromActionsModal() {
+            const id = activeReminderId;
+            closeModal("reminderActionsModal");
+            if (!id) return;
+            const list = await getAllReminders();
+            const r = list.find(x => x.id === id);
+            if (!r) return;
+            r.archived = true;
+            await writeDB(STORES.REMINDERS, r);
+            await refreshRemindersViews();
+        }
+        async function restoreReminderFromActionsModal() {
+            const id = activeReminderId;
+            closeModal("reminderActionsModal");
+            if (!id) return;
+            const list = await getAllReminders();
+            const r = list.find(x => x.id === id);
+            if (!r) return;
+            r.archived = false;
+            await writeDB(STORES.REMINDERS, r);
+            await refreshRemindersViews();
+        }
+        async function deleteReminderFromActionsModal() {
+            const id = activeReminderId;
+            if (!id) { closeModal("reminderActionsModal"); return; }
+            closeModalAndThen("reminderActionsModal", async () => {
+                const confirmed = await customConfirm("Delete this reminder? This can't be undone.");
+                if (!confirmed) return;
+                try { await deleteDB(STORES.REMINDERS, id); } catch (err) {}
+                await refreshRemindersViews();
+            });
+        }
+
+        // --- Renewal flow: "✅ Mark as Renewed" opens a confirm step (never silently committed) ---
+
+        function openRenewReminderModal() {
+            const id = activeReminderId;
+            if (!id) { closeModal("reminderActionsModal"); return; }
+            closeModalAndThen("reminderActionsModal", async () => {
+                const list = await getAllReminders();
+                const r = list.find(x => x.id === id);
+                if (!r || !r.repeats) return;
+                const today = todayLocalStr();
+                // Base date is the renewal ACTION date (today), not the old due date — a late
+                // renewal or an issue-date-anchored cycle would otherwise skew the next cycle.
+                const suggested = computeReminderNextDueDate(today, r.recurMonths);
+                document.getElementById("renewReminderOldDue").textContent = r.dueDate;
+                document.getElementById("renewReminderActionDate").value = today;
+                document.getElementById("renewReminderNewDueDate").value = suggested;
+                openModal("renewReminderModal");
+            });
+        }
+        function closeRenewReminderModal() {
+            closeModal("renewReminderModal");
+        }
+        async function saveRenewedReminder() {
+            const id = activeReminderId;
+            if (!id) return;
+            const actionDate = document.getElementById("renewReminderActionDate").value || todayLocalStr();
+            const newDueDate = document.getElementById("renewReminderNewDueDate").value;
+            if (!newDueDate) { alert("Please select the new due date."); return; }
+            const list = await getAllReminders();
+            const r = list.find(x => x.id === id);
+            if (!r) return;
+            r.history = Array.isArray(r.history) ? r.history : [];
+            r.history.push({ oldDueDate: r.dueDate, newDueDate, actionDate });
+            r.issueDate = actionDate;
+            r.dueDate = newDueDate;
+            await writeDB(STORES.REMINDERS, r);
+            closeModal("renewReminderModal");
+            await refreshRemindersViews();
+            showToast("Reminder renewed");
+        }
+
         // --- SALARY ENTRY (Gross Salary → Net Bank + EPF(Malaysia)/CPF(Singapore) split) ---
         // Opens with an empty form: today's date, an auto-filled "<Month> <Year> Salary"
         // description (editable), scheme defaulted to "none", and both account dropdowns
@@ -16238,6 +16589,7 @@
             renderTagReminderWidget(txs, accounts);
             await renderWarrantyReminderWidget();
             await refreshPlannedPaymentsViews();
+            await renderRemindersWidget();
             applyDashboardWidgetOrder();
             applyMonthlyTrendDashboardVisibility();
             renderDesktopInsightsRail(accounts, txs);
@@ -19183,6 +19535,9 @@
                 // (and is deleted from here) only once "Mark as Paid" is used, so this is
                 // deliberately separate from `transactions` above.
                 plannedPayments: await readAllDB(STORES.PLANNED_PAYMENTS),
+                // v418: renewal-type reminders (passport, driving license, PR renewal, etc.) —
+                // see the "--- REMINDERS ---" section.
+                reminders: await readAllDB(STORES.REMINDERS),
                 // v65: full SETTINGS store dump ({key,value} rows — defaultPaymentAccount,
                 // defaultReceiveAccount, defaultIncomeCategory, defaultExpenseCategory, recentTx*
                 // widget filters, expandedAccountSubrows, plus baseCurrency/fxRates which are
@@ -19359,6 +19714,9 @@
                     if (db.objectStoreNames.contains(STORES.PLANNED_PAYMENTS)) {
                         await clearStoreDB(STORES.PLANNED_PAYMENTS);
                     }
+                    if (db.objectStoreNames.contains(STORES.REMINDERS)) {
+                        await clearStoreDB(STORES.REMINDERS);
+                    }
 
                     if (bundle.baseCurrency) baseCurrency = bundle.baseCurrency;
                     if (bundle.fxRates) fxRates = bundle.fxRates;
@@ -19421,6 +19779,10 @@
                     // v354: Planned Payments — same "absent on older backups → skip" pattern.
                     if (bundle.plannedPayments) {
                         for (const pp of bundle.plannedPayments) await writeDB(STORES.PLANNED_PAYMENTS, pp);
+                    }
+                    // v418: Reminders — same "absent on older backups → skip" pattern.
+                    if (bundle.reminders) {
+                        for (const rem of bundle.reminders) await writeDB(STORES.REMINDERS, rem);
                     }
 
                     // v65: restore preferences from the SETTINGS store dump (defaultPaymentAccount,
@@ -19809,6 +20171,21 @@
             removeTempInvAttachment: (el) => removeTempInvAttachment(el),
             openInvAttachmentsBadge: (el, e) => openInvAttachmentsBadge(el, e),
             warrantyReminderItemTap: (el) => { navigateToInventoryPage(); setTimeout(() => openInventoryItemModal(el.dataset.id), 60); },
+            // v418: REMINDERS
+            navigateToRemindersPage: () => navigateToRemindersPage(),
+            reminderSetStatusFilter: (el) => reminderSetStatusFilter(el),
+            openReminderModalNew: () => openReminderModal(null),
+            handleSaveReminder: () => handleSaveReminder(),
+            handleDeleteReminderFromModal: () => handleDeleteReminderFromModal(),
+            reminderRowTap: (el) => reminderRowTap(el),
+            closeReminderActionsModal: () => closeReminderActionsModal(),
+            editReminderFromActionsModal: () => editReminderFromActionsModal(),
+            archiveReminderFromActionsModal: () => archiveReminderFromActionsModal(),
+            restoreReminderFromActionsModal: () => restoreReminderFromActionsModal(),
+            deleteReminderFromActionsModal: () => deleteReminderFromActionsModal(),
+            openRenewReminderModal: () => openRenewReminderModal(),
+            closeRenewReminderModal: () => closeRenewReminderModal(),
+            saveRenewedReminder: () => saveRenewedReminder(),
         };
 
         const CHANGE_ACTIONS = {
@@ -19827,6 +20204,7 @@
             handleCompanionCustomImageSelected: (el) => handleCompanionCustomImageSelected(el),
             handleAccLogoFileSelected: (el) => handleAccLogoFileSelected(el),
             toggleTxPlannedRepeatFields: () => toggleTxPlannedRepeatFields(),
+            toggleReminderRepeatFields: () => toggleReminderRepeatFields(),
             recalcResolveFdMaturity: () => recalcResolveFdMaturity(),
             recalcFdOpeningRowMaturity: (el) => recalcFdOpeningRowMaturity(el.dataset.rowId),
             handleAutoLockChange: () => handleAutoLockChange(),

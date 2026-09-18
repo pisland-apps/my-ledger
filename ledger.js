@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v413";
-        const APP_VERSION_DATE = "2026-09-17";
+        const APP_VERSION = "v417";
+        const APP_VERSION_DATE = "2026-09-18";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -361,7 +361,7 @@
         // Deposit/Unit Trust), just where it's filed on the Accounts page.
         const ACCOUNT_SUBGROUPS = {
             "Bank/Cash": ["Current Account", "Savings Account", "Cash Account"],
-            "Investment": ["Fixed Deposit", "KWSP", "CPF", "ASNB", "PTPTN", "Unit Trust"],
+            "Investment": ["Fixed Deposit", "KWSP", "CPF", "ASNB", "PTPTN", "Unit Trust", "Gold"],
         };
         function subgroupsForGroup(group) {
             return ACCOUNT_SUBGROUPS[group] || [];
@@ -623,6 +623,16 @@
         // instead everywhere "today" means "today where the user is sitting".
         function todayLocalStr() {
             return localDateStr(new Date());
+        }
+
+        // Whole-day difference between a stored YYYY-MM-DD date string and today (local calendar
+        // day, see todayLocalStr() above) — used for the Gold holding "priced X days ago"
+        // staleness badge (v414). Returns null when there's nothing stored yet.
+        function daysSinceLocalDateStr(dateStr) {
+            if (!dateStr) return null;
+            const then = new Date(dateStr + "T00:00:00");
+            const now = new Date(todayLocalStr() + "T00:00:00");
+            return Math.round((now - then) / 86400000);
         }
 
         /* ================= APP LOCK: PBKDF2 + AES-GCM (Web Crypto) ================= */
@@ -6264,15 +6274,7 @@
                     lastSubgroup = subgroup;
                 }
 
-                const typeBadge = a.type === "fd"
-                    ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#ede9fe; color:#6d28d9; font-weight:bold;">Fixed Deposit</span>`
-                    : a.type === "multi"
-                        ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e0f2fe; color:#0369a1; font-weight:bold;">Multi-Currency</span>`
-                        : a.type === "unittrust"
-                            ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#fef3c7; color:#92400e; font-weight:bold;">Unit Trust</span>`
-                            : a.type === "creditcard"
-                                ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#fce7f3; color:#9d174d; font-weight:bold;">Credit Card</span>`
-                                : currencyBadgeHTML(a.currency);
+                const typeBadge = accountTypeBadgeHTML(a);
 
                 const baseVal = accountBaseValue(a, nativeBalances);
 
@@ -6634,6 +6636,82 @@
             return all.filter(f => f.accountId === accountId);
         }
 
+        // ================= GOLD holdings (v414) =================
+        // A gold holding is just a FUND record with category "Gold" — it rides every existing
+        // Unit Trust mechanic for free (balance calc, Net Worth rollup, Activity page, Portfolio
+        // Report, backup/restore) since none of that code branches on category. "units" is reused
+        // to mean grams, "currentNav" is reused to mean today's manually-entered bank buy / recovery
+        // rate (RM per gram) — see the chat discussion this was built from for the buy-price vs
+        // sell-price rationale. Only two things are genuinely gold-specific:
+        //   1. New gold holdings get an id prefixed "gold_" instead of "fund_" (handleSaveFund) —
+        //      pure namespacing so a future chart/cleanup pass can tell gold price history apart
+        //      from unit-trust NAV history at a glance, without adding a whole new field.
+        //   2. Gold transactions can't be edited in place (only Buy/Sell make sense, and editing
+        //      the price/grams of a real bank trade after the fact invites quiet mistakes) — see
+        //      the tx.fundId branch inside openTransactionForm, which routes gold rows to the
+        //      existing delete-and-relog flow (handleFundTxRowTap) instead of openEditFundTxModal.
+        function isGoldFund(fund) {
+            return !!fund && fund.category === "Gold";
+        }
+
+        // v414 fix: the Accounts list badge previously always said "Unit Trust" for a
+        // type==="unittrust" account, even one filed under the new "Gold" sub-group — which read
+        // as if the gold holding wasn't recognized as gold at all. Centralizes the badge so both
+        // render sites (main Accounts page + a member's Accounts page) show "🪙 Gold" instead
+        // whenever that account's Sub-Group is "Gold", without changing account.type itself (still
+        // "unittrust" under the hood — see the GOLD holdings comment above getFundsForAccount()).
+        function accountTypeBadgeHTML(a) {
+            if (a.type === "fd") return `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#ede9fe; color:#6d28d9; font-weight:bold;">Fixed Deposit</span>`;
+            if (a.type === "multi") return `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e0f2fe; color:#0369a1; font-weight:bold;">Multi-Currency</span>`;
+            if (a.type === "unittrust") {
+                return (a.subgroup === "Gold")
+                    ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#fde68a; color:#78350f; font-weight:bold;">🪙 Gold</span>`
+                    : `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#fef3c7; color:#92400e; font-weight:bold;">Unit Trust</span>`;
+            }
+            if (a.type === "creditcard") return `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#fce7f3; color:#9d174d; font-weight:bold;">Credit Card</span>`;
+            return currencyBadgeHTML(a.currency);
+        }
+
+        // Small "priced X days ago" badge — the core defence against acting on a stale manually-
+        // entered gold price (a live FX-style auto-fetch isn't in scope for v414; see chat). Blank
+        // when there's no price date yet (freshly created holding) or it was priced today.
+        function goldStalenessBadgeHTML(fund) {
+            if (!isGoldFund(fund)) return "";
+            const days = daysSinceLocalDateStr(fund.priceUpdatedAt);
+            if (days === null || days <= 0) return "";
+            const color = days >= 2 ? "var(--expense-color)" : "var(--text-muted)";
+            return `<span style="font-size:0.66rem; color:${color}; font-weight:700;"> · priced ${days}d ago</span>`;
+        }
+
+        // Only Buy/Sell make sense for a gold holding (no dividends/employer contributions) —
+        // this rebuilds the Transaction Type <select> to match whichever fund is currently chosen,
+        // preserving the selection where possible. Called whenever the fund-transaction modal
+        // opens and whenever the Fund dropdown inside it changes.
+        const FUND_TX_TYPE_OPTIONS_ALL = [
+            ["buy", "Buy"], ["sell", "Sell"],
+            ["dividend_reinvest", "Dividend (Reinvest)"],
+            ["dividend_payout", "Dividend (Cheque Payout)"],
+            ["contribution", "Contribution"]
+        ];
+        const FUND_TX_TYPE_OPTIONS_GOLD = [["buy", "Buy"], ["sell", "Sell"]];
+        async function handleFundTxFundChange() {
+            const fundId = document.getElementById("fundTxFundId").value;
+            const funds = await readAllDB(STORES.FUNDS);
+            const fund = funds.find(f => f.id === fundId);
+            const gold = isGoldFund(fund);
+
+            const typeSel = document.getElementById("fundTxType");
+            const prevType = typeSel.value;
+            const options = gold ? FUND_TX_TYPE_OPTIONS_GOLD : FUND_TX_TYPE_OPTIONS_ALL;
+            typeSel.innerHTML = options.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+            typeSel.value = options.some(([v]) => v === prevType) ? prevType : "buy";
+
+            document.getElementById("fundTxUnitsLabel").textContent = gold ? "Grams" : "Units";
+            document.getElementById("fundTxPriceLabel").textContent = gold ? "Price per Gram" : "Price per Unit";
+
+            handleFundTxTypeChange();
+        }
+
         // Fund's own Activity page (v48) — same idea as an account's Activity page
         // (navigateToLedgerPage), but scoped to just this one fund's transactions, so a Unit
         // Trust account holding several funds doesn't jumble all of them into one long list.
@@ -6703,16 +6781,17 @@
             document.getElementById("fundActivityBalanceValue").innerHTML = formatBalanceHTML(value, fund.currency);
 
             const ownerLabel = accountOwnerNamesText({ memberIds: fund.ownerMemberIds });
+            const gold = isGoldFund(fund);
             document.getElementById("fundActivityMeta").innerHTML = `
                 <span>${escapeHtml(fund.category || "")}${fund.code ? " · " + escapeHtml(fund.code) : ""}</span>
                 <span style="color:var(--primary); font-weight:700;">${escapeHtml(ownerLabel)}</span>
-                <span>${(fund.units || 0).toFixed(4)} units @ ${formatCurrency(fund.currentNav || 0, fund.currency)} NAV</span>
+                <span>${(fund.units || 0).toFixed(4)} ${gold ? "g" : "units"} @ ${formatCurrency(fund.currentNav || 0, fund.currency)}${gold ? "/g" : " NAV"}${goldStalenessBadgeHTML(fund)}</span>
             `;
 
             const html = fundTxs.map(t => {
                 const col = (t.fundTxType === "sell" || t.fundTxType === "dividend_payout") ? "expense-color" : "income-color";
                 const sgn = (t.fundTxType === "sell" || t.fundTxType === "dividend_payout") ? "-" : "+";
-                const unitsText = t.units != null ? `${t.units.toFixed(4)} units` : "";
+                const unitsText = t.units != null ? `${t.units.toFixed(4)} ${gold ? "g" : "units"}` : "";
                 return `
                     <div class="ledger-item" data-click="openTransactionForm" data-type="${escapeHtml(t.type)}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
@@ -6899,6 +6978,18 @@
             await refreshCurrencyActivityPageIfVisible();
         }
 
+        // Relabels the Add/Edit Fund form for Gold vs a regular unit-trust fund — the same DB
+        // fields are reused (code→purity/source, currentNav→today's RM/gram rate) so there's no
+        // new store or DB_VERSION bump, just different wording. Called on category change and once
+        // when the form first opens (openAddFundModal/editFund) so it starts in sync.
+        function handleFundCategoryChange() {
+            const gold = document.getElementById("fundCategory").value === "Gold";
+            document.getElementById("fundCodeLabel").textContent = gold ? "Purity / Source (e.g. 999, 916, Maybank GIA)" : "Fund Code (optional)";
+            document.getElementById("fundCode").placeholder = gold ? "e.g., 999 or 916 or Maybank GIA" : "e.g., GEF001";
+            document.getElementById("fundName").placeholder = gold ? "e.g., Maybank GIA / 916 Bracelet" : "e.g., Global Equity Fund";
+            document.getElementById("fundNavLabel").textContent = gold ? "Today's Price (RM / gram)" : "Current NAV";
+        }
+
         function openAddFundModal() {
             const accountId = activeLedgerAccountView;
             if (accountId === "all") return;
@@ -6913,7 +7004,9 @@
             currSel.value = baseCurrency;
             document.getElementById("fundNav").value = "1.0000";
             document.getElementById("fundDeleteBtn").style.display = "none";
+            document.getElementById("fundNavStaleness").style.display = "none";
             renderFundOwnerCheckboxes([]);
+            handleFundCategoryChange();
             openModal("fundModal");
         }
 
@@ -6932,7 +7025,17 @@
             currSel.value = fund.currency || baseCurrency;
             document.getElementById("fundNav").value = fund.currentNav;
             document.getElementById("fundDeleteBtn").style.display = "block";
+            const staleEl = document.getElementById("fundNavStaleness");
+            const days = isGoldFund(fund) ? daysSinceLocalDateStr(fund.priceUpdatedAt) : null;
+            if (days !== null) {
+                staleEl.style.display = "block";
+                staleEl.textContent = days === 0 ? "Updated today" : `Updated ${days}d ago`;
+                staleEl.style.color = days >= 2 ? "var(--expense-color)" : "var(--text-muted)";
+            } else {
+                staleEl.style.display = "none";
+            }
             renderFundOwnerCheckboxes(Array.isArray(fund.ownerMemberIds) ? fund.ownerMemberIds : []);
+            handleFundCategoryChange();
             openModal("fundModal");
         }
 
@@ -6951,25 +7054,28 @@
             const nav = parseFloat(document.getElementById("fundNav").value);
             if (isNaN(nav) || nav < 0) { alert("Please enter a valid Current NAV."); return; }
             const ownerMemberIds = Array.from(document.querySelectorAll(".fund-owner-checkbox:checked")).map(cb => cb.value);
-
-            const id = document.getElementById("fundId").value || "fund_" + Date.now();
+            const category = document.getElementById("fundCategory").value;
+            const isNew = !document.getElementById("fundId").value;
+            // v414: a brand-new Gold holding gets a "gold_" id instead of "fund_" — see the
+            // GOLD holdings comment block above getFundsForAccount() for why (pure namespacing,
+            // no other behavioural difference from a regular fund record).
+            const id = document.getElementById("fundId").value || ((category === "Gold" ? "gold_" : "fund_") + Date.now());
+            const existing = isNew ? null : (await readAllDB(STORES.FUNDS)).find(f => f.id === id);
             const record = {
                 id,
                 accountId: document.getElementById("fundAccountId").value,
                 name,
                 code: document.getElementById("fundCode").value.trim() || null,
-                category: document.getElementById("fundCategory").value,
+                category,
                 currency: document.getElementById("fundCurrency").value,
                 ownerMemberIds,
                 currentNav: nav,
-                units: 0
+                units: existing ? (existing.units || 0) : 0,
+                // v414: stamped whenever the price actually changes (covers both regular NAV
+                // edits and gold's manual daily rate) — only actually displayed for Gold today,
+                // via goldStalenessBadgeHTML()/editFund(), but harmless to track for every fund.
+                priceUpdatedAt: (!existing || nav !== (existing.currentNav || 0)) ? todayLocalStr() : (existing.priceUpdatedAt || null)
             };
-            // Preserve the running unit balance when editing — this form never touches units,
-            // only fund metadata + NAV.
-            if (document.getElementById("fundId").value) {
-                const existing = (await readAllDB(STORES.FUNDS)).find(f => f.id === id);
-                record.units = existing ? (existing.units || 0) : 0;
-            }
             await writeDB(STORES.FUNDS, record);
             closeModal("fundModal");
             renderApp();
@@ -7005,14 +7111,15 @@
 
             document.getElementById("fundTxModalTitle").textContent = "Add Transaction";
             document.getElementById("fundTxId").value = "";
-            document.getElementById("fundTxType").value = "buy";
             document.getElementById("fundTxDate").value = todayLocalStr();
             document.getElementById("fundTxUnits").value = "";
             document.getElementById("fundTxPrice").value = "";
             document.getElementById("fundTxTotal").value = "";
             document.getElementById("fundTxNotes").value = "";
             document.getElementById("fundTxDeleteBtn").style.display = "none";
-            handleFundTxTypeChange();
+            // v414: rebuilds the Type dropdown (Buy/Sell only for Gold) + relabels Units/Price
+            // per gram before defaulting to "buy" — must run after fundSel.value is set above.
+            await handleFundTxFundChange();
             openModal("fundTxModal");
         }
 
@@ -7049,12 +7156,18 @@
             const transferSel = document.getElementById("fundTxTransferAccount");
             transferSel.innerHTML = cashAccounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(accountOptionLabel(a, accounts))}</option>`).join("");
 
-            document.getElementById("fundTxType").value = tx.fundTxType;
             document.getElementById("fundTxDate").value = tx.date;
             document.getElementById("fundTxUnits").value = tx.units != null ? tx.units : "";
             document.getElementById("fundTxPrice").value = tx.pricePerUnit != null ? tx.pricePerUnit : "";
             document.getElementById("fundTxTotal").value = tx.amount;
             document.getElementById("fundTxNotes").value = tx.notes || "";
+            // v414: rebuild Type options (Buy/Sell only for Gold) + relabel Units/Price per gram
+            // for THIS fund first, so the type value assigned right after actually sticks — a
+            // Gold fund's rebuilt option list only contains buy/sell anyway, matching tx.fundTxType
+            // for every real gold transaction (edit-in-place is blocked for Gold before this modal
+            // is ever reached — see openTransactionForm's tx.fundId branch).
+            await handleFundTxFundChange();
+            document.getElementById("fundTxType").value = tx.fundTxType;
             handleFundTxTypeChange();
 
             // Pre-select which cash account this entry transferred from/to/into, based on type —
@@ -7114,8 +7227,6 @@
                 acctRow.style.display = "none";
             }
         }
-        function handleFundTxFundChange() { /* no-op hook, kept for symmetry with other forms */ }
-
         async function handleSaveFundTx() {
             const editId = document.getElementById("fundTxId").value;
             const accountId = document.getElementById("fundTxAccountId").value;
@@ -7407,8 +7518,8 @@
                             <span style="font-size:0.68rem; color:var(--primary); font-weight:700;">${escapeHtml(ownerLabel)}</span>
                         </td>
                         <td style="padding:8px 10px;">${escapeHtml(f.category || "")}</td>
-                        <td style="padding:8px 10px; text-align:right;">${(f.units || 0).toFixed(4)}</td>
-                        <td style="padding:8px 10px; text-align:right;">${formatCurrency(f.currentNav || 0, f.currency)}</td>
+                        <td style="padding:8px 10px; text-align:right;">${(f.units || 0).toFixed(4)}${isGoldFund(f) ? " g" : ""}</td>
+                        <td style="padding:8px 10px; text-align:right;">${formatCurrency(f.currentNav || 0, f.currency)}${isGoldFund(f) ? "/g" : ""}${goldStalenessBadgeHTML(f)}</td>
                         <td style="padding:8px 10px; text-align:right;"><strong>${formatCurrency(value, f.currency)}</strong></td>
                         <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested, f.currency)}</td>
                         <td style="padding:8px 10px; text-align:right; color:${plColor}; font-weight:700;">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)}</td>
@@ -7641,6 +7752,8 @@
 
         let navUpdateView = "card"; // "card" | "table" | "history" — which of the 3 views is shown
         let navUpdateFundsCache = []; // funds currently held (units > 0), across every account
+        let navUpdateAllFundsCache = []; // v416: unfiltered version of the above, before the All/Unit Trust/Gold tab narrows it
+        let navUpdateCategoryFilter = "all"; // v416: "all" | "unittrust" | "gold" — see setNavUpdateCategoryFilter()
 
         // Re-fetches every currently-held fund and rebuilds all 3 views. Called once on page
         // entry and again after a successful save (so "Current: $X" and the History log both
@@ -7650,9 +7763,22 @@
             // "Currently holding" = a live positive unit balance — the same definition the Fund
             // Holdings table on each Unit Trust account page uses to decide a fund still has an
             // active position (a fully sold-out fund's record can still exist at 0 units).
-            navUpdateFundsCache = allFunds
+            navUpdateAllFundsCache = allFunds
                 .filter(f => (f.units || 0) > 0.00005)
                 .sort((a, b) => a.name.localeCompare(b.name));
+
+            // v416: only show the All/Unit Trust/Gold filter once there's actually a mix to split
+            // — a book with no gold holdings (or, in theory, only gold) just sees the plain list
+            // it always has, same spirit as accountTypeShortcutList() only offering shortcuts for
+            // types actually in use.
+            const hasGold = navUpdateAllFundsCache.some(isGoldFund);
+            const hasNonGold = navUpdateAllFundsCache.some(f => !isGoldFund(f));
+            const toggle = document.getElementById("navUpdateCategoryToggle");
+            toggle.classList.toggle("hidden", !(hasGold && hasNonGold));
+            if (!(hasGold && hasNonGold)) navUpdateCategoryFilter = "all";
+            toggle.querySelectorAll(".nav-view-toggle-btn").forEach(b => b.classList.toggle("active", b.dataset.filter === navUpdateCategoryFilter));
+
+            refreshNavUpdateFilteredCache();
 
             const dateInput = document.getElementById("navUpdateDate");
             if (dateInput && !dateInput.value) dateInput.value = todayLocalStr();
@@ -7661,6 +7787,31 @@
             renderNavUpdateTableView();
             await renderNavUpdateHistoryView();
             applyNavUpdateViewVisibility();
+        }
+
+        // Splits navUpdateAllFundsCache down to navUpdateFundsCache per navUpdateCategoryFilter —
+        // kept as its own step (rather than inline in renderNavUpdatePage) so switching the filter
+        // tab can re-slice without re-reading the DB or re-touching the NAV Date / History view.
+        function refreshNavUpdateFilteredCache() {
+            navUpdateFundsCache = navUpdateAllFundsCache.filter(f => {
+                if (navUpdateCategoryFilter === "gold") return isGoldFund(f);
+                if (navUpdateCategoryFilter === "unittrust") return !isGoldFund(f);
+                return true;
+            });
+        }
+
+        // Wired to the All/Unit Trust/Gold tabs — this is the actual fix for "don't want to
+        // update gold and unit trust prices at the same time": narrowing the list here also
+        // narrows what "Update All Prices" iterates over (handleSaveAllNav just walks
+        // navUpdateFundsCache), so picking "Gold" and saving genuinely only touches gold funds,
+        // not a re-save of every unit trust NAV left untouched on screen.
+        async function setNavUpdateCategoryFilter(el) {
+            navUpdateCategoryFilter = el.dataset.filter;
+            document.querySelectorAll("#navUpdateCategoryToggle .nav-view-toggle-btn").forEach(b => b.classList.toggle("active", b.dataset.filter === navUpdateCategoryFilter));
+            refreshNavUpdateFilteredCache();
+            renderNavUpdateCardView();
+            renderNavUpdateTableView();
+            await renderNavUpdateHistoryView();
         }
 
         function navUpdateEmptyStateHtml() {
@@ -7711,6 +7862,16 @@
                 </div>`;
         }
 
+        // v417: turns a fund name into a short header initialism for the History table — e.g.
+        // "Asia Pacific Equity Income" -> "APEI". Only ever called for non-Gold funds (see
+        // renderNavUpdateHistoryView) since Gold holdings are already named short (bank/purity
+        // labels like "PBB Gold"); the full name is still kept in the header's title tooltip.
+        function fundHistoryAcronym(name) {
+            const words = (name || "").trim().split(/\s+/).filter(Boolean);
+            if (words.length <= 1) return (name || "").slice(0, 4).toUpperCase();
+            return words.map(w => w[0]).join("").toUpperCase();
+        }
+
         async function renderNavUpdateHistoryView() {
             const wrap = document.getElementById("navUpdateHistoryView");
             const history = (await readAllDB(STORES.NAV_HISTORY)).sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -7734,11 +7895,44 @@
                 });
             });
 
-            const headerCells = fundOrder.map(fid => `<th style="padding:8px 10px; white-space:nowrap;">${escapeHtml((fundMetaById[fid].name || "").toUpperCase())}</th>`).join("");
-            const bodyRows = history.map((h, idx) => {
+            // v417: respect the same All/Unit Trust/Gold tab the Card/Table views use, and
+            // deleted-fund entries fall back to the "gold_"/"fund_" id prefix (see handleSaveFund)
+            // since a since-deleted fund has no surviving category record to check.
+            const allFundsNow = await readAllDB(STORES.FUNDS);
+            const categoryByFundId = {};
+            allFundsNow.forEach(f => { categoryByFundId[f.id] = f.category; });
+            const isGoldId = (fid) => categoryByFundId[fid] ? categoryByFundId[fid] === "Gold" : fid.startsWith("gold_");
+            const filteredFundOrder = fundOrder.filter(fid => {
+                if (navUpdateCategoryFilter === "all") return true;
+                return navUpdateCategoryFilter === "gold" ? isGoldId(fid) : !isGoldId(fid);
+            });
+            // A date where only the OTHER category was ever updated would otherwise show as a
+            // row of nothing but "-" once filtered — drop those rows entirely.
+            const filteredHistory = navUpdateCategoryFilter === "all" ? history
+                : history.filter(h => (h.entries || []).some(e => filteredFundOrder.includes(e.fundId)));
+            if (filteredHistory.length === 0) {
+                wrap.innerHTML = '<p style="padding:24px 4px; text-align:center; color:var(--text-muted); font-size:0.85rem;">No price history recorded for this filter yet.</p>';
+                return;
+            }
+
+            // Short header label — acronym for a Unit Trust name (dedup'd with a numeric suffix
+            // on a collision), left as-is for Gold since those names are already short.
+            const seenAcronyms = {};
+            const headerCells = filteredFundOrder.map(fid => {
+                const fullName = fundMetaById[fid].name || "";
+                let label = escapeHtml(fullName.toUpperCase());
+                if (!isGoldId(fid)) {
+                    let acr = fundHistoryAcronym(fullName);
+                    seenAcronyms[acr] = (seenAcronyms[acr] || 0) + 1;
+                    if (seenAcronyms[acr] > 1) acr += seenAcronyms[acr];
+                    label = escapeHtml(acr);
+                }
+                return `<th style="padding:8px 10px; white-space:nowrap;" title="${escapeHtml(fullName)}">${label}</th>`;
+            }).join("");
+            const bodyRows = filteredHistory.map((h, idx) => {
                 const navByFund = {};
                 (h.entries || []).forEach(e => { navByFund[e.fundId] = e; });
-                const cells = fundOrder.map(fid => {
+                const cells = filteredFundOrder.map(fid => {
                     const e = navByFund[fid];
                     return `<td style="padding:8px 10px;">${e ? formatNav(e.nav, e.currency) : "-"}</td>`;
                 }).join("");
@@ -7821,7 +8015,12 @@
             for (const e of entries) {
                 const fund = navUpdateFundsCache.find(f => f.id === e.fundId);
                 if (!fund) continue;
-                await writeDB(STORES.FUNDS, { ...fund, currentNav: e.nav });
+                // v416 fix: this batch-save path skipped priceUpdatedAt entirely (only the
+                // Add/Edit Fund modal's handleSaveFund() stamped it), so the "priced Xd ago" Gold
+                // staleness badge never actually moved when prices were updated the normal way,
+                // from this page — the one place gold prices are realistically kept current.
+                const stamp = e.nav !== (fund.currentNav || 0) ? todayLocalStr() : (fund.priceUpdatedAt || null);
+                await writeDB(STORES.FUNDS, { ...fund, currentNav: e.nav, priceUpdatedAt: stamp });
             }
             await writeDB(STORES.NAV_HISTORY, { date: dateVal, entries });
 
@@ -9131,6 +9330,7 @@
             const asnbTotal = sumGroup("Investment", ["ASNB"]);
             const ptptnTotal = sumGroup("Investment", ["PTPTN"]);
             const unitTrustTotal = sumGroup("Investment", ["Unit Trust"]);
+            const goldTotal = sumGroup("Investment", ["Gold"]);
             const otherInvTotal = sumGroup("Investment", [""]); // un-sub-grouped Investment accounts
 
             const otherAssetsTotal = sumGroup("Other Assets");
@@ -9147,10 +9347,11 @@
                 nwsRow("ASNB", asnbTotal, "Investment", "ASNB"),
                 nwsRow("PTPTN", ptptnTotal, "Investment", "PTPTN"),
                 nwsRow("Unit Trust", unitTrustTotal, "Investment", "Unit Trust"),
+                nwsRow("Gold", goldTotal, "Investment", "Gold"),
                 nwsRow("Other Investment", otherInvTotal, "Investment", ""),
                 nwsRow("Other Assets", otherAssetsTotal, "Other Assets"),
             ].join("") || `<p style="font-size:0.75rem; color:var(--text-muted);">No asset accounts yet.</p>`;
-            const totalAssets = currentAcct + savingsAcct + cashAcct + otherBankTotal + foreignMoneyAcct + fdTotal + kwspTotal + cpfTotal + asnbTotal + ptptnTotal + unitTrustTotal + otherInvTotal + otherAssetsTotal;
+            const totalAssets = currentAcct + savingsAcct + cashAcct + otherBankTotal + foreignMoneyAcct + fdTotal + kwspTotal + cpfTotal + asnbTotal + ptptnTotal + unitTrustTotal + goldTotal + otherInvTotal + otherAssetsTotal;
             document.getElementById("nwsAssetsTotal").innerHTML = formatBalanceHTML(totalAssets, baseCurrency);
 
             // --- WHAT I OWE ---
@@ -9370,15 +9571,7 @@
                     lastSubgroup = subgroup;
                 }
 
-                const typeBadge = a.type === "fd"
-                    ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#ede9fe; color:#6d28d9; font-weight:bold;">Fixed Deposit</span>`
-                    : a.type === "multi"
-                        ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#e0f2fe; color:#0369a1; font-weight:bold;">Multi-Currency</span>`
-                        : a.type === "unittrust"
-                            ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#fef3c7; color:#92400e; font-weight:bold;">Unit Trust</span>`
-                            : a.type === "creditcard"
-                                ? `<span style="font-size:0.65rem; padding:1px 4px; border-radius:4px; background:#fce7f3; color:#9d174d; font-weight:bold;">Credit Card</span>`
-                                : currencyBadgeHTML(a.currency);
+                const typeBadge = accountTypeBadgeHTML(a);
 
                 const baseVal = accountBaseValue(a, nativeBalances);
 
@@ -11283,7 +11476,18 @@
                 // below — tapping one instead opens the dedicated fund-transaction editor, which
                 // knows how to unwind the old unit delta and apply the new one correctly.
                 if (tx.fundId) {
-                    await openEditFundTxModal(tx);
+                    // v414: Gold transactions are edit-locked — see the GOLD holdings comment
+                    // block near getFundsForAccount() for why. Falls through to the existing
+                    // delete-and-relog flow instead of the full editor; if the fund record itself
+                    // is gone this is exactly what handleFundTxRowTap already does anyway, so a
+                    // missing fund (found === undefined) safely takes the same non-gold path below.
+                    const fundsForTap = await readAllDB(STORES.FUNDS);
+                    const fundForTap = fundsForTap.find(f => f.id === tx.fundId);
+                    if (isGoldFund(fundForTap)) {
+                        await handleFundTxRowTap(tx);
+                    } else {
+                        await openEditFundTxModal(tx);
+                    }
                     return;
                 }
 
@@ -19527,6 +19731,7 @@
             handleDeleteFundTxFromModal: () => handleDeleteFundTxFromModal(),
             navigateToNavUpdatePage: () => navigateToNavUpdatePage(),
             setNavUpdateView: (el) => setNavUpdateView(el),
+            setNavUpdateCategoryFilter: (el) => setNavUpdateCategoryFilter(el),
             handleSaveAllNav: () => handleSaveAllNav(),
             scrollToTop: () => scrollToTop(),
             fetchLiveFxRates: () => fetchLiveFxRates(),
@@ -19653,6 +19858,7 @@
             toggleLeaseFields: () => toggleLeaseFields(),
             handleFundTxTypeChange: () => handleFundTxTypeChange(),
             handleFundTxFundChange: () => handleFundTxFundChange(),
+            handleFundCategoryChange: () => handleFundCategoryChange(),
             onCategoryFormTypeChange: () => populateCategoryParentSelect(),
             handleSalaryMemberChange: () => handleSalaryMemberChange(),
             handleSalarySchemeChange: () => handleSalarySchemeChange(),

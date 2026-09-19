@@ -4326,17 +4326,22 @@
         </div>
 
         <div class="report-card">
+            <!-- v419: the headline tiles are arranged so the maths is visible at a glance:
+                 Current Invested + Profit / Loss = Portfolio Value. "Current Invested" is
+                 Total Invested minus Recovered (cash already taken out via sells / payouts) —
+                 it's what's still working in the funds. Total Invested and Recovered moved to
+                 a quieter third row as supporting context; Return is still P/L ÷ Total Invested. -->
             <div class="report-summary-grid">
                 <div class="stat-box income">
                     <span class="stat-title" style="color:var(--income-color);">Portfolio Value</span>
                     <div class="stat-amount" id="portfolioValueTotal" style="color:var(--income-color);">0.00</div>
                 </div>
                 <div class="stat-box" style="background:#f5f3ff; border:1px solid #ddd6fe;">
-                    <span class="stat-title" style="color:#5b21b6;">Total Invested</span>
-                    <div class="stat-amount" id="portfolioInvestedTotal" style="color:#6d28d9;">0.00</div>
+                    <span class="stat-title" style="color:#5b21b6;">Current Invested</span>
+                    <div class="stat-amount" id="portfolioCurrentInvestedTotal" style="color:#6d28d9;">0.00</div>
                 </div>
             </div>
-            <div class="report-summary-grid" style="margin-bottom:0;">
+            <div class="report-summary-grid" style="margin-bottom:6px;">
                 <div class="stat-box" id="portfolioPlBox">
                     <span class="stat-title">Profit / Loss</span>
                     <div class="stat-amount" id="portfolioPlTotal">0.00</div>
@@ -4346,8 +4351,22 @@
                     <div class="stat-amount" id="portfolioReturnTotal">0.00%</div>
                 </div>
             </div>
+            <p style="font-size:0.72rem; font-weight:700; color:var(--text-muted); text-align:center; margin:0 0 12px 0;">
+                Current Invested + Profit / Loss = Portfolio Value
+            </p>
+            <div class="report-summary-grid" style="margin-bottom:0;">
+                <div class="stat-box" style="background:#f8fafc; border:1px solid #e2e8f0;">
+                    <span class="stat-title" style="color:#475569;">Total Invested</span>
+                    <div class="stat-amount" id="portfolioInvestedTotal" style="color:#334155;">0.00</div>
+                </div>
+                <div class="stat-box" style="background:#f8fafc; border:1px solid #e2e8f0;">
+                    <span class="stat-title" style="color:#475569;">Recovered</span>
+                    <div class="stat-amount" id="portfolioRecoveredTotal" style="color:#334155;">0.00</div>
+                </div>
+            </div>
             <p style="font-size:0.68rem; color:var(--text-muted); margin-top:8px; margin-bottom:0;">
-                Value, Invested, P/L and Return above are converted to <span id="portfolioBaseCurrLabel">base currency</span> so funds in different currencies can be totalled together.
+                Current Invested = Total Invested &minus; Recovered. Total Invested is every Buy ever made; Recovered is cash already taken out (Sells and dividend payouts). Return = Profit / Loss &divide; Total Invested.<br>
+                Value, Invested, Recovered, P/L and Return above are converted to <span id="portfolioBaseCurrLabel">base currency</span> so funds in different currencies can be totalled together.
             </p>
         </div>
 

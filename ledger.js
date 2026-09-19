@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v418";
-        const APP_VERSION_DATE = "2026-09-18";
+        const APP_VERSION = "v419";
+        const APP_VERSION_DATE = "2026-09-19";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -18420,7 +18420,7 @@
                 if (t.fundId) (fundTxsByFundId[t.fundId] = fundTxsByFundId[t.fundId] || []).push(t);
             });
 
-            let totalValueBase = 0, totalInvestedBase = 0, totalPlBase = 0;
+            let totalValueBase = 0, totalInvestedBase = 0, totalRecoveredBase = 0, totalPlBase = 0;
             const rowsByAccount = {};
 
             liveFunds.forEach(f => {
@@ -18434,6 +18434,7 @@
 
                 totalValueBase += convertCurrency(value, f.currency, baseCurrency);
                 totalInvestedBase += convertCurrency(invested, f.currency, baseCurrency);
+                totalRecoveredBase += convertCurrency(recovered, f.currency, baseCurrency);
                 totalPlBase += convertCurrency(pl, f.currency, baseCurrency);
 
                 const acc = accounts.find(a => a.id === f.accountId);
@@ -18454,6 +18455,12 @@
 
             document.getElementById("portfolioValueTotal").textContent = formatCurrency(totalValueBase, baseCurrency);
             document.getElementById("portfolioInvestedTotal").textContent = formatCurrency(totalInvestedBase, baseCurrency);
+            document.getElementById("portfolioRecoveredTotal").textContent = formatCurrency(totalRecoveredBase, baseCurrency);
+            // v419: "Current Invested" = Total Invested − Recovered, i.e. the principal still
+            // working in the funds. Because P/L = Value + Recovered − Invested, this makes
+            // Current Invested + P/L = Portfolio Value hold exactly (same conversion rate per
+            // fund is applied to every term above, so the identity survives multi-currency).
+            document.getElementById("portfolioCurrentInvestedTotal").textContent = formatCurrency(totalInvestedBase - totalRecoveredBase, baseCurrency);
             const totalReturnPctBase = totalInvestedBase > 0 ? (totalPlBase / totalInvestedBase) * 100 : 0;
 
             const plBox = document.getElementById("portfolioPlBox");

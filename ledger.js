@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v419";
+        const APP_VERSION = "v420";
         const APP_VERSION_DATE = "2026-09-19";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7535,6 +7535,7 @@
                         <td style="padding:8px 10px; text-align:right;">${formatCurrency(f.currentNav || 0, f.currency)}${isGoldFund(f) ? "/g" : ""}${goldStalenessBadgeHTML(f)}</td>
                         <td style="padding:8px 10px; text-align:right;"><strong>${formatCurrency(value, f.currency)}</strong></td>
                         <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested, f.currency)}</td>
+                        <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested - recovered, f.currency)}</td>
                         <td style="padding:8px 10px; text-align:right; color:${plColor}; font-weight:700;">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)}</td>
                         <td style="padding:8px 10px; text-align:right; color:${plColor};">${returnPct.toFixed(2)}%</td>
                         <td style="padding:8px 10px; text-align:right;">${holdingYears >= 0.08 ? annualised.toFixed(2) + "%" : "-"}</td>
@@ -7583,6 +7584,7 @@
                         <td style="padding:8px 10px; text-align:right;">-</td>
                         <td style="padding:8px 10px; text-align:right;"><strong>${formatCurrency(orphanValue, currency)}</strong></td>
                         <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested, currency)}</td>
+                        <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested - recovered, currency)}</td>
                         <td style="padding:8px 10px; text-align:right;">-</td>
                         <td style="padding:8px 10px; text-align:right;">-</td>
                         <td style="padding:8px 10px; text-align:right;">-</td>
@@ -7607,6 +7609,7 @@
                     <td style="padding:8px 10px;"></td>
                     <td style="padding:8px 10px; text-align:right;">${formatCurrency(totalValue, commonCurrency || baseCurrency)}</td>
                     <td style="padding:8px 10px; text-align:right;">${formatCurrency(totalInvested, commonCurrency || baseCurrency)}</td>
+                    <td style="padding:8px 10px; text-align:right;">${formatCurrency(totalInvested - totalRecovered, commonCurrency || baseCurrency)}</td>
                     <td style="padding:8px 10px; text-align:right; color:${totalPlColor};">${totalPl >= 0 ? "+" : ""}${formatCurrency(totalPl, commonCurrency || baseCurrency)}</td>
                     <td style="padding:8px 10px; text-align:right; color:${totalPlColor};">${totalReturnPct.toFixed(2)}%</td>
                     <td style="padding:8px 10px;"></td>
@@ -7623,6 +7626,7 @@
                             <th style="padding:6px 10px; text-align:right;">NAV</th>
                             <th style="padding:6px 10px; text-align:right;">Value</th>
                             <th style="padding:6px 10px; text-align:right;">Invested</th>
+                            <th style="padding:6px 10px; text-align:right;" title="Invested minus Recovered (cash already taken out via sells / payouts). Current Invested + P/L = Value.">Current Inv.</th>
                             <th style="padding:6px 10px; text-align:right;">P/L</th>
                             <th style="padding:6px 10px; text-align:right;">Return</th>
                             <th style="padding:6px 10px; text-align:right;">Annualised</th>
@@ -18448,6 +18452,7 @@
                         </td>
                         <td style="padding:8px 10px; text-align:right;"><strong>${formatCurrency(value, f.currency)}</strong></td>
                         <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested, f.currency)}</td>
+                        <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested - recovered, f.currency)}</td>
                         <td style="padding:8px 10px; text-align:right; color:${plColor}; font-weight:700;">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)}</td>
                         <td style="padding:8px 10px; text-align:right; color:${plColor};">${returnPct.toFixed(2)}%</td>
                     </tr>`);
@@ -18487,19 +18492,21 @@
             detailWrap.innerHTML = accNames.map(accName => `
                 <div style="margin-bottom:14px;">
                     <div style="font-size:0.72rem; font-weight:800; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">📊 ${escapeHtml(accName)}</div>
-                    <table style="width:100%; table-layout:fixed; border-collapse:collapse; font-size:0.78rem; white-space:nowrap;">
+                    <table style="width:100%; min-width:680px; table-layout:fixed; border-collapse:collapse; font-size:0.78rem; white-space:nowrap;">
                         <colgroup>
-                            <col style="width:34%;">
-                            <col style="width:18%;">
-                            <col style="width:18%;">
-                            <col style="width:18%;">
-                            <col style="width:12%;">
+                            <col style="width:24%;">
+                            <col style="width:17%;">
+                            <col style="width:17%;">
+                            <col style="width:17%;">
+                            <col style="width:15%;">
+                            <col style="width:10%;">
                         </colgroup>
                         <thead>
                             <tr style="text-align:left; color:var(--text-muted); font-size:0.68rem; text-transform:uppercase;">
                                 <th style="padding:6px 10px;">Fund</th>
                                 <th style="padding:6px 10px; text-align:right;">Value</th>
                                 <th style="padding:6px 10px; text-align:right;">Invested</th>
+                                <th style="padding:6px 10px; text-align:right;" title="Invested minus Recovered (cash already taken out via sells / payouts). Current Inv. + P/L = Value.">Current Inv.</th>
                                 <th style="padding:6px 10px; text-align:right;">P/L</th>
                                 <th style="padding:6px 10px; text-align:right;">Return</th>
                             </tr>

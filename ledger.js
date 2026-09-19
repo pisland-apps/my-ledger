@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v422";
+        const APP_VERSION = "v423";
         const APP_VERSION_DATE = "2026-09-19";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7419,6 +7419,42 @@
         // now still surface as an "(fund deleted)" row below, built straight from their orphaned
         // transactions, and a Totals row ties the whole table's Value/Invested/P&L together so a
         // mismatch against the Current Balance banner is visible at a glance instead of hidden.
+        // v423: "closed" fund = fully redeemed — it once had Buys (invested > 0) but holds no
+        // units any more. A fund that was just added and never bought into is NOT closed, so
+        // `invested > 0` is part of the test. The 1e-6 threshold absorbs float dust left by
+        // repeated unit add/subtract (e.g. 100.1 + 200.2 - 300.3 is not exactly 0).
+        // Closed funds are folded into one summary row under each table (tap to expand) rather
+        // than hidden outright, and they always still count toward the totals — the toggle only
+        // changes whether their rows are listed. The choice is one shared per-device preference
+        // (localStorage) used by both the Fund Holdings table and the Portfolio Fund Detail.
+        const SHOW_CLOSED_FUNDS_KEY = "ledger.showClosedFunds";
+        function isClosedFund(f, invested) {
+            return (f.units || 0) < 1e-6 && invested > 0;
+        }
+        function getShowClosedFunds() {
+            try { return localStorage.getItem(SHOW_CLOSED_FUNDS_KEY) === "1"; } catch (e) { return false; }
+        }
+        function setShowClosedFunds(v) {
+            try { localStorage.setItem(SHOW_CLOSED_FUNDS_KEY, v ? "1" : "0"); } catch (e) {}
+        }
+        // One summary row shown under a table: "▸ 2 closed funds · Realized P/L +RM… · tap to show".
+        function closedFundsSummaryRow(count, plText, plPositive, colspan) {
+            const expanded = getShowClosedFunds();
+            const plColor = plPositive ? "var(--income-color)" : "var(--expense-color)";
+            return `
+                <tr data-click="toggleClosedFunds" style="cursor:pointer;" title="Fully redeemed funds (0 units). They still count in every total.">
+                    <td colspan="${colspan}" style="padding:8px 10px; font-size:0.74rem; color:var(--text-muted); font-weight:700; border-top:1px dashed var(--border-color);">
+                        ${expanded ? "▾" : "▸"} ${count} closed fund${count === 1 ? "" : "s"} · Realized P/L <span style="color:${plColor};">${plText}</span> · ${expanded ? "tap to hide" : "tap to show"}
+                    </td>
+                </tr>`;
+        }
+        function toggleClosedFunds() {
+            setShowClosedFunds(!getShowClosedFunds());
+            renderApp();
+            const pp = document.getElementById("page-portfolio-report");
+            if (pp && !pp.classList.contains("hidden")) renderPortfolioReportPage();
+        }
+
         async function renderFundHoldingsTable(accountId, allTxs) {
             const funds = await getFundsForAccount(accountId);
             const wrap = document.getElementById("fundHoldingsTableWrap");
@@ -7498,6 +7534,8 @@
             }
 
             const rowsHtml = [];
+            const closedRows = []; // v423: fully redeemed funds, listed only when expanded
+            let closedPl = 0;
             let totalValue = 0, totalInvested = 0, totalPl = 0, totalRecovered = 0;
             let commonCurrency = null, mixedCurrency = false;
 
@@ -7523,7 +7561,9 @@
                 totalValue += value; totalInvested += invested; totalPl += pl; totalRecovered += recovered;
                 if (commonCurrency === null) commonCurrency = f.currency; else if (commonCurrency !== f.currency) mixedCurrency = true;
 
-                rowsHtml.push(`
+                const closed = isClosedFund(f, invested);
+                if (closed) closedPl += pl;
+                (closed ? closedRows : rowsHtml).push(`
                     <tr style="cursor:pointer;" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}">
                         <td style="padding:8px 10px;">
                             <strong>${escapeHtml(f.name)}</strong><br>
@@ -7542,6 +7582,11 @@
                         <td style="padding:8px 10px; text-align:right;">${holdingYears >= 0.08 ? holdingYears.toFixed(1) + " yrs" : "-"}</td>
                     </tr>`);
             });
+
+            if (closedRows.length > 0) {
+                rowsHtml.push(closedFundsSummaryRow(closedRows.length, (closedPl >= 0 ? "+" : "") + formatCurrency(closedPl, commonCurrency || baseCurrency), closedPl >= 0, 11));
+                if (getShowClosedFunds()) closedRows.forEach(r => rowsHtml.push(r));
+            }
 
             // Orphaned rows: transactions tagged with a fundId that doesn't match any fund record
             // still under this account (the fund was deleted, or its record moved/removed some
@@ -18426,6 +18471,7 @@
 
             let totalValueBase = 0, totalInvestedBase = 0, totalRecoveredBase = 0, totalPlBase = 0;
             const rowsByAccount = {};
+            const closedByAccount = {}; // v423: accName -> { rows, plBase } for fully redeemed funds
 
             liveFunds.forEach(f => {
                 const fundTxs = (fundTxsByFundId[f.id] || []).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -18443,7 +18489,16 @@
 
                 const acc = accounts.find(a => a.id === f.accountId);
                 const accName = acc ? acc.name : "(unknown account)";
-                (rowsByAccount[accName] = rowsByAccount[accName] || []).push(`
+                const closed = isClosedFund(f, invested);
+                let targetRows;
+                if (closed) {
+                    const grp = (closedByAccount[accName] = closedByAccount[accName] || { rows: [], plBase: 0 });
+                    grp.plBase += convertCurrency(pl, f.currency, baseCurrency);
+                    targetRows = grp.rows;
+                } else {
+                    targetRows = (rowsByAccount[accName] = rowsByAccount[accName] || []);
+                }
+                targetRows.push(`
                     <tr style="cursor:pointer;" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}">
                         <td style="padding:8px 10px;">
                             <strong>${escapeHtml(f.name)}</strong><br>
@@ -18503,7 +18558,7 @@
                 segRec.style.width = recBar + "%";
                 // v422: hover tooltips spell out what each segment is (desktop; touch screens rely
                 // on the labelled legend rows underneath, since <title> tooltips don't show on tap).
-                segCur.title = `Current Invested ${currentInvestedText} (${curBar.toFixed(1)}% of Total Invested) \u2014 principal still invested in the funds`;
+                segCur.title = `Current Invested ${currentInvestedText} (${curBar.toFixed(1)}% of Total Invested) \u2014 Total Invested minus what has already been taken out`;
                 segRec.title = `Recovered ${formatCurrency(totalRecoveredBase, baseCurrency)} (${recBar.toFixed(1)}% of Total Invested) \u2014 already taken out via sells & payouts`;
                 recPctEl.textContent = recPct.toFixed(1) + "%";
                 curPctEl.textContent = (100 - recPct >= 0 ? (100 - recPct).toFixed(1) : "0.0") + "%";
@@ -18520,7 +18575,7 @@
             }
 
             const detailWrap = document.getElementById("portfolioDetailWrap");
-            const accNames = Object.keys(rowsByAccount).sort();
+            const accNames = Array.from(new Set([...Object.keys(rowsByAccount), ...Object.keys(closedByAccount)])).sort();
             if (accNames.length === 0) {
                 detailWrap.innerHTML = '<p style="padding:12px 4px; text-align:center; color:var(--text-muted); font-size:0.8rem;">No unit trust funds match this filter.</p>';
                 return;
@@ -18550,7 +18605,7 @@
                                 <th style="padding:6px 10px; text-align:right;">Return</th>
                             </tr>
                         </thead>
-                        <tbody>${rowsByAccount[accName].join("")}</tbody>
+                        <tbody>${(rowsByAccount[accName] || []).join("")}${closedByAccount[accName] ? closedFundsSummaryRow(closedByAccount[accName].rows.length, (closedByAccount[accName].plBase >= 0 ? "+" : "") + formatCurrency(closedByAccount[accName].plBase, baseCurrency), closedByAccount[accName].plBase >= 0, 6) + (getShowClosedFunds() ? closedByAccount[accName].rows.join("") : "") : ""}</tbody>
                     </table>
                 </div>`).join("");
         }
@@ -20136,6 +20191,7 @@
             navigateToPortfolioReportPage: () => navigateToPortfolioReportPage(),
             navigateToOwnerNetWorthReportPage: () => navigateToOwnerNetWorthReportPage(),
             togglePortfolioDetail: () => togglePortfolioDetail(),
+            toggleClosedFunds: () => toggleClosedFunds(),
             handleFundActivityBackClick: () => handleFundActivityBackClick(),
             editFundFromActivityHeader: () => editFundFromActivityHeader(),
             navigateToCurrencyActivityPage: (el) => navigateToCurrencyActivityPage(el),

@@ -721,6 +721,51 @@
         .stat-title { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; }
         .stat-amount { font-size: 1.15rem; margin-top: 4px; font-weight: 700; }
 
+        /* --- Unit Trust Portfolio headline card (v421) ---
+           Built only from the app's theme tokens (--card-bg, --text-*, --primary, --income/
+           --expense-color and their chip tokens, --chip-bg, --border-color) so every preset —
+           light, midnight/noir/slate dark, crayon, glass — restyles it automatically; nothing
+           here hard-codes a colour. Green/red is reserved for profit/loss only; principal
+           figures use --primary or neutral text so "green" always means "you gained". */
+        .pf-hero {
+            background-color: var(--card-bg);
+            background-image: linear-gradient(160deg, transparent 45%, var(--primary-chip-bg) 130%);
+        }
+        .pf-hero-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap; }
+        .pf-label { font-size:0.68rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-muted); }
+        .pf-value { font-size:1.75rem; font-weight:800; line-height:1.15; margin-top:4px; color:var(--text-main); word-break:break-word; }
+        .pf-badge-wrap { text-align:right; margin-left:auto; }
+        .pf-badge {
+            display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.8rem; font-weight:800;
+            color:var(--income-color); background:var(--income-chip-bg); border:1px solid var(--income-chip-border);
+        }
+        .pf-badge.down { color:var(--expense-color); background:var(--expense-chip-bg); border-color:var(--expense-chip-border); }
+        .pf-badge-note { display:block; margin-top:3px; font-size:0.62rem; color:var(--text-muted); }
+        .pf-eq { display:flex; align-items:flex-end; flex-wrap:nowrap; gap:6px 8px; margin-top:12px; padding-top:12px; border-top:1px dashed var(--border-color); }
+        .pf-eq-op { font-size:1.05rem; font-weight:800; color:var(--text-muted); padding-bottom:1px; }
+        .pf-eq-item { display:flex; flex-direction:column; min-width:0; }
+        .pf-eq-item .pf-label { font-size:0.62rem; }
+        .pf-eq-amt { font-size:0.92rem; white-space:nowrap; font-weight:800; margin-top:1px; }
+        .pf-eq-amt.invested { color:var(--primary); }
+        .pf-eq-amt.pl { color:var(--income-color); }
+        .pf-eq-amt.pl.down { color:var(--expense-color); }
+        .pf-bar { display:flex; height:10px; border-radius:999px; overflow:hidden; background:var(--chip-bg); margin-top:16px; }
+        .pf-bar-seg { height:100%; transition:width 0.3s; }
+        .pf-bar-seg.current { background:var(--primary); }
+        .pf-bar-seg.recovered { background:var(--text-muted); opacity:0.55; }
+        .pf-rows { margin-top:10px; }
+        .pf-row { display:flex; align-items:center; gap:8px; padding:5px 0; font-size:0.8rem; }
+        .pf-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+        .pf-dot.current { background:var(--primary); }
+        .pf-dot.recovered { background:var(--text-muted); opacity:0.55; }
+        .pf-row-name { flex:1; color:var(--text-main); font-weight:600; min-width:0; }
+        .pf-row-name small { display:block; font-weight:400; font-size:0.66rem; color:var(--text-muted); }
+        .pf-row-amt { font-weight:700; color:var(--text-main); text-align:right; }
+        .pf-row-pct { width:3.6em; text-align:right; font-size:0.7rem; color:var(--text-muted); }
+        .pf-row.total { margin-top:4px; padding-top:8px; border-top:1px solid var(--border-color); }
+        .pf-row.total .pf-row-name, .pf-row.total .pf-row-amt { font-weight:800; }
+        .pf-note { margin:10px 0 0; font-size:0.68rem; line-height:1.4; color:var(--text-muted); }
+
         .net-savings-banner {
             padding: 14px;
             border-radius: 10px;
@@ -4325,49 +4370,62 @@
             </select>
         </div>
 
-        <div class="report-card">
-            <!-- v419: the headline tiles are arranged so the maths is visible at a glance:
-                 Current Invested + Profit / Loss = Portfolio Value. "Current Invested" is
-                 Total Invested minus Recovered (cash already taken out via sells / payouts) —
-                 it's what's still working in the funds. Total Invested and Recovered moved to
-                 a quieter third row as supporting context; Return is still P/L ÷ Total Invested. -->
-            <div class="report-summary-grid">
-                <div class="stat-box income">
-                    <span class="stat-title" style="color:var(--income-color);">Portfolio Value</span>
-                    <div class="stat-amount" id="portfolioValueTotal" style="color:var(--income-color);">0.00</div>
+        <div class="report-card pf-hero">
+            <!-- v421: redesigned headline. Portfolio Value up top, then the identity spelled out
+                 in-place: Current Invested + Profit / Loss = Portfolio Value. The bar splits
+                 Total Invested into what is still invested vs already Recovered (sells and
+                 payouts), so Current + Recovered = Total is visible too. Return = P/L ÷ Total
+                 Invested (badge says so). All colours are theme tokens — see .pf-* CSS. -->
+            <div class="pf-hero-top">
+                <div>
+                    <div class="pf-label">Portfolio Value</div>
+                    <div class="pf-value" id="portfolioValueTotal">0.00</div>
                 </div>
-                <div class="stat-box" style="background:#f5f3ff; border:1px solid #ddd6fe;">
-                    <span class="stat-title" style="color:#5b21b6;">Current Invested</span>
-                    <div class="stat-amount" id="portfolioCurrentInvestedTotal" style="color:#6d28d9;">0.00</div>
-                </div>
-            </div>
-            <div class="report-summary-grid" style="margin-bottom:6px;">
-                <div class="stat-box" id="portfolioPlBox">
-                    <span class="stat-title">Profit / Loss</span>
-                    <div class="stat-amount" id="portfolioPlTotal">0.00</div>
-                </div>
-                <div class="stat-box" id="portfolioReturnBox">
-                    <span class="stat-title">Return</span>
-                    <div class="stat-amount" id="portfolioReturnTotal">0.00%</div>
+                <div class="pf-badge-wrap">
+                    <span class="pf-badge" id="portfolioReturnBadge" title="Return = Profit / Loss &divide; Total Invested">&#9650; <span id="portfolioReturnTotal">0.00%</span></span>
+                    <span class="pf-badge-note">return on total invested</span>
                 </div>
             </div>
-            <p style="font-size:0.72rem; font-weight:700; color:var(--text-muted); text-align:center; margin:0 0 12px 0;">
-                Current Invested + Profit / Loss = Portfolio Value
-            </p>
-            <div class="report-summary-grid" style="margin-bottom:0;">
-                <div class="stat-box" style="background:#f8fafc; border:1px solid #e2e8f0;">
-                    <span class="stat-title" style="color:#475569;">Total Invested</span>
-                    <div class="stat-amount" id="portfolioInvestedTotal" style="color:#334155;">0.00</div>
+
+            <div class="pf-eq">
+                <span class="pf-eq-op">=</span>
+                <div class="pf-eq-item">
+                    <span class="pf-label">Current Invested</span>
+                    <span class="pf-eq-amt invested" id="portfolioCurrentInvestedTotal">0.00</span>
                 </div>
-                <div class="stat-box" style="background:#f8fafc; border:1px solid #e2e8f0;">
-                    <span class="stat-title" style="color:#475569;">Recovered</span>
-                    <div class="stat-amount" id="portfolioRecoveredTotal" style="color:#334155;">0.00</div>
+                <span class="pf-eq-op">+</span>
+                <div class="pf-eq-item">
+                    <span class="pf-label">Profit / Loss</span>
+                    <span class="pf-eq-amt pl" id="portfolioPlTotal">0.00</span>
                 </div>
             </div>
-            <p style="font-size:0.68rem; color:var(--text-muted); margin-top:8px; margin-bottom:0;">
-                Current Invested = Total Invested &minus; Recovered. Total Invested is every Buy ever made; Recovered is cash already taken out (Sells and dividend payouts). Return = Profit / Loss &divide; Total Invested.<br>
-                Value, Invested, Recovered, P/L and Return above are converted to <span id="portfolioBaseCurrLabel">base currency</span> so funds in different currencies can be totalled together.
-            </p>
+
+            <div class="pf-bar" id="portfolioSplitBar" role="img" aria-label="Total Invested split into Current Invested and Recovered">
+                <div class="pf-bar-seg current" id="portfolioBarCurrent" style="width:0%;"></div>
+                <div class="pf-bar-seg recovered" id="portfolioBarRecovered" style="width:0%;"></div>
+            </div>
+            <div class="pf-rows">
+                <div class="pf-row">
+                    <span class="pf-dot current"></span>
+                    <span class="pf-row-name">Current Invested<small>still invested</small></span>
+                    <span class="pf-row-amt" id="portfolioCurrentInvestedRow">0.00</span>
+                    <span class="pf-row-pct" id="portfolioCurrentPct"></span>
+                </div>
+                <div class="pf-row">
+                    <span class="pf-dot recovered"></span>
+                    <span class="pf-row-name">Recovered<small>sells &amp; payouts</small></span>
+                    <span class="pf-row-amt" id="portfolioRecoveredTotal">0.00</span>
+                    <span class="pf-row-pct" id="portfolioRecoveredPct"></span>
+                </div>
+                <div class="pf-row total">
+                    <span class="pf-dot" style="background:transparent;"></span>
+                    <span class="pf-row-name">Total Invested<small>all Buys</small></span>
+                    <span class="pf-row-amt" id="portfolioInvestedTotal">0.00</span>
+                    <span class="pf-row-pct"></span>
+                </div>
+            </div>
+            <p class="pf-note" id="portfolioBarNote" style="display:none;"></p>
+            <p class="pf-note">All figures converted to <span id="portfolioBaseCurrLabel">base currency</span> so funds in different currencies can be totalled together.</p>
         </div>
 
         <div class="section-header">

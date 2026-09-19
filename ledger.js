@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v420";
+        const APP_VERSION = "v421";
         const APP_VERSION_DATE = "2026-09-19";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -18465,20 +18465,50 @@
             // working in the funds. Because P/L = Value + Recovered − Invested, this makes
             // Current Invested + P/L = Portfolio Value hold exactly (same conversion rate per
             // fund is applied to every term above, so the identity survives multi-currency).
-            document.getElementById("portfolioCurrentInvestedTotal").textContent = formatCurrency(totalInvestedBase - totalRecoveredBase, baseCurrency);
+            const currentInvestedBase = totalInvestedBase - totalRecoveredBase;
+            const currentInvestedText = formatCurrency(currentInvestedBase, baseCurrency);
+            document.getElementById("portfolioCurrentInvestedTotal").textContent = currentInvestedText;
+            document.getElementById("portfolioCurrentInvestedRow").textContent = currentInvestedText;
             const totalReturnPctBase = totalInvestedBase > 0 ? (totalPlBase / totalInvestedBase) * 100 : 0;
 
-            const plBox = document.getElementById("portfolioPlBox");
-            const returnBox = document.getElementById("portfolioReturnBox");
-            const c = totalPlBase >= 0
-                ? { bg: "#f0fdf4", border: "#bbf7d0", text: "#15803d" }
-                : { bg: "#fef2f2", border: "#fecaca", text: "#b91c1c" };
-            plBox.style.background = c.bg; plBox.style.border = `1px solid ${c.border}`;
-            returnBox.style.background = c.bg; returnBox.style.border = `1px solid ${c.border}`;
-            document.getElementById("portfolioPlTotal").style.color = c.text;
-            document.getElementById("portfolioReturnTotal").style.color = c.text;
+            // v421: gain/loss colouring is done with the .down class (theme tokens in CSS) rather
+            // than the hard-coded light-mode hexes the old P/L / Return tiles used.
+            const isLoss = totalPlBase < 0;
+            const badge = document.getElementById("portfolioReturnBadge");
+            badge.classList.toggle("down", isLoss);
+            badge.firstChild.textContent = isLoss ? "\u25BC " : "\u25B2 ";
+            document.getElementById("portfolioPlTotal").classList.toggle("down", isLoss);
             document.getElementById("portfolioPlTotal").textContent = (totalPlBase >= 0 ? "+" : "") + formatCurrency(totalPlBase, baseCurrency);
-            document.getElementById("portfolioReturnTotal").textContent = totalReturnPctBase.toFixed(2) + "%";
+            document.getElementById("portfolioReturnTotal").textContent = (totalReturnPctBase >= 0 ? "+" : "") + totalReturnPctBase.toFixed(2) + "%";
+
+            // v421: split bar — the whole bar is Total Invested; left segment is what is still
+            // invested, right is what has already been recovered. Recovered can exceed 100% of
+            // Total Invested once principal is fully back and the rest is profit, so widths are
+            // clamped and a note explains that case instead of drawing an overflowing bar.
+            const barEl = document.getElementById("portfolioSplitBar");
+            const barNote = document.getElementById("portfolioBarNote");
+            const curPctEl = document.getElementById("portfolioCurrentPct");
+            const recPctEl = document.getElementById("portfolioRecoveredPct");
+            barNote.style.display = "none";
+            if (totalInvestedBase > 0) {
+                const recPct = (totalRecoveredBase / totalInvestedBase) * 100;
+                const recBar = Math.min(100, Math.max(0, recPct));
+                const curBar = 100 - recBar;
+                barEl.style.display = "flex";
+                document.getElementById("portfolioBarCurrent").style.width = curBar + "%";
+                document.getElementById("portfolioBarRecovered").style.width = recBar + "%";
+                recPctEl.textContent = recPct.toFixed(1) + "%";
+                curPctEl.textContent = (100 - recPct >= 0 ? (100 - recPct).toFixed(1) : "0.0") + "%";
+                barEl.setAttribute("aria-label", `Total Invested split: ${curBar.toFixed(1)}% current invested, ${recBar.toFixed(1)}% recovered`);
+                if (recPct > 100) {
+                    barNote.textContent = "Recovered is more than Total Invested: all principal is back, so Current Invested is negative and the rest is profit already taken out.";
+                    barNote.style.display = "";
+                }
+            } else {
+                barEl.style.display = "none";
+                curPctEl.textContent = "";
+                recPctEl.textContent = "";
+            }
 
             const detailWrap = document.getElementById("portfolioDetailWrap");
             const accNames = Object.keys(rowsByAccount).sort();

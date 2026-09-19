@@ -749,7 +749,9 @@
         .pf-eq-amt.invested { color:var(--primary); }
         .pf-eq-amt.pl { color:var(--income-color); }
         .pf-eq-amt.pl.down { color:var(--expense-color); }
-        .pf-bar { display:flex; height:10px; border-radius:999px; overflow:hidden; background:var(--chip-bg); margin-top:16px; }
+        .pf-bar-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-top:22px; }
+        .pf-bar-head .pf-bar-total { font-size:0.8rem; font-weight:800; color:var(--text-main); }
+        .pf-bar { display:flex; height:10px; border-radius:999px; overflow:hidden; background:var(--chip-bg); margin-top:6px; }
         .pf-bar-seg { height:100%; transition:width 0.3s; }
         .pf-bar-seg.current { background:var(--primary); }
         .pf-bar-seg.recovered { background:var(--text-muted); opacity:0.55; }
@@ -762,8 +764,6 @@
         .pf-row-name small { display:block; font-weight:400; font-size:0.66rem; color:var(--text-muted); }
         .pf-row-amt { font-weight:700; color:var(--text-main); text-align:right; }
         .pf-row-pct { width:3.6em; text-align:right; font-size:0.7rem; color:var(--text-muted); }
-        .pf-row.total { margin-top:4px; padding-top:8px; border-top:1px solid var(--border-color); }
-        .pf-row.total .pf-row-name, .pf-row.total .pf-row-amt { font-weight:800; }
         .pf-note { margin:10px 0 0; font-size:0.68rem; line-height:1.4; color:var(--text-muted); }
 
         .net-savings-banner {
@@ -4400,6 +4400,10 @@
                 </div>
             </div>
 
+            <div class="pf-bar-head" id="portfolioBarHead">
+                <span class="pf-label">Bar = Total Invested</span>
+                <span class="pf-bar-total" id="portfolioInvestedTotal">0.00</span>
+            </div>
             <div class="pf-bar" id="portfolioSplitBar" role="img" aria-label="Total Invested split into Current Invested and Recovered">
                 <div class="pf-bar-seg current" id="portfolioBarCurrent" style="width:0%;"></div>
                 <div class="pf-bar-seg recovered" id="portfolioBarRecovered" style="width:0%;"></div>
@@ -4416,12 +4420,6 @@
                     <span class="pf-row-name">Recovered<small>sells &amp; payouts</small></span>
                     <span class="pf-row-amt" id="portfolioRecoveredTotal">0.00</span>
                     <span class="pf-row-pct" id="portfolioRecoveredPct"></span>
-                </div>
-                <div class="pf-row total">
-                    <span class="pf-dot" style="background:transparent;"></span>
-                    <span class="pf-row-name">Total Invested<small>all Buys</small></span>
-                    <span class="pf-row-amt" id="portfolioInvestedTotal">0.00</span>
-                    <span class="pf-row-pct"></span>
                 </div>
             </div>
             <p class="pf-note" id="portfolioBarNote" style="display:none;"></p>

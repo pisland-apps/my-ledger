@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v421";
+        const APP_VERSION = "v422";
         const APP_VERSION_DATE = "2026-09-19";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -18489,14 +18489,22 @@
             const barNote = document.getElementById("portfolioBarNote");
             const curPctEl = document.getElementById("portfolioCurrentPct");
             const recPctEl = document.getElementById("portfolioRecoveredPct");
+            const barHead = document.getElementById("portfolioBarHead");
             barNote.style.display = "none";
             if (totalInvestedBase > 0) {
                 const recPct = (totalRecoveredBase / totalInvestedBase) * 100;
                 const recBar = Math.min(100, Math.max(0, recPct));
                 const curBar = 100 - recBar;
                 barEl.style.display = "flex";
-                document.getElementById("portfolioBarCurrent").style.width = curBar + "%";
-                document.getElementById("portfolioBarRecovered").style.width = recBar + "%";
+                barHead.style.display = "";
+                const segCur = document.getElementById("portfolioBarCurrent");
+                const segRec = document.getElementById("portfolioBarRecovered");
+                segCur.style.width = curBar + "%";
+                segRec.style.width = recBar + "%";
+                // v422: hover tooltips spell out what each segment is (desktop; touch screens rely
+                // on the labelled legend rows underneath, since <title> tooltips don't show on tap).
+                segCur.title = `Current Invested ${currentInvestedText} (${curBar.toFixed(1)}% of Total Invested) \u2014 principal still invested in the funds`;
+                segRec.title = `Recovered ${formatCurrency(totalRecoveredBase, baseCurrency)} (${recBar.toFixed(1)}% of Total Invested) \u2014 already taken out via sells & payouts`;
                 recPctEl.textContent = recPct.toFixed(1) + "%";
                 curPctEl.textContent = (100 - recPct >= 0 ? (100 - recPct).toFixed(1) : "0.0") + "%";
                 barEl.setAttribute("aria-label", `Total Invested split: ${curBar.toFixed(1)}% current invested, ${recBar.toFixed(1)}% recovered`);
@@ -18506,6 +18514,7 @@
                 }
             } else {
                 barEl.style.display = "none";
+                barHead.style.display = "none";
                 curPctEl.textContent = "";
                 recPctEl.textContent = "";
             }

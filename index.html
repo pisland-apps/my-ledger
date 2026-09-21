@@ -1247,8 +1247,13 @@
         /* Open state (v173, dashboard speed-dial FAB): rotating the "+" glyph 45° reads as an
            "×" close icon with no separate icon swap needed — toggled by JS alongside showing the
            sheet/backdrop. */
-        .fab-btn.fab-btn-open { transform: rotate(45deg); }
-        .fab-btn.fab-btn-open:active { transform: rotate(45deg) scale(0.95); }
+        /* v424/v425: every "+" FAB (the two speed-dial toggles in v424, all the others in v425)
+           now holds an inline SVG "+" (was a text "+" glyph,
+           whose visual centre depends on the font's metrics) and the 45° turn is applied to that
+           SVG only — pivot is its exact centre, and the disc's gloss highlight no longer spins
+           with it. */
+        .fab-btn .fab-plus-icon { transition: transform 0.18s ease; }
+        .fab-btn.fab-btn-open .fab-plus-icon { transform: rotate(45deg); }
 
         /* Floating "back to top" button (v66) — global, sits above the "+" FAB on the right edge
            so the two never overlap. Hidden by default; JS toggles it visible once the page has
@@ -1362,7 +1367,10 @@
            got this restyle. */
         .speed-dial-sheet {
             position: fixed;
-            right: 20px;
+            /* v424: 24px, not 20px — the toggle FAB is 56px wide at right:20px (centre 48px from
+               the edge); these circles are 48px wide, so right:24px puts their centres on that
+               same line. At 20px they sat 4px right of the FAB. */
+            right: 24px;
             bottom: 92px;
             display: flex;
             flex-direction: column;
@@ -3340,7 +3348,9 @@
         <div id="dashboardQuickAddSheet" class="speed-dial-sheet" style="display:none;">
             <div class="speed-dial-row">
                 <span class="speed-dial-label">Lend / Claim</span>
-                <button class="speed-dial-fab sd-claim" data-click="dashboardQuickAddChooseAction" data-action="claim" aria-label="Lend / Claim" title="Lend / Claim">🧾</button>
+                <button class="speed-dial-fab sd-claim" data-click="dashboardQuickAddChooseAction" data-action="claim" aria-label="Lend / Claim" title="Lend / Claim">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M6 2h12a1 1 0 0 1 1 1v19l-2.5-1.6L14 22l-2-1.6L9.5 22l-2-1.6L5 22V3a1 1 0 0 1 1-1z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="12.5" y2="16"/></svg>
+                </button>
             </div>
             <div class="speed-dial-row">
                 <span class="speed-dial-label">Transfer money</span>
@@ -3367,7 +3377,7 @@
                 </button>
             </div>
         </div>
-        <button class="fab-btn" id="dashboardQuickAddFab" data-click="toggleDashboardQuickAddSheet" aria-label="Add transaction" title="Add transaction">+</button>
+        <button class="fab-btn" id="dashboardQuickAddFab" data-click="toggleDashboardQuickAddSheet" aria-label="Add transaction" title="Add transaction"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
     </div>
 
 
@@ -3478,7 +3488,9 @@
         <div id="ledgerQuickAddSheet" class="speed-dial-sheet" style="display:none;">
             <div class="speed-dial-row">
                 <span class="speed-dial-label">Lend / Claim</span>
-                <button class="speed-dial-fab sd-claim" data-click="quickAddChooseType" data-type="claim" aria-label="Lend / Claim" title="Lend / Claim">🧾</button>
+                <button class="speed-dial-fab sd-claim" data-click="quickAddChooseType" data-type="claim" aria-label="Lend / Claim" title="Lend / Claim">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M6 2h12a1 1 0 0 1 1 1v19l-2.5-1.6L14 22l-2-1.6L9.5 22l-2-1.6L5 22V3a1 1 0 0 1 1-1z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="12.5" y2="16"/></svg>
+                </button>
             </div>
             <div class="speed-dial-row">
                 <span class="speed-dial-label">Transfer money</span>
@@ -3499,7 +3511,7 @@
                 </button>
             </div>
         </div>
-        <button class="fab-btn" id="ledgerQuickAddFab" data-click="toggleLedgerQuickAddSheet" aria-label="Add transaction" title="Add transaction">+</button>
+        <button class="fab-btn" id="ledgerQuickAddFab" data-click="toggleLedgerQuickAddSheet" aria-label="Add transaction" title="Add transaction"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
     </div>
 
     <!-- MODAL: Description Summary (v188) — reached via the 📝 button on a category's ledger view
@@ -3534,7 +3546,7 @@
             Current Value: <span id="fundActivityBalanceValue">0.00</span>
         </div>
         <div class="ledger-container" id="fundActivityList"></div>
-        <button class="fab-btn" data-click="openAddFundTxModalForActiveFund" aria-label="Add transaction" title="Add transaction">+</button>
+        <button class="fab-btn" data-click="openAddFundTxModalForActiveFund" aria-label="Add transaction" title="Add transaction"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
     </div>
 
     <!-- ================= PAGE: CURRENCY ACTIVITY (v55 — one currency basket within a
@@ -3576,7 +3588,7 @@
         </div>
         <div class="config-list" id="accountsPageList" style="padding-bottom:88px;"></div>
 
-        <button class="fab-btn" data-click="openAccountFormModal" aria-label="Add account" title="Add account">+</button>
+        <button class="fab-btn" data-click="openAccountFormModal" aria-label="Add account" title="Add account"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
     </div>
 
     <!-- ================= PAGE 5: ALL CATEGORIES ================= -->
@@ -3652,7 +3664,7 @@
         </div>
         </div>
 
-        <button class="fab-btn" data-click="openCategoryFormModal" aria-label="Add category" title="Add category">+</button>
+        <button class="fab-btn" data-click="openCategoryFormModal" aria-label="Add category" title="Add category"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
     </div>
 
     <!-- ================= PAGE: TRANSACTION TEMPLATES (v227) ================= -->
@@ -3680,7 +3692,7 @@
         </div>
         </div>
 
-        <button class="fab-btn" data-click="openTemplateFormModal" aria-label="Add template" title="Add template">+</button>
+        <button class="fab-btn" data-click="openTemplateFormModal" aria-label="Add template" title="Add template"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
     </div>
 
     <!-- ================= PAGE: MANAGE TAGS (v257) ================= -->
@@ -3700,7 +3712,7 @@
         </div>
         </div>
 
-        <button class="fab-btn" data-click="openTagFormModal" aria-label="Add tag" title="Add tag">+</button>
+        <button class="fab-btn" data-click="openTagFormModal" aria-label="Add tag" title="Add tag"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
     </div>
 
     <!-- ================= PAGE: BUDGET (v264, Monthly/Yearly toggle v266) ================= -->
@@ -3732,7 +3744,7 @@
 
         <div id="budgetPageContent"></div>
 
-        <button class="fab-btn" data-click="openCategoryBudgetModal" aria-label="Add category budget" title="Add category budget">+</button>
+        <button class="fab-btn" data-click="openCategoryBudgetModal" aria-label="Add category budget" title="Add category budget"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
     </div>
 
 
@@ -3775,7 +3787,7 @@
         <div id="inventoryPageList"></div>
         <div id="inventoryPageFooter" style="display:none; justify-content:space-between; align-items:center; padding:14px 4px 88px; margin-top:6px; border-top:2px dashed var(--border-color);"></div>
 
-        <button class="fab-btn" data-click="openInventoryItemModalNew" aria-label="Add inventory item" title="Add inventory item">+</button>
+        <button class="fab-btn" data-click="openInventoryItemModalNew" aria-label="Add inventory item" title="Add inventory item"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
     </div>
 
     <!-- v361: Planned Payments full list — everything saved, including anything more than 3
@@ -3817,7 +3829,7 @@
         <div id="remindersPageList"></div>
         <p id="remindersPageEmpty" style="display:none; text-align:center; color:var(--text-muted); font-size:0.85rem; padding:40px 20px;">No reminders yet — tap + to add one (passport, driving license, PR renewal, etc.).</p>
 
-        <button class="fab-btn" data-click="openReminderModalNew" aria-label="Add reminder" title="Add reminder">+</button>
+        <button class="fab-btn" data-click="openReminderModalNew" aria-label="Add reminder" title="Add reminder"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
     </div>
 
     <!-- MODAL: Add/Edit Reminder -->

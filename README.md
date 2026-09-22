@@ -2770,3 +2770,628 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v371.
+
+## v372–v377: Monthly Trend detail table under the Dashboard chart
+
+- **Added** a Month/Income/Expense/Balance detail table under the Dashboard's
+  Monthly Trend chart, with a bold Total row and a small Companion avatar
+  next to the title (v372).
+- **Fixed**: the table's expanded/collapsed state now persists across
+  sessions instead of silently re-collapsing every time the page is
+  revisited (v373).
+- Default state now depends on device: collapsed on first visit on phone,
+  expanded on tablet/desktop — once manually toggled anywhere, that choice
+  is remembered on every device from then on (v374).
+- Narrow-phone layout iterated twice: first switched to a stacked-by-month
+  layout to stop the Balance column being clipped (v375), then to a
+  middle-ground layout — Month/Income/Expense on one row, Balance dropped to
+  its own row (v376) — before v377 settled on the final fix: keep all four
+  columns on one row, drop the "RM" text from each cell, and add a single
+  "Figures in RM" caption under the table. That fully resolved the
+  narrow-screen clipping without sacrificing at-a-glance comparison.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v377.
+
+## v378: Total Bill Summary — frozen Period column
+
+- **Changed**: the Total Bill Summary report's "Period" (year) column is now
+  frozen to the left with a solid background and shadow divider, so it
+  stays visible while scrolling horizontally through Income/Expense/Balance
+  — no more losing track of which year a row belongs to.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v378.
+
+## v379: account logos
+
+- **Added** a "Logo" field (Upload/Remove + preview) to Add/Edit Account —
+  upload a real bank/institution icon, auto-cropped to a square. Anywhere
+  an account previously showed a letter-gradient badge (e.g. "H", "P",
+  "R"), it now shows the uploaded logo instead once set; accounts without a
+  logo keep the existing letter badge unchanged. Logos travel with
+  encrypted Backup & Restore export/import.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v379.
+
+## v380: new Background Theme — "Liquid Glass"
+
+- **Added** a new preset to the Background Theme swatch grid, right after
+  蠟筆小新/Crayon: a static (non-animated) soft blue/pink/mint gradient
+  background (`background-attachment: fixed`, so scrolling adds no extra
+  rendering cost). The glass blur/saturation effect is applied only at the
+  container level — report cards, statement cards, stat boxes, and the
+  existing frosted nav/sidebar/modals — deliberately not on repeating
+  per-row elements like transaction rows or settings list rows, to avoid
+  jank from too many blurred elements at once. Modals keep a relatively
+  high opacity (0.90) rather than full transparency, to avoid
+  reintroducing the "stacked semi-transparent modals" contrast problem
+  fixed earlier.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v380.
+
+## v381: fixed the transaction modal overflowing the screen when Repeat +
+Save as Planned both show
+
+- **Fixed**: adding a new Income/Expense entry, once both the "🔁 Repeat"
+  and "🕒 Save as Planned" buttons appeared, pushed the modal's action area
+  tall enough that the whole modal overflowed the screen height, with the
+  extra content rendering wherever and overlapping the date row.
+- **Cause**: the modal had no `max-height` at all.
+- **Fix**: matched the existing template-picker modal's pattern (75vh) —
+  added `max-height: calc(100vh - 32px)`, so the middle content area now
+  shrinks and scrolls independently while the bottom action bar stays
+  pinned and is never pushed off-screen.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v381.
+
+## v382–v385: Monthly Trend Mascot (independent of Companion)
+
+- **Added** a new "Monthly Trend Mascot" picker under Setting → Companion,
+  defaulting to "Match Companion" (🔗 — keeps the existing behavior of
+  mirroring the Net Worth card's mascot). Picking a different zodiac
+  animal/photo/None lets the icon next to the "Monthly Trend" title differ
+  from the Net Worth card's. Both pickers share the same up-to-20-photo
+  library; the "+ Add" upload entry point stays only on the Companion panel
+  to avoid a duplicate entry point, but a photo uploaded from either panel
+  is selectable from both (v382).
+- **Fixed**: the two new buttons were never registered in the
+  `CLICK_ACTIONS` dispatch table, so they did nothing at all (v383).
+- **Fixed**: the Monthly Trend Mascot panel was missing its "×" delete
+  button, and having both panels open at once meant uploading a photo only
+  refreshed the Companion side's count, leaving the two panels showing
+  different totals ("12/20" vs "11/20") (v384).
+- v385 merged Companion and Monthly Trend Mascot into a single settings
+  page with a top Tab switch (Net Worth Card / Monthly Trend) — still two
+  independent settings underneath, just sharing one photo-library editor;
+  the two Dashboard shortcut links each land on their own matching tab.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v385.
+
+## v386–v387: Monthly Trend gets its own Reports page
+
+- **Added** a "Monthly Trend" entry to the sidebar's Reports section, next
+  to Total Bill Summary. Rather than duplicating a second chart, navigating
+  there physically moves the existing Dashboard Monthly Trend block (year
+  picker, auto-scaling, Companion avatar, collapsible detail table, and all
+  of its state) into the report page, and moves it back on the way out —
+  avoiding two independently-drifting render paths. The chart is
+  re-measured and redrawn against the report page's own width on entry.
+  Setting → Dashboard Widgets gained a "Show on Dashboard" toggle for
+  Monthly Trend (on by default) — turning it off only affects whether it
+  shows on the Dashboard; the report page itself is always reachable. This
+  setting is included in Backup & Restore.
+- v387 reordered the Dashboard Widgets panel sections to Monthly Trend →
+  Budget Widget → Order on Dashboard → Recent Transactions Widget →
+  Accounts Widget, per a screenshot — display order only, no change to any
+  section's id/logic/saved settings.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v387.
+
+## v388: fixed misaligned columns across Unit Trust fund-group tables
+
+- **Fixed**: each fund group (ASNB/HLAM/HSBC/PUBLIC MUTUAL etc.) rendered
+  as its own separate `<table>`, so the browser computed column widths
+  independently per table — identical headers ended up different pixel
+  widths across groups and didn't line up vertically.
+- **Fix**: every fund detail table now shares `table-layout: fixed` and a
+  common `<colgroup>` (34/18/18/18/12%), so Fund/Value/Invested/P&L/Return
+  line up across every group. Side effect to watch for: combined with the
+  existing `white-space: nowrap`, an unusually long fund name or number may
+  now clip instead of auto-widening the column.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v388.
+
+## v389–v407: Setting page navigation — the icon-rail rebuild
+
+19 versions of continuous iteration on how the Setting page navigates —
+the abridged sequence:
+- v389: Setting's home screen becomes a 4×4 grid of icon-only buttons (no
+  more text rows); the six items that used to expand inline (Background
+  Theme/Net Worth Card Style/Companion/Monthly Trend Mascot/Dashboard
+  Widgets/Default Accounts) each became their own full page.
+- v390: fixed the inner "‹ Back" wrongly jumping to the Dashboard instead
+  of back to the icon grid.
+- v391–v392: icon grid replaced with a persistent single-column left rail;
+  tapping any icon swaps the detail pane on the right without needing to
+  back out first.
+- v393: added the long-missing explicit `<link rel="icon">` declaration,
+  fixing an intermittently-missing browser tab icon.
+- v394–v395: folded Manage Members/Categories/Templates/Tags/Backup/
+  Auto-Lock/Database and the rest into the same left-rail system — all 13
+  Setting sub-pages' "← Back" now goes straight to the Dashboard in one
+  step (no more stopping at a Setting landing page first); hardware/gesture
+  back updated to match.
+- v396: icon rail and detail pane now scroll independently of each other.
+- v397: merged Companion and Monthly Trend Mascot into one page behind a
+  single icon entry.
+- v398: gave each Dashboard Widgets section its own card styling.
+- v399–v402: folded Default Accounts, Lock App Now/Reset App Data, and
+  Manage Members/Backup & Restore/Auto-Lock into the Setting home page or
+  other pages' inline sections, steadily trimming the number of icon-rail
+  entries.
+- v403–v404: merged Net Worth Card Style and Companion into one "Net Worth
+  Card" page; gave Default Accounts/Default Category their own card
+  styling.
+- v405: converted the last remaining popup-style setting (Currency
+  Setting, previously a modal) into a full page matching everything else.
+- v406–v407: added a "current page" highlight to the icon rail (first a
+  highlight ring, then unified into the same left color-bar + fill
+  treatment used elsewhere, so the "where am I" language matches across
+  the app) — the Setting home page itself is deliberately left with
+  nothing highlighted, since no single icon represents "you're on the home
+  screen."
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v407.
+
+## v408–v411: narrow-screen layout fixes across the settings pages
+
+A chain of fixes for phone-width layout problems on settings-style pages
+(Categories/Templates/Accounts, etc.).
+- v408: added `min-width: 0` to every two-column form row to stop a long
+  account name from breaking the two-column layout; Default Accounts card
+  switched to a single full-width stacked style so long account names no
+  longer got truncated.
+- v409: found the actual root cause of "one page's content getting
+  unexpectedly wide drags every row on the page sideways, and the offset
+  carries over to the next settings page visited" — several settings
+  sub-pages share a `.settings-page-content` container that only
+  explicitly set `overflow-y: auto`, letting the browser silently treat
+  the horizontal axis as scrollable too. Fixed by explicitly adding
+  `overflow-x: hidden`, closing off that scroll axis entirely.
+- v410: in "label + action buttons" rows, the text label can now
+  shrink/wrap freely while the button group (✏️📊🗑️ etc.) never shrinks, so
+  a long category/template name can't squeeze the buttons out.
+- v411: when the label and button group still don't fit on one line, the
+  button group now wraps to its own line, right-aligned
+  (`flex-wrap: wrap`), so neither element crowds the other when space is
+  tight — rows with enough room are unaffected and stay single-line.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v411.
+
+## v412: fixed credit card "due soon" reminders using the wrong billing
+cycle
+
+- **Fixed**: the Dashboard's "due soon / due today" credit card reminder
+  was showing the card's total current balance instead of the amount
+  actually due for that billing cycle — only the "overdue" banner was
+  doing the correct per-cycle calculation; "due soon" had quietly
+  regressed to using the total balance. Now both reminders share the same
+  billing-cycle calculation as the overdue banner, so spending in a
+  different cycle no longer gets miscounted into the wrong due-date
+  reminder. The dateless "💳 Amount due" line on the Accounts/Member pages
+  is unaffected and still shows the total balance, as intended.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v412.
+
+## v413: shared credit limits across linked cards
+
+- **Added** "🔗 Shares Credit Limit With" for credit card accounts —
+  editing a card lets you point it at another existing card to share one
+  limit pool. Only the primary card (e.g. Visa) has a real Credit Limit
+  entered; the secondary card (e.g. Mastercard) selects "Shares Credit
+  Limit With" pointing at the primary, and its own limit field is
+  cleared/ignored. Both cards display the primary card's limit, labeled
+  "(shared)"; Available is computed as limit minus the combined current
+  balance of every card in the group, so paying down either card updates
+  both cards' Available figure. Each card's own "💳 Amount due" billing
+  balance is unaffected and still shown separately.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v413.
+
+## v414: Gold investment accounts
+
+- **Added** support for gold holdings — bank gold accounts (e.g. Maybank
+  GIA, PBB GIA) and physical gold (916, 999, etc.), tracked in **grams** at
+  a **manually updated** price per gram; buys use the bank's sell price,
+  valuation uses the bank's buy price (the buy/sell spread shows up as a
+  real unrealized loss on day one — that's expected, not a bug).
+- **Implementation**: gold is not a separate system — a gold holding is
+  just a Fund record with `category: "Gold"` (`units` repurposed as grams,
+  `currentNav` repurposed as price/gram in RM), so it inherits every
+  existing Fund mechanism for free: Net Worth rollups, the Activity page,
+  Portfolio Report, backup export/import, auto-generated buy/sell
+  transfers, and the existing total-cost-basis Invested/Recovered/P&L
+  formula. Each bank/purity combination (Maybank GIA, PBB GIA, 916
+  physical, 999 physical, etc.) gets its own independent Fund record with
+  its own buy price — never mixed together.
+- Four gold-specific pieces: (1) new gold holdings get a `gold_`-prefixed
+  id instead of `fund_` (namespace only, makes it easy to tell gold and
+  real funds apart later); (2) new `fund.priceUpdatedAt` field, stamped
+  whenever `currentNav` changes (recorded for every fund, but only shown
+  for gold) driving a "priced Xd ago" staleness badge (turns red after 2+
+  days) on the Fund Holdings table, Fund Activity page, and Edit Fund
+  modal; (3) selecting Category "🪙 Gold" reshapes the form
+  (`handleFundCategoryChange()`): Fund Code → "Purity / Source", Current
+  NAV → "Today's Price (RM / gram)"; the fund-transaction modal
+  (`handleFundTxFundChange()`) drops Type down to just Buy/Sell (no
+  Dividend/Contribution), and relabels Units → Grams, Price per Unit →
+  Price per Gram; (4) gold transactions are deliberately **not editable in
+  place** (a clear v1 rule, to avoid silently drifting from what was
+  actually paid at the bank/shop) — `openTransactionForm()`'s `tx.fundId`
+  branch routes through the existing `handleFundTxRowTap()` "delete and
+  re-enter" confirmation via `isGoldFund()`, for gold only.
+- **Deliberately not done yet** (discussed and deferred): live price
+  fetching (kept manual, since valuation here means "what the bank/shop
+  will pay today," which an online spot price can't substitute for — also
+  avoids touching the CSP); splitting out a separate fee field (annual
+  fees are just recorded as an ordinary ledger expense for now, doesn't
+  affect holding P/L); price-trend sparkline / multi-holding summary card
+  (manually-entered data is too sparse right now; `NAV_HISTORY` already has
+  what a trend view would need, revisit later); a separate realized-P/L
+  figure (uses the same total-cost-basis formula, realized + unrealized
+  combined into one P/L number — acceptable for v1).
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v414.
+
+## v415: three follow-up display fixes for Gold accounts
+
+- **Fixed**: after actually creating Public Gold / PBB Gold accounts,
+  three problems turned up:
+  1. The accounts list still showed the yellow "Unit Trust" badge — added
+     a "Gold" sub-group to `ACCOUNT_SUBGROUPS["Investment"]`, unified the
+     two rendering call sites into one `accountTypeBadgeHTML(a)` that
+     shows 🪙 Gold whenever `account.subgroup === "Gold"` (the underlying
+     `account.type` stays `unittrust`, no other logic affected).
+  2. Add/Edit Account's Sub-Group dropdown had no Gold option — added (the
+     sidebar's type-shortcut entries, generated from `ACCOUNT_SUBGROUPS`,
+     picked it up automatically); Net Worth Statement also gained its own
+     "Gold" row (`sumGroup("Investment", ["Gold"])` + `nwsRow`) instead of
+     being folded into Unit Trust.
+  3. The Fund Activity page's individual transaction rows still said
+     "units" (v414 only updated the holdings table and the top summary
+     strip) — now uses `isGoldFund(fund)` the same way, and shows grams.
+- **Manual step needed**: gold accounts created back during v414 (before
+  the Gold sub-group existed) are still filed under Unit Trust — open Edit
+  Account and change Sub-Group to Gold to get the new badge and have it
+  counted in the Net Worth Statement's Gold row; no data is lost in the
+  meantime.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v415.
+
+## v416: Daily NAV Update — separate Gold from Unit Trust
+
+- **Added** an All / 📊 Unit Trust / 🪙 Gold filter to the top of the Daily
+  NAV Update page (`navUpdateCategoryFilter` +
+  `setNavUpdateCategoryFilter()`), since gold and fund prices get updated
+  on different schedules and mixing them into one batch update made it
+  easy to accidentally re-save a price that wasn't meant to be touched. The
+  filter row only appears when both types are actually held — no point
+  showing it otherwise. Selecting Gold limits the Card/Table view to gold
+  holdings only, and "Update All Prices" only saves those records —
+  `handleSaveAllNav()` itself didn't need to change, since it already just
+  iterates whatever list got filtered.
+- **Fixed** a v414 carryover bug along the way: `handleSaveAllNav()` — the
+  button actually used day to day to update gold prices — never wrote
+  `fund.priceUpdatedAt`; only the Add/Edit Fund modal's save path did, so
+  the "priced Xd ago" badge never moved during normal day-to-day price
+  updates from this page. Now saving a price here stamps the timestamp
+  too, for any fund whose price actually changed.
+- The History view was deliberately left unfiltered at this point
+  (read-only, seemed low-risk) — v417 revisited that call.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v416.
+
+## v417: Daily NAV History follows the filter + fund-name abbreviations
+
+- **Fixed**: v416 filtered the Card/Table view but not History — selecting
+  Gold there still showed fund columns. History now follows
+  `navUpdateCategoryFilter` too: columns are limited to the matching
+  category (by `fund.category`; a deleted fund with no live record falls
+  back to checking its `gold_`/`fund_` id prefix), and any date with no
+  updates at all for that category is dropped from the table entirely
+  (instead of leaving a row of all dashes).
+- **Added** `fundHistoryAcronym()` for long Unit Trust fund names in the
+  History column headers (e.g. "Asia Pacific Equity Income" → "APEI"),
+  since full names made the table too wide; name collisions get a numeric
+  suffix ("HGF"/"HGF2"); the full name is kept in the column header's
+  `title` attribute for hover/long-press. Gold fund names are left as-is —
+  names like "PBB Gold" are already short, and abbreviating them would
+  make it harder to tell which bank they belong to.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v417.
+
+## v418: Reminders
+
+- **Added** a Reminders feature for tracking recurring renewal dates —
+  passport, driving license, PR renewal, credit card expiry, insurance,
+  etc. New `REMINDERS` object store, going through the same
+  PBKDF2+AES-GCM encryption, backup export/import, and Service Worker
+  cache-version bump as every other store.
+- **Entry point / scope**: new "🔔 Reminders" sidebar item, alongside
+  Inventory and Planned Payments. All reminders share one unified list —
+  deliberately not split by family member (unlike accounts/funds), a
+  conscious choice.
+- **Fields per reminder**: Name (required), Category, Issue Date
+  (optional), Due/Expiry Date (required), "Remind Me" lead time
+  (`leadDays`, set per reminder, default 90), a "This renews / repeats"
+  toggle plus Renews Every (months, `recurMonths`, default 12 — commonly
+  adjusted per document type: passport ~60–120, driving license ~72–120,
+  credit card ~36, insurance ~12), and Notes.
+- **Dashboard widget** (`renderRemindersWidget()`): only shows a reminder
+  once it enters *its own* `leadDays` window or is overdue (archived ones
+  never show); sorted by due date; the whole block hides itself when
+  nothing qualifies; the title is tappable through to the full list.
+- **Full list page** (`renderRemindersPage()`): Active/Archived tabs, a
+  floating "+" to add directly (unlike Planned Payments, a reminder isn't
+  derived from another form). Dashboard and the list page share one
+  `renderReminderRowHtml()`, differing only in which reminders get passed
+  in; every change goes through `refreshRemindersViews()` to keep both in
+  sync.
+- **Tapping a row** opens an action menu: ✅ Mark as Renewed (recurring
+  only) / 📦 Archive (one-off only) / ↩️ Restore (archived only) / ✏️ Edit /
+  🗑 Delete (double-confirm).
+- **Renewal flow**: Mark as Renewed opens a confirmation screen rather
+  than silently changing the date — it shows the old due date, defaults
+  Renewal Date to today, and pre-fills New Due Date as "renewal date +
+  `recurMonths`" (`computeReminderNextDueDate()`); both dates are still
+  editable before saving. The calculation anchors on the **renewal date**,
+  not the old due date, so renewing late (or a document whose cycle starts
+  from its issue date) doesn't skew the next due date. On save, Issue Date
+  becomes the renewal date, Due Date becomes the new due date, and (old
+  due date → new due date → renewal date) is appended to that reminder's
+  `history` array rather than overwriting anything — currently stored but
+  not yet surfaced in any UI.
+- One-off reminders (unchecked repeat — visas, event registrations) have
+  no "Renewed" action; once handled, they're Archived, and can be Restored
+  later.
+- Tested end-to-end in a headless browser (add, dashboard filtering,
+  renewal date math, archive/restore, and that data survives
+  lock/reload/unlock still encrypted) — caught and fixed one real bug
+  along the way: the new store was missing from `STORE_KEYPATHS`, which
+  broke saving entirely.
+- **Known limitation**: the app is fully offline with no backend, so
+  reminders only ever surface as a dashboard widget/badge *while the app
+  is open* — there's no way to push a notification while the app is
+  closed.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v418.
+
+## v419: Unit Trust Portfolio — added Current Invested / Recovered
+
+- **Added** Current Invested and Recovered figures to the Portfolio
+  report, after user confusion that "Total Invested + P/L ≠ Portfolio
+  Value." The math was never wrong — P/L is a **total-return** figure
+  (`P/L = current value + recovered − invested`, the same total-cost-basis
+  method from v43), and Total Invested only ever accumulates Buys and
+  never shrinks on a Sell, so it still includes money that's already been
+  taken back out.
+- `renderPortfolioReportPage()` now also accumulates `totalRecoveredBase`
+  alongside `totalInvestedBase` while summing per-fund (also run through
+  `convertCurrency(..., f.currency, baseCurrency)`, so the identity still
+  holds exactly under multiple currencies), and displays **Current
+  Invested = Total Invested − Recovered** (`portfolioCurrentInvestedTotal`
+  / `portfolioRecoveredTotal`). With this, `Current Invested + P/L =
+  Portfolio Value` holds exactly. Return is still P/L ÷ Total Invested,
+  unchanged. The page now spells out both identities directly. Known edge
+  case, left as-is: once a fund's principal is fully recovered with a
+  profit, Current Invested can go negative — mathematically correct, not
+  specially handled.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v419.
+
+## v420: Fund Detail / Fund Holdings — added a Current Inv. column
+
+- **Added** the same fix at the per-fund level: the Fund Detail table
+  (Portfolio page) and `renderFundHoldingsTable()` (account page) both
+  gained a **Current Inv.** column between Invested and P/L (= invested −
+  recovered, so a single fund now satisfies `Current Inv. + P/L = Value`),
+  covering live fund rows, deleted-fund ("fund deleted") orphan rows, and
+  the Total row; the header carries a `title` tooltip explaining it.
+- Fund Detail's `<colgroup>` changed from v388's 34/18/18/18/12% to
+  24/17/17/17/15/10% (kept `table-layout: fixed` so per-account-group
+  columns still align) and gained `min-width: 680px`, so on narrow screens
+  the outer container scrolls horizontally instead of squeezing numbers
+  into clipped cells.
+- A deleted fund has no real live price, so its Value was already
+  cost-estimated; its Current Inv. equals that same estimated Value, and
+  P/L still shows "-".
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v420.
+
+## v421: Unit Trust Portfolio header redesign (fully theme-aware)
+
+- **Redesigned** the six flat stat boxes at the top of the Portfolio
+  report into a "lead with the conclusion" layout: a large **Portfolio
+  Value** with a return-rate badge in the top-right corner
+  (`portfolioReturnBadge`, ▲ green when positive, `.down`/▼ red when
+  negative), the equation `= Current Invested + Profit / Loss` spelled out
+  directly in the card (`.pf-eq`), then a segmented bar splitting **Total
+  Invested** into Current Invested vs. Recovered (`#portfolioSplitBar`,
+  segment widths = Recovered ÷ Total Invested, clamped to 0–100%; a
+  `portfolioBarNote` explains when Recovered exceeds 100%; the whole bar
+  hides when Total Invested ≤ 0), with a two-line legend of amounts and
+  percentages underneath.
+- **All colors now come from existing theme tokens** (`--card-bg`,
+  `--text-main`/`--text-muted`, `--primary`, `--income-color`/
+  `--expense-color` and their chip variants, `--chip-bg`, `--border-color`,
+  `--primary-chip-bg`) — styles live in `.pf-*` classes, so light mode,
+  midnight/noir/slate, crayon, and glass all render correctly
+  automatically. The old P/L and Return boxes hardcoded light-mode colors
+  that would have looked wrong in dark themes, so they're removed
+  (`portfolioPlBox`/`portfolioReturnBox` deleted). Green/red is reserved
+  for profit/loss only; Current Invested uses the theme's primary color,
+  Recovered uses neutral gray.
+- The badge is labeled "return on total invested" — calculating return
+  against Current Invested instead would read noticeably higher (roughly
+  67% vs. 34% on the reference data), because P/L already includes booked
+  profit while the denominator shrinks — deliberately **not** used for
+  that reason.
+- Reviewed an externally-supplied "dark glassmorphism" design as a
+  reference and deliberately did **not** adopt a hardcoded dark background
+  (would break the multi-theme system) or a mini trend sparkline (would
+  require replaying historical NAV, unrelated to the actual confusion
+  being fixed). That reference design's progress bar, labeled "68.1% cost
+  recovered (109,450 / 221,598)," turns out to actually be P/L ÷ Current
+  Invested — which doesn't match Recovered ÷ Total Invested = 49.4% — and
+  has been redone here with the correct basis.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v421.
+
+## v422: segmented-bar header row, hover explanations, and removed a
+duplicate Total Invested row
+
+- **Fixed**: user pointed out the segmented bar had no explanation of what
+  the purple segment meant, or what the whole bar represented — sitting
+  directly under the purple Current Invested equation, it was easy to
+  misread as representing Portfolio Value.
+- Added a header row above the bar (`.pf-bar-head`): "BAR = TOTAL
+  INVESTED" on the left, the Total Invested amount on the right
+  (originally "Whole bar = Total Invested," shortened after it wrapped to
+  two lines at 360px width); increased the gap between the bar and the
+  equation above it from 16px to 22px; both bar segments now get a
+  JS-written `title` tooltip with the amount, percentage of Total
+  Invested, and what it means (desktop hover only — phones rely on the
+  legend below).
+- Removed a redundant Total Invested row further down the page once it
+  was pointed out it duplicated the new header row — the header row
+  reuses the original `portfolioInvestedTotal` element, no second
+  calculation was added.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v422.
+
+## v423: collapse fully-closed funds + fixed the Current Invested subtitle
+wording
+
+- **Added** `isClosedFund(f, invested)` — true when `units < 1e-6 &&
+  invested > 0` (requiring a prior buy avoids misclassifying a brand-new,
+  not-yet-bought fund as closed; the 1e-6 threshold absorbs
+  floating-point remainder from repeated unit additions/subtractions) —
+  for funds that have been fully redeemed (zero units) but were still
+  taking up permanent space in the tables.
+- On Fund Holdings (`colspan=11`) and the Portfolio report's per-account
+  Fund Detail tables (`colspan=6`; the account list is now the union of
+  accounts with live funds and accounts with only closed funds, so an
+  account with nothing left but closed funds still appears), closed funds
+  are now collapsed into one summary row — `▸ N closed fund(s) · Realized
+  P/L … · tap to show` (`closedFundsSummaryRow()`, rendered as `<tr
+  data-click="toggleClosedFunds">`) — that expands/collapses on tap.
+- **One shared toggle app-wide**: `SHOW_CLOSED_FUNDS_KEY =
+  "ledger.showClosedFunds"` in localStorage (per-device, collapsed by
+  default); `toggleClosedFunds()` flips it and calls `renderApp()`, plus
+  `renderPortfolioReportPage()` if that page is currently visible;
+  registered in `CLICK_ACTIONS`. Collapsing only affects which rows are
+  listed — closed funds are still included in every total.
+- **Fixed** the Current Invested subtitle wording from "still invested" to
+  **"invested − taken out"**, and updated the matching bar-hover text to
+  match.
+- Tested locally in headless Chromium: set a passcode, used the app's own
+  `writeDB()` to write encrypted test data (one live fund, one closed
+  fund, one not-yet-bought fund), and verified both tables' collapse/
+  expand, persisted preference, and unchanged totals, with no console
+  errors.
+- **Known open question, left unresolved**: Current Invested is "net
+  invested" (Invested − Recovered), not "cost basis of what you currently
+  hold" — a closed, profitable fund can offset another fund's principal
+  with a negative value (example: Fund A invested 1,000, still held; Fund
+  B invested 5,000, recovered 6,000, closed; combined Current Invested =
+  0). Switching to a true holding-cost basis would require splitting each
+  sale by average cost, and the identity would become `holding cost +
+  unrealized P/L = value` instead — no longer tying directly back to total
+  P/L. Not yet decided whether to change this.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v423.
+
+## v424: speed-dial icon fixes — Lend/Claim icon + off-center × button
+
+- **Fixed**: the Lend/Claim speed-dial icon was a 🧾 emoji, rendered by the
+  system emoji font while the other four speed-dial icons are stroke-style
+  SVGs — replaced with a matching receipt icon in the same style (2px
+  round stroke, 20×20), on both the Dashboard and Account Activity page
+  speed-dial sheets.
+- **Fixed**: the × close button wasn't centred on the main FAB.
+  - Horizontal offset: the main button is 56px wide, the speed-dial
+    circles are 48px, and both were pinned `right: 20px` — that put the
+    circles' centre 4px right of the button's centre. Moved
+    `.speed-dial-sheet` to `right: 24px` so all five circles share the
+    exact same centre x as the button.
+  - The × glyph itself was a text "+" rotated 45°, so its exact centre
+    depended on font metrics — replaced with an inline SVG "+" that
+    rotates around its precise centre.
+  - The 45° rotation now applies to the icon only, not the whole disc, so
+    the glossy highlight on the disc stays fixed instead of spinning with
+    it.
+- Verified in a headless browser: the icon is dead-centre in both
+  open/closed states, tapping the icon still opens/closes the menu, no
+  console errors. Not tested in-browser on the Account Activity page's
+  copy of the button — same markup/CSS as the Dashboard one, so expected
+  to match.
+- Other "+" buttons across the app (Accounts, Categories, Tags, etc.)
+  still use the old text glyph at this point — see v425.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v424.
+
+## v425: every "+" button now uses the same SVG glyph
+
+- **Changed**: all ten "+" buttons in the app now render the same inline
+  SVG "+" instead of a mix of text glyphs and (as of v424) SVG — covers
+  the 8 that were still text glyphs (Fund transaction, Accounts,
+  Categories, Templates, Tags, Category Budget, Inventory, Reminders)
+  plus the two speed-dial toggles already converted in v424.
+- Stroke weight and size tuned to match the previous bold text glyph, so
+  buttons look about the same at rest — just precisely centred now,
+  matching v424's fix.
+- Verified all ten in a headless browser: each SVG sits exactly centred
+  in its button, no text glyph remains, no console errors. Only
+  `index.html` changed — same click handlers/styling on every button, no
+  behavior changes.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v425.
+
+## v426: fixed print/PDF title falling back to "Ledger" on 5 Settings
+sub-pages
+
+- **Fixed**: `getActivePageTitle()` was missing `case` entries for
+  `page-bgtheme`, `page-networthcardstyle`, `page-dashboardwidgets`,
+  `page-currencyconfig`, and `page-reminders` — the five pages split out
+  of the old Settings page across v394–v418. Printing (or "Save as
+  PDF"-ing) while on any of them fell through to the `default: "Ledger"`
+  branch instead of showing the actual page name/filename. Added the five
+  matching cases; verified against `APP_PAGE_IDS` (all 31 pages now
+  covered) with `node --check` and the same page-id cross-reference
+  approach used for prior fixes — 0 missing.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v426.

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v430";
+        const APP_VERSION = "v431";
         const APP_VERSION_DATE = "2026-09-23";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -20183,7 +20183,9 @@
         async function checkForNewerDriveBackup() {
             if (driveSyncInFlight) return;
             try {
-                if (!driveFileId) await findDriveBackupFileId();
+                // v430: always re-resolve, never trust a cached driveFileId here — see the
+                // matching comment on downloadBackupFromDrive()'s own lookup below.
+                await findDriveBackupFileId();
                 if (!driveFileId) return; // nothing uploaded from any device yet
                 const token = await ensureDriveAccessToken();
                 const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`, {
@@ -20229,7 +20231,35 @@
             const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
             if (!resp.ok) throw new Error(`Drive lookup failed (${resp.status})`);
             const data = await resp.json();
-            driveFileId = (data.files && data.files[0]) ? data.files[0].id : null;
+            const files = data.files || [];
+            // v430: Drive allows more than one file with the same name in the appDataFolder —
+            // if two devices each connected for the first time before either had ever uploaded
+            // (or a race during the old auto-sync-loop bug created a second one via a stray
+            // POST), you can end up with two separate "ledger-backup.json" files. Previously
+            // this just took data.files[0] with no ordering guarantee, so a device could get
+            // permanently pinned to the WRONG (older, stale) file — explaining a "Restore
+            // Latest never picks up the other device's change" symptom that persists even after
+            // the auto-sync-loop fix above. Now: pick the most-recently-modified one by
+            // modifiedTime, and best-effort delete any older duplicates so the ambiguity can't
+            // recur on a future lookup (failure to delete — e.g. a permissions hiccup — is
+            // non-fatal, just leaves the duplicate to be skipped again next time).
+            let chosen = null;
+            for (const f of files) {
+                if (!chosen || new Date(f.modifiedTime) > new Date(chosen.modifiedTime)) chosen = f;
+            }
+            driveFileId = chosen ? chosen.id : null;
+            if (files.length > 1) {
+                console.warn(`Found ${files.length} Drive backup files with the same name — using the most recent (${chosen.modifiedTime}) and removing the rest.`);
+                for (const f of files) {
+                    if (f.id === driveFileId) continue;
+                    try {
+                        await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, {
+                            method: "DELETE",
+                            headers: { Authorization: `Bearer ${token}` }
+                        });
+                    } catch (err) { /* best-effort cleanup, non-fatal */ }
+                }
+            }
             // v430: this bookkeeping write must not re-arm the auto-sync debounce timer (see the
             // matching comment on the driveLastSyncedAt writes below) — suppressed the same way.
             driveSuppressAutoSync = true;
@@ -20312,7 +20342,15 @@
             driveSyncInFlight = true;
             try {
                 const token = await ensureDriveAccessToken();
-                if (!driveFileId) await findDriveBackupFileId();
+                // v430: always re-resolve driveFileId here rather than trusting whatever's
+                // cached from a previous session. A stale/cached id previously meant a device
+                // that once (e.g. during the auto-sync-loop bug, or a genuine race between two
+                // devices' first-ever connect) got pointed at the wrong file could NEVER recover
+                // on its own — every future "Restore Latest" would keep re-fetching that same
+                // wrong file forever, no matter how many times it was tapped. This call is
+                // cheap (one small Drive API list request) and also now self-heals duplicates
+                // (see findDriveBackupFileId()'s own comment).
+                await findDriveBackupFileId();
                 if (!driveFileId) throw new Error("No backup found in this Google account's Drive yet.");
                 const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`, {
                     headers: { Authorization: `Bearer ${token}` }

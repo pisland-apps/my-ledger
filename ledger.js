@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v428";
+        const APP_VERSION = "v429";
         const APP_VERSION_DATE = "2026-09-23";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -20021,6 +20021,11 @@
         let driveFileId = null;           // cached Drive file id for ledger-backup.json, once known
         let driveAutoSyncTimer = null;
         let driveSyncInFlight = false;
+        // v429: guards the Drive-freshness check below so it only ever runs once per app
+        // load (the first time a token is obtained — i.e. the silent reauth in
+        // initGoogleDriveSync()), not on every subsequent token refresh triggered mid-session
+        // by ensureDriveAccessToken() during a background auto-sync.
+        let driveStartupCheckDone = false;
         // v427: see restoreFromBundle()'s own comment — true while a Drive download (or a plain
         // file import) is actively writing records back into IndexedDB, so writeDB()/deleteDB()
         // don't turn around and schedule an upload of the data we just pulled down.
@@ -20113,6 +20118,13 @@
                 } catch (err) {
                     alert("Google Drive connected, but the initial sync failed: " + (err && err.message ? err.message : err));
                 }
+            } else if (!driveStartupCheckDone) {
+                // v429: this branch is the routine "app just opened, silently refreshed the
+                // token" path (see initGoogleDriveSync()) — NOT a fresh explicit Connect tap.
+                // Once per app load, check whether some OTHER device has pushed something newer
+                // since this device's last sync, and offer to pull it in. See its own comment.
+                driveStartupCheckDone = true;
+                await checkForNewerDriveBackup();
             }
 
             renderDriveConnectedUI(email, (await readKeyDB("settings", "driveLastSyncedAt"))?.value || null);
@@ -20144,6 +20156,52 @@
                 showToast("☁️ Synced to Google Drive");
             } catch (err) {
                 alert("Sync failed: " + (err && err.message ? err.message : err));
+            }
+        }
+
+        // v429: on-demand pull, for the "did something change on another device?" case —
+        // separate from the silent first-connect download and from checkForNewerDriveBackup()'s
+        // own prompt below, both of which call the same downloadBackupFromDrive(). This one
+        // always confirms first since — unlike those two — the user didn't just choose "use the
+        // Drive copy" a moment ago; they're overwriting whatever they'd been actively using.
+        async function manualRestoreFromDrive() {
+            const ok = await customConfirm("Pull the latest backup down from Google Drive? This replaces THIS device's current accounts, transactions, and categories with whatever's saved in Drive.");
+            if (!ok) return;
+            try {
+                await downloadBackupFromDrive();
+            } catch (err) {
+                alert("Restore failed: " + (err && err.message ? err.message : err));
+            }
+        }
+
+        // v429: lightweight "is there something newer than what I last synced?" check, run once
+        // per app load (see the driveStartupCheckDone guard at its call site). Reads just the
+        // backup file's plaintext `syncedAt` field — the encrypted `data` field is never
+        // touched, so this never prompts for a passcode just to check freshness. Only if the
+        // user then agrees to pull it in does decryptBackupBundle() (inside
+        // downloadBackupFromDrive()) actually need the passcode.
+        async function checkForNewerDriveBackup() {
+            if (driveSyncInFlight) return;
+            try {
+                if (!driveFileId) await findDriveBackupFileId();
+                if (!driveFileId) return; // nothing uploaded from any device yet
+                const token = await ensureDriveAccessToken();
+                const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (!resp.ok) return;
+                const payload = await resp.json();
+                const remoteSyncedAt = payload.syncedAt || 0;
+                const localSyncedAt = (await readKeyDB("settings", "driveLastSyncedAt"))?.value || 0;
+                // v429: a few seconds of slack — this device's OWN uploads set driveLastSyncedAt
+                // a moment before Drive finishes writing, so without slack a device could
+                // occasionally flag its own just-completed upload as "newer than itself".
+                if (remoteSyncedAt > localSyncedAt + 5000) {
+                    const pull = await customConfirm("Newer data was found on Google Drive — likely from another device. Pull it in now? (This replaces this device's current data. Choose Cancel to keep using what's on this device and sync it up instead.)");
+                    if (pull) await downloadBackupFromDrive();
+                }
+            } catch (err) {
+                console.warn("Drive freshness check failed:", err);
             }
         }
 
@@ -20489,6 +20547,7 @@
             connectGoogleDrive: () => connectGoogleDrive(),
             disconnectGoogleDrive: () => disconnectGoogleDrive(),
             manualSyncGoogleDrive: () => manualSyncGoogleDrive(),
+            manualRestoreFromDrive: () => manualRestoreFromDrive(),
             handleLedgerBackClick: () => handleLedgerBackClick(),
             navigateToWorkspace: () => navigateToWorkspace(),
             saveFxRates: () => saveFxRates(),

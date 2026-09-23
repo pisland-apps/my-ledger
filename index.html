@@ -45,17 +45,22 @@
            custom response headers, so it can't actually be enforced in this deployment. -->
     <meta http-equiv="Content-Security-Policy" content="
         default-src 'none';
-        script-src 'self';
+        script-src 'self' https://accounts.google.com;
         style-src 'self' 'unsafe-inline';
         img-src 'self' data:;
         font-src 'self';
-        connect-src 'self' https://open.er-api.com;
+        connect-src 'self' https://open.er-api.com https://accounts.google.com https://www.googleapis.com https://oauth2.googleapis.com;
+        frame-src https://accounts.google.com;
         worker-src 'self';
         manifest-src 'self';
         object-src 'none';
         base-uri 'none';
         form-action 'none';
     ">
+    <!-- v427: script-src/connect-src/frame-src opened up for accounts.google.com and
+         googleapis.com — see the "--- GOOGLE DRIVE SYNC ---" section in ledger.js. Everything
+         else about the CSP design above is unchanged: still an explicit allow-list, still no
+         inline script/onclick anywhere. -->
 
     <!-- PWA / "Add to Home Screen" support — this build is meant to be hosted over https (e.g. GitHub Pages)
          so the Service Worker (sw.js) can cache the app for true offline use. -->
@@ -2865,6 +2870,10 @@
          same-origin theme-init.js so 'self' covers it the same way it already covers ledger.js.
          See theme-init.js's own header comment for the full story. -->
     <script src="theme-init.js"></script>
+    <!-- v427: Google Identity Services — loaded synchronously (no async/defer) so `google` is
+         guaranteed to exist by the time ledger.js runs its Drive-sync setup. Same-origin-only
+         CSP script-src above has an explicit exception for this one URL. -->
+    <script src="https://accounts.google.com/gsi/client"></script>
 </head>
 <body>
 
@@ -4652,6 +4661,30 @@
                     </label>
                 </div>
                 <p class="export-hint-text hidden" id="exportPlaintextHint">明文备份不含密码保护，请妥善保管</p>
+            </div>
+            <div class="widget-setting-card">
+                <p style="font-size:0.75rem; font-weight:700; color:var(--text-muted); margin:0 0 8px;">☁️ GOOGLE DRIVE SYNC</p>
+                <div id="driveDisconnectedRow">
+                    <p style="font-size:0.75rem; color:var(--text-muted); margin:0 0 10px;">Automatically keep an encrypted backup in your own Google Drive, and pull it down on other devices signed in with the same account.</p>
+                    <div class="util-row">
+                        <button class="btn-util" data-click="connectGoogleDrive">🔗 Connect Google Drive</button>
+                    </div>
+                </div>
+                <div id="driveConnectedRow" class="hidden">
+                    <p style="font-size:0.8rem; margin:0 0 4px;">Connected as <span id="driveAccountEmail" style="font-weight:700;"></span></p>
+                    <p style="font-size:0.75rem; color:var(--text-muted); margin:0 0 10px;" id="driveLastSyncedText">Not synced yet</p>
+                    <div class="toggle-switch-row" style="margin-top:0;">
+                        <span class="toggle-switch-label">🔄 Auto-sync on every change</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="driveAutoSyncToggle" checked data-change="handleDriveAutoSyncToggleChange">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="util-row">
+                        <button class="btn-util" data-click="manualSyncGoogleDrive">📤 Sync Now</button>
+                        <button class="btn-util" data-click="disconnectGoogleDrive">🚫 Disconnect</button>
+                    </div>
+                </div>
             </div>
             <div class="widget-setting-card">
                 <p style="font-size:0.75rem; font-weight:700; color:var(--text-muted); margin:0 0 8px;">⏱️ AUTO-LOCK</p>

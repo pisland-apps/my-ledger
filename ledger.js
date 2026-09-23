@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v426";
-        const APP_VERSION_DATE = "2026-09-22";
+        const APP_VERSION = "v427";
+        const APP_VERSION_DATE = "2026-09-23";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -2176,7 +2176,7 @@
                 try {
                     const tx = db.transaction([storeName], "readwrite");
                     tx.objectStore(storeName).put(encrypted);
-                    tx.oncomplete = () => resolve();
+                    tx.oncomplete = () => { scheduleDriveAutoSync(); resolve(); };
                     tx.onerror = () => reject(tx.error);
                 } catch (err) { reject(err); }
             });
@@ -2199,7 +2199,7 @@
                 try {
                     const tx = db.transaction([storeName], "readwrite");
                     tx.objectStore(storeName).delete(key);
-                    tx.oncomplete = () => resolve();
+                    tx.oncomplete = () => { scheduleDriveAutoSync(); resolve(); };
                     tx.onerror = () => reject(tx.error);
                 } catch (err) { reject(err); }
             });
@@ -19343,6 +19343,7 @@
             window.history.replaceState({ view: "workspace" }, "");
             
             initAutoLock();
+            await initGoogleDriveSync();
             renderApp();
         }
 
@@ -19619,8 +19620,13 @@
             showToast(`\ud83d\udce4 Exported ${sorted.length} account${sorted.length === 1 ? "" : "s"} to CSV`);
         }
 
-        async function exportBackup(forceEncrypted = false) {
-            const bundle = {
+        // v427: split out of exportBackup() so Google Drive sync (see the "--- GOOGLE DRIVE
+        // SYNC ---" section below) can build the exact same plain (unencrypted-at-this-stage)
+        // bundle object without duplicating this list of stores. exportBackup() itself still
+        // does its own encryption/plaintext-confirmation/filename/download steps right after
+        // calling this — nothing about the file-export flow changes.
+        async function buildBackupBundle() {
+            return {
                 accounts: await readAllDB(STORES.ACCOUNTS),
                 transactions: await readAllDB(STORES.TRANSACTIONS),
                 categories: await readAllDB(STORES.CATEGORIES),
@@ -19660,6 +19666,10 @@
                 baseCurrency: baseCurrency,
                 fxRates: fxRates
             };
+        }
+
+        async function exportBackup(forceEncrypted = false) {
+            const bundle = await buildBackupBundle();
 
             const toggle = document.getElementById("exportEncryptToggle");
             const wantsEncryption = forceEncrypted ? true : (toggle ? toggle.checked : true); // encrypted-by-default
@@ -19771,29 +19781,23 @@
             });
         }
 
-        async function importBackup(e) {
-            const file = e.target.files[0]; if (!file) return;
+        // v427: split out of importBackup() so Google Drive sync (see below) can restore a
+        // bundle it downloaded from Drive through the exact same path a manual file-import
+        // uses — same clear/rewrite order, same in-memory-variable reapplication, same
+        // Companion/re-render tail. Throws on invalid bundles instead of alert()-ing directly,
+        // so each caller can word the error for its own context (file vs. Drive).
+        async function restoreFromBundle(bundle) {
+            if (!bundle.accounts || !bundle.transactions) {
+                throw new Error("Invalid backup: missing required data.");
+            }
 
-            const ok = await customConfirm("Importing a backup will permanently replace ALL current accounts, transactions, and categories. This cannot be undone. Continue?");
-            if (!ok) { e.target.value = ""; return; }
-
-            const reader = new FileReader();
-            reader.onload = async function(evt) {
-                try {
-                    const parsed = JSON.parse(evt.target.result);
-                    let bundle;
-                    if (parsed && parsed.encrypted) {
-                        bundle = await decryptBackupBundle(parsed);
-                        if (!bundle) { e.target.value = ""; return; } // user cancelled the passcode prompt
-                    } else {
-                        bundle = parsed;
-                    }
-
-                    if (!bundle.accounts || !bundle.transactions) {
-                        alert("Invalid backup file: missing required data.");
-                        return;
-                    }
-
+            // v427: Drive auto-sync watches writeDB()/deleteDB() completions to schedule its
+            // debounced upload (see scheduleDriveAutoSync()) — every write below would otherwise
+            // queue an upload of data we just DOWNLOADED, which is at best wasteful and at worst
+            // a feedback loop with a slower/competing device. Suppressed for the duration of this
+            // restore; see the flag's own comment near the Drive sync code.
+            driveSuppressAutoSync = true;
+            try {
                     await clearStoreDB(STORES.ACCOUNTS);
                     await clearStoreDB(STORES.TRANSACTIONS);
 
@@ -19955,6 +19959,30 @@
                     renderSidebarMembers();
                     renderSidebarAccountTypeShortcuts();
                     renderApp();
+            } finally {
+                driveSuppressAutoSync = false;
+            }
+        }
+
+        async function importBackup(e) {
+            const file = e.target.files[0]; if (!file) return;
+
+            const ok = await customConfirm("Importing a backup will permanently replace ALL current accounts, transactions, and categories. This cannot be undone. Continue?");
+            if (!ok) { e.target.value = ""; return; }
+
+            const reader = new FileReader();
+            reader.onload = async function(evt) {
+                try {
+                    const parsed = JSON.parse(evt.target.result);
+                    let bundle;
+                    if (parsed && parsed.encrypted) {
+                        bundle = await decryptBackupBundle(parsed);
+                        if (!bundle) { e.target.value = ""; return; } // user cancelled the passcode prompt
+                    } else {
+                        bundle = parsed;
+                    }
+
+                    await restoreFromBundle(bundle);
                     alert("Backup imported successfully.");
                 } catch (err) {
                     alert("Import failed: " + (err && err.message ? err.message : "Invalid backup structure file."));
@@ -19963,6 +19991,314 @@
                 }
             };
             reader.readAsText(file);
+        }
+
+        // ===================================================================================
+        // --- GOOGLE DRIVE SYNC (v427) ---
+        // Keeps one encrypted backup file, per Google account, in that account's *app-data*
+        // folder — a hidden area of the user's own Drive that only this app can see (the user
+        // never sees it cluttering their normal Drive UI, and this app can never see anyone
+        // else's files: OAuth scope is 'drive.appdata' only). Every device signed in with the
+        // same Google account ends up reading/writing the same one file, so this is really a
+        // "last write wins, with a timestamp check" sync, not true multi-device merging.
+        //
+        // Requires a Google Cloud OAuth Client ID (Web application type) — see GOOGLE_CLIENT_ID
+        // below. Until a real one is filled in, Connect Google Drive shows an explanatory alert
+        // instead of a broken sign-in popup.
+        // ===================================================================================
+
+        // TODO: replace with your own OAuth Client ID from Google Cloud Console (Credentials >
+        // Create Credentials > OAuth client ID > Web application). Must end in
+        // ".apps.googleusercontent.com". See the app's setup guide for the full walkthrough.
+        const GOOGLE_CLIENT_ID = "YOUR_CLIENT_ID_HERE.apps.googleusercontent.com";
+        const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
+        const DRIVE_BACKUP_FILENAME = "ledger-backup.json";
+        const DRIVE_AUTOSYNC_DEBOUNCE_MS = 4000;
+
+        let driveTokenClient = null;
+        let driveAccessToken = null;      // in-memory only; never persisted (short-lived, ~1hr)
+        let driveTokenExpiresAt = 0;
+        let driveFileId = null;           // cached Drive file id for ledger-backup.json, once known
+        let driveAutoSyncTimer = null;
+        let driveSyncInFlight = false;
+        // v427: see restoreFromBundle()'s own comment — true while a Drive download (or a plain
+        // file import) is actively writing records back into IndexedDB, so writeDB()/deleteDB()
+        // don't turn around and schedule an upload of the data we just pulled down.
+        let driveSuppressAutoSync = false;
+
+        // Called once from bootstrap(). Restores "was connected before" state (so a returning
+        // user doesn't have to tap Connect again every session) and wires up the token client.
+        // Does NOT request a token yet — that only happens on an actual Connect tap or, for a
+        // previously-connected user, silently the first time a sync is actually needed.
+        async function initGoogleDriveSync() {
+            if (typeof google === "undefined" || !google.accounts || !google.accounts.oauth2) {
+                // Google Identity Services script (index.html) failed to load — most likely no
+                // network on first load. Drive UI stays in its "disconnected" state; nothing
+                // else in the app depends on this, so it's a silent no-op rather than an alert.
+                return;
+            }
+            driveTokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: GOOGLE_CLIENT_ID,
+                scope: GOOGLE_DRIVE_SCOPE,
+                callback: handleDriveTokenResponse
+            });
+
+            const storedConnected = await readKeyDB("settings", "driveConnected");
+            const storedEmail = await readKeyDB("settings", "driveAccountEmail");
+            const storedLastSync = await readKeyDB("settings", "driveLastSyncedAt");
+            const storedAutoSync = await readKeyDB("settings", "driveAutoSyncEnabled");
+            const storedFileId = await readKeyDB("settings", "driveFileId");
+            if (storedFileId) driveFileId = storedFileId.value || null;
+
+            if (storedConnected && storedConnected.value) {
+                renderDriveConnectedUI(storedEmail ? storedEmail.value : "", storedLastSync ? storedLastSync.value : null);
+                const toggle = document.getElementById("driveAutoSyncToggle");
+                if (toggle) toggle.checked = !storedAutoSync || storedAutoSync.value !== false;
+                // Silent (no popup) re-auth: works because this browser already granted consent
+                // last session — Google issues a fresh access token with no UI at all as long as
+                // the user's Google session is still active. If it's not (signed out of Google
+                // entirely, revoked access, etc.), this callback just never fires and Drive sync
+                // quietly stays inactive until the user taps Connect again.
+                driveTokenClient.requestAccessToken({ prompt: "" });
+            } else {
+                renderDriveDisconnectedUI();
+            }
+        }
+
+        function connectGoogleDrive() {
+            if (GOOGLE_CLIENT_ID.indexOf("YOUR_CLIENT_ID_HERE") !== -1) {
+                alert("Google Drive sync isn't configured yet — a Google Cloud OAuth Client ID needs to be filled in (GOOGLE_CLIENT_ID near the top of the Drive sync section in ledger.js).");
+                return;
+            }
+            if (!driveTokenClient) {
+                alert("Google sign-in isn't available right now — check your internet connection and reload.");
+                return;
+            }
+            driveTokenClient.requestAccessToken({ prompt: "consent" });
+        }
+
+        async function handleDriveTokenResponse(resp) {
+            if (resp.error) {
+                // User closed the popup, or denied access — not a real failure, just no-op back
+                // to whatever state the UI was already in.
+                return;
+            }
+            driveAccessToken = resp.access_token;
+            driveTokenExpiresAt = Date.now() + (resp.expires_in ? resp.expires_in * 1000 : 3300 * 1000);
+
+            const wasAlreadyConnected = (await readKeyDB("settings", "driveConnected"))?.value === true;
+            await writeDB(STORES.SETTINGS, { key: "driveConnected", value: true });
+
+            let email = "";
+            try {
+                const info = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+                    headers: { Authorization: `Bearer ${driveAccessToken}` }
+                }).then(r => r.json());
+                email = info.email || "";
+                await writeDB(STORES.SETTINGS, { key: "driveAccountEmail", value: email });
+            } catch (err) { /* cosmetic only — sync still works without the email label */ }
+
+            if (!wasAlreadyConnected) {
+                // First-time connect: figure out whether Drive already has a backup (e.g. this
+                // is a 2nd device) or not (this is the 1st device ever connecting).
+                try {
+                    await findDriveBackupFileId();
+                    if (driveFileId) {
+                        const useRemote = await customConfirm("A backup was found in this Google account's Drive. Download it now and replace what's on this device? (Choose Cancel to instead upload THIS device's data, overwriting the Drive copy.)");
+                        if (useRemote) await downloadBackupFromDrive();
+                        else await uploadBackupToDrive();
+                    } else {
+                        await uploadBackupToDrive();
+                    }
+                } catch (err) {
+                    alert("Google Drive connected, but the initial sync failed: " + (err && err.message ? err.message : err));
+                }
+            }
+
+            renderDriveConnectedUI(email, (await readKeyDB("settings", "driveLastSyncedAt"))?.value || null);
+            showToast("☁️ Google Drive connected");
+        }
+
+        async function disconnectGoogleDrive() {
+            const ok = await customConfirm("Disconnect Google Drive? Your existing backup file stays in Drive, but this device will stop syncing to it until you reconnect.");
+            if (!ok) return;
+            if (driveAccessToken) {
+                try { google.accounts.oauth2.revoke(driveAccessToken, () => {}); } catch (err) { /* best-effort */ }
+            }
+            driveAccessToken = null;
+            driveTokenExpiresAt = 0;
+            clearTimeout(driveAutoSyncTimer);
+            await writeDB(STORES.SETTINGS, { key: "driveConnected", value: false });
+            renderDriveDisconnectedUI();
+            showToast("Google Drive disconnected");
+        }
+
+        function handleDriveAutoSyncToggleChange() {
+            const toggle = document.getElementById("driveAutoSyncToggle");
+            writeDB(STORES.SETTINGS, { key: "driveAutoSyncEnabled", value: !!(toggle && toggle.checked) });
+        }
+
+        async function manualSyncGoogleDrive() {
+            try {
+                await uploadBackupToDrive();
+                showToast("☁️ Synced to Google Drive");
+            } catch (err) {
+                alert("Sync failed: " + (err && err.message ? err.message : err));
+            }
+        }
+
+        // Ensures driveAccessToken is fresh, silently requesting a new one if it's expired or
+        // about to be — every Drive API call below routes through this first.
+        async function ensureDriveAccessToken() {
+            if (driveAccessToken && Date.now() < driveTokenExpiresAt - 60000) return driveAccessToken;
+            return new Promise((resolve, reject) => {
+                if (!driveTokenClient) { reject(new Error("Google sign-in not available")); return; }
+                const originalCallback = driveTokenClient.callback;
+                driveTokenClient.callback = (resp) => {
+                    driveTokenClient.callback = originalCallback;
+                    handleDriveTokenResponse(resp).then(() => {
+                        if (resp.error) reject(new Error("Google sign-in expired — please reconnect Drive in Settings."));
+                        else resolve(driveAccessToken);
+                    });
+                };
+                driveTokenClient.requestAccessToken({ prompt: "" });
+            });
+        }
+
+        async function findDriveBackupFileId() {
+            const token = await ensureDriveAccessToken();
+            const url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${DRIVE_BACKUP_FILENAME}'&fields=files(id,modifiedTime)`;
+            const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+            if (!resp.ok) throw new Error(`Drive lookup failed (${resp.status})`);
+            const data = await resp.json();
+            driveFileId = (data.files && data.files[0]) ? data.files[0].id : null;
+            await writeDB(STORES.SETTINGS, { key: "driveFileId", value: driveFileId });
+            return driveFileId;
+        }
+
+        // Builds the same encrypted payload shape exportBackup() writes to a file, and
+        // PATCHes (or, on the very first sync, POSTs/creates) it as the single Drive-appdata
+        // backup file. Requires the app to be unlocked (currentPasscode set) — same requirement
+        // exportBackup()'s encrypted path already has, since the passcode IS the encryption key.
+        async function uploadBackupToDrive() {
+            if (!currentPasscode) throw new Error("Unlock the app first — the backup is encrypted with your passcode.");
+            if (driveSyncInFlight) return;
+            driveSyncInFlight = true;
+            try {
+                const token = await ensureDriveAccessToken();
+                const bundle = await buildBackupBundle();
+                const salt = crypto.getRandomValues(new Uint8Array(16));
+                const saltB64 = bufToB64(salt);
+                const key = await deriveKeyFromPasscode(currentPasscode, saltB64, PBKDF2_ITERATIONS);
+                const { iv, data } = await aesEncryptString(key, JSON.stringify(bundle));
+                const payload = { encrypted: true, salt: saltB64, iterations: PBKDF2_ITERATIONS, iv, data, syncedAt: Date.now() };
+
+                if (driveFileId === null) await findDriveBackupFileId();
+
+                const metadata = driveFileId
+                    ? { name: DRIVE_BACKUP_FILENAME }
+                    : { name: DRIVE_BACKUP_FILENAME, parents: ["appDataFolder"] };
+                const boundary = "ledgerdrivesync";
+                const multipartBody =
+                    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+                    `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(payload)}\r\n--${boundary}--`;
+
+                const uploadUrl = driveFileId
+                    ? `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=multipart`
+                    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+
+                const resp = await fetch(uploadUrl, {
+                    method: driveFileId ? "PATCH" : "POST",
+                    headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+                    body: multipartBody
+                });
+                if (!resp.ok) throw new Error(`Drive upload failed (${resp.status})`);
+                const result = await resp.json();
+                if (!driveFileId) {
+                    driveFileId = result.id;
+                    await writeDB(STORES.SETTINGS, { key: "driveFileId", value: driveFileId });
+                }
+                const now = Date.now();
+                await writeDB(STORES.SETTINGS, { key: "driveLastSyncedAt", value: now });
+                updateDriveLastSyncedText(now);
+            } finally {
+                driveSyncInFlight = false;
+            }
+        }
+
+        // Pulls the Drive-appdata backup file down and restores it via the exact same
+        // restoreFromBundle() a manual file-import uses. Only called explicitly (first-connect
+        // choice, or a future "Restore from Drive" action) — auto-sync only ever uploads, it
+        // never silently overwrites this device's data from Drive in the background.
+        async function downloadBackupFromDrive() {
+            if (driveSyncInFlight) return;
+            driveSyncInFlight = true;
+            try {
+                const token = await ensureDriveAccessToken();
+                if (!driveFileId) await findDriveBackupFileId();
+                if (!driveFileId) throw new Error("No backup found in this Google account's Drive yet.");
+                const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (!resp.ok) throw new Error(`Drive download failed (${resp.status})`);
+                const payload = await resp.json();
+                const bundle = payload.encrypted ? await decryptBackupBundle(payload) : payload;
+                if (!bundle) return; // user cancelled the passcode prompt
+                await restoreFromBundle(bundle);
+                const now = Date.now();
+                await writeDB(STORES.SETTINGS, { key: "driveLastSyncedAt", value: now });
+                updateDriveLastSyncedText(now);
+                showToast("☁️ Restored latest backup from Google Drive");
+            } finally {
+                driveSyncInFlight = false;
+            }
+        }
+
+        // Called from writeDB()/deleteDB() on every completed write (see those two functions
+        // above). Cheap no-op when Drive isn't connected/enabled, so it's safe to leave this
+        // call in the common write path rather than threading a Drive-aware flag through every
+        // one of the app's many save/delete call sites.
+        function scheduleDriveAutoSync() {
+            if (driveSuppressAutoSync) return;
+            const connectedRow = document.getElementById("driveConnectedRow");
+            if (!connectedRow || connectedRow.classList.contains("hidden")) return; // not connected
+            const toggle = document.getElementById("driveAutoSyncToggle");
+            if (toggle && !toggle.checked) return; // auto-sync turned off, manual "Sync Now" only
+            clearTimeout(driveAutoSyncTimer);
+            driveAutoSyncTimer = setTimeout(() => {
+                uploadBackupToDrive().catch((err) => {
+                    // Silent by design for background auto-sync — a manual "Sync Now" tap or the
+                    // next successful auto-sync will surface/self-correct any real problem; an
+                    // alert() firing mid-typing over an unrelated background sync hiccup would be
+                    // far more disruptive than a missed sync cycle.
+                    console.warn("Drive auto-sync failed:", err);
+                });
+            }, DRIVE_AUTOSYNC_DEBOUNCE_MS);
+        }
+
+        function renderDriveConnectedUI(email, lastSyncedAt) {
+            const disconnectedRow = document.getElementById("driveDisconnectedRow");
+            const connectedRow = document.getElementById("driveConnectedRow");
+            if (disconnectedRow) disconnectedRow.classList.add("hidden");
+            if (connectedRow) connectedRow.classList.remove("hidden");
+            const emailEl = document.getElementById("driveAccountEmail");
+            if (emailEl) emailEl.textContent = email || "(unknown)";
+            updateDriveLastSyncedText(lastSyncedAt);
+        }
+
+        function renderDriveDisconnectedUI() {
+            const disconnectedRow = document.getElementById("driveDisconnectedRow");
+            const connectedRow = document.getElementById("driveConnectedRow");
+            if (disconnectedRow) disconnectedRow.classList.remove("hidden");
+            if (connectedRow) connectedRow.classList.add("hidden");
+        }
+
+        function updateDriveLastSyncedText(lastSyncedAt) {
+            const el = document.getElementById("driveLastSyncedText");
+            if (!el) return;
+            if (!lastSyncedAt) { el.textContent = "Not synced yet"; return; }
+            const d = new Date(lastSyncedAt);
+            el.textContent = `Last synced: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
         }
 
         // ---------------------------------------------------------------------------------
@@ -20150,6 +20486,9 @@
             exportBackup: () => exportBackup(),
             exportBackupQuick: () => exportBackupQuick(),
             openImportInput: () => document.getElementById("importInput").click(),
+            connectGoogleDrive: () => connectGoogleDrive(),
+            disconnectGoogleDrive: () => disconnectGoogleDrive(),
+            manualSyncGoogleDrive: () => manualSyncGoogleDrive(),
             handleLedgerBackClick: () => handleLedgerBackClick(),
             navigateToWorkspace: () => navigateToWorkspace(),
             saveFxRates: () => saveFxRates(),
@@ -20309,6 +20648,7 @@
             toggleBudgetCarryover: (el) => toggleBudgetCarryover(el),
             importBackup: (el, e) => importBackup(e),
             handleExportEncryptToggleChange: () => handleExportEncryptToggleChange(),
+            handleDriveAutoSyncToggleChange: () => handleDriveAutoSyncToggleChange(),
             handleBiometricToggleChange: () => handleBiometricToggleChange(),
             handleBaseCurrencyChange: () => handleBaseCurrencyChange(),
             recalcTxFdMaturity: () => { recalcTxFdMaturity(); recalcTxSplitTotal(); },

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v429";
+        const APP_VERSION = "v430";
         const APP_VERSION_DATE = "2026-09-23";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -20230,7 +20230,11 @@
             if (!resp.ok) throw new Error(`Drive lookup failed (${resp.status})`);
             const data = await resp.json();
             driveFileId = (data.files && data.files[0]) ? data.files[0].id : null;
+            // v430: this bookkeeping write must not re-arm the auto-sync debounce timer (see the
+            // matching comment on the driveLastSyncedAt writes below) — suppressed the same way.
+            driveSuppressAutoSync = true;
             await writeDB(STORES.SETTINGS, { key: "driveFileId", value: driveFileId });
+            driveSuppressAutoSync = false;
             return driveFileId;
         }
 
@@ -20272,14 +20276,29 @@
                 });
                 if (!resp.ok) throw new Error(`Drive upload failed (${resp.status})`);
                 const result = await resp.json();
+                // v430: these two bookkeeping writes (driveFileId, driveLastSyncedAt) must NOT
+                // re-arm scheduleDriveAutoSync() the way an ordinary data write should — every
+                // writeDB() call schedules another debounced auto-sync on completion, and
+                // without this guard that next auto-sync's own completion would write
+                // driveLastSyncedAt again, scheduling yet another — an infinite ~4s upload loop
+                // that silently re-uploads (and keeps re-stamping "last synced" with) whatever
+                // is currently on THIS device, clobbering a genuinely newer copy another device
+                // had just put in Drive. Root-caused from a user report: PC's "last synced" time
+                // kept advancing on its own after a Restore, and Restore Latest never picked up
+                // a newer mobile entry — because PC was continuously re-uploading its own stale
+                // snapshot back over the top of it. Same suppress flag restoreFromBundle() already
+                // uses for its own writes.
+                driveSuppressAutoSync = true;
                 if (!driveFileId) {
                     driveFileId = result.id;
                     await writeDB(STORES.SETTINGS, { key: "driveFileId", value: driveFileId });
                 }
                 const now = Date.now();
                 await writeDB(STORES.SETTINGS, { key: "driveLastSyncedAt", value: now });
+                driveSuppressAutoSync = false;
                 updateDriveLastSyncedText(now);
             } finally {
+                driveSuppressAutoSync = false;
                 driveSyncInFlight = false;
             }
         }
@@ -20303,11 +20322,16 @@
                 const bundle = payload.encrypted ? await decryptBackupBundle(payload) : payload;
                 if (!bundle) return; // user cancelled the passcode prompt
                 await restoreFromBundle(bundle);
+                // v430: same infinite-auto-sync-loop fix as uploadBackupToDrive() above — this
+                // bookkeeping write must not re-arm scheduleDriveAutoSync().
+                driveSuppressAutoSync = true;
                 const now = Date.now();
                 await writeDB(STORES.SETTINGS, { key: "driveLastSyncedAt", value: now });
+                driveSuppressAutoSync = false;
                 updateDriveLastSyncedText(now);
                 showToast("☁️ Restored latest backup from Google Drive");
             } finally {
+                driveSuppressAutoSync = false;
                 driveSyncInFlight = false;
             }
         }

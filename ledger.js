@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v432";
+        const APP_VERSION = "v433";
         const APP_VERSION_DATE = "2026-09-23";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -63,8 +63,8 @@
         // active/disposed/lost status). Created either inline from an Expense entry (see the
         // "📦 Add to Inventory" block on the transaction form) or manually from the Inventory
         // page's own + button. See the "--- INVENTORY ---" section below.
-        const DB_VERSION = 12;
-        const STORES = { ACCOUNTS: "accounts", TRANSACTIONS: "transactions", SETTINGS: "settings", CATEGORIES: "categories", MEMBERS: "members", FUNDS: "funds", NAV_HISTORY: "navHistory", ATTACHMENTS: "attachments", TEMPLATES: "templates", TAGS: "tags", BUDGETS: "budgets", INVENTORY: "inventory", PLANNED_PAYMENTS: "plannedPayments", REMINDERS: "reminders" };
+        const DB_VERSION = 13;
+        const STORES = { ACCOUNTS: "accounts", TRANSACTIONS: "transactions", SETTINGS: "settings", CATEGORIES: "categories", MEMBERS: "members", FUNDS: "funds", NAV_HISTORY: "navHistory", ATTACHMENTS: "attachments", TEMPLATES: "templates", TAGS: "tags", BUDGETS: "budgets", INVENTORY: "inventory", PLANNED_PAYMENTS: "plannedPayments", REMINDERS: "reminders", DRIVE_SNAPSHOTS: "driveSnapshots" };
         // Maps each object store to the field IndexedDB uses as its keyPath. That field must stay
         // unencrypted on the stored record (IndexedDB needs to read it directly to index/generate keys);
         // every other field on the record is encrypted as a single AES-GCM blob.
@@ -2165,6 +2165,19 @@
                         // "--- REMINDERS ---" section for the full model.
                         database.createObjectStore(STORES.REMINDERS, { keyPath: "id" });
                     }
+                    if (!database.objectStoreNames.contains(STORES.DRIVE_SNAPSHOTS)) {
+                        // v433: safety-net snapshots of THIS device's own data, taken right before
+                        // a Google Drive restore overwrites it (only when this device actually had
+                        // unsynced changes at that moment — see downloadBackupFromDrive()'s own
+                        // comment in the "--- GOOGLE DRIVE SYNC ---" section). keyPath "id"
+                        // (autoIncrement) since these are just a FIFO log, not addressed by any
+                        // cross-reference. Shape: { id, createdAt, encrypted, salt, iterations, iv,
+                        // data } — same encrypted-bundle shape uploadBackupToDrive() writes to
+                        // Drive itself, so restoring one goes through the exact same
+                        // decryptBackupBundle()/restoreFromBundle() path. Only the most recent 5
+                        // are kept (see pruneDriveSnapshots()).
+                        database.createObjectStore(STORES.DRIVE_SNAPSHOTS, { keyPath: "id", autoIncrement: true });
+                    }
                 };
                 request.onerror = (e) => reject(e.target.error);
             });
@@ -2176,7 +2189,15 @@
                 try {
                     const tx = db.transaction([storeName], "readwrite");
                     tx.objectStore(storeName).put(encrypted);
-                    tx.oncomplete = () => { scheduleDriveAutoSync(); resolve(); };
+                    tx.oncomplete = () => {
+                        // v433: track which stores changed locally since the last successful Drive
+                        // sync (see the "--- GOOGLE DRIVE SYNC ---" section's markStoreDirty()) —
+                        // skipped while driveSuppressAutoSync is set, since those writes are Drive
+                        // sync's OWN bookkeeping/restore writes, not a real local edit.
+                        if (!driveSuppressAutoSync) markStoreDirty(storeName).catch(() => {});
+                        scheduleDriveAutoSync();
+                        resolve();
+                    };
                     tx.onerror = () => reject(tx.error);
                 } catch (err) { reject(err); }
             });
@@ -2199,7 +2220,13 @@
                 try {
                     const tx = db.transaction([storeName], "readwrite");
                     tx.objectStore(storeName).delete(key);
-                    tx.oncomplete = () => { scheduleDriveAutoSync(); resolve(); };
+                    tx.oncomplete = () => {
+                        // v433: same dirty-tracking as writeDB() above — a delete is a local
+                        // change too (e.g. removing a transaction) and must count toward it.
+                        if (!driveSuppressAutoSync) markStoreDirty(storeName).catch(() => {});
+                        scheduleDriveAutoSync();
+                        resolve();
+                    };
                     tx.onerror = () => reject(tx.error);
                 } catch (err) { reject(err); }
             });
@@ -20037,6 +20064,64 @@
         // don't turn around and schedule an upload of the data we just pulled down.
         let driveSuppressAutoSync = false;
 
+        // v433: "safe auto-sync" state — see the design discussion this was built from. The
+        // core idea: never let the debounced auto-upload silently overwrite Drive when the
+        // Drive copy itself has moved on without us. All three of these are persisted (SETTINGS
+        // store) so they survive an app restart, not just kept in memory:
+        //   driveDirtyStoreSet   — which stores this device has written to since its last
+        //                          successful up/download (cleared on every successful sync).
+        //   driveLastKnownRemoteRev — the Drive file's modifiedTime as of our last successful
+        //                          sync (upload OR download). Used as a cheap stand-in for "do we
+        //                          already have whatever's on Drive right now" — if the file's
+        //                          current modifiedTime doesn't match this, something changed on
+        //                          Drive since we last looked, presumably from another device.
+        //   driveSyncPauseState  — non-null while auto-sync is refusing to upload because BOTH
+        //                          this device and Drive changed since they last agreed (a real
+        //                          conflict) — cleared only by the user explicitly resolving it
+        //                          (resolveDriveSyncKeepLocal/resolveDriveSyncUseRemote below).
+        //                          Manual Sync Now / Restore Latest still work as an escape hatch
+        //                          even while paused.
+        let driveDirtyStoreSet = new Set();
+        let driveLastKnownRemoteRev = null;
+        let driveSyncPauseState = null;
+        // v433: rolling observation log (capped at 20) of every time a conflict was detected —
+        // kept even after resolution, purely so a real pattern of recurring conflicts can be
+        // looked at later instead of having to reason from a single live case. See
+        // enterDriveSyncPause()/the resolve* functions for what gets written into an entry.
+        let driveConflictLog = [];
+
+        // Small helper for every "this write is Drive-sync's own bookkeeping, not a real local
+        // edit" write (driveDirtyStoreSet, driveLastKnownRemoteRev, driveSyncPauseState,
+        // driveConflictLog, driveFileId, driveLastSyncedAt) — wraps it in driveSuppressAutoSync
+        // so it can't re-arm scheduleDriveAutoSync() or get counted as a dirty-store write by
+        // writeDB()'s own markStoreDirty() call. Every one of these previously had to remember to
+        // toggle the flag by hand around a raw writeDB() call (see the v430 fix's own comments);
+        // centralizing it here means a future new bit of sync bookkeeping can't forget to.
+        async function persistDriveBookkeeping(key, value) {
+            driveSuppressAutoSync = true;
+            try {
+                await writeDB(STORES.SETTINGS, { key, value });
+            } finally {
+                driveSuppressAutoSync = false;
+            }
+        }
+
+        // Called from writeDB()/deleteDB() on every real local write (guarded there by
+        // `!driveSuppressAutoSync`, so Drive sync's own restore/bookkeeping writes never mark
+        // themselves dirty). Cheap no-op once a store is already flagged this cycle.
+        async function markStoreDirty(storeName) {
+            if (driveDirtyStoreSet.has(storeName)) return;
+            driveDirtyStoreSet.add(storeName);
+            await persistDriveBookkeeping("driveDirtyStoreSet", Array.from(driveDirtyStoreSet));
+        }
+
+        // Called after every successful upload or download — at that point this device's data
+        // and Drive's data are known to agree, so nothing is "dirty" relative to Drive anymore.
+        async function clearDriveDirtyStores() {
+            driveDirtyStoreSet.clear();
+            await persistDriveBookkeeping("driveDirtyStoreSet", []);
+        }
+
         // Called once from bootstrap(). Restores "was connected before" state (so a returning
         // user doesn't have to tap Connect again every session) and wires up the token client.
         // Does NOT request a token yet — that only happens on an actual Connect tap or, for a
@@ -20060,11 +20145,24 @@
             const storedAutoSync = await readKeyDB("settings", "driveAutoSyncEnabled");
             const storedFileId = await readKeyDB("settings", "driveFileId");
             if (storedFileId) driveFileId = storedFileId.value || null;
+            // v433: restore dirty-set / last-known-remote-revision / pause state across app
+            // restarts — without this, closing and reopening the app would silently forget an
+            // unresolved conflict (or forget which stores were locally dirty), reopening the
+            // exact "auto-sync might clobber something" window this feature exists to close.
+            const storedDirty = await readKeyDB("settings", "driveDirtyStoreSet");
+            driveDirtyStoreSet = new Set(storedDirty && Array.isArray(storedDirty.value) ? storedDirty.value : []);
+            const storedRemoteRev = await readKeyDB("settings", "driveLastKnownRemoteRev");
+            driveLastKnownRemoteRev = storedRemoteRev ? (storedRemoteRev.value || null) : null;
+            const storedPause = await readKeyDB("settings", "driveSyncPauseState");
+            driveSyncPauseState = storedPause ? (storedPause.value || null) : null;
+            const storedLog = await readKeyDB("settings", "driveConflictLog");
+            driveConflictLog = (storedLog && Array.isArray(storedLog.value)) ? storedLog.value : [];
 
             if (storedConnected && storedConnected.value) {
                 renderDriveConnectedUI(storedEmail ? storedEmail.value : "", storedLastSync ? storedLastSync.value : null);
                 const toggle = document.getElementById("driveAutoSyncToggle");
                 if (toggle) toggle.checked = !storedAutoSync || storedAutoSync.value !== false;
+                renderDriveSyncPauseBanner();
                 // Silent (no popup) re-auth: works because this browser already granted consent
                 // last session — Google issues a fresh access token with no UI at all as long as
                 // the user's Google session is still active. If it's not (signed out of Google
@@ -20134,6 +20232,7 @@
             }
 
             renderDriveConnectedUI(email, (await readKeyDB("settings", "driveLastSyncedAt"))?.value || null);
+            renderDriveSyncPauseBanner();
             showToast("☁️ Google Drive connected");
         }
 
@@ -20270,9 +20369,7 @@
             }
             // v430: this bookkeeping write must not re-arm the auto-sync debounce timer (see the
             // matching comment on the driveLastSyncedAt writes below) — suppressed the same way.
-            driveSuppressAutoSync = true;
-            await writeDB(STORES.SETTINGS, { key: "driveFileId", value: driveFileId });
-            driveSuppressAutoSync = false;
+            await persistDriveBookkeeping("driveFileId", driveFileId);
             return driveFileId;
         }
 
@@ -20303,9 +20400,12 @@
                     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
                     `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(payload)}\r\n--${boundary}--`;
 
+                // v433: request modifiedTime back in the response (not just the default `id`) so
+                // driveLastKnownRemoteRev can be set from this same call, instead of needing a
+                // separate follow-up lookup just to find out what Drive stamped this upload with.
                 const uploadUrl = driveFileId
-                    ? `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=multipart`
-                    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+                    ? `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=multipart&fields=id,modifiedTime`
+                    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime`;
 
                 const resp = await fetch(uploadUrl, {
                     method: driveFileId ? "PATCH" : "POST",
@@ -20326,19 +20426,107 @@
                 // a newer mobile entry — because PC was continuously re-uploading its own stale
                 // snapshot back over the top of it. Same suppress flag restoreFromBundle() already
                 // uses for its own writes.
-                driveSuppressAutoSync = true;
                 if (!driveFileId) {
                     driveFileId = result.id;
-                    await writeDB(STORES.SETTINGS, { key: "driveFileId", value: driveFileId });
+                    await persistDriveBookkeeping("driveFileId", driveFileId);
                 }
                 const now = Date.now();
-                await writeDB(STORES.SETTINGS, { key: "driveLastSyncedAt", value: now });
-                driveSuppressAutoSync = false;
+                await persistDriveBookkeeping("driveLastSyncedAt", now);
                 updateDriveLastSyncedText(now);
+                // v433: this upload IS the up-to-date state as far as Drive is concerned now —
+                // record its modifiedTime as "the last remote revision we know about" and clear
+                // the dirty set, so the next auto-sync check (attemptAutoSync()) sees remote as
+                // unchanged-since-us rather than flagging its own upload as a foreign change.
+                if (result.modifiedTime) {
+                    driveLastKnownRemoteRev = result.modifiedTime;
+                    await persistDriveBookkeeping("driveLastKnownRemoteRev", driveLastKnownRemoteRev);
+                }
+                await clearDriveDirtyStores();
             } finally {
                 driveSuppressAutoSync = false;
                 driveSyncInFlight = false;
             }
+        }
+
+        // v433: encrypts and stores a local snapshot bundle into STORES.DRIVE_SNAPSHOTS, keeping
+        // only the most recent 5 (oldest dropped first). Same encrypted shape uploadBackupToDrive()
+        // writes to Drive, so restoreDriveSnapshot() below can reuse decryptBackupBundle() as-is.
+        async function saveDriveSnapshot(bundle) {
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const saltB64 = bufToB64(salt);
+            const key = await deriveKeyFromPasscode(currentPasscode, saltB64, PBKDF2_ITERATIONS);
+            const { iv, data } = await aesEncryptString(key, JSON.stringify(bundle));
+            driveSuppressAutoSync = true;
+            try {
+                await writeDB(STORES.DRIVE_SNAPSHOTS, {
+                    createdAt: Date.now(), encrypted: true, salt: saltB64, iterations: PBKDF2_ITERATIONS, iv, data
+                });
+                await pruneDriveSnapshots();
+            } finally {
+                driveSuppressAutoSync = false;
+            }
+        }
+
+        async function listDriveSnapshots() {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction([STORES.DRIVE_SNAPSHOTS], "readonly");
+                const req = tx.objectStore(STORES.DRIVE_SNAPSHOTS).getAll();
+                req.onsuccess = () => resolve((req.result || []).sort((a, b) => b.id - a.id));
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function pruneDriveSnapshots() {
+            const all = await listDriveSnapshots(); // newest first
+            const toDrop = all.slice(5); // keep newest 5
+            for (const snap of toDrop) {
+                await new Promise((resolve, reject) => {
+                    const tx = db.transaction([STORES.DRIVE_SNAPSHOTS], "readwrite");
+                    tx.objectStore(STORES.DRIVE_SNAPSHOTS).delete(snap.id);
+                    tx.oncomplete = resolve;
+                    tx.onerror = () => reject(tx.error);
+                });
+            }
+        }
+
+        // Settings entry point ("Local Snapshots" under Backup & Restore) — lets the user browse
+        // and restore one of the safety-net snapshots saved automatically by downloadBackupFromDrive()
+        // below, e.g. if they resolved a sync conflict with "Use Remote" and want their pre-overwrite
+        // local data back after all.
+        async function openDriveSnapshotsModal() {
+            const snapshots = await listDriveSnapshots();
+            if (snapshots.length === 0) {
+                alert("No local snapshots yet — one is saved automatically the next time a Drive restore would overwrite unsynced local changes.");
+                return;
+            }
+            const lines = snapshots.map((s, i) => `${i + 1}. ${new Date(s.createdAt).toLocaleString()}`).join("\n");
+            const choice = prompt(`Local snapshots (most recent first) — enter a number to restore it, or Cancel:\n\n${lines}`);
+            if (!choice) return;
+            const idx = parseInt(choice, 10) - 1;
+            if (isNaN(idx) || idx < 0 || idx >= snapshots.length) return;
+            const ok = await customConfirm(`Restore the snapshot from ${new Date(snapshots[idx].createdAt).toLocaleString()}? This replaces THIS device's current accounts, transactions, and categories.`);
+            if (!ok) return;
+            const bundle = await decryptBackupBundle(snapshots[idx]);
+            if (!bundle) return;
+            await restoreFromBundle(bundle);
+            showToast("Restored local snapshot");
+        }
+
+        // v433: best-effort, non-authoritative diff — compares each top-level store array between
+        // two backup bundles by serialized equality (not a real per-record diff; phase 2/3 in the
+        // original design, deliberately not built — see the design discussion this was scoped
+        // from). Used only to annotate a conflict-log entry with roughly which stores the OTHER
+        // side actually touched, for later pattern-spotting — never used to make any sync decision.
+        function diffBundleStoreNames(bundleA, bundleB) {
+            const changed = [];
+            const keys = new Set([...Object.keys(bundleA || {}), ...Object.keys(bundleB || {})]);
+            for (const k of keys) {
+                if (k === "syncedAt" || k === "exportedAt") continue;
+                if (JSON.stringify(bundleA ? bundleA[k] : undefined) !== JSON.stringify(bundleB ? bundleB[k] : undefined)) {
+                    changed.push(k);
+                }
+            }
+            return changed;
         }
 
         // Pulls the Drive-appdata backup file down and restores it via the exact same
@@ -20367,14 +20555,41 @@
                 const payload = await resp.json();
                 const bundle = payload.encrypted ? await decryptBackupBundle(payload) : payload;
                 if (!bundle) return; // user cancelled the passcode prompt
+                // v433: if this device has unsynced local changes, restoring will overwrite them
+                // in a moment — take a safety-net snapshot of what's here RIGHT NOW first, so the
+                // user can get it back from Settings → Local Snapshots even after confirming a
+                // pull they didn't fully think through. Skipped when local is clean (nothing at
+                // risk) so the common fast-forward case doesn't spend a snapshot write on nothing.
+                let localSnapshotBundle = null;
+                if (driveDirtyStoreSet.size > 0) {
+                    localSnapshotBundle = await buildBackupBundle();
+                    await saveDriveSnapshot(localSnapshotBundle);
+                }
                 await restoreFromBundle(bundle);
                 // v430: same infinite-auto-sync-loop fix as uploadBackupToDrive() above — this
                 // bookkeeping write must not re-arm scheduleDriveAutoSync().
-                driveSuppressAutoSync = true;
                 const now = Date.now();
-                await writeDB(STORES.SETTINGS, { key: "driveLastSyncedAt", value: now });
-                driveSuppressAutoSync = false;
+                await persistDriveBookkeeping("driveLastSyncedAt", now);
                 updateDriveLastSyncedText(now);
+                // v433: this device now matches Drive exactly — record the file's modifiedTime as
+                // the last-known remote revision and clear the dirty set (any pre-overwrite local
+                // changes are now safely in the snapshot just taken above, not lost, but they no
+                // longer count as "unsynced" against this newly-pulled baseline).
+                if (driveLastLookupModifiedTime) {
+                    driveLastKnownRemoteRev = driveLastLookupModifiedTime;
+                    await persistDriveBookkeeping("driveLastKnownRemoteRev", driveLastKnownRemoteRev);
+                }
+                await clearDriveDirtyStores();
+                // v433: best-effort diff against the pre-overwrite local snapshot, attached to
+                // whichever conflict-log entry is still open (resolvedAt === null) — see
+                // diffBundleStoreNames()'s own comment on what this is (and isn't) good for.
+                if (localSnapshotBundle) {
+                    const openEntry = [...driveConflictLog].reverse().find(e => e.resolvedAt === null);
+                    if (openEntry) {
+                        openEntry.remoteChangedStores = diffBundleStoreNames(localSnapshotBundle, bundle);
+                        await persistDriveBookkeeping("driveConflictLog", driveConflictLog);
+                    }
+                }
                 // v432: show what was actually restored — the file's own upload time (from the
                 // uploading device's clock, at the moment it ran buildBackupBundle()) and, if
                 // more than one same-named file existed in Drive, how many were found — so a
@@ -20382,7 +20597,8 @@
                 // what's on screen instead of guessed at blind.
                 const restoredAt = payload.syncedAt ? new Date(payload.syncedAt).toLocaleString() : "unknown time";
                 const dupNote = driveLastLookupFileCount > 1 ? ` (${driveLastLookupFileCount} same-named files were found — used the newest, removed the rest)` : "";
-                showToast(`☁️ Restored backup from Drive — uploaded ${restoredAt}${dupNote}`);
+                const snapNote = localSnapshotBundle ? " — your previous unsynced data was saved to Local Snapshots" : "";
+                showToast(`☁️ Restored backup from Drive — uploaded ${restoredAt}${dupNote}${snapNote}`);
             } finally {
                 driveSuppressAutoSync = false;
                 driveSyncInFlight = false;
@@ -20401,7 +20617,7 @@
             if (toggle && !toggle.checked) return; // auto-sync turned off, manual "Sync Now" only
             clearTimeout(driveAutoSyncTimer);
             driveAutoSyncTimer = setTimeout(() => {
-                uploadBackupToDrive().catch((err) => {
+                attemptAutoSync().catch((err) => {
                     // Silent by design for background auto-sync — a manual "Sync Now" tap or the
                     // next successful auto-sync will surface/self-correct any real problem; an
                     // alert() firing mid-typing over an unrelated background sync hiccup would be
@@ -20409,6 +20625,111 @@
                     console.warn("Drive auto-sync failed:", err);
                 });
             }, DRIVE_AUTOSYNC_DEBOUNCE_MS);
+        }
+
+        // v433: the actual "safe auto-sync" decision flow — replaces auto-sync's old behaviour of
+        // unconditionally calling uploadBackupToDrive() on every debounced write. See the design
+        // discussion this was built from (search history for "安全的 Auto-Sync") for the full
+        // reasoning; short version:
+        //   - an unresolved pause already exists → do nothing until the user resolves it
+        //   - remote hasn't moved since we last knew about it → normal upload (today's behaviour)
+        //   - remote moved AND we have no local changes of our own → fast-forward, pull silently
+        //   - remote moved AND we DO have local changes → real conflict, never auto-pick a side
+        async function attemptAutoSync() {
+            if (driveSyncInFlight) return;
+            if (driveSyncPauseState) return; // already paused on an earlier unresolved conflict
+            try {
+                await findDriveBackupFileId(); // cheap metadata-only lookup; also self-heals duplicates
+                const remoteModifiedTime = driveFileId ? driveLastLookupModifiedTime : null;
+                const remoteChanged = remoteModifiedTime !== driveLastKnownRemoteRev;
+                if (!remoteChanged) {
+                    await uploadBackupToDrive();
+                    return;
+                }
+                if (driveDirtyStoreSet.size === 0) {
+                    await downloadBackupFromDrive();
+                    return;
+                }
+                await enterDriveSyncPause(remoteModifiedTime);
+            } catch (err) {
+                console.warn("Auto-sync check failed:", err);
+            }
+        }
+
+        // Enters (and persists) the paused state, logs the observation, and surfaces it — a
+        // one-time toast (deduped per remoteModifiedTime, via driveSyncPauseState.toastShown) plus
+        // a persistent banner in Settings that stays up until the user actually resolves it.
+        async function enterDriveSyncPause(remoteModifiedTime) {
+            const detectedAt = Date.now();
+            const localDirtyStores = Array.from(driveDirtyStoreSet);
+            driveSyncPauseState = { remoteModifiedTime, localDirtyStores, detectedAt, toastShown: false };
+            await persistDriveBookkeeping("driveSyncPauseState", driveSyncPauseState);
+            driveConflictLog.push({ detectedAt, remoteModifiedTime, localDirtyStores, resolvedAt: null, resolution: null, remoteChangedStores: null });
+            if (driveConflictLog.length > 20) driveConflictLog = driveConflictLog.slice(-20);
+            await persistDriveBookkeeping("driveConflictLog", driveConflictLog);
+            if (!driveSyncPauseState.toastShown) {
+                showToast("⏸ Auto-sync paused — another device changed data too. Resolve it in Settings → Google Drive.");
+                driveSyncPauseState.toastShown = true;
+                await persistDriveBookkeeping("driveSyncPauseState", driveSyncPauseState);
+            }
+            renderDriveSyncPauseBanner();
+        }
+
+        // Shows/hides the persistent "⏸ Auto-sync paused" banner in Settings → Google Drive.
+        // Unlike the one-time toast in enterDriveSyncPause(), this re-renders every time the
+        // Settings page is opened for as long as driveSyncPauseState is non-null — so a user who
+        // dismissed/missed the toast still has a durable way to notice and resolve it.
+        function renderDriveSyncPauseBanner() {
+            const banner = document.getElementById("driveSyncPauseBanner");
+            if (!banner) return;
+            if (!driveSyncPauseState) { banner.classList.add("hidden"); return; }
+            banner.classList.remove("hidden");
+            const detail = document.getElementById("driveSyncPauseDetail");
+            if (detail) {
+                const stores = driveSyncPauseState.localDirtyStores.join(", ") || "settings";
+                detail.textContent = `Local changes to: ${stores}`;
+            }
+        }
+
+        // "Keep Local" resolution — force-uploads this device's current data over whatever's on
+        // Drive, then clears the pause. Explicit confirm since this deliberately overwrites the
+        // other device's change.
+        async function resolveDriveSyncKeepLocal() {
+            if (!driveSyncPauseState) return;
+            const ok = await customConfirm("Keep this device's version? This uploads THIS device's data to Google Drive, overwriting the other device's change there.");
+            if (!ok) return;
+            try {
+                await uploadBackupToDrive();
+                const openEntry = [...driveConflictLog].reverse().find(e => e.resolvedAt === null);
+                if (openEntry) { openEntry.resolvedAt = Date.now(); openEntry.resolution = "keep_local"; }
+                await persistDriveBookkeeping("driveConflictLog", driveConflictLog);
+                driveSyncPauseState = null;
+                await persistDriveBookkeeping("driveSyncPauseState", null);
+                renderDriveSyncPauseBanner();
+                showToast("☁️ Kept this device's version — synced to Drive");
+            } catch (err) {
+                alert("Sync failed: " + (err && err.message ? err.message : err));
+            }
+        }
+
+        // "Use Remote" resolution — pulls Drive's version down over this device's, via the exact
+        // same downloadBackupFromDrive() manual Restore uses (which itself takes a safety-net
+        // local snapshot first, since driveDirtyStoreSet is non-empty at this point).
+        async function resolveDriveSyncUseRemote() {
+            if (!driveSyncPauseState) return;
+            const ok = await customConfirm("Use the other device's version? THIS device's unsynced changes will be replaced (a safety-net copy is saved automatically to Local Snapshots first).");
+            if (!ok) return;
+            try {
+                await downloadBackupFromDrive();
+                const openEntry = [...driveConflictLog].reverse().find(e => e.resolvedAt === null);
+                if (openEntry) { openEntry.resolvedAt = Date.now(); openEntry.resolution = "use_remote"; }
+                await persistDriveBookkeeping("driveConflictLog", driveConflictLog);
+                driveSyncPauseState = null;
+                await persistDriveBookkeeping("driveSyncPauseState", null);
+                renderDriveSyncPauseBanner();
+            } catch (err) {
+                alert("Restore failed: " + (err && err.message ? err.message : err));
+            }
         }
 
         function renderDriveConnectedUI(email, lastSyncedAt) {
@@ -20625,6 +20946,9 @@
             disconnectGoogleDrive: () => disconnectGoogleDrive(),
             manualSyncGoogleDrive: () => manualSyncGoogleDrive(),
             manualRestoreFromDrive: () => manualRestoreFromDrive(),
+            resolveDriveSyncKeepLocal: () => resolveDriveSyncKeepLocal(),
+            resolveDriveSyncUseRemote: () => resolveDriveSyncUseRemote(),
+            openDriveSnapshotsModal: () => openDriveSnapshotsModal(),
             handleLedgerBackClick: () => handleLedgerBackClick(),
             navigateToWorkspace: () => navigateToWorkspace(),
             saveFxRates: () => saveFxRates(),

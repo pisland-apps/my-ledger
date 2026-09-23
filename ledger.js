@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v433";
+        const APP_VERSION = "v434";
         const APP_VERSION_DATE = "2026-09-23";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -20079,7 +20079,7 @@
         //                          this device and Drive changed since they last agreed (a real
         //                          conflict) — cleared only by the user explicitly resolving it
         //                          (resolveDriveSyncKeepLocal/resolveDriveSyncUseRemote below).
-        //                          Manual Sync Now / Restore Latest still work as an escape hatch
+        //                          Manual "Upload to Drive" / Restore Latest still work as an escape hatch
         //                          even while paused.
         let driveDirtyStoreSet = new Set();
         let driveLastKnownRemoteRev = null;
@@ -20258,9 +20258,9 @@
         async function manualSyncGoogleDrive() {
             try {
                 await uploadBackupToDrive();
-                showToast("☁️ Synced to Google Drive");
+                showToast("☁️ Uploaded to Google Drive");
             } catch (err) {
-                alert("Sync failed: " + (err && err.message ? err.message : err));
+                alert("Upload failed: " + (err && err.message ? err.message : err));
             }
         }
 
@@ -20614,11 +20614,11 @@
             const connectedRow = document.getElementById("driveConnectedRow");
             if (!connectedRow || connectedRow.classList.contains("hidden")) return; // not connected
             const toggle = document.getElementById("driveAutoSyncToggle");
-            if (toggle && !toggle.checked) return; // auto-sync turned off, manual "Sync Now" only
+            if (toggle && !toggle.checked) return; // auto-sync turned off, manual "Upload to Drive" only
             clearTimeout(driveAutoSyncTimer);
             driveAutoSyncTimer = setTimeout(() => {
                 attemptAutoSync().catch((err) => {
-                    // Silent by design for background auto-sync — a manual "Sync Now" tap or the
+                    // Silent by design for background auto-sync — a manual "Upload to Drive" tap or the
                     // next successful auto-sync will surface/self-correct any real problem; an
                     // alert() firing mid-typing over an unrelated background sync hiccup would be
                     // far more disruptive than a missed sync cycle.

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v427";
+        const APP_VERSION = "v428";
         const APP_VERSION_DATE = "2026-09-23";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -20010,7 +20010,7 @@
         // TODO: replace with your own OAuth Client ID from Google Cloud Console (Credentials >
         // Create Credentials > OAuth client ID > Web application). Must end in
         // ".apps.googleusercontent.com". See the app's setup guide for the full walkthrough.
-        const GOOGLE_CLIENT_ID = "YOUR_CLIENT_ID_HERE.apps.googleusercontent.com";
+        const GOOGLE_CLIENT_ID = "285114774867-demqcuh6htn67926nim8iqc5jsl4grdd.apps.googleusercontent.com";
         const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
         const DRIVE_BACKUP_FILENAME = "ledger-backup.json";
         const DRIVE_AUTOSYNC_DEBOUNCE_MS = 4000;

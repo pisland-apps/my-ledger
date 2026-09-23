@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v431";
+        const APP_VERSION = "v432";
         const APP_VERSION_DATE = "2026-09-23";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -20019,6 +20019,12 @@
         let driveAccessToken = null;      // in-memory only; never persisted (short-lived, ~1hr)
         let driveTokenExpiresAt = 0;
         let driveFileId = null;           // cached Drive file id for ledger-backup.json, once known
+        // v432: diagnostics from the most recent findDriveBackupFileId() call, surfaced in the
+        // "Restore Latest" toast below so a sync mismatch can actually be seen instead of
+        // guessed at — how many files with that name existed, and when the one actually used
+        // was last modified.
+        let driveLastLookupFileCount = 0;
+        let driveLastLookupModifiedTime = null;
         let driveAutoSyncTimer = null;
         let driveSyncInFlight = false;
         // v429: guards the Drive-freshness check below so it only ever runs once per app
@@ -20248,6 +20254,8 @@
                 if (!chosen || new Date(f.modifiedTime) > new Date(chosen.modifiedTime)) chosen = f;
             }
             driveFileId = chosen ? chosen.id : null;
+            driveLastLookupFileCount = files.length;
+            driveLastLookupModifiedTime = chosen ? chosen.modifiedTime : null;
             if (files.length > 1) {
                 console.warn(`Found ${files.length} Drive backup files with the same name — using the most recent (${chosen.modifiedTime}) and removing the rest.`);
                 for (const f of files) {
@@ -20367,7 +20375,14 @@
                 await writeDB(STORES.SETTINGS, { key: "driveLastSyncedAt", value: now });
                 driveSuppressAutoSync = false;
                 updateDriveLastSyncedText(now);
-                showToast("☁️ Restored latest backup from Google Drive");
+                // v432: show what was actually restored — the file's own upload time (from the
+                // uploading device's clock, at the moment it ran buildBackupBundle()) and, if
+                // more than one same-named file existed in Drive, how many were found — so a
+                // "restore didn't pick up my other device's change" report can be diagnosed from
+                // what's on screen instead of guessed at blind.
+                const restoredAt = payload.syncedAt ? new Date(payload.syncedAt).toLocaleString() : "unknown time";
+                const dupNote = driveLastLookupFileCount > 1 ? ` (${driveLastLookupFileCount} same-named files were found — used the newest, removed the rest)` : "";
+                showToast(`☁️ Restored backup from Drive — uploaded ${restoredAt}${dupNote}`);
             } finally {
                 driveSuppressAutoSync = false;
                 driveSyncInFlight = false;

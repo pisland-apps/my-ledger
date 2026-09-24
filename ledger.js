@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v437";
+        const APP_VERSION = "v438";
         const APP_VERSION_DATE = "2026-09-24";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -361,7 +361,12 @@
         // Deposit/Unit Trust), just where it's filed on the Accounts page.
         const ACCOUNT_SUBGROUPS = {
             "Bank/Cash": ["Current Account", "Savings Account", "Cash Account"],
-            "Investment": ["Fixed Deposit", "KWSP", "CPF", "ASNB", "PTPTN", "Unit Trust", "Gold"],
+            // v438: "Stocks/ETF" — for a brokerage's holdings account (e.g. Moomoo). Order here is
+            // display order (see sortAccountsByGroupThenName). Adding a name here is NOT enough on
+            // its own: renderNetWorthStatementPage() hard-codes one row per sub-group, so a new
+            // sub-group must also get a row + a term in totalAssets there, or accounts filed under
+            // it silently drop out of the Net Worth Statement (same as Gold needed in v414).
+            "Investment": ["Fixed Deposit", "KWSP", "CPF", "ASNB", "PTPTN", "Unit Trust", "Stocks/ETF", "Gold"],
         };
         function subgroupsForGroup(group) {
             return ACCOUNT_SUBGROUPS[group] || [];
@@ -9456,6 +9461,7 @@
             const asnbTotal = sumGroup("Investment", ["ASNB"]);
             const ptptnTotal = sumGroup("Investment", ["PTPTN"]);
             const unitTrustTotal = sumGroup("Investment", ["Unit Trust"]);
+            const stocksEtfTotal = sumGroup("Investment", ["Stocks/ETF"]); // v438
             const goldTotal = sumGroup("Investment", ["Gold"]);
             const otherInvTotal = sumGroup("Investment", [""]); // un-sub-grouped Investment accounts
 
@@ -9473,11 +9479,12 @@
                 nwsRow("ASNB", asnbTotal, "Investment", "ASNB"),
                 nwsRow("PTPTN", ptptnTotal, "Investment", "PTPTN"),
                 nwsRow("Unit Trust", unitTrustTotal, "Investment", "Unit Trust"),
+                nwsRow("Stocks/ETF", stocksEtfTotal, "Investment", "Stocks/ETF"),
                 nwsRow("Gold", goldTotal, "Investment", "Gold"),
                 nwsRow("Other Investment", otherInvTotal, "Investment", ""),
                 nwsRow("Other Assets", otherAssetsTotal, "Other Assets"),
             ].join("") || `<p style="font-size:0.75rem; color:var(--text-muted);">No asset accounts yet.</p>`;
-            const totalAssets = currentAcct + savingsAcct + cashAcct + otherBankTotal + foreignMoneyAcct + fdTotal + kwspTotal + cpfTotal + asnbTotal + ptptnTotal + unitTrustTotal + goldTotal + otherInvTotal + otherAssetsTotal;
+            const totalAssets = currentAcct + savingsAcct + cashAcct + otherBankTotal + foreignMoneyAcct + fdTotal + kwspTotal + cpfTotal + asnbTotal + ptptnTotal + unitTrustTotal + stocksEtfTotal + goldTotal + otherInvTotal + otherAssetsTotal;
             document.getElementById("nwsAssetsTotal").innerHTML = formatBalanceHTML(totalAssets, baseCurrency);
 
             // --- WHAT I OWE ---

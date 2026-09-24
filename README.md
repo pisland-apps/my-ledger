@@ -3434,3 +3434,24 @@ net change with a single floor at the end. Only unit balances were affected
 (cash transfers and transaction amounts were always correct); a fund whose
 units look too high after such an edit in an earlier version should be
 checked against its statement.
+
+## v438: new "Stocks/ETF" sub-group under Investment
+
+- **Added**: "Stocks/ETF" in the Investment Sub-Group dropdown (between Unit
+  Trust and Gold), for a brokerage's holdings account (e.g. Moomoo). It's
+  filing only — the account is still a normal Unit Trust-type account, and
+  existing accounts are untouched. The sidebar type shortcut appears
+  automatically once an account is filed under it.
+- **Net Worth Statement**: gets its own "Stocks/ETF" row and total. This part
+  isn't optional: that page hard-codes one row per sub-group, so a sub-group
+  added to `ACCOUNT_SUBGROUPS` alone would silently drop those accounts from
+  the statement (it would stop matching the Dashboard headline). A control
+  build with only the list change showed RM5,000 instead of RM6,000 on a
+  RM5,000 savings + RM1,000 holdings setup; the real build ties out.
+- **Reminder for any future sub-group**: add it in both `ACCOUNT_SUBGROUPS`
+  and `renderNetWorthStatementPage()` (row + `totalAssets` term).
+- A brokerage's *cash* wallet belongs in a Multi-Currency account (counted
+  under "Foreign Money Account"); only the holdings account uses Stocks/ETF.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v438.

@@ -3483,3 +3483,13 @@ Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v439.
   (Accounts page and member pages already list every currency as subrows.)
 
 Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v440.
+
+## v441: Dashboard Accounts widget also shows the original currency of single-currency accounts
+
+- A normal account held in a non-base currency (e.g. CIMB EcoSave in MYR while base is
+  SGD) only showed the converted base total. It now gets the same small line under the
+  name with its own-currency balance (e.g. `RM1,850.00`). Hidden when the account's
+  currency is the base currency; Fixed Deposit / Unit Trust still not covered.
+- Helper renamed `multiBasketLineHTML()` -> `accountNativeLineHTML()` (now covers both cases).
+
+Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v441.

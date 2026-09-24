@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v440";
+        const APP_VERSION = "v441";
         const APP_VERSION_DATE = "2026-09-24";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2839,7 +2839,7 @@
             list.innerHTML = rows.map(a => {
                 const baseVal = accountBaseValue(a, nativeBalances);
                 const metaLine = accountOwnerNamesText(a) + accountRelatedSuffix(a, accounts);
-                const basketLine = multiBasketLineHTML(a, nativeBalances); // v440
+                const basketLine = accountNativeLineHTML(a, nativeBalances); // v440
                 return `
                     <div class="ledger-item" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}">
                         <div class="item-left">
@@ -2859,8 +2859,16 @@
         // pinned Accounts widget, e.g. "RM120.00 · S$20.00". Largest (by base value) first,
         // zero baskets dropped, capped at maxShown with "+N more"; empty string when it would add
         // nothing (not a Multi-Currency account, nothing held, or only the base currency).
-        function multiBasketLineHTML(a, nativeBalances, maxShown = 3) {
-            if (!a || a.type !== "multi") return "";
+        // v441: also covers a plain single-currency account held in a non-base currency (e.g. an
+        // MYR savings account while base is SGD) — shows its own-currency balance, since the
+        // right-hand figure is already converted. Hidden when its currency IS the base currency.
+        function accountNativeLineHTML(a, nativeBalances, maxShown = 3) {
+            if (!a) return "";
+            if (a.type !== "multi") {
+                if (a.type === "fd" || a.type === "unittrust" || !a.currency || a.currency === baseCurrency) return "";
+                const v = nativeBalances[a.id];
+                return (typeof v === "number" && Math.abs(v) >= 0.005) ? formatBalanceHTML(v, a.currency) : "";
+            }
             const baskets = nativeBalances[a.id] || {};
             const entries = Object.keys(baskets)
                 .filter(c => Math.abs(baskets[c]) >= 0.005)

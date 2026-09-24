@@ -2857,6 +2857,11 @@
     .tx-wallet-hint{margin:-4px 0 10px 0;padding:8px 12px;border-radius:10px;background:#ecfeff;border:1px solid #a5f3fc;color:#155e75;font-size:0.78rem;line-height:1.4;}
 .tx-wallet-hint.warn{background:#fef2f2;border-color:#fecaca;color:#b91c1c;}
 .tx-wallet-hint .twh-after{opacity:.85;}
+.recent-tx-collapse-btn{background:none;border:none;padding:6px 8px;margin-left:2px;font-size:1rem;line-height:1;color:var(--text-muted);cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;transition:transform .2s ease;}
+.recent-tx-collapsed .recent-tx-collapse-btn{transform:rotate(-90deg);}
+.recent-tx-collapsed #recentTxList{display:none;}
+.lock-btn-header.insights-open-btn{display:none;}
+@media (max-width:1399px){.lock-btn-header.insights-open-btn{display:flex;}}
 </style>
     <!-- v179: apply any saved background-theme choice before first paint, so the page never
          flashes the default slate background and then jumps to the user's chosen tint.
@@ -3128,6 +3133,10 @@
                          already used — all three now share one visual language instead of two
                          emoji next to one line-icon. Static markup (no state to toggle), unlike
                          the eye icon which is swapped via innerHTML by applyPrivacyModeAttr(). -->
+                    <!-- v442: tap entry point for the Insights panel — on phones/tablets it was only reachable by a
+                         right-edge swipe, which some devices' gesture settings intercept. Hidden at 1400px+,
+                         where the panel is permanently docked. -->
+                    <button class="lock-btn-header insights-open-btn" title="Open Insights panel" aria-label="Open Insights panel" data-click="openInsightsDrawer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><line x1="6" y1="20" x2="6" y2="11"/><line x1="12" y1="20" x2="12" y2="5"/><line x1="18" y1="20" x2="18" y2="14"/></svg></button>
                     <button class="lock-btn-header" title="Quick export (encrypted backup)" aria-label="Quick export encrypted backup" data-click="exportBackupQuick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></button>
                     <!-- v249: Privacy Mode — blurs Net Worth / Financial Assets / Real Estate
                          figures (frosted-glass look) so opening the app around other people
@@ -3352,7 +3361,11 @@
 
         <div id="dashboardRecentTxWidget">
         <div class="section-header">
-            <span class="section-title">Recent Transactions</span>
+            <div style="display:flex; align-items:center;">
+                <span class="section-title">Recent Transactions</span>
+                <!-- v442: fold/unfold the list (state persisted as SETTINGS "recentTxCollapsed") -->
+                <button type="button" class="recent-tx-collapse-btn" id="recentTxCollapseBtn" data-click="toggleRecentTxCollapsed" aria-expanded="true" aria-label="Hide Recent Transactions" title="Hide Recent Transactions">▾</button>
+            </div>
             <button type="button" class="text-btn" data-click="navigateToLedgerCalendarView" style="white-space:nowrap; padding:6px 10px; font-size:0.75rem;" title="Open Transactions in Calendar view">📅 Calendar</button>
         </div>
         <div class="ledger-container" id="recentTxList"></div>

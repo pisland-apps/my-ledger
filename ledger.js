@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v441";
+        const APP_VERSION = "v442";
         const APP_VERSION_DATE = "2026-09-24";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2243,6 +2243,9 @@
         let recentTxTypeFilter = "both"; // "both" | "income" | "expense"
         let recentTxAccountFilter = "all"; // "all" | accountId
         let recentTxCount = 5; // 1-14
+        // v442: inline fold/unfold of the dashboard Recent Transactions list (header stays visible).
+        // Separate from recentTxTypeFilter === "none", which hides the whole widget from Settings.
+        let recentTxCollapsed = false;
         // v224: which of the two Dashboard widgets (Accounts / Recent Transactions) renders
         // first — configured from Setting > Dashboard Widgets, applied via
         // applyDashboardWidgetOrder(). Persisted via SETTINGS like the filters above.
@@ -2361,6 +2364,7 @@
             const list = document.getElementById("recentTxList");
             if (!list) return;
             const widgetWrap = document.getElementById("dashboardRecentTxWidget");
+            applyRecentTxCollapsedUI(); // v442
 
             populateRecentTxCountSelect();
             populateRecentTxAccountSelect(accounts);
@@ -2724,6 +2728,26 @@
                     </div>
                 `;
             }).join("") : `<p class="insights-empty">No large transactions in the last 60 days.</p>`;
+        }
+
+        // v442: folds/unfolds the list via a class on the widget wrapper (CSS hides #recentTxList),
+        // not inline display, so a later render pass that rewrites the list can't undo it.
+        function applyRecentTxCollapsedUI() {
+            const wrap = document.getElementById("dashboardRecentTxWidget");
+            if (wrap) wrap.classList.toggle("recent-tx-collapsed", recentTxCollapsed);
+            const btn = document.getElementById("recentTxCollapseBtn");
+            if (btn) {
+                btn.setAttribute("aria-expanded", recentTxCollapsed ? "false" : "true");
+                const label = recentTxCollapsed ? "Show Recent Transactions" : "Hide Recent Transactions";
+                btn.setAttribute("aria-label", label);
+                btn.title = label;
+            }
+        }
+
+        async function toggleRecentTxCollapsed() {
+            recentTxCollapsed = !recentTxCollapsed;
+            applyRecentTxCollapsedUI();
+            await writeDB(STORES.SETTINGS, { key: "recentTxCollapsed", value: recentTxCollapsed });
         }
 
         async function handleRecentTxSettingChange() {
@@ -19447,6 +19471,9 @@
             const storedRecentTxCount = await readKeyDB("settings", "recentTxCount");
             if (storedRecentTxCount) recentTxCount = storedRecentTxCount.value || 5;
 
+            const storedRecentTxCollapsed = await readKeyDB("settings", "recentTxCollapsed"); // v442
+            if (storedRecentTxCollapsed) recentTxCollapsed = storedRecentTxCollapsed.value === true;
+
             const storedShowMonthlyTrend = await readKeyDB("settings", "showMonthlyTrendOnDashboard");
             if (storedShowMonthlyTrend) showMonthlyTrendOnDashboard = storedShowMonthlyTrend.value !== false;
             const storedDashboardWidgetOrder = await readKeyDB("settings", "dashboardWidgetOrder");
@@ -20092,6 +20119,7 @@
                                 case "recentTxTypeFilter": recentTxTypeFilter = rec.value || "both"; break;
                                 case "recentTxAccountFilter": recentTxAccountFilter = rec.value || "all"; break;
                                 case "recentTxCount": recentTxCount = rec.value || 5; break;
+                                case "recentTxCollapsed": recentTxCollapsed = rec.value === true; break; // v442
                                 case "showMonthlyTrendOnDashboard": showMonthlyTrendOnDashboard = rec.value !== false; break;
                                 case "dashboardWidgetOrder": dashboardWidgetOrder = rec.value === "recenttx-first" ? "recenttx-first" : "accounts-first"; break;
                                 case "dashboardBudgetCategoriesShown": dashboardBudgetCategoriesShown = Array.isArray(rec.value) ? rec.value : []; break;
@@ -20959,6 +20987,7 @@
             },
             togglePrivacyMode: () => togglePrivacyMode(),
             openInsightsDrawer: () => openInsightsDrawer(),
+            toggleRecentTxCollapsed: () => toggleRecentTxCollapsed(), // v442
             closeInsightsDrawer: () => closeInsightsDrawer(),
             sidebarGo: (el) => sidebarGo(el),
             handleSetupPasscodeSubmit: () => handleSetupPasscodeSubmit(),

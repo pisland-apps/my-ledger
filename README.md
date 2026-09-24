@@ -3493,3 +3493,17 @@ Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v440.
 - Helper renamed `multiBasketLineHTML()` -> `accountNativeLineHTML()` (now covers both cases).
 
 Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v441.
+
+## v442: Insights button + fold/unfold Recent Transactions (dashboard)
+
+- **Insights button**: below 1400px the Insights panel (Spending Breakdown / Top Categories /
+  Recent Large Transactions) was only reachable by a right-edge swipe, which some phones'
+  gesture settings intercept. New icon button in the header cluster (before Quick export)
+  calls the existing `openInsightsDrawer` action; hidden at 1400px+ where the rail is docked.
+- **Recent Transactions fold**: a chevron beside the title hides/shows the list, header and
+  Calendar button stay. Class `recent-tx-collapsed` on `#dashboardRecentTxWidget` (CSS hides
+  `#recentTxList`), state saved as SETTINGS `recentTxCollapsed` (loaded at startup, restored
+  on backup import). Default expanded. Separate from Setting > Dashboard Widgets "None", which
+  still hides the whole widget.
+
+Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v442.

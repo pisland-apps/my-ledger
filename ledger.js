@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v436";
-        const APP_VERSION_DATE = "2026-09-23";
+        const APP_VERSION = "v437";
+        const APP_VERSION_DATE = "2026-09-24";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -6841,7 +6841,7 @@
                     <div class="ledger-item" data-click="openTransactionForm" data-type="${escapeHtml(t.type)}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
                             <span class="item-name">${escapeHtml(fundTxTypeLabel(t.fundTxType))}</span>
-                            <span class="item-meta">${escapeHtml(t.date)}${unitsText ? " · " + unitsText : ""}${t.notes ? " · " + escapeHtml(t.notes) : ""}</span>
+                            <span class="item-meta">${escapeHtml(t.date)}${unitsText ? " · " + unitsText : ""}${t.fee ? " · fee " + escapeHtml(formatCurrency(t.fee, t.currency)) : ""}${t.notes ? " · " + escapeHtml(t.notes) : ""}</span>
                         </div>
                         <div class="item-right">
                             <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(Math.abs(t.amount), t.currency)}</div>
@@ -7160,6 +7160,7 @@
             document.getElementById("fundTxUnits").value = "";
             document.getElementById("fundTxPrice").value = "";
             document.getElementById("fundTxTotal").value = "";
+            document.getElementById("fundTxFee").value = "";
             document.getElementById("fundTxNotes").value = "";
             document.getElementById("fundTxDeleteBtn").style.display = "none";
             // v414: rebuilds the Type dropdown (Buy/Sell only for Gold) + relabels Units/Price
@@ -7205,6 +7206,8 @@
             document.getElementById("fundTxUnits").value = tx.units != null ? tx.units : "";
             document.getElementById("fundTxPrice").value = tx.pricePerUnit != null ? tx.pricePerUnit : "";
             document.getElementById("fundTxTotal").value = tx.amount;
+            // v437: optional informational fee (null on every pre-v437 row and on non-Buy/Sell types).
+            document.getElementById("fundTxFee").value = tx.fee != null ? tx.fee : "";
             document.getElementById("fundTxNotes").value = tx.notes || "";
             // v414: rebuild Type options (Buy/Sell only for Gold) + relabel Units/Price per gram
             // for THIS fund first, so the type value assigned right after actually sticks — a
@@ -7260,6 +7263,16 @@
 
             unitsRow.style.display = (type === "dividend_payout") ? "none" : "grid";
 
+            // v437: Fee only makes sense on a real trade (Buy/Sell). Hidden for the other types, and
+            // handleSaveFundTx() also nulls it for them, so a value typed before switching type can't
+            // be saved from a hidden field (same hidden-but-not-cleared trap as bug class #2).
+            const feeRow = document.getElementById("fundTxFeeRow");
+            const feeApplies = (type === "buy" || type === "sell");
+            feeRow.style.display = feeApplies ? "flex" : "none";
+            document.getElementById("fundTxFeeLabel").textContent = (type === "sell")
+                ? "Fees already deducted from Total (optional)"
+                : "Fees included in Total (optional)";
+
             if (type === "buy") {
                 acctRow.style.display = "flex"; acctLabel.textContent = "Account (transfer from)";
             } else if (type === "sell") {
@@ -7286,12 +7299,21 @@
             // optional/informational and left blank most of the time; treat a blank field as 0
             // rather than blocking the save.
             const total = parseFloat(document.getElementById("fundTxTotal").value) || 0;
+            // v437: optional informational fee, Buy/Sell only. Purely a memo — Total Amount above is
+            // still the real cash figure and nothing in Invested/Recovered/P&L reads this field.
+            const feeApplies = (type === "buy" || type === "sell");
+            const feeRaw = document.getElementById("fundTxFee").value.trim();
+            const feeParsed = feeRaw === "" ? 0 : parseFloat(feeRaw);
             const transferAccountId = document.getElementById("fundTxTransferAccount").value;
             const notes = document.getElementById("fundTxNotes").value.trim();
             const totalAmountRequired = (type === "buy" || type === "sell" || type === "dividend_payout");
 
             if (!date) { alert("Please select a date."); return; }
             if (totalAmountRequired && total <= 0) { alert("Please enter a valid Total Amount."); return; }
+            if (feeApplies && (isNaN(feeParsed) || feeParsed < 0)) { alert("Please enter a valid Fee, or leave it blank."); return; }
+            // A Buy's Total already includes its fee, so the fee can never exceed it. (Not enforced for
+            // Sell: its Total is net of the fee, so a tiny sale can legitimately have fee > net proceeds.)
+            if (type === "buy" && feeParsed > total) { alert("Fee can't be larger than the Total Amount for a Buy."); return; }
             if (type !== "dividend_payout" && (isNaN(units) || units <= 0)) { alert("Please enter valid Units."); return; }
             if ((type === "buy" || type === "sell" || type === "dividend_payout") && !transferAccountId) {
                 alert("Please choose which account this transfers from/to."); return;
@@ -7313,6 +7335,9 @@
                 amount: total, date,
                 units: type === "dividend_payout" ? null : units,
                 pricePerUnit: (type === "dividend_payout" || price === 0) ? null : price,
+                // v437: null (not 0) when blank or not applicable, matching how notes/pricePerUnit
+                // store "nothing" — so `t.fee` truthiness checks stay simple.
+                fee: (feeApplies && feeParsed > 0) ? feeParsed : null,
                 notes: notes || null,
                 currency: fund.currency,
                 image: null,
@@ -7351,7 +7376,14 @@
                     if (existingTx.fundId === fundId) {
                         // Same fund — fold the reversal into the same in-memory record the new
                         // delta is about to be applied to, so only one write happens for it below.
-                        fund.units = Math.max(0, (fund.units || 0) + oldUnitDelta);
+                        // v437 fix: deliberately NOT clamped to 0 here. The reversal and the new delta
+                        // are one net change, and the single Math.max(0, ...) further down clamps the
+                        // final result. Clamping this intermediate step too meant editing (even just the
+                        // notes of) an older Buy after a partial Sell — i.e. whenever the units still
+                        // held were fewer than that Buy's own units — floored the position at 0 mid-way
+                        // and then added the full Buy back, silently resurrecting the sold units
+                        // (buy 10, sell 5, edit the Buy's note -> position jumped 5 -> 10).
+                        fund.units = (fund.units || 0) + oldUnitDelta;
                     } else {
                         const oldFund = funds.find(f => f.id === existingTx.fundId);
                         if (oldFund) {

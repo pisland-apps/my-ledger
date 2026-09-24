@@ -6496,6 +6496,15 @@
                 <label>Total Amount</label>
                 <input type="number" id="fundTxTotal" step="0.01" placeholder="0.00" data-input="recalcFundTxPriceFromTotal">
             </div>
+            <!-- v437: optional, informational-only Fee (Buy/Sell only — shown/hidden and relabelled by
+                 handleFundTxTypeChange()). Never affects the cash amount, Invested, Recovered or P/L:
+                 Total Amount above stays the real cash figure (a Buy's total already includes the fee,
+                 a Sell's total is already net of it). This just keeps the fee separable afterward,
+                 which can't be reconstructed once it has been folded into Total. -->
+            <div class="form-row" id="fundTxFeeRow">
+                <label id="fundTxFeeLabel">Fees included in Total (optional)</label>
+                <input type="number" id="fundTxFee" step="0.01" min="0" placeholder="0.00">
+            </div>
             <div class="form-row" id="fundTxAccountRow">
                 <label id="fundTxAccountLabel">Account (transfer from)</label>
                 <select id="fundTxTransferAccount" class="form-input"></select>

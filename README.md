@@ -3395,3 +3395,42 @@ sub-pages
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v426.
+
+## v437: optional Fee field on fund Buy / Sell transactions
+
+Groundwork for tracking a stock/ETF brokerage account (e.g. Moomoo) with the
+existing Unit Trust machinery. Only this one piece has a real deadline — it
+must exist **before the first real trade**, because a fee folded into Total
+Amount can't be separated out afterward. Everything else discussed (Stock/ETF
+category, stock-dividend category, price-staleness badge for stocks) is
+deliberately deferred until there are real trades to design against.
+
+- **Added**: optional "Fees included in Total" input on the fund-transaction
+  form (relabelled "Fees already deducted from Total" for a Sell). Shown only
+  for Buy/Sell.
+- **Stored** as `fee` on the transaction record: a positive number, or `null`
+  when blank / not a Buy or Sell. Purely informational — Total Amount is still
+  the real cash figure, and nothing in Invested / Recovered / P&L / balances
+  reads `fee`. Pre-v437 rows simply have no `fee`.
+- **Validation**: must be ≥ 0; for a Buy it can't exceed Total (a Buy's total
+  already includes it). Not enforced for a Sell, whose total is net of the fee.
+- **Bug-class checks**: fee is nulled on save for non-Buy/Sell types (no
+  hidden-field save); it round-trips through the edit form; export/import keep
+  whole transaction records (no per-field whitelist for transactions), so it
+  survives backup → restore.
+- **Shown** in the fund's Activity rows as "· fee RM x.xx" when present.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v437.
+
+**Also fixed in v437 (pre-existing since the fund editor was added, found
+while testing the fee field)**: editing a Buy/Dividend/Contribution row after
+a partial Sell could silently inflate the fund's unit balance. The edit path
+reversed the old entry's units and floored the running total at 0 *before*
+adding the new units, so whenever the units still held were fewer than that
+entry's own units (buy 10, sell 5, then just change the note on the Buy) the
+position jumped 5 → 10. The reversal and the new delta are now applied as one
+net change with a single floor at the end. Only unit balances were affected
+(cash transfers and transaction amounts were always correct); a fund whose
+units look too high after such an edit in an earlier version should be
+checked against its statement.

@@ -3507,3 +3507,11 @@ Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v441.
   still hides the whole widget.
 
 Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v442.
+
+## v443: header icon order
+
+- Swapped the Insights button and the Lock button in the dashboard header cluster:
+  now Lock, Quick export, Privacy eye, Insights (was Insights, Quick export, eye, Lock).
+  Markup order only; no behaviour change.
+
+Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v443.

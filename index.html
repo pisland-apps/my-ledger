@@ -3136,7 +3136,7 @@
                     <!-- v442: tap entry point for the Insights panel — on phones/tablets it was only reachable by a
                          right-edge swipe, which some devices' gesture settings intercept. Hidden at 1400px+,
                          where the panel is permanently docked. -->
-                    <button class="lock-btn-header insights-open-btn" title="Open Insights panel" aria-label="Open Insights panel" data-click="openInsightsDrawer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><line x1="6" y1="20" x2="6" y2="11"/><line x1="12" y1="20" x2="12" y2="5"/><line x1="18" y1="20" x2="18" y2="14"/></svg></button>
+                    <button class="lock-btn-header" title="Lock app now" data-click="lockAppNow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button>
                     <button class="lock-btn-header" title="Quick export (encrypted backup)" aria-label="Quick export encrypted backup" data-click="exportBackupQuick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></button>
                     <!-- v249: Privacy Mode — blurs Net Worth / Financial Assets / Real Estate
                          figures (frosted-glass look) so opening the app around other people
@@ -3144,7 +3144,7 @@
                          few seconds. State persists (localStorage), independent of every other
                          toggle. Icon/label kept in sync by applyPrivacyModeAttr(). -->
                     <button class="lock-btn-header" id="privacyModeToggleBtn" title="Toggle privacy mode (blur amounts)" aria-label="Toggle privacy mode" data-click="togglePrivacyMode"></button>
-                    <button class="lock-btn-header" title="Lock app now" data-click="lockAppNow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button>
+                    <button class="lock-btn-header insights-open-btn" title="Open Insights panel" aria-label="Open Insights panel" data-click="openInsightsDrawer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><line x1="6" y1="20" x2="6" y2="11"/><line x1="12" y1="20" x2="12" y2="5"/><line x1="18" y1="20" x2="18" y2="14"/></svg></button>
                 </div>
             </div>
             <div class="net-worth-hero-card">

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v438";
+        const APP_VERSION = "v439";
         const APP_VERSION_DATE = "2026-09-24";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -11568,6 +11568,7 @@
             catBtn.style.opacity = "";
             resetTxSplitRows();
 
+            txWalletBalancesMemo = null; // v439: fresh balances for every open of this form
             const srcSelect = document.getElementById("srcAccount"); srcSelect.innerHTML = "";
             const destSelect = document.getElementById("destAccount"); destSelect.innerHTML = "";
             const currSelect = document.getElementById("txCurrency"); currSelect.innerHTML = "";
@@ -11911,6 +11912,9 @@
             syncAccountPickerButtonText("txCategory");
 
             openModal("txModal");
+            // v439: callers that preset Account/Currency programmatically right after this function
+            // returns fire no change event — a 0ms timeout runs after that synchronous continuation.
+            setTimeout(refreshTxWalletHint, 0);
 
             // v351: autofocus Quick Add on a brand-new entry so the user can start typing the
             // instant the form is open, no tap needed — the whole point of the feature is
@@ -12002,6 +12006,7 @@
             const currency = document.getElementById("txCurrency").value || baseCurrency;
             const display = document.getElementById("txSplitTotalDisplay");
             if (display) display.textContent = formatCurrency(splitTotal, currency);
+            refreshTxWalletHint(); // v439 — also covers currency/amount/split-row edits (all route through here)
         }
 
         // Collects every split row into [{cat, amount}] — rows with no category or a non-positive
@@ -12813,6 +12818,69 @@
             return "Fixed Deposit Placement";
         }
 
+        // v439: "Which currency balance is this entry using?" hint for Multi-Currency accounts.
+        // A Multi-Currency account has no single currency, so (unlike a normal account, see
+        // syncTransactionCurrency() below) the currency dropdown in the modal header is the ONLY
+        // thing that decides which balance ("basket") the entry hits — and nothing beside the
+        // Account field said so. This shows, under the Account (and To Account, for a Transfer
+        // into one), the balance of the currently selected currency plus what it becomes after
+        // this entry, and warns when an outgoing amount would take it negative.
+        // Balances come from computeAccountBalances() (single source of truth), fetched once per
+        // form open (memo reset in openTransactionForm) so typing an amount never re-reads the DB.
+        // When editing, the entry's own effect is backed out so "balance" means "without this entry".
+        let txWalletBalancesMemo = null;
+        let txWalletHintSeq = 0;
+        function getTxWalletBalancesMemo() {
+            if (!txWalletBalancesMemo) {
+                txWalletBalancesMemo = computeAccountBalances().catch(err => { txWalletBalancesMemo = null; throw err; });
+            }
+            return txWalletBalancesMemo;
+        }
+        async function refreshTxWalletHint() {
+            const srcEl = document.getElementById("txWalletHint");
+            const destEl = document.getElementById("txWalletHintDest");
+            if (!srcEl || !destEl) return;
+            const seq = ++txWalletHintSeq;
+            const type = document.getElementById("txType").value;
+            const currency = document.getElementById("txCurrency").value;
+            const editingId = document.getElementById("txId").value;
+            const srcId = document.getElementById("srcAccount").value;
+            const destId = document.getElementById("destAccount").value;
+            let amount = parseFloat(document.getElementById("txAmount").value) || 0;
+            document.querySelectorAll("#txSplitRows .tx-split-amt").forEach(inp => { amount += parseFloat(inp.value) || 0; });
+
+            let data;
+            try { data = await getTxWalletBalancesMemo(); }
+            catch (e) { srcEl.style.display = "none"; destEl.style.display = "none"; return; }
+            if (seq !== txWalletHintSeq) return; // a newer refresh superseded this one
+            const { accounts, txs, nativeBalances } = data;
+
+            const renderLeg = (el, accountId, isOut) => {
+                const acc = accountId ? accounts.find(a => a.id === accountId) : null;
+                if (!acc || acc.type !== "multi" || !currency) { el.style.display = "none"; return; }
+                let bal = (nativeBalances[acc.id] && nativeBalances[acc.id][currency]) || 0;
+                if (editingId !== "") {
+                    const orig = txs.find(t => String(t.id) === String(editingId));
+                    if (orig && orig.currency === currency) {
+                        let eff = 0;
+                        if (orig.src === acc.id) eff += orig.type === "income" ? orig.amount : (orig.type === "expense" || orig.type === "transfer") ? -orig.amount : 0;
+                        if (orig.type === "transfer" && orig.dest === acc.id) eff += orig.amount;
+                        bal -= eff;
+                    }
+                }
+                const after = isOut ? bal - amount : bal + amount;
+                const warn = isOut && (amount > 0 ? after < -0.005 : bal <= 0.005);
+                let html = `💱 ${isOut ? "Paying from" : "Receiving into"} <b>${escapeHtml(currency)}</b> balance: <b>${escapeHtml(formatCurrency(bal, currency))}</b>`;
+                if (amount > 0) html += `<div class="twh-after">After this entry: ${escapeHtml(formatCurrency(after, currency))}</div>`;
+                if (warn) html += `<div>⚠️ ${amount > 0 ? `Not enough ${escapeHtml(currency)} in this account — it would go negative.` : `No ${escapeHtml(currency)} balance in this account.`} Change the currency at the top if you meant to use another balance.</div>`;
+                el.innerHTML = html;
+                el.classList.toggle("warn", warn);
+                el.style.display = "block";
+            };
+            renderLeg(srcEl, (type === "expense" || type === "income" || type === "transfer") ? srcId : "", type !== "income");
+            renderLeg(destEl, type === "transfer" ? destId : "", false);
+        }
+
         async function syncTransactionCurrency() {
             const accounts = await readAllDB(STORES.ACCOUNTS);
             const isEditing = document.getElementById("txId").value !== "";
@@ -12833,6 +12901,7 @@
             updateTxManualFxVisibility();
             updateTxTransferFxVisibility();
             updateTxTagsRowVisibility();
+            refreshTxWalletHint(); // v439
         }
 
         // v295: Tags row visibility. Transfers are still never taggable in general (see the

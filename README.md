@@ -3455,3 +3455,19 @@ checked against its statement.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v438.
+
+## v439: "Paying from / Receiving into <currency> balance" hint (Log Ledger Item)
+
+- A Multi-Currency account has no single currency, so the currency dropdown in the
+  modal header alone decides which balance an entry hits, and nothing next to the
+  Account field said so.
+- New hint under Account (and To Account when a Transfer goes into a Multi-Currency
+  account): the selected currency's current balance, the balance after this entry,
+  and a red warning when an outgoing amount would take it negative (or the account
+  holds none of that currency).
+- Balances come from `computeAccountBalances()`, fetched once per form open (memo reset
+  in `openTransactionForm`); amount/currency/split edits only re-render. Editing an
+  existing entry backs out its own effect first. Hooked via `syncTransactionCurrency()`
+  and `recalcTxSplitTotal()`, so no new action-map entries or modal ids.
+
+Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v439.

@@ -2854,7 +2854,10 @@
         html[data-privacy-mode="on"] .net-worth-split-card {
             cursor: pointer;
         }
-    </style>
+    .tx-wallet-hint{margin:-4px 0 10px 0;padding:8px 12px;border-radius:10px;background:#ecfeff;border:1px solid #a5f3fc;color:#155e75;font-size:0.78rem;line-height:1.4;}
+.tx-wallet-hint.warn{background:#fef2f2;border-color:#fecaca;color:#b91c1c;}
+.tx-wallet-hint .twh-after{opacity:.85;}
+</style>
     <!-- v179: apply any saved background-theme choice before first paint, so the page never
          flashes the default slate background and then jumps to the user's chosen tint.
          v195: mirrors ledger.js's full BG_THEME_VAR_MAP (bg/card/text/border/neu/glass/chip/data
@@ -5782,6 +5785,8 @@
                     </button>
                     <select id="srcAccount" style="display:none;" data-change="syncTransactionCurrency"></select>
                 </div>
+                <!-- v439: which currency balance of a Multi-Currency account this entry uses -->
+                <div id="txWalletHint" class="tx-wallet-hint" style="display:none;"></div>
                 <div class="form-row form-row-icon" id="destAccRow" style="display:none;">
                     <span class="field-icon" aria-hidden="true">🏦</span>
                     <button type="button" id="destAccountBtn" class="form-input account-picker-btn" data-click="openAccountPicker" data-select="destAccount" data-title="Select Destination Account" aria-label="To Account">
@@ -5789,6 +5794,7 @@
                     </button>
                     <select id="destAccount" style="display:none;" data-change="syncTransactionCurrency"></select>
                 </div>
+                <div id="txWalletHintDest" class="tx-wallet-hint" style="display:none;"></div>
 
                 <!-- v234: optional link from an Income entry to an existing FD placement it was
                      paid out of (e.g. monthly/half-yearly FD interest credited to a Current/

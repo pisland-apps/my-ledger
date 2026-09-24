@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v439";
+        const APP_VERSION = "v440";
         const APP_VERSION_DATE = "2026-09-24";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2839,11 +2839,13 @@
             list.innerHTML = rows.map(a => {
                 const baseVal = accountBaseValue(a, nativeBalances);
                 const metaLine = accountOwnerNamesText(a) + accountRelatedSuffix(a, accounts);
+                const basketLine = multiBasketLineHTML(a, nativeBalances); // v440
                 return `
                     <div class="ledger-item" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}">
                         <div class="item-left">
                             <span class="item-name">${escapeHtml(a.name)}</span>
                             <span class="item-meta">${escapeHtml(metaLine)}</span>
+                            ${basketLine ? `<span class="item-meta">${basketLine}</span>` : ""}
                         </div>
                         <div class="item-right">
                             <div class="item-value" style="font-weight:bold;">${formatBalanceHTML(baseVal, baseCurrency)}</div>
@@ -2851,6 +2853,24 @@
                     </div>
                 `;
             }).join("");
+        }
+
+        // v440: one-line "what this Multi-Currency account actually holds" for the Dashboard's
+        // pinned Accounts widget, e.g. "RM120.00 · S$20.00". Largest (by base value) first,
+        // zero baskets dropped, capped at maxShown with "+N more"; empty string when it would add
+        // nothing (not a Multi-Currency account, nothing held, or only the base currency).
+        function multiBasketLineHTML(a, nativeBalances, maxShown = 3) {
+            if (!a || a.type !== "multi") return "";
+            const baskets = nativeBalances[a.id] || {};
+            const entries = Object.keys(baskets)
+                .filter(c => Math.abs(baskets[c]) >= 0.005)
+                .map(c => ({ c, v: baskets[c], base: Math.abs(convertCurrency(baskets[c], c, baseCurrency)) }))
+                .sort((x, y) => y.base - x.base);
+            if (entries.length === 0) return "";
+            if (entries.length === 1 && entries[0].c === baseCurrency) return "";
+            const parts = entries.slice(0, maxShown).map(e => formatBalanceHTML(e.v, e.c));
+            if (entries.length > maxShown) parts.push(`+${entries.length - maxShown} more`);
+            return parts.join(" · ");
         }
 
         function formatCurrency(amount, curr) {

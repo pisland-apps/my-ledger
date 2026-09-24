@@ -3471,3 +3471,15 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
   and `recalcTxSplitTotal()`, so no new action-map entries or modal ids.
 
 Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v439.
+
+## v440: Dashboard Accounts widget shows a Multi-Currency account's own-currency holdings
+
+- The pinned Accounts widget only showed the base-currency total for a Multi-Currency
+  account, hiding which currencies it actually holds. A second small line under the
+  name now lists them (e.g. `RM120.00 · S$20.00`), largest by base value first, zero
+  baskets dropped, max 3 then `+N more`, negatives in red.
+- Hidden when it adds nothing: not a Multi-Currency account, nothing held, or only the
+  base currency. New helper `multiBasketLineHTML()`; only the dashboard widget uses it.
+  (Accounts page and member pages already list every currency as subrows.)
+
+Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v440.

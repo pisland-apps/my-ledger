@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v443";
-        const APP_VERSION_DATE = "2026-09-24";
+        const APP_VERSION = "v444";
+        const APP_VERSION_DATE = "2026-09-25";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -472,6 +472,7 @@
             IDR: { bg: "#cffafe", fg: "#155e75" },
             INR: { bg: "#ffe4e6", fg: "#9f1239" },
             VND: { bg: "#fee2e2", fg: "#b91c1c" },
+            PHP: { bg: "#e0f2fe", fg: "#075985" },
         };
         const CURRENCY_BADGE_FALLBACK_PALETTE = Object.values(CURRENCY_BADGE_COLORS);
         function currencyBadgeColor(code) {
@@ -493,7 +494,7 @@
         // letters for anything not in the hand-picked glyph table.
         const CURRENCY_ICON_GLYPHS = {
             MYR: "RM", SGD: "S$", USD: "$", EUR: "€", GBP: "£", JPY: "¥", AUD: "A$",
-            HKD: "$", CNY: "¥", THB: "฿", IDR: "Rp", INR: "₹", KRW: "₩", TWD: "NT$", BND: "B$", VND: "₫",
+            HKD: "$", CNY: "¥", THB: "฿", IDR: "Rp", INR: "₹", KRW: "₩", TWD: "NT$", BND: "B$", VND: "₫", PHP: "₱",
         };
         function currencyIconHTML(code, size) {
             size = size || 26;
@@ -1551,15 +1552,18 @@
         let reportSecondaryCurrency = "";
         let fxRates = {
             MYR: 1.0, SGD: 0.3025, USD: 0.225, HKD: 1.755, CNY: 1.615,
-            TWD: 7.15, THB: 7.65, KRW: 305.0, JPY: 33.3, BND: 0.3025, VND: 6440.0
+            TWD: 7.15, THB: 7.65, KRW: 305.0, JPY: 33.3, BND: 0.3025, VND: 6440.0,
+            PHP: 12.8, IDR: 3720.0
         };
         // Currencies a fresh v39+ install (or an existing install missing some) should have —
         // merged additively into fxRates on load (mergeInDefaultCurrencies below) so an existing
         // user's own custom rates for currencies they already had are never overwritten, while
         // any of these 11 they don't yet have are added with the placeholder rate above.
         // v369: added VND (Vietnamese Dong) — placeholder ~6,440 VND per 1 MYR.
-        const HELD_CURRENCIES = ["MYR", "SGD", "USD", "HKD", "CNY", "TWD", "THB", "KRW", "JPY", "BND", "VND"];
-        const DEFAULT_FX_RATES_BY_CURRENCY = { MYR: 1.0, SGD: 0.3025, USD: 0.225, HKD: 1.755, CNY: 1.615, TWD: 7.15, THB: 7.65, KRW: 305.0, JPY: 33.3, BND: 0.3025, VND: 6440.0 };
+        // v444: added PHP (Philippine Peso, ~12.8 per 1 MYR) and IDR (Indonesian Rupiah, ~3,720 per
+        // 1 MYR) — placeholders only; use Currency Settings ▸ Fetch Live Rates for real values.
+        const HELD_CURRENCIES = ["MYR", "SGD", "USD", "HKD", "CNY", "TWD", "THB", "KRW", "JPY", "BND", "VND", "PHP", "IDR"];
+        const DEFAULT_FX_RATES_BY_CURRENCY = { MYR: 1.0, SGD: 0.3025, USD: 0.225, HKD: 1.755, CNY: 1.615, TWD: 7.15, THB: 7.65, KRW: 305.0, JPY: 33.3, BND: 0.3025, VND: 6440.0, PHP: 12.8, IDR: 3720.0 };
 
         // Adds any of HELD_CURRENCIES missing from the current fxRates table (e.g. an existing
         // install upgrading to v39) using the placeholder default rate, converted into whatever
@@ -1576,7 +1580,7 @@
             });
             return changed;
         }
-        const currencySymbols = { USD: "$", EUR: "€", GBP: "£", SGD: "S$", MYR: "RM", VND: "₫" };
+        const currencySymbols = { USD: "$", EUR: "€", GBP: "£", SGD: "S$", MYR: "RM", VND: "₫", PHP: "₱", IDR: "Rp" };
         
         // Dynamic category registry
         let dynamicCategories = [];

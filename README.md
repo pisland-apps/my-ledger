@@ -3515,3 +3515,20 @@ Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v442.
   Markup order only; no behaviour change.
 
 Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v443.
+
+## v444: added Philippine Peso (PHP) and Indonesian Rupiah (IDR)
+
+- Added `PHP` and `IDR` to `HELD_CURRENCIES`, `fxRates` and
+  `DEFAULT_FX_RATES_BY_CURRENCY` (ledger.js) with placeholder rates of
+  ~12.8 PHP and ~3,720 IDR per 1 MYR. `mergeInDefaultCurrencies()` adds
+  them additively on load, so existing installs get both without any
+  custom rate being overwritten. Use Currency Settings ▸ Fetch Live
+  Rates for real values.
+- `PHP` gets a `CURRENCY_BADGE_COLORS` entry (sky blue) and a `₱` coin
+  glyph; `IDR` already had a badge colour and `Rp` glyph. Both added to
+  `currencySymbols` (`₱`, `Rp`).
+- Account currency `<select>`, transaction Currency field and the FX
+  rate form are populated dynamically, so no other lists needed changes.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
+(sw.js) to v444.

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v444";
+        const APP_VERSION = "v445";
         const APP_VERSION_DATE = "2026-09-25";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1871,8 +1871,23 @@
         // on existing transactions, so a renamed/deleted category doesn't vanish from its own
         // transaction's dropdown) — merged with the full legacy + DEFAULT_CATEGORIES fallback set.
         function buildCategoryOptionsHTML(type, namesToInclude) {
+            // v445 fix: a DEFAULT_CATEGORIES entry whose seeded id still exists in the live
+            // Categories store (ensureDefaultCategories()'s own slugify(c.name) convention) means
+            // that built-in has simply been renamed, not removed — its CURRENT name is already
+            // covered below via dynamicCategories/mains, so its old seed name must NOT also be
+            // injected as a second, orphaned flat option. Previously every DEFAULT_CATEGORIES name
+            // was unconditionally added here regardless of whether the record behind it still
+            // existed, so renaming (or deleting) a built-in category — e.g. "Personal Care /
+            // Grooming" → "Personal Care" — left its original seed name as a permanent "ghost"
+            // option in every transaction category picker, even though it no longer appeared in
+            // the Categories manager at all. Only DEFAULT_CATEGORIES names whose seeded id has no
+            // matching record left (i.e. truly, fully deleted) still fall back here, preserving the
+            // original safety net for genuinely-removed built-ins/legacy names on old transactions.
+            const slugifyForFallback = s => "cat_" + s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+            const liveSeededIds = new Set(dynamicCategories.map(c => c.id));
             const legacyFallback = type === "income" ? ["Salary", "Investments", "Freelance", "Other Income"] : ["Dining Out", "Utilities", "Rent", "Commute", "Entertainment", "Other Expenses"];
-            const fallbackGroup = [...legacyFallback, ...DEFAULT_CATEGORIES.filter(c => c.type === type).map(c => c.name)];
+            const fallbackGroup = [...legacyFallback, ...DEFAULT_CATEGORIES.filter(c => c.type === type).map(c => c.name)]
+                .filter(n => !liveSeededIds.has(slugifyForFallback(n)));
             const allNames = new Set([...(namesToInclude || []), ...fallbackGroup]);
 
             const typeCats = dynamicCategories.filter(c => c.type === type);

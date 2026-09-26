@@ -3532,3 +3532,22 @@ Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v443.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
 (sw.js) to v444.
+
+## v446: Google Drive sync — busy spinner on manual buttons + flush-on-background
+
+- **Busy state on "Upload to Drive" / "Restore Latest"**: both buttons now show a spinner
+  and disable themselves while the request is in flight (new `.btn-util.btn-busy` CSS +
+  `setButtonBusy()` helper), instead of looking identical to idle for however long the
+  round-trip to Drive takes.
+- **Flush pending auto-sync when the app is backgrounded**: auto-sync debounces uploads
+  4s after a write (`scheduleDriveAutoSync()`) so a burst of edits uploads once. If the
+  app was closed/backgrounded inside that 4s window, the timer never got to fire and the
+  last write never reached Drive — the reported "last entry from mobile missing after
+  Restore Latest on PC". New `driveAutoSyncPending` flag + `flushPendingDriveAutoSync()`,
+  wired to `visibilitychange` (tab/app hidden) and `pagehide` (actual close/reload): the
+  moment the app is about to disappear with a sync still pending, it's kicked off
+  immediately instead of waiting out the rest of the debounce. Best-effort, not a
+  guarantee — the OS can still kill the page mid-request on a hard close — but it covers
+  the common case of switching apps or locking the phone right after adding something.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME` (sw.js) to v446.

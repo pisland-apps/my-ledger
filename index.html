@@ -2438,6 +2438,23 @@
            new component. */
         .btn-util.active { background: var(--primary); color: #fff; }
 
+        /* v446: shared "this button kicked off an async action, don't tap again" loading state —
+           used by the Google Drive Upload/Restore buttons (setButtonBusy() in ledger.js) so a
+           multi-second Drive round-trip visibly looks like it's doing something instead of
+           looking identical to an unresponsive button the whole time. Generic enough to reuse on
+           any other .btn-util later. */
+        .btn-util.btn-busy { position: relative; color: transparent !important; pointer-events: none; opacity: 0.85; }
+        .btn-util.btn-busy::after {
+            /* var(--text-muted) instead of a hardcoded color so the spinner already matches
+               whichever theme/background is active (see theme-init.js) without a separate
+               dark-mode override. */
+            content: ""; position: absolute; top: 50%; left: 50%; width: 15px; height: 15px;
+            margin: -7.5px 0 0 -7.5px; border-radius: 50%;
+            border: 2px solid var(--text-muted); border-top-color: var(--primary);
+            opacity: 0.9; animation: btn-busy-spin 0.7s linear infinite;
+        }
+        @keyframes btn-busy-spin { to { transform: rotate(360deg); } }
+
         /* Emoji Icon Picker Grid Design */
         .emoji-picker-container {
             border: 1.5px solid var(--border-color);

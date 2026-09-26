@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v445";
-        const APP_VERSION_DATE = "2026-09-25";
+        const APP_VERSION = "v446";
+        const APP_VERSION_DATE = "2026-09-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -20236,6 +20236,11 @@
         let driveLastLookupFileCount = 0;
         let driveLastLookupModifiedTime = null;
         let driveAutoSyncTimer = null;
+        // v446: true from the moment scheduleDriveAutoSync() arms the debounce timer until either
+        // it fires or flushPendingDriveAutoSync() (below) fires it early — lets the
+        // visibilitychange/pagehide handlers tell "there's an unsaved write still waiting out its
+        // debounce" apart from "nothing pending, no need to rush anything".
+        let driveAutoSyncPending = false;
         let driveSyncInFlight = false;
         // v429: guards the Drive-freshness check below so it only ever runs once per app
         // load (the first time a token is obtained — i.e. the silent reauth in
@@ -20355,6 +20360,17 @@
             } else {
                 renderDriveDisconnectedUI();
             }
+            // v446: see flushPendingDriveAutoSync()'s own comment. "visibilitychange" (hidden)
+            // covers switching apps, locking the screen, or backgrounding a PWA/tab without fully
+            // closing it — the far more common case. "pagehide" covers an actual close/reload,
+            // as a best-effort second chance; by that point the page may not get to finish the
+            // request, but it's strictly better than not trying. Registered once here regardless
+            // of whether Drive is currently connected — cheap no-op via the driveAutoSyncPending
+            // check when there's nothing waiting.
+            document.addEventListener("visibilitychange", () => {
+                if (document.hidden) flushPendingDriveAutoSync();
+            });
+            window.addEventListener("pagehide", flushPendingDriveAutoSync);
         }
 
         function connectGoogleDrive() {
@@ -20438,12 +20454,29 @@
             writeDB(STORES.SETTINGS, { key: "driveAutoSyncEnabled", value: !!(toggle && toggle.checked) });
         }
 
-        async function manualSyncGoogleDrive() {
+        // v446: toggles the .btn-busy spinner state (see index.html's .btn-util.btn-busy CSS) on
+        // a data-click button while an async action it triggered is in flight — Upload/Restore
+        // can each take a few seconds on a slow connection with nothing else on screen changing,
+        // so without this the button just looks unresponsive/possibly-broken the whole time.
+        // btnEl is the actual button element, as handed to CLICK_ACTIONS below (`el`) — falls
+        // back to a lookup by data-click name if ever called without one, so it never throws
+        // over a missing button reference.
+        function setButtonBusy(handlerName, btnEl, busy) {
+            const btn = btnEl || document.querySelector(`[data-click="${handlerName}"]`);
+            if (!btn) return;
+            btn.classList.toggle("btn-busy", !!busy);
+            btn.disabled = !!busy;
+        }
+
+        async function manualSyncGoogleDrive(btnEl) {
+            setButtonBusy("manualSyncGoogleDrive", btnEl, true);
             try {
                 await uploadBackupToDrive();
                 showToast("☁️ Uploaded to Google Drive");
             } catch (err) {
                 alert("Upload failed: " + (err && err.message ? err.message : err));
+            } finally {
+                setButtonBusy("manualSyncGoogleDrive", btnEl, false);
             }
         }
 
@@ -20452,13 +20485,16 @@
         // own prompt below, both of which call the same downloadBackupFromDrive(). This one
         // always confirms first since — unlike those two — the user didn't just choose "use the
         // Drive copy" a moment ago; they're overwriting whatever they'd been actively using.
-        async function manualRestoreFromDrive() {
+        async function manualRestoreFromDrive(btnEl) {
             const ok = await customConfirm("Pull the latest backup down from Google Drive? This replaces THIS device's current accounts, transactions, and categories with whatever's saved in Drive.");
             if (!ok) return;
+            setButtonBusy("manualRestoreFromDrive", btnEl, true);
             try {
                 await downloadBackupFromDrive();
             } catch (err) {
                 alert("Restore failed: " + (err && err.message ? err.message : err));
+            } finally {
+                setButtonBusy("manualRestoreFromDrive", btnEl, false);
             }
         }
 
@@ -20799,7 +20835,9 @@
             const toggle = document.getElementById("driveAutoSyncToggle");
             if (toggle && !toggle.checked) return; // auto-sync turned off, manual "Upload to Drive" only
             clearTimeout(driveAutoSyncTimer);
+            driveAutoSyncPending = true;
             driveAutoSyncTimer = setTimeout(() => {
+                driveAutoSyncPending = false;
                 attemptAutoSync().catch((err) => {
                     // Silent by design for background auto-sync — a manual "Upload to Drive" tap or the
                     // next successful auto-sync will surface/self-correct any real problem; an
@@ -20808,6 +20846,23 @@
                     console.warn("Drive auto-sync failed:", err);
                 });
             }, DRIVE_AUTOSYNC_DEBOUNCE_MS);
+        }
+
+        // v446: the debounce in scheduleDriveAutoSync() above exists so a burst of rapid edits
+        // uploads once, not once per keystroke — but it also means a write made right before the
+        // app is closed/backgrounded could sit unsynced forever: the 4s timer never gets a chance
+        // to fire once the page is gone, so that last entry silently never reaches Drive (the
+        // exact "last transaction on phone didn't show up after Restore Latest on PC" report).
+        // Wired up below to visibilitychange/pagehide — the moment the app is about to disappear,
+        // stop waiting out the rest of the debounce and kick the same sync off immediately. Not a
+        // 100% guarantee (the OS can still kill the page mid-request on a hard close), but it turns
+        // "never even tried" into "got a head start" for the common case of switching apps or
+        // locking the phone right after adding something.
+        function flushPendingDriveAutoSync() {
+            if (!driveAutoSyncPending) return;
+            driveAutoSyncPending = false;
+            clearTimeout(driveAutoSyncTimer);
+            attemptAutoSync().catch((err) => console.warn("Drive auto-sync flush failed:", err));
         }
 
         // v433: the actual "safe auto-sync" decision flow — replaces auto-sync's old behaviour of
@@ -21128,8 +21183,8 @@
             openImportInput: () => document.getElementById("importInput").click(),
             connectGoogleDrive: () => connectGoogleDrive(),
             disconnectGoogleDrive: () => disconnectGoogleDrive(),
-            manualSyncGoogleDrive: () => manualSyncGoogleDrive(),
-            manualRestoreFromDrive: () => manualRestoreFromDrive(),
+            manualSyncGoogleDrive: (el) => manualSyncGoogleDrive(el),
+            manualRestoreFromDrive: (el) => manualRestoreFromDrive(el),
             resolveDriveSyncKeepLocal: () => resolveDriveSyncKeepLocal(),
             resolveDriveSyncUseRemote: () => resolveDriveSyncUseRemote(),
             openDriveSnapshotsModal: () => openDriveSnapshotsModal(),

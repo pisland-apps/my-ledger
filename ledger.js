@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v446";
+        const APP_VERSION = "v447";
         const APP_VERSION_DATE = "2026-09-26";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -882,7 +882,15 @@
 
         // Re-locks the app immediately: drops the in-memory key/passcode and reloads, which forces
         // the unlock screen again and guarantees no decrypted data lingers in memory or on screen.
-        function lockAppNow() {
+        async function lockAppNow() {
+            // v447: if a debounced auto-sync write is still waiting out its 4s window (see
+            // scheduleDriveAutoSync()), give it a chance to actually finish BEFORE the passcode
+            // is wiped and the page reloads. uploadBackupToDrive() needs currentPasscode (it's
+            // the encryption key) — nulling it first, the old order, meant locking the app
+            // inside that window silently dropped the last write for the same reason
+            // backgrounding did, except worse: even the pagehide flush that reload triggers
+            // couldn't save it, because the passcode was already gone by the time it ran.
+            await flushPendingDriveAutoSyncAsync();
             appKey = null;
             currentPasscode = null;
             location.reload();
@@ -20858,11 +20866,18 @@
         // 100% guarantee (the OS can still kill the page mid-request on a hard close), but it turns
         // "never even tried" into "got a head start" for the common case of switching apps or
         // locking the phone right after adding something.
-        function flushPendingDriveAutoSync() {
-            if (!driveAutoSyncPending) return;
+        // v447: split out from flushPendingDriveAutoSync() so a caller that can afford to wait
+        // (lockAppNow(), below) can await the actual upload finishing, not just fire it and move
+        // on — see lockAppNow()'s own comment for why that distinction matters there.
+        function flushPendingDriveAutoSyncAsync() {
+            if (!driveAutoSyncPending) return Promise.resolve();
             driveAutoSyncPending = false;
             clearTimeout(driveAutoSyncTimer);
-            attemptAutoSync().catch((err) => console.warn("Drive auto-sync flush failed:", err));
+            return attemptAutoSync().catch((err) => console.warn("Drive auto-sync flush failed:", err));
+        }
+
+        function flushPendingDriveAutoSync() {
+            flushPendingDriveAutoSyncAsync();
         }
 
         // v433: the actual "safe auto-sync" decision flow — replaces auto-sync's old behaviour of

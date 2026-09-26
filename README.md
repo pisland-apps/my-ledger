@@ -3551,3 +3551,17 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME`
   the common case of switching apps or locking the phone right after adding something.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME` (sw.js) to v446.
+
+## v447: locking the app no longer drops a still-pending Drive auto-sync
+
+- `lockAppNow()` (header lock icon, and the auto-lock idle timer) used to null out
+  `currentPasscode`/`appKey` and reload immediately. If a debounced auto-sync write from
+  v446 was still waiting out its 4s window when the app got locked, the reload cancelled
+  it — and the v446 pagehide flush couldn't rescue it either, since `uploadBackupToDrive()`
+  needs `currentPasscode` to encrypt, and it was already wiped by then.
+- `lockAppNow()` is now `async` and awaits a new `flushPendingDriveAutoSyncAsync()` (the
+  same debounce-flushing logic as v446's `flushPendingDriveAutoSync()`, split out so this
+  caller can wait for the actual upload instead of firing and moving on) before clearing
+  the passcode and reloading. Adds a brief delay only when a sync was actually pending.
+
+Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME` (sw.js) to v447.

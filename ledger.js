@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v449";
+        const APP_VERSION = "v450";
         const APP_VERSION_DATE = "2026-09-28";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -19879,7 +19879,7 @@
                 // widget filters, expandedAccountSubrows, plus baseCurrency/fxRates which are
                 // also kept below as their own top-level fields for backward compatibility with
                 // older backups/import code that reads them directly off the bundle).
-                settings: await readAllDB(STORES.SETTINGS),
+                settings: (await readAllDB(STORES.SETTINGS)).filter(r => !(r && isDeviceLocalDriveSetting(r.key))), // v450
                 baseCurrency: baseCurrency,
                 fxRates: fxRates
             };
@@ -20131,6 +20131,7 @@
                     if (bundle.settings && Array.isArray(bundle.settings)) {
                         for (const rec of bundle.settings) {
                             if (!rec || !rec.key) continue;
+                            if (isDeviceLocalDriveSetting(rec.key)) continue; // v450: never take another device's sync state
                             await writeDB(STORES.SETTINGS, rec);
                             switch (rec.key) {
                                 case "defaultPaymentAccount": defaultPaymentAccount = rec.value || ""; break;
@@ -20383,6 +20384,15 @@
                 if (document.hidden) flushPendingDriveAutoSync();
             });
             window.addEventListener("pagehide", flushPendingDriveAutoSync);
+        }
+
+        // v450: every SETTINGS row whose key starts with "drive" (driveAutoSyncEnabled, driveConnected,
+        // driveAccountEmail, driveFileId, driveLastSyncedAt, driveDirtyStoreSet, driveLastKnownRemoteRev,
+        // driveSyncPauseState, driveConflictLog) is THIS device's own sync state. The SETTINGS store is
+        // dumped into every backup, so before v450 a restore/pull on one device copied another device's
+        // values over its own — e.g. the phone's "auto-sync ON" flipped a PC that had it switched off.
+        function isDeviceLocalDriveSetting(key) {
+            return typeof key === "string" && key.indexOf("drive") === 0;
         }
 
         // v449: per-device id, stamped into every Drive upload (plaintext `deviceId` next to `syncedAt`)

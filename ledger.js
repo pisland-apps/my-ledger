@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v450";
+        const APP_VERSION = "v451";
         const APP_VERSION_DATE = "2026-09-28";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -20443,15 +20443,31 @@
             const wasAlreadyConnected = (await readKeyDB("settings", "driveConnected"))?.value === true;
             await writeDB(STORES.SETTINGS, { key: "driveConnected", value: true });
 
+            // v451: the old lookup used the OAuth "userinfo" endpoint, which needs the openid/email
+            // scope — this app only requests drive.appdata, so it always came back with no email
+            // ("Connected as (unknown)") and the v448 account `hint` never had anything to send.
+            // Drive's own about.get accepts drive.appdata and returns the signed-in user's email.
             let email = "";
             try {
-                const info = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+                const about = await fetch("https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)", {
                     headers: { Authorization: `Bearer ${driveAccessToken}` }
                 }).then(r => r.json());
-                email = info.email || "";
-                if (email) driveKnownEmail = email;
-                await writeDB(STORES.SETTINGS, { key: "driveAccountEmail", value: email });
-            } catch (err) { /* cosmetic only — sync still works without the email label */ }
+                email = (about && about.user && about.user.emailAddress) || "";
+            } catch (err) { /* fall through to the old lookup / stored value */ }
+            if (!email) {
+                try {
+                    const info = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+                        headers: { Authorization: `Bearer ${driveAccessToken}` }
+                    }).then(r => r.json());
+                    email = info.email || "";
+                } catch (err) { /* cosmetic only — sync still works without the email label */ }
+            }
+            if (email) {
+                driveKnownEmail = email;
+                try { await writeDB(STORES.SETTINGS, { key: "driveAccountEmail", value: email }); } catch (err) {}
+            } else {
+                email = driveKnownEmail; // lookup failed this time — keep showing the last known one
+            }
 
             if (!wasAlreadyConnected) {
                 // First-time connect: figure out whether Drive already has a backup (e.g. this
@@ -20766,7 +20782,25 @@
             return new Promise((resolve, reject) => {
                 const tx = db.transaction([STORES.DRIVE_SNAPSHOTS], "readonly");
                 const req = tx.objectStore(STORES.DRIVE_SNAPSHOTS).getAll();
-                req.onsuccess = () => resolve((req.result || []).sort((a, b) => b.id - a.id));
+                req.onsuccess = async () => {
+                    // v451: writeDB() wraps every record in the app-lock encryption, and this store isn't
+                    // in STORE_KEYPATHS, so a snapshot is saved as just {id, iv, data} — createdAt/salt/etc.
+                    // live inside the blob. Reading the raw rows gave "Invalid Date" in the list and
+                    // handed decryptBackupBundle() a record with no salt, so no snapshot could be
+                    // restored. Unwrap the outer layer here (falling back to the raw row for any
+                    // legacy plain-stored snapshot) and keep the row's id for pruning.
+                    const raw = (req.result || []).sort((a, b) => b.id - a.id);
+                    const out = [];
+                    for (const r of raw) {
+                        try {
+                            const plain = await decryptRecord(STORES.DRIVE_SNAPSHOTS, r);
+                            out.push({ ...plain, id: r.id });
+                        } catch (err) {
+                            out.push(r);
+                        }
+                    }
+                    resolve(out);
+                };
                 req.onerror = () => reject(req.error);
             });
         }

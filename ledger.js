@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v448";
+        const APP_VERSION = "v449";
         const APP_VERSION_DATE = "2026-09-28";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -20385,6 +20385,22 @@
             window.addEventListener("pagehide", flushPendingDriveAutoSync);
         }
 
+        // v449: per-device id, stamped into every Drive upload (plaintext `deviceId` next to `syncedAt`)
+        // so a device can recognise "the newest Drive copy is my own upload" — e.g. the OS froze/killed
+        // the app after Drive received the upload but before driveLastSyncedAt was saved. Kept in
+        // localStorage on purpose: the SETTINGS store is part of the synced bundle, so another
+        // device's restore would overwrite an id stored there.
+        function getDriveDeviceId() {
+            try {
+                let id = localStorage.getItem("ledgerDriveDeviceId");
+                if (!id) {
+                    id = "dev-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+                    localStorage.setItem("ledgerDriveDeviceId", id);
+                }
+                return id;
+            } catch (err) { return ""; }
+        }
+
         // v448: config for every silent (non-Connect-tap) token request. `hint` tells Google which
         // account to use, so no account chooser appears; prompt "" = no consent screen if already granted.
         function driveSilentConfig() {
@@ -20544,8 +20560,37 @@
                 // a moment before Drive finishes writing, so without slack a device could
                 // occasionally flag its own just-completed upload as "newer than itself".
                 if (remoteSyncedAt > localSyncedAt + 5000) {
+                    // v449: (a) the newest Drive copy was uploaded by THIS device (its upload reached Drive
+                    // but the app was frozen/killed before driveLastSyncedAt got saved) — nothing to pull;
+                    // just record it as our baseline and carry on, no prompt.
+                    const myId = getDriveDeviceId();
+                    if (myId && payload.deviceId === myId) {
+                        await persistDriveBookkeeping("driveLastSyncedAt", remoteSyncedAt);
+                        updateDriveLastSyncedText(remoteSyncedAt);
+                        if (driveLastLookupModifiedTime) {
+                            driveLastKnownRemoteRev = driveLastLookupModifiedTime;
+                            await persistDriveBookkeeping("driveLastKnownRemoteRev", driveLastKnownRemoteRev);
+                        }
+                        return;
+                    }
                     const pull = await customConfirm("Newer data was found on Google Drive — likely from another device. Pull it in now? (This replaces this device's current data. Choose Cancel to keep using what's on this device and sync it up instead.)");
-                    if (pull) await downloadBackupFromDrive();
+                    if (pull) {
+                        await downloadBackupFromDrive();
+                    } else {
+                        // v449: Cancel used to do nothing, so driveLastSyncedAt stayed old and the very same
+                        // prompt came back on every launch. Now it does what the message says: this device's
+                        // data becomes the baseline and is uploaded. If the upload can't run right now
+                        // (app locked, offline), still remember this Drive version as "seen" so it isn't asked again.
+                        try {
+                            await uploadBackupToDrive();
+                        } catch (upErr) {
+                            await persistDriveBookkeeping("driveLastSyncedAt", remoteSyncedAt);
+                            if (driveLastLookupModifiedTime) {
+                                driveLastKnownRemoteRev = driveLastLookupModifiedTime;
+                                await persistDriveBookkeeping("driveLastKnownRemoteRev", driveLastKnownRemoteRev);
+                            }
+                        }
+                    }
                 }
             } catch (err) {
                 console.warn("Drive freshness check failed:", err);
@@ -20628,7 +20673,7 @@
                 const saltB64 = bufToB64(salt);
                 const key = await deriveKeyFromPasscode(currentPasscode, saltB64, PBKDF2_ITERATIONS);
                 const { iv, data } = await aesEncryptString(key, JSON.stringify(bundle));
-                const payload = { encrypted: true, salt: saltB64, iterations: PBKDF2_ITERATIONS, iv, data, syncedAt: Date.now() };
+                const payload = { encrypted: true, salt: saltB64, iterations: PBKDF2_ITERATIONS, iv, data, syncedAt: Date.now(), deviceId: getDriveDeviceId() };
 
                 if (driveFileId === null) await findDriveBackupFileId();
 

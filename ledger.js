@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v447";
-        const APP_VERSION_DATE = "2026-09-26";
+        const APP_VERSION = "v448";
+        const APP_VERSION_DATE = "2026-09-28";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -20234,6 +20234,9 @@
         const DRIVE_AUTOSYNC_DEBOUNCE_MS = 4000;
 
         let driveTokenClient = null;
+        // v448: last-known Google account email, passed as `hint` on every silent token request so
+        // devices with several Google accounts (e.g. Samsung) don't show the account chooser each time.
+        let driveKnownEmail = "";
         let driveAccessToken = null;      // in-memory only; never persisted (short-lived, ~1hr)
         let driveTokenExpiresAt = 0;
         let driveFileId = null;           // cached Drive file id for ledger-backup.json, once known
@@ -20338,6 +20341,7 @@
             const storedConnected = await readKeyDB("settings", "driveConnected");
             const storedEmail = await readKeyDB("settings", "driveAccountEmail");
             const storedLastSync = await readKeyDB("settings", "driveLastSyncedAt");
+            driveKnownEmail = (storedEmail && storedEmail.value) ? storedEmail.value : "";
             const storedAutoSync = await readKeyDB("settings", "driveAutoSyncEnabled");
             const storedFileId = await readKeyDB("settings", "driveFileId");
             if (storedFileId) driveFileId = storedFileId.value || null;
@@ -20364,7 +20368,7 @@
                 // the user's Google session is still active. If it's not (signed out of Google
                 // entirely, revoked access, etc.), this callback just never fires and Drive sync
                 // quietly stays inactive until the user taps Connect again.
-                driveTokenClient.requestAccessToken({ prompt: "" });
+                driveTokenClient.requestAccessToken(driveSilentConfig());
             } else {
                 renderDriveDisconnectedUI();
             }
@@ -20379,6 +20383,14 @@
                 if (document.hidden) flushPendingDriveAutoSync();
             });
             window.addEventListener("pagehide", flushPendingDriveAutoSync);
+        }
+
+        // v448: config for every silent (non-Connect-tap) token request. `hint` tells Google which
+        // account to use, so no account chooser appears; prompt "" = no consent screen if already granted.
+        function driveSilentConfig() {
+            const cfg = { prompt: "" };
+            if (driveKnownEmail) cfg.hint = driveKnownEmail;
+            return cfg;
         }
 
         function connectGoogleDrive() {
@@ -20411,6 +20423,7 @@
                     headers: { Authorization: `Bearer ${driveAccessToken}` }
                 }).then(r => r.json());
                 email = info.email || "";
+                if (email) driveKnownEmail = email;
                 await writeDB(STORES.SETTINGS, { key: "driveAccountEmail", value: email });
             } catch (err) { /* cosmetic only — sync still works without the email label */ }
 
@@ -20553,7 +20566,7 @@
                         else resolve(driveAccessToken);
                     });
                 };
-                driveTokenClient.requestAccessToken({ prompt: "" });
+                driveTokenClient.requestAccessToken(driveSilentConfig());
             });
         }
 

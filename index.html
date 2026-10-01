@@ -2879,7 +2879,22 @@
 .recent-tx-collapsed #recentTxList{display:none;}
 .lock-btn-header.insights-open-btn{display:none;}
 @media (max-width:1399px){.lock-btn-header.insights-open-btn{display:flex;}}
-</style>
+
+        /* v452: force dd/mm/yyyy display on every <input type="date">. A date input's visible
+           format always follows the device/browser locale (PC = en-GB dd/mm/yyyy, the Android
+           phone = en-US mm/dd/yyyy) and can't be changed from HTML. So on engines that expose
+           the ::-webkit-datetime-edit parts (Chrome/Edge/Android/iOS), the native text is hidden
+           and replaced by a ::before label built from data-fmt (kept in sync by the
+           "date display" block in ledger.js). The real input — value, picker, validation — is
+           untouched. Other engines (e.g. Firefox) simply keep their native display. */
+        html.dfmt input[type="date"]::-webkit-datetime-edit { display: none; }
+        html.dfmt input[type="date"]::before {
+            content: attr(data-fmt);
+            flex: 1 1 auto;
+            text-align: left;
+        }
+        html.dfmt input[type="date"][data-fmt-empty]::before { color: var(--text-muted); }
+    </style>
     <!-- v179: apply any saved background-theme choice before first paint, so the page never
          flashes the default slate background and then jumps to the user's chosen tint.
          v195: mirrors ledger.js's full BG_THEME_VAR_MAP (bg/card/text/border/neu/glass/chip/data

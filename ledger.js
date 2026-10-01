@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v451";
-        const APP_VERSION_DATE = "2026-09-28";
+        const APP_VERSION = "v452";
+        const APP_VERSION_DATE = "2026-10-01";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -34,6 +34,39 @@
         // being unlocked, and this badge needs to show before that.
         const versionBadgeEl = document.getElementById("versionBadge");
         if (versionBadgeEl) versionBadgeEl.textContent = `${APP_VERSION} · ${APP_VERSION_DATE}`;
+
+        // v452: dd/mm/yyyy display for every <input type="date"> (see the html.dfmt CSS comment
+        // in index.html). The input's .value stays ISO yyyy-mm-dd as always; only what is
+        // painted changes, via a data-fmt attribute that the CSS ::before shows. Programmatic
+        // `.value = ...` writes fire no events, so the value setter is wrapped to refresh the label.
+        (function initDateDisplayFormat() {
+            try {
+                if (!(window.CSS && CSS.supports && CSS.supports("selector(::-webkit-datetime-edit)"))) return;
+                document.documentElement.classList.add("dfmt");
+                const syncDateFmt = (el) => {
+                    const v = el.value || "";
+                    const m = /^(\d{4,})-(\d{2})-(\d{2})$/.exec(v);
+                    if (m) { el.setAttribute("data-fmt", `${m[3]}/${m[2]}/${m[1]}`); el.removeAttribute("data-fmt-empty"); }
+                    else { el.setAttribute("data-fmt", "dd/mm/yyyy"); el.setAttribute("data-fmt-empty", ""); }
+                };
+                const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+                Object.defineProperty(HTMLInputElement.prototype, "value", {
+                    configurable: true, enumerable: desc.enumerable,
+                    get() { return desc.get.call(this); },
+                    set(val) { desc.set.call(this, val); if (this.type === "date") syncDateFmt(this); }
+                });
+                const scan = (root) => {
+                    if (root.nodeType !== 1) return;
+                    if (root.matches && root.matches('input[type="date"]')) syncDateFmt(root);
+                    if (root.querySelectorAll) root.querySelectorAll('input[type="date"]').forEach(syncDateFmt);
+                };
+                document.addEventListener("input", (e) => { if (e.target && e.target.type === "date") syncDateFmt(e.target); }, true);
+                document.addEventListener("change", (e) => { if (e.target && e.target.type === "date") syncDateFmt(e.target); }, true);
+                new MutationObserver((muts) => muts.forEach((mu) => mu.addedNodes.forEach(scan)))
+                    .observe(document.documentElement, { childList: true, subtree: true });
+                scan(document.documentElement);
+            } catch (err) { console.warn("date display format init failed:", err); }
+        })();
 
         // pdf.js — vendored locally under lib/ (no CDN dependency, matches the companion
         // Family Health & Shield app's approach). pdfjs-dist 4.x only ships ES module

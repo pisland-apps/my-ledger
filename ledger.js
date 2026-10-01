@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v453";
+        const APP_VERSION = "v454";
         const APP_VERSION_DATE = "2026-10-01";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -20629,13 +20629,20 @@
                 await findDriveBackupFileId();
                 if (!driveFileId) return; // nothing uploaded from any device yet
                 const token = await ensureDriveAccessToken();
+                // v454: compare Drive's OWN modifiedTime (one shared server clock) against the revision
+                // this device last saw, instead of only comparing the uploader's `syncedAt` against
+                // THIS device's clock. Two devices' clocks differ by seconds-to-minutes, so the old
+                // comparison could call Drive "newer" when nothing had changed — the prompt then came
+                // back on every launch on both devices, independent of the auto-sync toggle. Falls back
+                // to the old syncedAt comparison only when no revision has been recorded yet.
+                if (driveLastKnownRemoteRev && driveLastLookupModifiedTime === driveLastKnownRemoteRev) return;
                 const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 if (!resp.ok) return;
                 const payload = await resp.json();
                 const remoteSyncedAt = payload.syncedAt || 0;
-                const localSyncedAt = (await readKeyDB("settings", "driveLastSyncedAt"))?.value || 0;
+                const localSyncedAt = driveLastKnownRemoteRev ? 0 : ((await readKeyDB("settings", "driveLastSyncedAt"))?.value || 0);
                 // v429: a few seconds of slack — this device's OWN uploads set driveLastSyncedAt
                 // a moment before Drive finishes writing, so without slack a device could
                 // occasionally flag its own just-completed upload as "newer than itself".

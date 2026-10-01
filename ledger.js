@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v452";
+        const APP_VERSION = "v453";
         const APP_VERSION_DATE = "2026-10-01";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -35,33 +35,54 @@
         const versionBadgeEl = document.getElementById("versionBadge");
         if (versionBadgeEl) versionBadgeEl.textContent = `${APP_VERSION} · ${APP_VERSION_DATE}`;
 
-        // v452: dd/mm/yyyy display for every <input type="date"> (see the html.dfmt CSS comment
-        // in index.html). The input's .value stays ISO yyyy-mm-dd as always; only what is
-        // painted changes, via a data-fmt attribute that the CSS ::before shows. Programmatic
-        // `.value = ...` writes fire no events, so the value setter is wrapped to refresh the label.
+        // v452/v453: dd/mm/yyyy display for <input type="date"> on TOUCH devices only (see the
+        // .dfmt-wrap CSS comment in index.html). Desktop is left completely native. The input's
+        // .value stays ISO yyyy-mm-dd; only a label painted over it changes. Programmatic
+        // `.value = ...` writes fire no events, so the value setter is wrapped to refresh it.
         (function initDateDisplayFormat() {
             try {
-                if (!(window.CSS && CSS.supports && CSS.supports("selector(::-webkit-datetime-edit)"))) return;
-                document.documentElement.classList.add("dfmt");
+                if (!window.matchMedia || !matchMedia("(hover: none) and (pointer: coarse)").matches) return;
                 const syncDateFmt = (el) => {
-                    const v = el.value || "";
-                    const m = /^(\d{4,})-(\d{2})-(\d{2})$/.exec(v);
-                    if (m) { el.setAttribute("data-fmt", `${m[3]}/${m[2]}/${m[1]}`); el.removeAttribute("data-fmt-empty"); }
-                    else { el.setAttribute("data-fmt", "dd/mm/yyyy"); el.setAttribute("data-fmt-empty", ""); }
+                    const lab = el._dfmtLabel;
+                    if (!lab) return;
+                    const m = /^(\d{4,})-(\d{2})-(\d{2})$/.exec(el.value || "");
+                    lab.textContent = m ? `${m[3]}/${m[2]}/${m[1]}` : "dd/mm/yyyy";
+                    lab.classList.toggle("empty", !m);
+                };
+                const enhance = (el) => {
+                    if (el._dfmtLabel || !el.parentNode) return;
+                    const cs = getComputedStyle(el);
+                    const wrap = document.createElement("span");
+                    wrap.className = "dfmt-wrap";
+                    if (/flex/.test(getComputedStyle(el.parentNode).display) && !el.parentNode.classList.contains("form-row-icon")) {
+                        wrap.style.flex = cs.flex;
+                    }
+                    const lab = document.createElement("span");
+                    lab.className = "dfmt-label";
+                    lab.setAttribute("aria-hidden", "true");
+                    lab.style.paddingLeft = cs.paddingLeft;
+                    lab.style.paddingRight = cs.paddingRight;
+                    lab.style.font = cs.font;
+                    el.parentNode.insertBefore(wrap, el);
+                    wrap.appendChild(el);
+                    wrap.appendChild(lab);
+                    el._dfmtLabel = lab;
+                    syncDateFmt(el);
+                };
+                const scan = (root) => {
+                    if (root.nodeType !== 1) return;
+                    if (root.matches && root.matches('input[type="date"]')) enhance(root);
+                    if (root.querySelectorAll) root.querySelectorAll('input[type="date"]').forEach(enhance);
                 };
                 const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
                 Object.defineProperty(HTMLInputElement.prototype, "value", {
                     configurable: true, enumerable: desc.enumerable,
                     get() { return desc.get.call(this); },
-                    set(val) { desc.set.call(this, val); if (this.type === "date") syncDateFmt(this); }
+                    set(val) { desc.set.call(this, val); if (this._dfmtLabel) syncDateFmt(this); }
                 });
-                const scan = (root) => {
-                    if (root.nodeType !== 1) return;
-                    if (root.matches && root.matches('input[type="date"]')) syncDateFmt(root);
-                    if (root.querySelectorAll) root.querySelectorAll('input[type="date"]').forEach(syncDateFmt);
-                };
-                document.addEventListener("input", (e) => { if (e.target && e.target.type === "date") syncDateFmt(e.target); }, true);
-                document.addEventListener("change", (e) => { if (e.target && e.target.type === "date") syncDateFmt(e.target); }, true);
+                const refresh = (e) => { if (e.target && e.target._dfmtLabel) syncDateFmt(e.target); };
+                document.addEventListener("input", refresh, true);
+                document.addEventListener("change", refresh, true);
                 new MutationObserver((muts) => muts.forEach((mu) => mu.addedNodes.forEach(scan)))
                     .observe(document.documentElement, { childList: true, subtree: true });
                 scan(document.documentElement);

@@ -2880,20 +2880,24 @@
 .lock-btn-header.insights-open-btn{display:none;}
 @media (max-width:1399px){.lock-btn-header.insights-open-btn{display:flex;}}
 
-        /* v452: force dd/mm/yyyy display on every <input type="date">. A date input's visible
-           format always follows the device/browser locale (PC = en-GB dd/mm/yyyy, the Android
-           phone = en-US mm/dd/yyyy) and can't be changed from HTML. So on engines that expose
-           the ::-webkit-datetime-edit parts (Chrome/Edge/Android/iOS), the native text is hidden
-           and replaced by a ::before label built from data-fmt (kept in sync by the
-           "date display" block in ledger.js). The real input — value, picker, validation — is
-           untouched. Other engines (e.g. Firefox) simply keep their native display. */
-        html.dfmt input[type="date"]::-webkit-datetime-edit { display: none; }
-        html.dfmt input[type="date"]::before {
-            content: attr(data-fmt);
-            flex: 1 1 auto;
-            text-align: left;
+        /* v452/v453: dd/mm/yyyy display for date fields on TOUCH devices only (phones/tablets).
+           A phone's date field paints in the phone's locale (mm/dd/yyyy here) and HTML can't
+           change that, so ledger.js wraps each <input type="date"> in .dfmt-wrap and lays a
+           dd/mm/yyyy label (.dfmt-label) over it, with the input's own text made transparent.
+           The real input (value, picker, validation) is untouched. Desktop never gets this
+           wrapper, so PC keeps the native date field with typed day/month/year editing. */
+        .dfmt-wrap { position: relative; display: block; min-width: 0; }
+        .form-row-icon > .dfmt-wrap { flex: 1 1 auto; }
+        .dfmt-wrap > input[type="date"] {
+            width: 100% !important; box-sizing: border-box;
+            color: transparent !important; -webkit-text-fill-color: transparent !important;
         }
-        html.dfmt input[type="date"][data-fmt-empty]::before { color: var(--text-muted); }
+        .dfmt-wrap > .dfmt-label {
+            position: absolute; inset: 0; display: flex; align-items: center;
+            pointer-events: none; overflow: hidden; white-space: nowrap;
+            color: var(--text-main);
+        }
+        .dfmt-wrap > .dfmt-label.empty { color: var(--text-muted); }
     </style>
     <!-- v179: apply any saved background-theme choice before first paint, so the page never
          flashes the default slate background and then jumps to the user's chosen tint.

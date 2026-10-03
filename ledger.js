@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v454";
-        const APP_VERSION_DATE = "2026-10-01";
+        const APP_VERSION = "v455";
+        const APP_VERSION_DATE = "2026-10-03";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -20529,9 +20529,14 @@
                 try {
                     await findDriveBackupFileId();
                     if (driveFileId) {
-                        const useRemote = await customConfirm("A backup was found in this Google account's Drive. Download it now and replace what's on this device? (Choose Cancel to instead upload THIS device's data, overwriting the Drive copy.)");
+                        // v455: Cancel used to upload THIS device's data over the Drive copy — on a
+                        // brand-new/empty device that silently destroyed the only good backup (one
+                        // mis-tap away). Cancel now uploads NOTHING: it parks auto-sync in the existing
+                        // "paused" state, whose banner offers explicit, separately-confirmed
+                        // "Keep This Device" / "Use Other Device" buttons.
+                        const useRemote = await customConfirm("A backup was found in this Google account's Drive. Download it now and replace what's on this device? (Choose Cancel to leave both untouched for now — nothing is uploaded; you can decide later from the banner in Settings → Google Drive.)");
                         if (useRemote) await downloadBackupFromDrive();
-                        else await uploadBackupToDrive();
+                        else await enterDriveSyncPause(driveLastLookupModifiedTime);
                     } else {
                         await uploadBackupToDrive();
                     }
@@ -20623,6 +20628,7 @@
         // downloadBackupFromDrive()) actually need the passcode.
         async function checkForNewerDriveBackup() {
             if (driveSyncInFlight) return;
+            if (driveSyncPauseState) return; // v455: already parked on an unresolved choice — the Settings banner owns it
             try {
                 // v430: always re-resolve, never trust a cached driveFileId here — see the
                 // matching comment on downloadBackupFromDrive()'s own lookup below.
@@ -20660,23 +20666,15 @@
                         }
                         return;
                     }
-                    const pull = await customConfirm("Newer data was found on Google Drive — likely from another device. Pull it in now? (This replaces this device's current data. Choose Cancel to keep using what's on this device and sync it up instead.)");
+                    const pull = await customConfirm("Newer data was found on Google Drive — likely from another device. Pull it in now? (This replaces this device's current data. Choose Cancel to leave both untouched for now — nothing is uploaded; you can decide later from the banner in Settings → Google Drive.)");
                     if (pull) {
                         await downloadBackupFromDrive();
                     } else {
-                        // v449: Cancel used to do nothing, so driveLastSyncedAt stayed old and the very same
-                        // prompt came back on every launch. Now it does what the message says: this device's
-                        // data becomes the baseline and is uploaded. If the upload can't run right now
-                        // (app locked, offline), still remember this Drive version as "seen" so it isn't asked again.
-                        try {
-                            await uploadBackupToDrive();
-                        } catch (upErr) {
-                            await persistDriveBookkeeping("driveLastSyncedAt", remoteSyncedAt);
-                            if (driveLastLookupModifiedTime) {
-                                driveLastKnownRemoteRev = driveLastLookupModifiedTime;
-                                await persistDriveBookkeeping("driveLastKnownRemoteRev", driveLastKnownRemoteRev);
-                            }
-                        }
+                        // v455: Cancel used to upload this device's data over Drive (v449). Too easy to
+                        // destroy a good backup with one tap, so Cancel now only parks auto-sync in the
+                        // paused state (persisted, so the prompt doesn't return every launch) and the
+                        // user resolves it with the explicit, separately-confirmed banner buttons.
+                        await enterDriveSyncPause(driveLastLookupModifiedTime);
                     }
                 }
             } catch (err) {

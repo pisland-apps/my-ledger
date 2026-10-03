@@ -4,7 +4,7 @@
 // files the Service Worker serves; APP_VERSION is just the display label in the corner of the
 // screen. They don't sync automatically (different files, different load times) — when you bump
 // one, bump the other too. See the matching reminder comment on APP_VERSION in ledger.js.
-const CACHE_NAME = "ledger-cache-v454";
+const CACHE_NAME = "ledger-cache-v455";
 // NOTE: deliberately does NOT include "./index.html" here. On hosts that
 // redirect /index.html -> / (e.g. Cloudflare Pages -- GitHub Pages doesn't do
 // this), caching that URL bakes in a redirected Response, and Chrome refuses
@@ -26,6 +26,26 @@ const ASSETS_TO_CACHE = [
     "./fonts/kalam-400.woff2",
     "./fonts/kalam-700.woff2"
 ];
+
+
+// v455: only ever cache a response that is genuinely the file we asked for. Before this, every
+// successful fetch() was cache.put() as-is — including a host/CDN interception page (e.g.
+// Cloudflare's "Suspected Phishing" interstitial, an error page, a captive-portal login), which
+// silently REPLACED the cached app shell, so the installed app then showed that page even offline.
+function isHtml(response) {
+    return /text\/html/i.test(response.headers.get("Content-Type") || "");
+}
+async function isGoodShell(response) {
+    if (!response || !response.ok || !isHtml(response)) return false;
+    try {
+        const text = await response.clone().text();
+        // The real shell loads ledger.js and never mentions a phishing interstitial.
+        return text.includes('src="ledger.js"') && !/Suspected Phishing/i.test(text);
+    } catch (e) { return false; }
+}
+function isGoodAsset(response) {
+    return !!response && response.ok && !isHtml(response);
+}
 
 // Install: pre-cache the app shell.
 self.addEventListener("install", (event) => {
@@ -92,16 +112,22 @@ self.addEventListener("fetch", (event) => {
             );
         event.respondWith(
             fetch("./", { redirect: "follow" })
-                .then((response) => {
+                .then(async (response) => {
                     if (response.redirected) {
                         // The host itself is redirecting "./" -- don't hand a
                         // redirected Response to a navigation. Fall back to
                         // whatever's cached (may be nothing on first-ever load).
                         return navigationFallback();
                     }
-                    const responseClone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => cache.put("./", responseClone));
-                    return response;
+                    if (await isGoodShell(response)) {
+                        const responseClone = response.clone();
+                        caches.open(CACHE_NAME).then((cache) => cache.put("./", responseClone));
+                        return response;
+                    }
+                    // v455: not the real app (blocked/interstitial/error page). Never cache it;
+                    // keep serving the last good cached shell if there is one, else show it as-is.
+                    const cached = await caches.match("./");
+                    return cached || response;
                 })
                 .catch(navigationFallback)
         );
@@ -113,10 +139,14 @@ self.addEventListener("fetch", (event) => {
     if (isNetworkFirst) {
         event.respondWith(
             fetch(event.request)
-                .then((response) => {
-                    const responseClone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
-                    return response;
+                .then(async (response) => {
+                    if (isGoodAsset(response)) {
+                        const responseClone = response.clone();
+                        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+                        return response;
+                    }
+                    // v455: error / interception page — keep the last good cached copy.
+                    return (await caches.match(event.request)) || response;
                 })
                 .catch(() => caches.match(event.request))
         );
@@ -128,9 +158,11 @@ self.addEventListener("fetch", (event) => {
             if (cached) return cached;
             return fetch(event.request)
                 .then((response) => {
-                    // Cache a copy of newly-fetched assets for next time offline.
-                    const responseClone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+                    // Cache a copy of newly-fetched assets for next time offline (v455: only if genuine).
+                    if (isGoodAsset(response)) {
+                        const responseClone = response.clone();
+                        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+                    }
                     return response;
                 })
                 .catch(() => {

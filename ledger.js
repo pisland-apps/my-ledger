@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v455";
+        const APP_VERSION = "v456";
         const APP_VERSION_DATE = "2026-10-03";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2280,8 +2280,15 @@
                         // sync (see the "--- GOOGLE DRIVE SYNC ---" section's markStoreDirty()) —
                         // skipped while driveSuppressAutoSync is set, since those writes are Drive
                         // sync's OWN bookkeeping/restore writes, not a real local edit.
-                        if (!driveSuppressAutoSync) markStoreDirty(storeName).catch(() => {});
-                        scheduleDriveAutoSync();
+                        // v456: Drive's own bookkeeping rows (SETTINGS keys starting with "drive") are
+                        // recognised by key here instead of via the global driveSuppressAutoSync flag,
+                        // which a real transaction saved at the same moment could collide with (that
+                        // write was then neither marked dirty nor scheduled — silently never synced).
+                        const isDriveBookkeeping = storeName === STORES.SETTINGS && data && typeof data.key === "string" && data.key.indexOf("drive") === 0;
+                        if (!driveSuppressAutoSync && !isDriveBookkeeping) {
+                            markStoreDirty(storeName).catch(() => {});
+                            scheduleDriveAutoSync();
+                        }
                         resolve();
                     };
                     tx.onerror = () => reject(tx.error);
@@ -20307,6 +20314,13 @@
         // visibilitychange/pagehide handlers tell "there's an unsaved write still waiting out its
         // debounce" apart from "nothing pending, no need to rush anything".
         let driveAutoSyncPending = false;
+        // v456: set when an auto-sync attempt fired while another sync was still running, and the
+        // retry bookkeeping/visible failure note for background auto-sync problems.
+        let driveResyncNeeded = false;
+        let driveRetryTimer = null;
+        let driveRetryCount = 0;
+        let driveSyncErrorNote = "";
+        let driveLastSyncedAtShown = null;
         let driveSyncInFlight = false;
         // v429: guards the Drive-freshness check below so it only ever runs once per app
         // load (the first time a token is obtained — i.e. the silent reauth in
@@ -20352,12 +20366,9 @@
         // toggle the flag by hand around a raw writeDB() call (see the v430 fix's own comments);
         // centralizing it here means a future new bit of sync bookkeeping can't forget to.
         async function persistDriveBookkeeping(key, value) {
-            driveSuppressAutoSync = true;
-            try {
-                await writeDB(STORES.SETTINGS, { key, value });
-            } finally {
-                driveSuppressAutoSync = false;
-            }
+            // v456: writeDB() itself skips dirty-marking/scheduling for "drive*" settings keys, so
+            // no global flag is toggled here any more (see the race described in writeDB()).
+            await writeDB(STORES.SETTINGS, { key, value });
         }
 
         // Called from writeDB()/deleteDB() on every real local write (guarded there by
@@ -20390,7 +20401,10 @@
             driveTokenClient = google.accounts.oauth2.initTokenClient({
                 client_id: GOOGLE_CLIENT_ID,
                 scope: GOOGLE_DRIVE_SCOPE,
-                callback: handleDriveTokenResponse
+                callback: handleDriveTokenResponse,
+                // v456: popup blocked / closed / failed-to-open never reach `callback`; without this a
+                // background token refresh simply never settled and Drive sync stayed stuck "in flight".
+                error_callback: (err) => { if (driveTokenReject) driveTokenReject(new Error("Google sign-in failed" + (err && err.type ? " (" + err.type + ")" : "") + " — reconnect Drive in Settings if this keeps happening.")); }
             });
 
             const storedConnected = await readKeyDB("settings", "driveConnected");
@@ -20436,7 +20450,9 @@
             // check when there's nothing waiting.
             document.addEventListener("visibilitychange", () => {
                 if (document.hidden) flushPendingDriveAutoSync();
+                else kickDriveSyncIfDirty(); // v456: back in the foreground — push anything still unsynced
             });
+            window.addEventListener("online", kickDriveSyncIfDirty);
             window.addEventListener("pagehide", flushPendingDriveAutoSync);
         }
 
@@ -20550,6 +20566,7 @@
                 // since this device's last sync, and offer to pull it in. See its own comment.
                 driveStartupCheckDone = true;
                 await checkForNewerDriveBackup();
+                kickDriveSyncIfDirty(); // v456: edits made before the app was closed that never reached Drive
             }
 
             renderDriveConnectedUI(email, (await readKeyDB("settings", "driveLastSyncedAt"))?.value || null);
@@ -20684,26 +20701,57 @@
 
         // Ensures driveAccessToken is fresh, silently requesting a new one if it's expired or
         // about to be — every Drive API call below routes through this first.
-        async function ensureDriveAccessToken() {
-            if (driveAccessToken && Date.now() < driveTokenExpiresAt - 60000) return driveAccessToken;
-            return new Promise((resolve, reject) => {
-                if (!driveTokenClient) { reject(new Error("Google sign-in not available")); return; }
+        // v456: shared in-flight promise + timeout + error_callback. Before, a silent token refresh that
+        // Google never answered (expired session, blocked popup, backgrounded tab) left this promise
+        // pending forever — uploadBackupToDrive() had already set driveSyncInFlight, so EVERY later
+        // auto-sync returned silently and new entries just never uploaded.
+        let driveTokenPromise = null;
+        let driveTokenReject = null;
+        function ensureDriveAccessToken() {
+            if (driveAccessToken && Date.now() < driveTokenExpiresAt - 60000) return Promise.resolve(driveAccessToken);
+            if (driveTokenPromise) return driveTokenPromise;
+            driveTokenPromise = new Promise((resolve, reject) => {
+                if (!driveTokenClient) { driveTokenPromise = null; reject(new Error("Google sign-in not available")); return; }
                 const originalCallback = driveTokenClient.callback;
-                driveTokenClient.callback = (resp) => {
+                let settled = false;
+                let timer = null;
+                const finish = (fn, v) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
                     driveTokenClient.callback = originalCallback;
-                    handleDriveTokenResponse(resp).then(() => {
-                        if (resp.error) reject(new Error("Google sign-in expired — please reconnect Drive in Settings."));
-                        else resolve(driveAccessToken);
-                    });
+                    driveTokenReject = null;
+                    driveTokenPromise = null;
+                    fn(v);
                 };
-                driveTokenClient.requestAccessToken(driveSilentConfig());
+                timer = setTimeout(() => finish(reject, new Error("Google sign-in timed out — will retry.")), 20000);
+                driveTokenReject = (e) => finish(reject, e);
+                driveTokenClient.callback = (resp) => {
+                    clearTimeout(timer); // only the wait for Google is timed; handleDriveTokenResponse may show prompts
+                    handleDriveTokenResponse(resp).then(() => {
+                        if (resp.error) finish(reject, new Error("Google sign-in expired — please reconnect Drive in Settings."));
+                        else finish(resolve, driveAccessToken);
+                    }, (e) => finish(reject, e));
+                };
+                try { driveTokenClient.requestAccessToken(driveSilentConfig()); }
+                catch (e) { finish(reject, e); }
             });
+            return driveTokenPromise;
+        }
+
+        // v456: fetch with a timeout so a stalled connection can't pin driveSyncInFlight forever.
+        async function driveFetch(url, opts, ms) {
+            const ctl = new AbortController();
+            const t = setTimeout(() => ctl.abort(), ms || 45000);
+            try { return await fetch(url, Object.assign({}, opts || {}, { signal: ctl.signal })); }
+            catch (e) { if (e && e.name === "AbortError") throw new Error("Drive request timed out"); throw e; }
+            finally { clearTimeout(t); }
         }
 
         async function findDriveBackupFileId() {
             const token = await ensureDriveAccessToken();
             const url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${DRIVE_BACKUP_FILENAME}'&fields=files(id,modifiedTime)`;
-            const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+            const resp = await driveFetch(url, { headers: { Authorization: `Bearer ${token}` } });
             if (!resp.ok) throw new Error(`Drive lookup failed (${resp.status})`);
             const data = await resp.json();
             const files = data.files || [];
@@ -20777,7 +20825,7 @@
                     ? `https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=multipart&fields=id,modifiedTime`
                     : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime`;
 
-                const resp = await fetch(uploadUrl, {
+                const resp = await driveFetch(uploadUrl, {
                     method: driveFileId ? "PATCH" : "POST",
                     headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
                     body: multipartBody
@@ -20812,9 +20860,16 @@
                     await persistDriveBookkeeping("driveLastKnownRemoteRev", driveLastKnownRemoteRev);
                 }
                 await clearDriveDirtyStores();
+                driveSyncErrorNote = "";
+                driveRetryCount = 0;
+                clearTimeout(driveRetryTimer);
+                updateDriveLastSyncedText(now);
             } finally {
-                driveSuppressAutoSync = false;
                 driveSyncInFlight = false;
+                // v456: a write that landed while this upload was running was dropped by
+                // attemptAutoSync()'s in-flight guard (and its dirty mark could be wiped by the
+                // clear above) — run one more pass so that newest entry is not left behind.
+                if (driveResyncNeeded) { driveResyncNeeded = false; armDriveAutoSyncTimer(); }
             }
         }
 
@@ -21003,6 +21058,10 @@
             if (!connectedRow || connectedRow.classList.contains("hidden")) return; // not connected
             const toggle = document.getElementById("driveAutoSyncToggle");
             if (toggle && !toggle.checked) return; // auto-sync turned off, manual "Upload to Drive" only
+            armDriveAutoSyncTimer();
+        }
+
+        function armDriveAutoSyncTimer() {
             clearTimeout(driveAutoSyncTimer);
             driveAutoSyncPending = true;
             driveAutoSyncTimer = setTimeout(() => {
@@ -21050,7 +21109,7 @@
         //   - remote moved AND we have no local changes of our own → fast-forward, pull silently
         //   - remote moved AND we DO have local changes → real conflict, never auto-pick a side
         async function attemptAutoSync() {
-            if (driveSyncInFlight) return;
+            if (driveSyncInFlight) { driveResyncNeeded = true; return; } // v456: don't drop it — re-run when the current sync ends
             if (driveSyncPauseState) return; // already paused on an earlier unresolved conflict
             try {
                 await findDriveBackupFileId(); // cheap metadata-only lookup; also self-heals duplicates
@@ -21067,7 +21126,31 @@
                 await enterDriveSyncPause(remoteModifiedTime);
             } catch (err) {
                 console.warn("Auto-sync check failed:", err);
+                handleDriveAutoSyncFailure(err);
             }
+        }
+
+        // v456: auto-sync used to fail silently (console only) and never try again until the NEXT edit.
+        // Now: show a note under "Last synced", and retry with backoff (30s, 1m, 2m, 5m, then every 5m).
+        function handleDriveAutoSyncFailure(err) {
+            driveSyncErrorNote = "⚠ Latest changes not uploaded yet — retrying";
+            updateDriveLastSyncedText(driveLastSyncedAtShown);
+            clearTimeout(driveRetryTimer);
+            const delays = [30000, 60000, 120000, 300000];
+            const wait = delays[Math.min(driveRetryCount, delays.length - 1)];
+            driveRetryCount++;
+            driveRetryTimer = setTimeout(() => { kickDriveSyncIfDirty(); }, wait);
+        }
+
+        // v456: also called when the app comes back to the foreground / network returns.
+        function kickDriveSyncIfDirty() {
+            if (driveSyncPauseState || driveSyncInFlight || driveAutoSyncPending) return;
+            if (driveDirtyStoreSet.size === 0 && !driveSyncErrorNote) return;
+            const connectedRow = document.getElementById("driveConnectedRow");
+            if (!connectedRow || connectedRow.classList.contains("hidden")) return;
+            const toggle = document.getElementById("driveAutoSyncToggle");
+            if (toggle && !toggle.checked) return;
+            attemptAutoSync().catch((e) => console.warn("Drive auto-sync retry failed:", e));
         }
 
         // Enters (and persists) the paused state, logs the observation, and surfaces it — a
@@ -21165,10 +21248,12 @@
 
         function updateDriveLastSyncedText(lastSyncedAt) {
             const el = document.getElementById("driveLastSyncedText");
+            if (lastSyncedAt) driveLastSyncedAtShown = lastSyncedAt;
             if (!el) return;
-            if (!lastSyncedAt) { el.textContent = "Not synced yet"; return; }
+            const note = driveSyncErrorNote ? "  " + driveSyncErrorNote : "";
+            if (!lastSyncedAt) { el.textContent = "Not synced yet" + note; return; }
             const d = new Date(lastSyncedAt);
-            el.textContent = `Last synced: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+            el.textContent = `Last synced: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` + note;
         }
 
         // ---------------------------------------------------------------------------------

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v460";
+        const APP_VERSION = "v461";
         const APP_VERSION_DATE = "2026-10-04";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -18297,6 +18297,33 @@
             renderSavingsStatement();
         }
 
+        // v461: "<" / ">" on the "Filtered: <Month Year>" bar — moves the month filter one month
+        // back/forward. January ← rolls into the previous year's December and December → rolls into
+        // the next year's January (the Year select follows), but only into years that exist in the
+        // Year select and never past the current month. With "All Years" the filter means "this
+        // month in every year", so it just wraps Dec ↔ Jan without touching the year. Returns the
+        // {year, month} to move to, or null when that step isn't allowed (button greyed out).
+        function savingsMonthStepTarget(delta) {
+            if (savingsFilterMonth === "all") return null;
+            const m = parseInt(savingsFilterMonth, 10);
+            const sel = document.getElementById("savingsYearFilter");
+            if (sel.value === "all") return { year: "all", month: (m + delta + 12) % 12 };
+            let y = Number(sel.value), nm = m + delta;
+            if (nm < 0) { nm = 11; y -= 1; }
+            else if (nm > 11) { nm = 0; y += 1; }
+            if (y !== Number(sel.value) && !savingsYearList().includes(y)) return null;
+            const now = new Date();
+            if (y > now.getFullYear() || (y === now.getFullYear() && nm > now.getMonth())) return null;
+            return { year: String(y), month: nm };
+        }
+        function savingsMonthStep(delta) {
+            const target = savingsMonthStepTarget(delta);
+            if (!target) return;
+            if (target.year !== "all") document.getElementById("savingsYearFilter").value = target.year;
+            savingsFilterMonth = String(target.month);
+            renderSavingsStatement();
+        }
+
         function setSavingsViewMode(el) {
             savingsViewMode = el.dataset.mode === "monthly" ? "monthly" : "summary";
             // Month grids are single-year: if the Year select is on "All Years", move it to the current year.
@@ -18329,8 +18356,12 @@
             const monthScopeBadge = document.getElementById("savingsMonthScopeBadge");
             if (savingsFilterMonth !== "all") {
                 const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-                const yearLabel = filterY !== "all" ? filterY : new Date().getFullYear();
+                // v461: with "All Years" the month filter covers that month in EVERY year, so say so
+                // instead of labelling it with the current year.
+                const yearLabel = filterY !== "all" ? filterY : "· All Years";
                 document.getElementById("savingsMonthScopeBadgeText").textContent = `Filtered: ${monthNames[parseInt(savingsFilterMonth)]} ${yearLabel}`;
+                document.getElementById("savingsMonthPrevBtn").disabled = savingsMonthStepTarget(-1) === null;
+                document.getElementById("savingsMonthNextBtn").disabled = savingsMonthStepTarget(1) === null;
                 monthScopeBadge.style.display = "flex";
             } else {
                 monthScopeBadge.style.display = "none";
@@ -21652,6 +21683,8 @@
             setSavingsViewMode: (el) => setSavingsViewMode(el),
             savingsYearPrev: () => savingsYearStep(-1),
             savingsYearNext: () => savingsYearStep(1),
+            savingsMonthPrev: () => savingsMonthStep(-1),
+            savingsMonthNext: () => savingsMonthStep(1),
             toggleSidebarAccountShortcuts: () => toggleSidebarAccountShortcuts(),
             openMemberFormModal: () => openMemberFormModal(),
             handleCreateMemberMobile: () => handleCreateMemberMobile(),

@@ -2007,7 +2007,7 @@
            (max-height) so the header row can stay stuck to the top while the first column stays
            stuck to the left — the corner cell sits above both (z-index 3). Sticky cells need an
            opaque background or the scrolling numbers show through them. */
-        #savingsYearNav .btn-util:disabled { opacity: 0.4; cursor: default; }
+        #savingsYearNav .btn-util:disabled, #savingsMonthScopeBadge button:disabled { opacity: 0.35; cursor: default; }
         .sav-view-btn {
             flex: 1; padding: 8px 10px; border-radius: 10px; font-weight: 700; font-size: 0.8rem;
             background: var(--chip-bg); color: var(--text-main); border: 1.5px solid var(--border-color);
@@ -4362,7 +4362,10 @@
         <!-- v148: shown only after reaching this page via the dashboard report card's "Total"
              row on a month-based tile (This Month/Last Month) — see savingsFilterMonth. -->
         <div id="savingsMonthScopeBadge" style="display:none; align-items:center; justify-content:space-between; gap:8px; background:var(--primary-chip-bg); border:1.5px solid var(--primary); border-radius:10px; padding:8px 12px; margin-bottom:12px; font-size:0.78rem; font-weight:700; color:var(--primary);">
-            <span id="savingsMonthScopeBadgeText"></span>
+            <!-- v461: "<" / ">" step the month filter back/forward (rolls over into the previous/next year). -->
+            <button type="button" class="trash-btn" id="savingsMonthPrevBtn" data-click="savingsMonthPrev" style="padding:2px 10px; font-size:0.85rem;" aria-label="Previous month">&lt;</button>
+            <span id="savingsMonthScopeBadgeText" style="flex:1; text-align:center;"></span>
+            <button type="button" class="trash-btn" id="savingsMonthNextBtn" data-click="savingsMonthNext" style="padding:2px 10px; font-size:0.85rem;" aria-label="Next month">&gt;</button>
             <button type="button" class="trash-btn" data-click="clearSavingsMonthScope" style="padding:2px 8px; font-size:0.7rem;">Clear</button>
         </div>
 

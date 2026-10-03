@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v456";
+        const APP_VERSION = "v457";
         const APP_VERSION_DATE = "2026-10-03";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -12376,6 +12376,50 @@
             }
             closeModal("calcPadModal");
         }
+
+        // v457: physical-keyboard support for the on-screen calculator (PC). Until now the pad only
+        // reacted to clicks/taps, so typing digits did nothing (or went into the Amount field hidden
+        // behind the pop-up). While #calcPadModal is open this routes keys into the same
+        // calcPadPress()/calcPadApply() the buttons use:
+        //   0-9 and "."            digits (main row or numpad)
+        //   + - * /  (also x / X)  operators (- → −, * and x → ×, / → ÷)
+        //   Backspace              ⌫          Delete or C   clear
+        //   =                      evaluate
+        //   Enter                  evaluate if the entry has an operator; if it is already a plain
+        //                          number, apply it ("Use This Value") and close
+        //   Escape                 close without applying
+        // Only preventDefault() is used (no stopPropagation) so the auto-lock activity listeners
+        // still see the keystrokes. Ctrl/Cmd/Alt combos are left alone (copy, reload, etc.).
+        document.addEventListener("keydown", (e) => {
+            const modal = document.getElementById("calcPadModal");
+            if (!modal || !modal.classList.contains("active")) return;
+            if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+            const k = e.key;
+            let val = null;
+            if (/^[0-9.]$/.test(k)) val = k;
+            else if (k === "+") val = "+";
+            else if (k === "-") val = "−";
+            else if (k === "*" || k === "x" || k === "X") val = "×";
+            else if (k === "/") val = "÷";
+            else if (k === "Backspace") val = "⌫";
+            else if (k === "Delete" || k === "c" || k === "C") val = "C";
+            else if (k === "=") val = "=";
+            else if (k === "Enter") {
+                e.preventDefault();
+                if (!calcPadExpr) return;
+                const sanitized = calcPadExpr.replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
+                if (/[0-9.][+\-*/]/.test(sanitized)) calcPadPress({ dataset: { val: "=" } });
+                else calcPadApply();
+                return;
+            } else if (k === "Escape") {
+                e.preventDefault();
+                closeModal("calcPadModal");
+                return;
+            }
+            if (val === null) return;
+            e.preventDefault();
+            calcPadPress({ dataset: { val } });
+        });
 
         // --- RECEIPT ATTACHMENTS (images + PDFs, multiple per transaction) ---
 

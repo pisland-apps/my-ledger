@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v459";
+        const APP_VERSION = "v460";
         const APP_VERSION_DATE = "2026-10-04";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -18272,6 +18272,31 @@
                     : "";
         }
 
+        // v460: "<" / ">" beside the Net Savings Statement's Year select. Steps through the real
+        // years in the select (oldest ↔ newest); both are disabled while "All Years" is chosen,
+        // same as the Activity page's year nav, and at the first/last year.
+        function savingsYearList() {
+            return [...document.getElementById("savingsYearFilter").options]
+                .map(o => o.value).filter(v => v !== "all").map(Number).sort((a, b) => a - b);
+        }
+        function updateSavingsYearNavButtons() {
+            const sel = document.getElementById("savingsYearFilter");
+            const years = savingsYearList();
+            const idx = sel.value === "all" ? -1 : years.indexOf(Number(sel.value));
+            document.getElementById("savingsYearPrevBtn").disabled = idx <= 0;
+            document.getElementById("savingsYearNextBtn").disabled = idx < 0 || idx >= years.length - 1;
+        }
+        function savingsYearStep(delta) {
+            const sel = document.getElementById("savingsYearFilter");
+            if (sel.value === "all") return;
+            const years = savingsYearList();
+            const idx = years.indexOf(Number(sel.value));
+            const target = years[idx + delta];
+            if (idx < 0 || target === undefined) return;
+            sel.value = String(target);
+            renderSavingsStatement();
+        }
+
         function setSavingsViewMode(el) {
             savingsViewMode = el.dataset.mode === "monthly" ? "monthly" : "summary";
             // Month grids are single-year: if the Year select is on "All Years", move it to the current year.
@@ -18285,6 +18310,7 @@
             const accounts = await readAllDB(STORES.ACCOUNTS);
             populateSavingsYearFilterOptions(txs);
             const filterY = document.getElementById("savingsYearFilter").value;
+            updateSavingsYearNavButtons();
 
             // v459: By Month view swaps the three summary cards for the Jan…Dec + Total matrix.
             const isMonthlyMode = savingsViewMode === "monthly";
@@ -21624,6 +21650,8 @@
             toggleAccountSubrows: (el) => toggleAccountSubrows(el),
             toggleNoteSummaryMonth: (el) => toggleNoteSummaryMonth(el),
             setSavingsViewMode: (el) => setSavingsViewMode(el),
+            savingsYearPrev: () => savingsYearStep(-1),
+            savingsYearNext: () => savingsYearStep(1),
             toggleSidebarAccountShortcuts: () => toggleSidebarAccountShortcuts(),
             openMemberFormModal: () => openMemberFormModal(),
             handleCreateMemberMobile: () => handleCreateMemberMobile(),

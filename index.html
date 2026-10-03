@@ -2007,6 +2007,7 @@
            (max-height) so the header row can stay stuck to the top while the first column stays
            stuck to the left — the corner cell sits above both (z-index 3). Sticky cells need an
            opaque background or the scrolling numbers show through them. */
+        #savingsYearNav .btn-util:disabled { opacity: 0.4; cursor: default; }
         .sav-view-btn {
             flex: 1; padding: 8px 10px; border-radius: 10px; font-weight: 700; font-size: 0.8rem;
             background: var(--chip-bg); color: var(--text-main); border: 1.5px solid var(--border-color);
@@ -4339,10 +4340,15 @@
             </div>
         </div>
 
-        <div class="filters print-filter-row" style="margin-bottom:12px;">
-            <select id="savingsYearFilter" data-change="resetSavingsPageAndRender">
+        <!-- v460: "< 2026 >" year stepper (same look as the Activity page's year nav) around the
+             original Year <select>, which stays in the middle so jumping straight to any year or
+             "All Years" still works and every existing reader of #savingsYearFilter is untouched. -->
+        <div id="savingsYearNav" class="print-filter-row" style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+            <button type="button" class="btn-util" id="savingsYearPrevBtn" data-click="savingsYearPrev" style="padding:10px 14px; font-size:1rem;" aria-label="Previous year">&lt;</button>
+            <select id="savingsYearFilter" data-change="resetSavingsPageAndRender" style="font-weight:800; font-size:1.05rem; min-width:112px; width:auto; text-align:center; text-align-last:center; padding:8px 10px; border-radius:8px; border:1.5px solid var(--border-color); background:var(--bg-color); color:var(--text-main);">
                 <option value="all">All Years</option>
             </select>
+            <button type="button" class="btn-util" id="savingsYearNextBtn" data-click="savingsYearNext" style="padding:10px 14px; font-size:1rem;" aria-label="Next year">&gt;</button>
         </div>
 
         <!-- v459: Summary (the original single-column statement) vs By Month (Jan…Dec + Total

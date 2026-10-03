@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v458";
+        const APP_VERSION = "v459";
         const APP_VERSION_DATE = "2026-10-04";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1463,6 +1463,7 @@
         // its selected period onto the Savings Statement — see navigateToSavingsPage() and
         // populateSavingsYearFilterOptions().
         let savingsFilterMonth = "all";
+        let savingsViewMode = "summary"; // v459: "summary" | "monthly" (By Month matrix)
         let pendingSavingsYearOverride = null;
         // Per-account "Account Activity" year navigation (v33) — which year is currently shown,
         // and the sorted list of years that actually have a transaction for that account (used to
@@ -18138,11 +18139,164 @@
             return html;
         }
 
+        // v459: Net Savings Statement "By Month" — one column per month (Jan…Dec, then Total) for a
+        // single year, so the whole year reads as one sheet: Income categories, Total Income,
+        // Expense categories, Total Expenses, Net Savings. Uses exactly the same rules as the
+        // Summary view above (refunds reduce their expense category, categories flagged
+        // "Exclude from Net Savings Report" are kept out of the totals and only footnoted, Main
+        // Categories combine their own amount with every Subcategory's and expand with the same
+        // ▼ toggle), so a row's Total column always equals what Summary shows for that year.
+        // "All Years" has no meaning for a month grid, so it falls back to the current year (and
+        // says so). For the current year only months up to today are shown; past years show all 12.
+        // Tapping a category name opens its ledger for that year.
+        function renderSavingsMonthlyReport(txs, accounts, filterY) {
+            const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+            const nowY = new Date().getFullYear();
+            const year = filterY === "all" ? nowY : Number(filterY);
+            const lastMonth = year === nowY ? new Date().getMonth() : 11;
+            const cols = lastMonth + 1;
+
+            const excludedCatNames = new Set(dynamicCategories.filter(c => c.excludeFromSavings).map(c => c.name));
+            const zeros = () => new Array(12).fill(0);
+            const data = { income: {}, expense: {} };   // type -> category -> [12 monthly totals]
+            const add = (type, cat, m, v) => { (data[type][cat] = data[type][cat] || zeros())[m] += v; };
+            const excludedByMonth = zeros();
+
+            txs.forEach(t => {
+                const d = new Date(t.date);
+                if (d.getFullYear() !== year) return;
+                const m = d.getMonth();
+                const tBase = convertTxAmountToBase(t, accounts);
+                if (t.type === "income" && t.isRefund) {
+                    if (excludedCatNames.has(t.cat)) { excludedByMonth[m] += tBase; return; }
+                    add("expense", t.cat, m, -tBase);
+                } else if (t.type === "income") {
+                    if (excludedCatNames.has(t.cat)) { excludedByMonth[m] += tBase; return; }
+                    add("income", t.cat, m, tBase);
+                } else if (t.type === "expense") {
+                    if (excludedCatNames.has(t.cat)) { excludedByMonth[m] -= tBase; return; }
+                    add("expense", t.cat, m, tBase);
+                }
+            });
+
+            const sumRows = rows => { const s = zeros(); rows.forEach(r => r.vals.forEach((v, i) => s[i] += v)); return s; };
+            const addArr = (a, b) => a.map((v, i) => v + (b ? b[i] : 0));
+            const hasValue = arr => arr.some(v => Math.abs(v) >= SAVINGS_ZERO_EPS);
+
+            // Same grouping as buildSavingsSectionRowsHTML: Main + its Subcategories combined,
+            // optional Subcategory sub-rows, then any legacy category names with no record.
+            function buildSectionRows(type) {
+                const catRecords = dynamicCategories.filter(c => c.type === type);
+                const mains = catRecords.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
+                const subsByMainId = new Map();
+                catRecords.filter(c => c.parentId).forEach(s => {
+                    if (!subsByMainId.has(s.parentId)) subsByMainId.set(s.parentId, []);
+                    subsByMainId.get(s.parentId).push(s);
+                });
+                const rendered = new Set();
+                const rows = [];
+                mains.forEach(main => {
+                    const subs = (subsByMainId.get(main.id) || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+                    rendered.add(main.name);
+                    const direct = data[type][main.name] || zeros();
+                    let combined = direct.slice();
+                    const subRows = [];
+                    subs.forEach(s => {
+                        rendered.add(s.name);
+                        const v = data[type][s.name] || zeros();
+                        combined = addArr(combined, v);
+                        if (hasValue(v)) subRows.push({ name: s.name, category: s.name, icon: s.icon, vals: v, isSub: true });
+                    });
+                    const icon = main.icon || getCategoryIcon(main.name, type);
+                    if (subRows.length > 0 && hasValue(direct)) subRows.unshift({ name: `${main.name} (General)`, category: main.name, icon, vals: direct, isSub: true });
+                    if (!hasValue(combined) && subRows.length === 0) return;
+                    rows.push({ name: main.name, category: main.name, icon, vals: combined, mainId: subRows.length ? main.id : null });
+                    if (subRows.length && savingsExpandedMains.has(main.id)) subRows.forEach(r => rows.push(r));
+                });
+                Object.keys(data[type]).sort((a, b) => a.localeCompare(b)).forEach(name => {
+                    if (rendered.has(name) || !hasValue(data[type][name])) return;
+                    rows.push({ name, category: name, icon: getCategoryIcon(name, type), vals: data[type][name] });
+                });
+                return rows;
+            }
+
+            const incRows = buildSectionRows("income");
+            const expRows = buildSectionRows("expense");
+            // Totals only count top-level rows (sub-rows are already inside their Main's combined row).
+            const incTotals = sumRows(incRows.filter(r => !r.isSub));
+            const expTotals = sumRows(expRows.filter(r => !r.isSub));
+            const netTotals = incTotals.map((v, i) => v - expTotals[i]);
+
+            const fmt = v => Math.abs(v) < SAVINGS_ZERO_EPS ? "–" : formatCurrencyNumberOnly(v);
+            const rowTotal = vals => vals.slice(0, cols).reduce((a, b) => a + b, 0);
+            const cell = (v, color) => `<td class="${Math.abs(v) < SAVINGS_ZERO_EPS ? "sav-zero" : ""}"${color && Math.abs(v) >= SAVINGS_ZERO_EPS ? ` style="color:${color};"` : ""}>${fmt(v)}</td>`;
+
+            const catRowHTML = (r, color) => {
+                const caret = r.mainId ? `<span data-click="toggleSavingsMainExpand" data-id="${escapeHtml(r.mainId)}" style="cursor:pointer; color:var(--text-muted); font-size:0.65rem; margin-right:3px;">${savingsExpandedMains.has(r.mainId) ? "▲" : "▼"}</span>` : "";
+                const label = `${caret}<span class="sav-cat" data-click="navigateToCategoryPage" data-category="${escapeHtml(r.category)}" data-back="savings" data-year="${year}" data-month="all">${r.isSub ? "↳ " : ""}${r.icon || ""} ${escapeHtml(r.name)}</span>`;
+                let tds = "";
+                for (let i = 0; i < cols; i++) tds += cell(r.vals[i], color);
+                return `<tr class="${r.isSub ? "sav-sub-row" : ""}"><td>${label}</td>${tds}${cell(rowTotal(r.vals), color)}</tr>`;
+            };
+            const totalRowHTML = (label, vals, colorFn) => {
+                let tds = "";
+                for (let i = 0; i < cols; i++) tds += `<td${colorFn ? ` style="color:${colorFn(vals[i])};"` : ""}>${fmt(vals[i])}</td>`;
+                const tot = rowTotal(vals);
+                return `<tr class="sav-total-row"><td>${label}</td>${tds}<td${colorFn ? ` style="color:${colorFn(tot)};"` : ""}>${fmt(tot)}</td></tr>`;
+            };
+            const sectionHeadHTML = (label, color) => `<tr><td colspan="${cols + 2}" style="font-weight:800; color:${color}; text-align:left; background:var(--card-bg);">${label}</td></tr>`;
+            const netColor = v => Math.abs(v) < SAVINGS_ZERO_EPS ? "var(--text-muted)" : (v > 0 ? "var(--income-color)" : "var(--expense-color)");
+
+            let head = `<th>${year}</th>`;
+            for (let i = 0; i < cols; i++) head += `<th>${MONTHS[i]}</th>`;
+            head += `<th>Total</th>`;
+
+            const body = (incRows.length || expRows.length)
+                ? sectionHeadHTML("INCOME", "var(--income-color)")
+                  + (incRows.map(r => catRowHTML(r, "var(--income-color)")).join("") || `<tr><td colspan="${cols + 2}" style="text-align:left; color:var(--text-muted);">No income entries logged.</td></tr>`)
+                  + totalRowHTML("Total Income", incTotals, () => "var(--income-color)")
+                  + sectionHeadHTML("EXPENSES", "var(--expense-color)")
+                  + (expRows.map(r => catRowHTML(r, "var(--expense-color)")).join("") || `<tr><td colspan="${cols + 2}" style="text-align:left; color:var(--text-muted);">No expense entries logged.</td></tr>`)
+                  + totalRowHTML("Total Expenses", expTotals, () => "var(--expense-color)")
+                  + totalRowHTML("Net Savings", netTotals, netColor)
+                : `<tr><td colspan="${cols + 2}" style="text-align:left; color:var(--text-muted);">No transactions logged in ${year}.</td></tr>`;
+
+            document.getElementById("savingsMonthlyTableWrap").innerHTML =
+                `<table class="sav-month-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+            document.getElementById("savingsMonthlyNote").textContent =
+                `${year} · amounts in ${baseCurrency}` + (filterY === "all" ? " · All Years has no month view, showing the current year" : "") + " · swipe sideways, category names stay in place";
+            const exclTotal = rowTotal(excludedByMonth);
+            document.getElementById("savingsMonthlyExcludedNote").textContent =
+                Math.abs(exclTotal) >= SAVINGS_ZERO_EPS
+                    ? `Not counted above (categories excluded from this report): ${exclTotal < 0 ? "-" : "+"}${formatCurrency(Math.abs(exclTotal), baseCurrency)} for ${year}. See Summary view for the breakdown.`
+                    : "";
+        }
+
+        function setSavingsViewMode(el) {
+            savingsViewMode = el.dataset.mode === "monthly" ? "monthly" : "summary";
+            // Month grids are single-year: if the Year select is on "All Years", move it to the current year.
+            const sel = document.getElementById("savingsYearFilter");
+            if (savingsViewMode === "monthly" && sel.value === "all") sel.value = String(new Date().getFullYear());
+            renderSavingsStatement();
+        }
+
         async function renderSavingsStatement() {
             const txs = await readAllDB(STORES.TRANSACTIONS);
             const accounts = await readAllDB(STORES.ACCOUNTS);
             populateSavingsYearFilterOptions(txs);
             const filterY = document.getElementById("savingsYearFilter").value;
+
+            // v459: By Month view swaps the three summary cards for the Jan…Dec + Total matrix.
+            const isMonthlyMode = savingsViewMode === "monthly";
+            document.getElementById("savingsSummaryView").style.display = isMonthlyMode ? "none" : "";
+            document.getElementById("savingsMonthlyView").style.display = isMonthlyMode ? "" : "none";
+            document.getElementById("savingsViewSummaryBtn").classList.toggle("active", !isMonthlyMode);
+            document.getElementById("savingsViewMonthlyBtn").classList.toggle("active", isMonthlyMode);
+            if (isMonthlyMode) {
+                document.getElementById("savingsMonthScopeBadge").style.display = "none";
+                renderSavingsMonthlyReport(txs, accounts, filterY);
+                return;
+            }
 
             // v148: small "Filtered: <Month Year> · Clear" badge for the report card's Total
             // click — only ever visible when savingsFilterMonth is set, i.e. reached that way.
@@ -21469,6 +21623,7 @@
             clearAccountsPageTypeFilter: () => clearAccountsPageTypeFilter(),
             toggleAccountSubrows: (el) => toggleAccountSubrows(el),
             toggleNoteSummaryMonth: (el) => toggleNoteSummaryMonth(el),
+            setSavingsViewMode: (el) => setSavingsViewMode(el),
             toggleSidebarAccountShortcuts: () => toggleSidebarAccountShortcuts(),
             openMemberFormModal: () => openMemberFormModal(),
             handleCreateMemberMobile: () => handleCreateMemberMobile(),

@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v457";
-        const APP_VERSION_DATE = "2026-10-03";
+        const APP_VERSION = "v458";
+        const APP_VERSION_DATE = "2026-10-04";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -3746,6 +3746,17 @@
             }
         }
 
+        // v458: expands/collapses one month's date list inside the Description Summary modal
+        // (whole-year / all-years view). Toggles just that row in the DOM, like toggleAccountSubrows.
+        function toggleNoteSummaryMonth(el) {
+            const box = document.getElementById(el.dataset.id);
+            if (!box) return;
+            const nowOpen = box.classList.toggle("hidden") === false;
+            const caret = el.querySelector(".ns-caret");
+            if (caret) caret.textContent = nowOpen ? "▾" : "▸";
+            el.setAttribute("aria-expanded", nowOpen ? "true" : "false");
+        }
+
         // v188: "Group by Description" — collapses every transaction in the category/period
         // currently being viewed (see navigateToCategoryPage below) into one row per distinct
         // Description text (case-insensitive, trimmed), each with a combined total, an
@@ -3773,9 +3784,18 @@
                 const noteRaw = (t.desc || "").trim();
                 const key = noteRaw ? noteRaw.toLowerCase() : "\u0000no-note";
                 if (!groups[key]) groups[key] = { label: noteRaw || "(No description)", total: 0, count: 0, dates: [] };
-                groups[key].total += convertTxAmountToBase(t, accounts);
+                const baseAmt = convertTxAmountToBase(t, accounts);
+                groups[key].total += baseAmt;
                 groups[key].count += 1;
                 groups[key].dates.push(t.date);
+                // v458: per-month buckets, only used when the view isn't already a single month
+                // (see wholePeriodView below) — keyed "YYYY-MM" so they sort chronologically.
+                const ym = /^\d{4}-\d{2}/.test(t.date) ? t.date.slice(0, 7) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+                if (!groups[key].months) groups[key].months = {};
+                if (!groups[key].months[ym]) groups[key].months[ym] = { total: 0, count: 0, dates: [] };
+                groups[key].months[ym].total += baseAmt;
+                groups[key].months[ym].count += 1;
+                groups[key].months[ym].dates.push(t.date);
             });
 
             const entries = Object.values(groups).sort((a, b) => b.total - a.total);
@@ -3788,21 +3808,55 @@
             // this same modal is also reached from income categories.
             const accentColor = categoryTxType === "income" ? "var(--income-color)" : "var(--expense-color)";
 
+            // v458: when the view covers more than one month (a whole year, or all years), each
+            // Description group shows its grand total in the header (the red figure, as before) and
+            // then one row per month — "Sep (x12) = RM…" — instead of one long flat date list. Tapping
+            // a month row expands that month's dates. A single-month view keeps the original flat
+            // date list unchanged.
+            const MONTH_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+            const wholePeriodView = categoryDrillMonth === "all";
+            const showYearInMonthLabel = categoryDrillYear === "all";
+            const monthLabelFor = ym => {
+                const [yy, mm] = ym.split("-");
+                const name = MONTH_SHORT[Number(mm) - 1] || ym;
+                return showYearInMonthLabel ? `${name} ${yy}` : name;
+            };
+            const dateListHTML = dates => dates.slice().sort().reverse().map(dt => `<div style="padding-left:2px;">• ${escapeHtml(dt)}</div>`).join("");
+
             document.getElementById("noteSummaryModalList").innerHTML = entries.length === 0
                 ? `<p style="font-size:0.8rem; text-align:center; color:var(--text-muted);">No transactions to group here.</p>`
-                : entries.map(g => {
-                    const datesHTML = g.dates.slice().sort().reverse().map(dt => `<div style="padding-left:2px;">• ${escapeHtml(dt)}</div>`).join("");
+                : entries.map((g, gi) => {
                     const countSuffix = g.count > 1 ? ` (x${g.count})` : "";
+                    let bodyHTML;
+                    if (wholePeriodView && g.months) {
+                        bodyHTML = Object.keys(g.months).sort().reverse().map(ym => {
+                            const m = g.months[ym];
+                            const rowId = `nsMonth-${gi}-${ym}`;
+                            return `
+                                <div style="border-top:1px dashed #e8d9c5; padding:6px 0;">
+                                    <button type="button" data-click="toggleNoteSummaryMonth" data-id="${rowId}" aria-expanded="false" style="all:unset; box-sizing:border-box; width:100%; cursor:pointer; display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:0.9rem;">
+                                        <span><span class="ns-caret" style="display:inline-block; width:1.1em; color:var(--text-muted);">▸</span>${escapeHtml(monthLabelFor(ym))}${m.count > 1 ? ` (x${m.count})` : ""}</span>
+                                        <span style="color:${accentColor}; font-weight:700; white-space:nowrap;">${formatCurrency(m.total, baseCurrency)}</span>
+                                    </button>
+                                    <div id="${rowId}" class="hidden" style="font-size:0.72rem; color:var(--text-muted); margin:4px 0 2px 1.1em;">
+                                        ${dateListHTML(m.dates)}
+                                    </div>
+                                </div>`;
+                        }).join("");
+                    } else {
+                        bodyHTML = `
+                            <div style="font-size:0.72rem; color:var(--text-muted); margin-top:6px;">
+                                📅 Dates:
+                                ${dateListHTML(g.dates)}
+                            </div>`;
+                    }
                     return `
                         <div class="note-summary-entry" style="border:1px solid var(--border-color); border-left:4px solid ${accentColor}; border-radius:10px; padding:12px 14px; margin-bottom:12px;">
-                            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
+                            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; ${wholePeriodView ? "margin-bottom:6px;" : ""}">
                                 <strong style="font-size:0.95rem;">${escapeHtml(g.label)}${countSuffix}</strong>
                                 <span class="note-summary-amount" style="color:${accentColor}; white-space:nowrap;">${formatCurrency(g.total, baseCurrency)}</span>
                             </div>
-                            <div style="font-size:0.72rem; color:var(--text-muted); margin-top:6px;">
-                                📅 Dates:
-                                ${datesHTML}
-                            </div>
+                            ${bodyHTML}
                         </div>
                     `;
                 }).join("");
@@ -21414,6 +21468,7 @@
             sidebarFilterAccountsByType: (el) => sidebarFilterAccountsByType(el),
             clearAccountsPageTypeFilter: () => clearAccountsPageTypeFilter(),
             toggleAccountSubrows: (el) => toggleAccountSubrows(el),
+            toggleNoteSummaryMonth: (el) => toggleNoteSummaryMonth(el),
             toggleSidebarAccountShortcuts: () => toggleSidebarAccountShortcuts(),
             openMemberFormModal: () => openMemberFormModal(),
             handleCreateMemberMobile: () => handleCreateMemberMobile(),

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v462";
+        const APP_VERSION = "v463";
         const APP_VERSION_DATE = "2026-10-04";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -5389,6 +5389,7 @@
             document.querySelectorAll(".sidebar-item").forEach(i => i.classList.remove("active"));
             const workspaceHidden = document.getElementById("page-workspace").classList.contains("hidden");
             const savingsHidden = document.getElementById("page-savings").classList.contains("hidden");
+            const networthStatementHidden = document.getElementById("page-networth-statement").classList.contains("hidden");
             const ledgerHidden = document.getElementById("page-ledger").classList.contains("hidden");
             const accountsHidden = document.getElementById("page-accounts").classList.contains("hidden");
             const categoriesHidden = document.getElementById("page-categories").classList.contains("hidden");
@@ -5405,6 +5406,7 @@
             const plannedPaymentsHidden = document.getElementById("page-plannedpayments").classList.contains("hidden");
             let target = null;
             if (!savingsHidden) target = "savings";
+            else if (!networthStatementHidden) target = "networth-statement";
             else if (!inventoryHidden) target = "inventory";
             else if (!plannedPaymentsHidden) target = "plannedpayments";
             else if (!accountsHidden) target = "accounts";
@@ -5443,6 +5445,7 @@
             if (target === "workspace") navigateToWorkspace();
             else if (target === "all-ledger") navigateToLedgerPage("all");
             else if (target === "savings") navigateToSavingsPage();
+            else if (target === "networth-statement") navigateToNetWorthStatementPage();
             else if (target === "accounts") navigateToAccountsPage();
             else if (target === "categories") navigateToCategoriesPage();
             else if (target === "database") navigateToDatabasePage();

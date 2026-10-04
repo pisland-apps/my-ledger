@@ -3059,6 +3059,12 @@
             <button class="sidebar-item" data-click="sidebarGo" data-target="total-summary">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg></span> Total Bill Summary
             </button>
+            <!-- v462: Net Savings Statement as its own Reports entry (it used to be reachable only
+                 from the Dashboard report card). Year/month filters + CSV export live on the page
+                 itself — see renderSavingsStatement()/exportSavingsCsv(). -->
+            <button class="sidebar-item" data-click="sidebarGo" data-target="savings">
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg></span> Net Savings Statement
+            </button>
             <!-- v386: Monthly Trend — the Dashboard's month-by-month income/expense chart + table,
                  now also reachable as its own report page (the same DOM node is moved here; see
                  placeMonthlyTrendSection()). Sits next to Total Bill Summary since the two are the
@@ -4334,10 +4340,13 @@
     <div id="page-savings" class="page hidden">
         <div class="nav-header">
             <button class="back-btn" data-click="handleSavingsBackClick">&larr; Back</button>
-            <div>
+            <div style="flex:1;">
                 <h3 style="font-weight:800; font-size:1.2rem;">Net Savings Statement</h3>
                 <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Balanced Category Sheet</p>
             </div>
+            <!-- v462: exports exactly what the page is showing (Summary → period totals, By Month →
+                 the Jan…Total matrix) — see exportSavingsCsv()'s own comment. -->
+            <button id="savingsExportCsvBtn" class="icon-edit-btn" data-click="exportSavingsCsv" title="Export to CSV">📤</button>
         </div>
 
         <!-- v460: "< 2026 >" year stepper (same look as the Activity page's year nav) around the
@@ -4357,6 +4366,20 @@
         <div class="print-filter-row" style="display:flex; gap:8px; margin-bottom:12px;">
             <button type="button" id="savingsViewSummaryBtn" class="sav-view-btn active" data-click="setSavingsViewMode" data-mode="summary">Summary</button>
             <button type="button" id="savingsViewMonthlyBtn" class="sav-view-btn" data-click="setSavingsViewMode" data-mode="monthly">By Month</button>
+        </div>
+
+        <!-- v462: Month filter you can set yourself (before, a month only got applied by tapping a
+             Dashboard card). Summary view only — By Month already shows every month. Picking a
+             month shows the "Filtered: …" bar below with its < > stepper and Clear. -->
+        <div id="savingsMonthSelectRow" class="print-filter-row" style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+            <label for="savingsMonthFilter" style="font-size:0.78rem; font-weight:700; color:var(--text-muted);">Month</label>
+            <select id="savingsMonthFilter" data-change="savingsMonthSelectChange" style="flex:1; font-weight:700; padding:8px 10px; border-radius:8px; border:1.5px solid var(--border-color); background:var(--bg-color); color:var(--text-main);">
+                <option value="all">All Months</option>
+                <option value="0">January</option><option value="1">February</option><option value="2">March</option>
+                <option value="3">April</option><option value="4">May</option><option value="5">June</option>
+                <option value="6">July</option><option value="7">August</option><option value="8">September</option>
+                <option value="9">October</option><option value="10">November</option><option value="11">December</option>
+            </select>
         </div>
 
         <!-- v148: shown only after reaching this page via the dashboard report card's "Total"

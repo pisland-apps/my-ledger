@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v461";
+        const APP_VERSION = "v462";
         const APP_VERSION_DATE = "2026-10-04";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -18139,33 +18139,24 @@
             return html;
         }
 
-        // v459: Net Savings Statement "By Month" — one column per month (Jan…Dec, then Total) for a
-        // single year, so the whole year reads as one sheet: Income categories, Total Income,
-        // Expense categories, Total Expenses, Net Savings. Uses exactly the same rules as the
-        // Summary view above (refunds reduce their expense category, categories flagged
-        // "Exclude from Net Savings Report" are kept out of the totals and only footnoted, Main
-        // Categories combine their own amount with every Subcategory's and expand with the same
-        // ▼ toggle), so a row's Total column always equals what Summary shows for that year.
-        // "All Years" has no meaning for a month grid, so it falls back to the current year (and
-        // says so). For the current year only months up to today are shown; past years show all 12.
-        // Tapping a category name opens its ledger for that year.
-        function renderSavingsMonthlyReport(txs, accounts, filterY) {
-            const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-            const nowY = new Date().getFullYear();
-            const year = filterY === "all" ? nowY : Number(filterY);
-            const lastMonth = year === nowY ? new Date().getMonth() : 11;
-            const cols = lastMonth + 1;
-
+        // v462: ONE calculation for everything Net Savings that is a grid or a file: the By Month
+        // table and the CSV export both come from here, so they can never disagree. Same rules as
+        // the Summary view: refunds reduce their expense category, categories flagged "Exclude from
+        // Net Savings Report" stay out of the totals (their net effect is kept separately in
+        // excludedByMonth), and a Main Category's own amount is kept apart from its Subcategories'
+        // (they are combined later by buildSavingsSectionRows). filterY/filterM are "all" or a
+        // value; with filterY "all" the 12 slots hold that month summed over every year.
+        function computeSavingsDataset(txs, accounts, filterY, filterM) {
             const excludedCatNames = new Set(dynamicCategories.filter(c => c.excludeFromSavings).map(c => c.name));
             const zeros = () => new Array(12).fill(0);
             const data = { income: {}, expense: {} };   // type -> category -> [12 monthly totals]
             const add = (type, cat, m, v) => { (data[type][cat] = data[type][cat] || zeros())[m] += v; };
             const excludedByMonth = zeros();
-
             txs.forEach(t => {
                 const d = new Date(t.date);
-                if (d.getFullYear() !== year) return;
+                if (filterY !== "all" && d.getFullYear() !== Number(filterY)) return;
                 const m = d.getMonth();
+                if (filterM !== "all" && m !== Number(filterM)) return;
                 const tBase = convertTxAmountToBase(t, accounts);
                 if (t.type === "income" && t.isRefund) {
                     if (excludedCatNames.has(t.cat)) { excludedByMonth[m] += tBase; return; }
@@ -18178,51 +18169,70 @@
                     add("expense", t.cat, m, tBase);
                 }
             });
+            return { data, excludedByMonth };
+        }
 
-            const sumRows = rows => { const s = zeros(); rows.forEach(r => r.vals.forEach((v, i) => s[i] += v)); return s; };
-            const addArr = (a, b) => a.map((v, i) => v + (b ? b[i] : 0));
+        // Turns a dataset's per-category arrays into display rows: Main + its Subcategories combined
+        // into one row (mainId set when it has sub-rows to expand), then any legacy category names
+        // with no category record. expandSub: true → include the Subcategory sub-rows (and a
+        // "(General)" row for the Main's own amount); sub-rows carry `parent` = the Main's name.
+        function buildSavingsSectionRows(data, type, expandSub) {
+            const zeros = () => new Array(12).fill(0);
+            const addArr = (a, b) => a.map((v, i) => v + b[i]);
             const hasValue = arr => arr.some(v => Math.abs(v) >= SAVINGS_ZERO_EPS);
+            const catRecords = dynamicCategories.filter(c => c.type === type);
+            const mains = catRecords.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
+            const subsByMainId = new Map();
+            catRecords.filter(c => c.parentId).forEach(s => {
+                if (!subsByMainId.has(s.parentId)) subsByMainId.set(s.parentId, []);
+                subsByMainId.get(s.parentId).push(s);
+            });
+            const rendered = new Set();
+            const rows = [];
+            mains.forEach(main => {
+                const subs = (subsByMainId.get(main.id) || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+                rendered.add(main.name);
+                const direct = data[type][main.name] || zeros();
+                let combined = direct.slice();
+                const subRows = [];
+                subs.forEach(s => {
+                    rendered.add(s.name);
+                    const v = data[type][s.name] || zeros();
+                    combined = addArr(combined, v);
+                    if (hasValue(v)) subRows.push({ name: s.name, category: s.name, parent: main.name, subName: s.name, icon: s.icon, vals: v, isSub: true });
+                });
+                const icon = main.icon || getCategoryIcon(main.name, type);
+                if (subRows.length > 0 && hasValue(direct)) subRows.unshift({ name: `${main.name} (General)`, category: main.name, parent: main.name, subName: "(General)", icon, vals: direct, isSub: true });
+                if (!hasValue(combined) && subRows.length === 0) return;
+                rows.push({ name: main.name, category: main.name, icon, vals: combined, mainId: subRows.length ? main.id : null });
+                if (subRows.length && expandSub(main.id)) subRows.forEach(r => rows.push(r));
+            });
+            Object.keys(data[type]).sort((a, b) => a.localeCompare(b)).forEach(name => {
+                if (rendered.has(name) || !hasValue(data[type][name])) return;
+                rows.push({ name, category: name, icon: getCategoryIcon(name, type), vals: data[type][name] });
+            });
+            return rows;
+        }
 
-            // Same grouping as buildSavingsSectionRowsHTML: Main + its Subcategories combined,
-            // optional Subcategory sub-rows, then any legacy category names with no record.
-            function buildSectionRows(type) {
-                const catRecords = dynamicCategories.filter(c => c.type === type);
-                const mains = catRecords.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
-                const subsByMainId = new Map();
-                catRecords.filter(c => c.parentId).forEach(s => {
-                    if (!subsByMainId.has(s.parentId)) subsByMainId.set(s.parentId, []);
-                    subsByMainId.get(s.parentId).push(s);
-                });
-                const rendered = new Set();
-                const rows = [];
-                mains.forEach(main => {
-                    const subs = (subsByMainId.get(main.id) || []).slice().sort((a, b) => a.name.localeCompare(b.name));
-                    rendered.add(main.name);
-                    const direct = data[type][main.name] || zeros();
-                    let combined = direct.slice();
-                    const subRows = [];
-                    subs.forEach(s => {
-                        rendered.add(s.name);
-                        const v = data[type][s.name] || zeros();
-                        combined = addArr(combined, v);
-                        if (hasValue(v)) subRows.push({ name: s.name, category: s.name, icon: s.icon, vals: v, isSub: true });
-                    });
-                    const icon = main.icon || getCategoryIcon(main.name, type);
-                    if (subRows.length > 0 && hasValue(direct)) subRows.unshift({ name: `${main.name} (General)`, category: main.name, icon, vals: direct, isSub: true });
-                    if (!hasValue(combined) && subRows.length === 0) return;
-                    rows.push({ name: main.name, category: main.name, icon, vals: combined, mainId: subRows.length ? main.id : null });
-                    if (subRows.length && savingsExpandedMains.has(main.id)) subRows.forEach(r => rows.push(r));
-                });
-                Object.keys(data[type]).sort((a, b) => a.localeCompare(b)).forEach(name => {
-                    if (rendered.has(name) || !hasValue(data[type][name])) return;
-                    rows.push({ name, category: name, icon: getCategoryIcon(name, type), vals: data[type][name] });
-                });
-                return rows;
-            }
+        // v459: Net Savings Statement "By Month" — one column per month (Jan…Dec, then Total) for a
+        // single year, so the whole year reads as one sheet: Income categories, Total Income,
+        // Expense categories, Total Expenses, Net Savings. A row's Total column always equals what
+        // Summary shows for that year. "All Years" has no meaning for a month grid, so it falls back
+        // to the current year (and says so). For the current year only months up to today are shown;
+        // past years show all 12. Tapping a category name opens its ledger for that year.
+        function renderSavingsMonthlyReport(txs, accounts, filterY) {
+            const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+            const nowY = new Date().getFullYear();
+            const year = filterY === "all" ? nowY : Number(filterY);
+            const lastMonth = year === nowY ? new Date().getMonth() : 11;
+            const cols = lastMonth + 1;
 
-            const incRows = buildSectionRows("income");
-            const expRows = buildSectionRows("expense");
+            const { data, excludedByMonth } = computeSavingsDataset(txs, accounts, year, "all");
+            const expandSub = id => savingsExpandedMains.has(id);
+            const incRows = buildSavingsSectionRows(data, "income", expandSub);
+            const expRows = buildSavingsSectionRows(data, "expense", expandSub);
             // Totals only count top-level rows (sub-rows are already inside their Main's combined row).
+            const sumRows = rows => { const s = new Array(12).fill(0); rows.forEach(r => r.vals.forEach((v, i) => s[i] += v)); return s; };
             const incTotals = sumRows(incRows.filter(r => !r.isSub));
             const expTotals = sumRows(expRows.filter(r => !r.isSub));
             const netTotals = incTotals.map((v, i) => v - expTotals[i]);
@@ -18270,6 +18280,89 @@
                 Math.abs(exclTotal) >= SAVINGS_ZERO_EPS
                     ? `Not counted above (categories excluded from this report): ${exclTotal < 0 ? "-" : "+"}${formatCurrency(Math.abs(exclTotal), baseCurrency)} for ${year}. See Summary view for the breakdown.`
                     : "";
+        }
+
+        // v462: 📤 on the Net Savings Statement page — exports what the page is showing, using the
+        // same csvEscape()/BOM convention as the other exports (see exportLedgerCsv()).
+        //  • Summary view  → the selected Year (+ Month, if one is picked): one row per
+        //    Category/Subcategory (flat, so a spreadsheet SUM() never double-counts a Main and its
+        //    Subcategories), then Total Income / Total Expenses / Net Savings.
+        //  • By Month view → the Jan…Total matrix for the year, same flat rows and totals.
+        // Both use computeSavingsDataset(), the same rules as the on-screen Summary/By Month.
+        async function exportSavingsCsv() {
+            const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+            const MONTH_FULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const selY = document.getElementById("savingsYearFilter").value;
+            const isMonthly = savingsViewMode === "monthly";
+            const nowY = new Date().getFullYear();
+            const filterY = isMonthly && selY === "all" ? String(nowY) : selY;
+            const filterM = isMonthly ? "all" : savingsFilterMonth;
+
+            const { data, excludedByMonth } = computeSavingsDataset(txs, accounts, filterY, filterM);
+            const expandAll = () => true;
+            // Flat leaf rows: drop a Main's combined row when its sub-rows follow it.
+            const leaves = type => buildSavingsSectionRows(data, type, expandAll).filter(r => !r.mainId);
+            const incLeaves = leaves("income"), expLeaves = leaves("expense");
+            if (incLeaves.length === 0 && expLeaves.length === 0) {
+                showToast("No income or expense transactions to export");
+                return;
+            }
+            const sum12 = vals => vals.reduce((a, b) => a + b, 0);
+            const totals = rows => { const s = new Array(12).fill(0); rows.forEach(r => r.vals.forEach((v, i) => s[i] += v)); return s; };
+            const incT = totals(incLeaves), expT = totals(expLeaves);
+            const netT = incT.map((v, i) => v - expT[i]);
+            const catCols = r => [r.parent || r.category, r.parent ? r.subName : ""];
+
+            let header, rows, scope;
+            if (isMonthly) {
+                const year = Number(filterY);
+                const cols = (year === nowY ? new Date().getMonth() : 11) + 1;
+                const take = vals => vals.slice(0, cols);
+                const line = (type, c1, c2, vals) => [type, c1, c2, ...take(vals).map(v => v.toFixed(2)), sum12(take(vals)).toFixed(2)];
+                header = ["Type", "Category", "Subcategory", ...MONTHS.slice(0, cols), `Total (${baseCurrency})`];
+                rows = [
+                    ...incLeaves.map(r => line("Income", ...catCols(r), r.vals)),
+                    line("Total Income", "", "", incT),
+                    ...expLeaves.map(r => line("Expense", ...catCols(r), r.vals)),
+                    line("Total Expenses", "", "", expT),
+                    line("Net Savings", "", "", netT)
+                ];
+                if (Math.abs(sum12(take(excludedByMonth))) >= SAVINGS_ZERO_EPS) rows.push(line("Excluded from report (not counted above)", "", "", excludedByMonth));
+                scope = `${year}_by-month`;
+            } else {
+                const period = filterY === "all"
+                    ? (filterM === "all" ? "All Years" : `All Years - ${MONTH_FULL[Number(filterM)]}`)
+                    : (filterM === "all" ? filterY : `${filterY}-${String(Number(filterM) + 1).padStart(2, "0")}`);
+                const line = (type, c1, c2, v) => [period, type, c1, c2, v.toFixed(2)];
+                header = ["Period", "Type", "Category", "Subcategory", `Amount (${baseCurrency})`];
+                rows = [
+                    ...incLeaves.map(r => line("Income", ...catCols(r), sum12(r.vals))),
+                    line("Total Income", "", "", sum12(incT)),
+                    ...expLeaves.map(r => line("Expense", ...catCols(r), sum12(r.vals))),
+                    line("Total Expenses", "", "", sum12(expT)),
+                    line("Net Savings", "", "", sum12(netT))
+                ];
+                if (Math.abs(sum12(excludedByMonth)) >= SAVINGS_ZERO_EPS) rows.push(line("Excluded from report (not counted above)", "", "", sum12(excludedByMonth)));
+                scope = period.replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-+|-+$/g, "");
+            }
+
+            const csv = [header, ...rows].map(r => r.map(csvEscape).join(",")).join("\r\n");
+            const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `net_savings_${scope}_${todayLocalStr()}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast("\ud83d\udce4 Exported Net Savings Statement to CSV");
+        }
+
+        // v462: the Month <select> on the Net Savings Statement page (Summary view).
+        function savingsMonthSelectChange(el) {
+            savingsFilterMonth = el.value;
+            renderSavingsStatement();
         }
 
         // v460: "<" / ">" beside the Net Savings Statement's Year select. Steps through the real
@@ -18345,6 +18438,8 @@
             document.getElementById("savingsMonthlyView").style.display = isMonthlyMode ? "" : "none";
             document.getElementById("savingsViewSummaryBtn").classList.toggle("active", !isMonthlyMode);
             document.getElementById("savingsViewMonthlyBtn").classList.toggle("active", isMonthlyMode);
+            document.getElementById("savingsMonthSelectRow").style.display = isMonthlyMode ? "none" : "flex";
+            document.getElementById("savingsMonthFilter").value = savingsFilterMonth;
             if (isMonthlyMode) {
                 document.getElementById("savingsMonthScopeBadge").style.display = "none";
                 renderSavingsMonthlyReport(txs, accounts, filterY);
@@ -21685,6 +21780,7 @@
             savingsYearNext: () => savingsYearStep(1),
             savingsMonthPrev: () => savingsMonthStep(-1),
             savingsMonthNext: () => savingsMonthStep(1),
+            exportSavingsCsv: () => exportSavingsCsv(),
             toggleSidebarAccountShortcuts: () => toggleSidebarAccountShortcuts(),
             openMemberFormModal: () => openMemberFormModal(),
             handleCreateMemberMobile: () => handleCreateMemberMobile(),
@@ -21943,6 +22039,7 @@
             toggleTxFdDescMode: () => toggleTxFdDescMode(),
             toggleTxFdLinkFields: () => toggleTxFdLinkFields(),
             resetSavingsPageAndRender: () => renderSavingsStatement(),
+            savingsMonthSelectChange: (el) => savingsMonthSelectChange(el),
             toggleTxManualFx: () => toggleTxManualFx(),
             recalcTxManualFxPreview: () => recalcTxManualFxPreview(),
             renderSpendingBreakdownPage: () => renderSpendingBreakdownPage(),

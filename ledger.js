@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v463";
+        const APP_VERSION = "v464";
         const APP_VERSION_DATE = "2026-10-04";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -9615,100 +9615,134 @@
         // special-casing). A group/sub-group with nothing in it is skipped entirely rather than
         // shown as a zero row, same "don't show empty" convention the Net Savings Statement uses
         // for categories with no transactions.
-        async function renderNetWorthStatementPage() {
+        // v464: the numbers behind the statement, split out of the renderer so the page and the CSV
+        // export (exportNetWorthStatementCsv) read ONE calculation and can never drift apart. Each
+        // section is a list of {label, amount, group, subgroup} (rows with nothing in them already
+        // dropped) plus its total; liabilities are naturally negative (see the function-level comment
+        // above). Totals are summed from the unrounded group sums, exactly as before.
+        async function computeNetWorthStatementData() {
             const { accounts, nativeBalances } = await computeAccountBalances();
             const included = accounts.filter(a => a.includeInNetWorth !== false);
 
             // Sums accountBaseValue() over every account matching `group` (and, if given,
             // exactly that `subgroup` — pass a list to merge a few subgroups into one row, e.g.
-            // Savings + Cash below). `catchAllSubgroups`, when given, ADDITIONALLY sums any
-            // account in that group whose subgroup ISN'T one of the group's known subgroups
-            // (typically "" — never assigned one) — used once per section so an orphaned account
-            // still counts toward that section's total even though it gets no dedicated row.
+            // Savings + Cash below). Un-sub-grouped accounts (subgroup "") get their own "Other …"
+            // row so an orphaned account still counts toward its section's total.
             const sumGroup = (group, subgroups = null) => included
                 .filter(a => (a.group || DEFAULT_ACCOUNT_GROUP) === group && (subgroups === null || subgroups.includes(a.subgroup || "")))
                 .reduce((sum, a) => sum + accountBaseValue(a, nativeBalances), 0);
 
-            const nwsRow = (label, amount, group, subgroup = "") => {
-                if (Math.abs(amount) < 0.005) return ""; // nothing here — skip the row rather than show a zero
-                return `
-                    <div class="statement-row" data-click="sidebarFilterAccountsByType" data-group="${escapeHtml(group)}" data-subgroup="${escapeHtml(subgroup)}" data-label="${escapeHtml(label)}">
-                        <span>${escapeHtml(label)}</span>
-                        <span style="font-weight:700;">${formatBalanceHTML(amount, baseCurrency)}</span>
-                    </div>
-                `;
-            };
-
-            // --- WHAT I HAVE ---
-            const currentAcct = sumGroup("Bank/Cash", ["Current Account"]);
             // v222 note: kept as 2 separate rows rather than one merged "Savings & Cash Account"
             // line — sidebarFilterAccountsByType/navigateToAccountsPage only support an EXACT
-            // single subgroup match (see the Accounts page's own filter, a few hundred lines up:
-            // `(a.subgroup||"") === (filter.subgroup||"")`), so a merged row's tap-through would
-            // have had no single subgroup value that actually matches both underlying subgroups —
-            // it'd either show nothing or only one of the two. Two precise, correctly-tappable
-            // rows beat one convenient-looking but broken one.
-            const savingsAcct = sumGroup("Bank/Cash", ["Savings Account"]);
-            const cashAcct = sumGroup("Bank/Cash", ["Cash Account"]);
-            const otherBankTotal = sumGroup("Bank/Cash", [""]); // un-sub-grouped Bank/Cash accounts
-            const foreignMoneyAcct = sumGroup("Multi-Currency");
-
-            const fdTotal = sumGroup("Investment", ["Fixed Deposit"]);
-            const kwspTotal = sumGroup("Investment", ["KWSP"]);
-            const cpfTotal = sumGroup("Investment", ["CPF"]);
-            const asnbTotal = sumGroup("Investment", ["ASNB"]);
-            const ptptnTotal = sumGroup("Investment", ["PTPTN"]);
-            const unitTrustTotal = sumGroup("Investment", ["Unit Trust"]);
-            const stocksEtfTotal = sumGroup("Investment", ["Stocks/ETF"]); // v438
-            const goldTotal = sumGroup("Investment", ["Gold"]);
-            const otherInvTotal = sumGroup("Investment", [""]); // un-sub-grouped Investment accounts
-
-            const otherAssetsTotal = sumGroup("Other Assets");
-
-            document.getElementById("nwsAssetsRows").innerHTML = [
-                nwsRow("Current Account", currentAcct, "Bank/Cash", "Current Account"),
-                nwsRow("Savings Account", savingsAcct, "Bank/Cash", "Savings Account"),
-                nwsRow("Cash Account", cashAcct, "Bank/Cash", "Cash Account"),
-                nwsRow("Other Bank/Cash", otherBankTotal, "Bank/Cash", ""),
-                nwsRow("Foreign Money Account", foreignMoneyAcct, "Multi-Currency"),
-                nwsRow("Fixed Deposit", fdTotal, "Investment", "Fixed Deposit"),
-                nwsRow("KWSP", kwspTotal, "Investment", "KWSP"),
-                nwsRow("CPF", cpfTotal, "Investment", "CPF"),
-                nwsRow("ASNB", asnbTotal, "Investment", "ASNB"),
-                nwsRow("PTPTN", ptptnTotal, "Investment", "PTPTN"),
-                nwsRow("Unit Trust", unitTrustTotal, "Investment", "Unit Trust"),
-                nwsRow("Stocks/ETF", stocksEtfTotal, "Investment", "Stocks/ETF"),
-                nwsRow("Gold", goldTotal, "Investment", "Gold"),
-                nwsRow("Other Investment", otherInvTotal, "Investment", ""),
-                nwsRow("Other Assets", otherAssetsTotal, "Other Assets"),
-            ].join("") || `<p style="font-size:0.75rem; color:var(--text-muted);">No asset accounts yet.</p>`;
-            const totalAssets = currentAcct + savingsAcct + cashAcct + otherBankTotal + foreignMoneyAcct + fdTotal + kwspTotal + cpfTotal + asnbTotal + ptptnTotal + unitTrustTotal + stocksEtfTotal + goldTotal + otherInvTotal + otherAssetsTotal;
-            document.getElementById("nwsAssetsTotal").innerHTML = formatBalanceHTML(totalAssets, baseCurrency);
-
-            // --- WHAT I OWE ---
-            const bankLoanTotal = sumGroup("Bank Loan");
-            const creditCardTotal = sumGroup("Credit Card");
-            const otherLiabTotal = sumGroup("Other Liabilities");
-
-            document.getElementById("nwsLiabilitiesRows").innerHTML = [
-                nwsRow("Bank Loan", bankLoanTotal, "Bank Loan"),
-                nwsRow("Credit Card", creditCardTotal, "Credit Card"),
-                nwsRow("Other Liabilities", otherLiabTotal, "Other Liabilities"),
-            ].join("") || `<p style="font-size:0.75rem; color:var(--text-muted);">No liabilities logged — nothing owed.</p>`;
-            const totalLiabilities = bankLoanTotal + creditCardTotal + otherLiabTotal; // already negative (or 0) — see the function-level comment
-            document.getElementById("nwsLiabilitiesTotal").innerHTML = formatBalanceHTML(totalLiabilities, baseCurrency);
-
-            const netCurrentAssets = totalAssets + totalLiabilities;
-            document.getElementById("nwsNetCurrentValue").innerHTML = formatBalanceHTML(netCurrentAssets, baseCurrency);
-
-            // --- FIXED ASSETS (Real Estate) ---
+            // single subgroup match, so a merged row's tap-through would have had no single
+            // subgroup value that matches both. Two precise, correctly-tappable rows beat one
+            // convenient-looking but broken one.
+            const assetDefs = [
+                ["Current Account", "Bank/Cash", "Current Account"],
+                ["Savings Account", "Bank/Cash", "Savings Account"],
+                ["Cash Account", "Bank/Cash", "Cash Account"],
+                ["Other Bank/Cash", "Bank/Cash", ""],
+                ["Foreign Money Account", "Multi-Currency", null],
+                ["Fixed Deposit", "Investment", "Fixed Deposit"],
+                ["KWSP", "Investment", "KWSP"],
+                ["CPF", "Investment", "CPF"],
+                ["ASNB", "Investment", "ASNB"],
+                ["PTPTN", "Investment", "PTPTN"],
+                ["Unit Trust", "Investment", "Unit Trust"],
+                ["Stocks/ETF", "Investment", "Stocks/ETF"], // v438
+                ["Gold", "Investment", "Gold"],
+                ["Other Investment", "Investment", ""],
+                ["Other Assets", "Other Assets", null],
+            ];
+            const liabDefs = [
+                ["Bank Loan", "Bank Loan", null],
+                ["Credit Card", "Credit Card", null],
+                ["Other Liabilities", "Other Liabilities", null],
+            ];
+            const build = defs => {
+                const all = defs.map(([label, group, subgroup]) => ({
+                    label, group, subgroup: subgroup || "",
+                    amount: sumGroup(group, subgroup === null ? null : [subgroup])
+                }));
+                return {
+                    rows: all.filter(r => Math.abs(r.amount) >= 0.005), // nothing here — skip the row rather than show a zero
+                    total: all.reduce((s, r) => s + r.amount, 0)
+                };
+            };
+            const assets = build(assetDefs);
+            const liabilities = build(liabDefs);          // total is already negative (or 0)
+            const netCurrentAssets = assets.total + liabilities.total;
             const realEstateTotal = sumGroup("Real Estate");
             const hasRealEstate = included.some(a => (a.group || DEFAULT_ACCOUNT_GROUP) === "Real Estate");
-            document.getElementById("nwsFixedAssetsCard").classList.toggle("hidden", !hasRealEstate);
-            document.getElementById("nwsFixedAssetsRows").innerHTML = nwsRow("Real Estate", realEstateTotal, "Real Estate");
-            document.getElementById("nwsFixedAssetsTotal").innerHTML = formatBalanceHTML(realEstateTotal, baseCurrency);
+            const fixedRows = Math.abs(realEstateTotal) >= 0.005 ? [{ label: "Real Estate", group: "Real Estate", subgroup: "", amount: realEstateTotal }] : [];
+            return {
+                assets, liabilities, netCurrentAssets,
+                fixed: { rows: fixedRows, total: realEstateTotal, show: hasRealEstate },
+                finalNetWorth: netCurrentAssets + realEstateTotal
+            };
+        }
 
-            document.getElementById("nwsFinalNetWorth").innerHTML = formatBalanceHTML(netCurrentAssets + realEstateTotal, baseCurrency);
+        async function renderNetWorthStatementPage() {
+            const d = await computeNetWorthStatementData();
+            const nwsRow = r => `
+                <div class="statement-row" data-click="sidebarFilterAccountsByType" data-group="${escapeHtml(r.group)}" data-subgroup="${escapeHtml(r.subgroup)}" data-label="${escapeHtml(r.label)}">
+                    <span>${escapeHtml(r.label)}</span>
+                    <span style="font-weight:700;">${formatBalanceHTML(r.amount, baseCurrency)}</span>
+                </div>
+            `;
+
+            // --- WHAT I HAVE ---
+            document.getElementById("nwsAssetsRows").innerHTML = d.assets.rows.map(nwsRow).join("") || `<p style="font-size:0.75rem; color:var(--text-muted);">No asset accounts yet.</p>`;
+            document.getElementById("nwsAssetsTotal").innerHTML = formatBalanceHTML(d.assets.total, baseCurrency);
+
+            // --- WHAT I OWE ---
+            document.getElementById("nwsLiabilitiesRows").innerHTML = d.liabilities.rows.map(nwsRow).join("") || `<p style="font-size:0.75rem; color:var(--text-muted);">No liabilities logged — nothing owed.</p>`;
+            document.getElementById("nwsLiabilitiesTotal").innerHTML = formatBalanceHTML(d.liabilities.total, baseCurrency);
+
+            document.getElementById("nwsNetCurrentValue").innerHTML = formatBalanceHTML(d.netCurrentAssets, baseCurrency);
+
+            // --- FIXED ASSETS (Real Estate) ---
+            document.getElementById("nwsFixedAssetsCard").classList.toggle("hidden", !d.fixed.show);
+            document.getElementById("nwsFixedAssetsRows").innerHTML = d.fixed.rows.map(nwsRow).join("");
+            document.getElementById("nwsFixedAssetsTotal").innerHTML = formatBalanceHTML(d.fixed.total, baseCurrency);
+
+            document.getElementById("nwsFinalNetWorth").innerHTML = formatBalanceHTML(d.finalNetWorth, baseCurrency);
+        }
+
+        // v464: 📤 on the Net Worth Statement page — the statement as it stands today, one row per
+        // line shown on screen (same rows, same totals, zero rows left out), using the same
+        // csvEscape()/BOM convention as the other exports. Liabilities stay negative, as on screen.
+        // Columns: As of (today's date — this is a snapshot, not a period), Section, Item, Amount.
+        async function exportNetWorthStatementCsv() {
+            const d = await computeNetWorthStatementData();
+            if (d.assets.rows.length === 0 && d.liabilities.rows.length === 0 && d.fixed.rows.length === 0) {
+                showToast("No accounts to export");
+                return;
+            }
+            const asOf = todayLocalStr();
+            const line = (section, item, amount) => [asOf, section, item, amount.toFixed(2)];
+            const rows = [
+                ...d.assets.rows.map(r => line("What I Have", r.label, r.amount)),
+                line("What I Have", "Total Assets", d.assets.total),
+                ...d.liabilities.rows.map(r => line("What I Owe", r.label, r.amount)),
+                line("What I Owe", "Total Liabilities", d.liabilities.total),
+                line("Net Current Assets", "Net Current Assets", d.netCurrentAssets),
+                ...(d.fixed.show ? [
+                    ...d.fixed.rows.map(r => line("Fixed Assets", r.label, r.amount)),
+                    line("Fixed Assets", "Total Fixed Assets", d.fixed.total)
+                ] : []),
+                line("My Net Worth", "My Net Worth", d.finalNetWorth)
+            ];
+            const header = ["As of", "Section", "Item", `Amount (${baseCurrency})`];
+            const csv = [header, ...rows].map(r => r.map(csvEscape).join(",")).join("\r\n");
+            const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `net_worth_statement_${asOf}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast("\ud83d\udce4 Exported Net Worth Statement to CSV");
         }
 
         // Flips the "Net Worth by Member" section between expanded/collapsed and persists the
@@ -21784,6 +21818,7 @@
             savingsMonthPrev: () => savingsMonthStep(-1),
             savingsMonthNext: () => savingsMonthStep(1),
             exportSavingsCsv: () => exportSavingsCsv(),
+            exportNetWorthStatementCsv: () => exportNetWorthStatementCsv(),
             toggleSidebarAccountShortcuts: () => toggleSidebarAccountShortcuts(),
             openMemberFormModal: () => openMemberFormModal(),
             handleCreateMemberMobile: () => handleCreateMemberMobile(),

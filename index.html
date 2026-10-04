@@ -4459,10 +4459,12 @@
     <div id="page-networth-statement" class="page hidden">
         <div class="nav-header">
             <button class="back-btn" data-click="navigateToWorkspace">&larr; Back</button>
-            <div>
+            <div style="flex:1;">
                 <h3 style="font-weight:800; font-size:1.2rem;">Net Worth Statement</h3>
                 <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">What you have, what you owe, and what's left</p>
             </div>
+            <!-- v464: exports the statement below as shown today — see exportNetWorthStatementCsv(). -->
+            <button id="networthStatementExportCsvBtn" class="icon-edit-btn" data-click="exportNetWorthStatementCsv" title="Export to CSV">📤</button>
         </div>
 
         <div class="statement-card">

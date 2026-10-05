@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v466";
+        const APP_VERSION = "v467";
         const APP_VERSION_DATE = "2026-10-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -95,11 +95,17 @@
         // (ledger.js) is a classic non-deferred script, so a `<script type="module">` for
         // pdf.js could easily end up running after it, leaving window.pdfjsLib unset right
         // when it's needed. Awaiting this promise at the point of use (openAttachment())
-        // avoids that regardless of load order. Worker vendored at lib/pdf.worker.min.mjs —
-        // must stay in lockstep with lib/pdf.min.mjs's package/version, and so must lib/wasm/
-        // (image decoders; see wasmUrl in the attachment viewer).
-        const pdfjsLibPromise = import("./lib/pdf.min.mjs").then((mod) => {
-            mod.GlobalWorkerOptions.workerSrc = "lib/pdf.worker.min.mjs";
+        // avoids that regardless of load order.
+        //
+        // v467: everything pdf.js (the main file, its worker, and the wasm/ image decoders) lives in ONE
+        // folder whose name carries the version. The main file and the worker MUST be the same release —
+        // a 6.2.108 main file with a 6.4.299 worker hangs forever on "Loading PDF…" ("Unknown action from
+        // worker: test") — and with fixed file names a browser/service-worker cache can hand out one old
+        // and one new file. Version-named paths can never be mixed that way. To update pdf.js: put the new
+        // release's build/ + wasm/ files in a NEW folder and change only this constant (and sw.js).
+        const PDFJS_DIR = "lib/pdfjs-6.4.299/";
+        const pdfjsLibPromise = import("./" + PDFJS_DIR + "pdf.min.mjs").then((mod) => {
+            mod.GlobalWorkerOptions.workerSrc = PDFJS_DIR + "pdf.worker.min.mjs";
             return mod;
         });
 
@@ -12849,11 +12855,11 @@
                     // out of the parser. Harmless for rendering — eval is only ever used there as
                     // a speed optimization, never a required code path.
                     // v465: wasmUrl — since pdf.js 5 the image decoders for scanner PDFs (1-bit CCITT /
-                    // JBIG2) and JPEG2000 live in lib/wasm/; without it those pages render blank
+                    // JBIG2) and JPEG2000 live in <PDFJS_DIR>wasm/; without it those pages render blank
                     // ("JBig2 failed to initialize"). The CSP has no 'wasm-unsafe-eval', and a CSP sent
                     // as an HTTP header also binds pdf.js's worker, so pdf.js falls back to the
                     // plain-JavaScript *_nowasm_fallback.js in the same folder — both are shipped.
-                    const wasmUrl = new URL("lib/wasm/", document.baseURI).href;
+                    const wasmUrl = new URL(PDFJS_DIR + "wasm/", document.baseURI).href;
                     // v466: canvasMaxAreaInBytes — a 600 dpi scanner page is one ~28-megapixel 1-bit image.
                     // By default pdf.js GUESSES how big an OffscreenCanvas this browser can make (by trying
                     // some), then turns the decoded image into an ImageBitmap in the worker; when that guess
@@ -12861,7 +12867,15 @@
                     // ("transferToImageBitmap ... ImageBitmap construction failed"). A fixed limit (32 MiB =
                     // ~8.4 Mpx) makes pdf.js shrink such images first, every time; ~3300 px wide is still far
                     // more than the viewer shows. Ordinary PDFs and photos are far below it, so unaffected.
-                    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, wasmUrl, canvasMaxAreaInBytes: 32 * 1024 * 1024 }).promise;
+                    // v467: never sit on "Loading PDF…" forever — if the pdf.js worker does not answer
+                    // (e.g. main file and worker out of step after an update), say so and point at Download.
+                    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, wasmUrl, canvasMaxAreaInBytes: 32 * 1024 * 1024 });
+                    let loadTimer;
+                    const pdf = await Promise.race([
+                        loadingTask.promise,
+                        new Promise((_, reject) => { loadTimer = setTimeout(() => { loadingTask.destroy(); reject(new Error("the PDF viewer did not respond (close and reopen the app once, then try again)")); }, 30000); })
+                    ]);
+                    clearTimeout(loadTimer);
                     body.innerHTML = "";
                     const containerWidth = body.clientWidth || 320;
                     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {

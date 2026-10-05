@@ -15,9 +15,9 @@
            CLICK_ACTIONS/CHANGE_ACTIONS/INPUT_ACTIONS tables in ledger.js). This means
            there's no sha256 hash to maintain: 'self' covers both files regardless of their
            byte content, so there's nothing that can drift out of sync between a local build
-           and what actually gets deployed. Also covers lib/pdf.min.mjs (v121, vendored locally,
+           and what actually gets deployed. Also covers lib/pdfjs-6.4.299/pdf.min.mjs (v121, vendored locally,
            loaded via dynamic import() from ledger.js — see pdfjsLibPromise) — same-origin, so
-           no separate allowance needed. v465: same for lib/wasm/ (pdf.js's image decoders for scanner
+           no separate allowance needed. v465: same for lib/pdfjs-6.4.299/wasm/ (pdf.js's image decoders for scanner
            PDFs): the *_nowasm_fallback.js files are plain same-origin scripts covered by 'self', and
            the CSP deliberately has no 'wasm-unsafe-eval' — pdf.js uses the JS decoders instead.
          - style-src 'self' 'unsafe-inline': left loose — this app uses inline style="..."
@@ -31,7 +31,7 @@
            pages themselves are rendered onto <canvas> by pdf.js, not <img>, so they don't
            need anything beyond this. Deliberately data: only, no blob: — nothing in the app
            uses createObjectURL, so there was no reason to widen this.
-         - worker-src 'self': needed as of v121 for lib/pdf.worker.min.mjs (pdf.js's own
+         - worker-src 'self': needed as of v121 for lib/pdfjs-6.4.299/pdf.worker.min.mjs (pdf.js's own
            Worker, used to decode PDF pages off the main thread) — same-origin, vendored
            locally alongside pdf.min.mjs.
          - connect-src 'self' https://open.er-api.com (v67): the app is otherwise offline-first

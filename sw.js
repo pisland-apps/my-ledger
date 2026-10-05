@@ -4,7 +4,7 @@
 // files the Service Worker serves; APP_VERSION is just the display label in the corner of the
 // screen. They don't sync automatically (different files, different load times) — when you bump
 // one, bump the other too. See the matching reminder comment on APP_VERSION in ledger.js.
-const CACHE_NAME = "ledger-cache-v466";
+const CACHE_NAME = "ledger-cache-v467";
 // NOTE: deliberately does NOT include "./index.html" here. On hosts that
 // redirect /index.html -> / (e.g. Cloudflare Pages -- GitHub Pages doesn't do
 // this), caching that URL bakes in a redirected Response, and Chrome refuses
@@ -21,16 +21,19 @@ const ASSETS_TO_CACHE = [
     "./manifest.json",
     "./icon-192.png",
     "./icon-512.png",
-    "./lib/pdf.min.mjs",
-    "./lib/pdf.worker.min.mjs",
+    // v467: pdf.js lives in a version-named folder (PDFJS_DIR in ledger.js) so the main file, the
+    // worker and the decoders can only ever come from the same release. Keep this list and PDFJS_DIR
+    // in step when pdf.js is updated.
+    "./lib/pdfjs-6.4.299/pdf.min.mjs",
+    "./lib/pdfjs-6.4.299/pdf.worker.min.mjs",
     // v465: pdf.js image decoders for scanner PDFs (see wasmUrl in ledger.js). The .wasm files
     // are the normal path; the *_nowasm_fallback.js are what pdf.js loads instead when the CSP
     // does not allow compiling WebAssembly (it does not here) — both must work offline.
-    "./lib/wasm/jbig2.wasm",
-    "./lib/wasm/openjpeg.wasm",
-    "./lib/wasm/qcms_bg.wasm",
-    "./lib/wasm/jbig2_nowasm_fallback.js",
-    "./lib/wasm/openjpeg_nowasm_fallback.js",
+    "./lib/pdfjs-6.4.299/wasm/jbig2.wasm",
+    "./lib/pdfjs-6.4.299/wasm/openjpeg.wasm",
+    "./lib/pdfjs-6.4.299/wasm/qcms_bg.wasm",
+    "./lib/pdfjs-6.4.299/wasm/jbig2_nowasm_fallback.js",
+    "./lib/pdfjs-6.4.299/wasm/openjpeg_nowasm_fallback.js",
     "./fonts/kalam-400.woff2",
     "./fonts/kalam-700.woff2"
 ];
@@ -58,7 +61,9 @@ function isGoodAsset(response) {
 // Install: pre-cache the app shell.
 self.addEventListener("install", (event) => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
+        // v467: cache:"reload" so the pre-cache never copies a stale file out of the browser's own HTTP
+        // cache (GitHub Pages sends max-age=600) — otherwise a fresh deploy could be precached half-old.
+        caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE.map((url) => new Request(url, { cache: "reload" }))))
     );
     self.skipWaiting();
 });

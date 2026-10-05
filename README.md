@@ -11,10 +11,11 @@ ledger.js       ← all app logic (external file — see CSP notes in index.html
 sw.js           ← Service Worker: offline caching (CACHE_NAME / ASSETS_TO_CACHE)
 manifest.json   ← Web App Manifest (installable as a PWA)
 icon-192.png / icon-512.png
-lib/            ← vendored pdf.js 6.4.299 (pdf.min.mjs + pdf.worker.min.mjs) and
-                  lib/wasm/ (its image decoders: .wasm + plain-JS *_nowasm_fallback.js),
+lib/pdfjs-6.4.299/ ← vendored pdf.js 6.4.299: pdf.min.mjs + pdf.worker.min.mjs and
+                  wasm/ (its image decoders: .wasm + plain-JS *_nowasm_fallback.js),
                   used by the transaction-attachment PDF viewer added in v121 —
-                  no CDN dependency
+                  no CDN dependency. The folder name carries the version on purpose
+                  (v467, see below)
 ```
 
 ## Deploy checklist
@@ -22,13 +23,18 @@ lib/            ← vendored pdf.js 6.4.299 (pdf.min.mjs + pdf.worker.min.mjs) a
 - [ ] Push **`index.html` and `ledger.js` together** — the CSP requires app
       logic to live in the external `ledger.js`; if only `index.html` goes
       up, the page loads to a blank screen (it requests a file that isn't there).
-- [ ] Push the **`lib/` folder too** (`pdf.min.mjs` + `pdf.worker.min.mjs`,
-      added v121, and since v465 the whole **`lib/wasm/`** subfolder) — without
-      it, opening a PDF attachment fails, or a scanner PDF shows blank pages
-      (the camera/image-attachment path is unaffected, only PDF preview needs
-      these). When updating pdf.js, replace all of `lib/` from the SAME
-      `pdfjs-dist` release (`build/` files + `wasm/` files, including the
-      `*_nowasm_fallback.js` ones).
+- [ ] Push the **whole `lib/pdfjs-6.4.299/` folder** (`pdf.min.mjs`,
+      `pdf.worker.min.mjs` and the `wasm/` subfolder) — without it, opening a
+      PDF attachment fails, or a scanner PDF shows blank pages (the camera/
+      image-attachment path is unaffected, only PDF preview needs these). Since
+      v467 the old `lib/pdf.min.mjs`, `lib/pdf.worker.min.mjs` and `lib/wasm/`
+      are no longer used — delete them from the repo.
+- [ ] **Updating pdf.js:** take `build/pdf.min.mjs`, `build/pdf.worker.min.mjs`
+      and the whole `wasm/` folder (including the `*_nowasm_fallback.js` files)
+      from the SAME `pdfjs-dist` release, put them in a NEW folder
+      `lib/pdfjs-<version>/`, and change the version in exactly two places:
+      `PDFJS_DIR` in `ledger.js` and the five `./lib/pdfjs-…` lines in `sw.js`.
+      Never overwrite the files of an existing versioned folder.
 - [ ] Bump **both** version markers if you're shipping a change worth being
       able to identify at a glance — they do **not** sync automatically,
       since they live in different files:
@@ -3591,4 +3597,18 @@ Symptom (owner's DevTools console on the live site): after v465 a scanner PDF pa
 Fix: `getDocument()` now also gets `canvasMaxAreaInBytes: 32 * 1024 * 1024` (`ledger.js`). With a fixed limit pdf.js reduces any image larger than ~8.4 megapixels before building the bitmap — a 6618×4234 scan page becomes about 3309×2117, still much sharper than the viewer's ~800 px page width. Ordinary PDFs and photos are far below the limit and are not touched. `APP_VERSION` / `CACHE_NAME` → v466.
 
 Tested in headless Chromium 153 with the same 5-page scan (`EXP2609.pdf`) and Ledger's CSP as an HTTP header, with the worker patched so that bitmaps over 16 megapixels fail the way they do on the owner's browser: default options → pages 1–4 blank (same console error); with the limit → all 5 pages show text; without the simulated failure the limit gives the same result. Not tested on the owner's real device, where the failure is memory-dependent.
+
+## v467: PDF viewer stuck on "Loading PDF…" — pdf.js files are now version-named
+
+Symptom (owner's screenshot + DevTools on the live site, after v466): opening a PDF attachment (`SV.pdf`) stayed on "Loading PDF…" forever; the console showed `Uncaught Error: Unknown action from worker: test` from `pdf.worker.min.mjs`. That message means the page was running the **old pdf.js main file (6.2.108)** together with the **new worker (6.4.299)**: the old main file sends a `test` message that the new worker no longer understands, so the worker never answers. Reproduced exactly in headless Chromium by pairing the two.
+
+How the old file can still be handed out: pdf.js's files were cache-first under fixed names (`lib/pdf.min.mjs`, `lib/pdf.worker.min.mjs`). During a service-worker switch (or from the browser's own HTTP cache — GitHub Pages sends `max-age=600`), one of the pair can come from the old cache and the other from the new one. v465 also introduced this risk by changing the contents of two files without changing their names.
+
+Fix:
+- **Version-named folder.** pdf.js now lives in `lib/pdfjs-6.4.299/` (`pdf.min.mjs`, `pdf.worker.min.mjs`, `wasm/`). `ledger.js` builds all three paths from one constant, `PDFJS_DIR`; `sw.js` precaches the same paths. Main file, worker and decoders can no longer come from different releases, because a different release has a different path. Old cached copies under the old names are simply never asked for again.
+- **No infinite spinner.** If the PDF does not open within 30 s, the viewer now shows "Could not preview this PDF: the PDF viewer did not respond (close and reopen the app once, then try again)" with the Download hint, instead of "Loading PDF…" forever. (The 30 s covers opening the document only; page images are decoded afterwards and are not time-limited.)
+- **Fresh precache.** The service worker's install step now fetches every file with `cache: "reload"`, so it never copies a stale file out of the browser's HTTP cache.
+- `APP_VERSION` / `CACHE_NAME` → v467. The pdf.js release itself (6.4.299), the decoders, `wasmUrl` and `canvasMaxAreaInBytes` are unchanged.
+
+Tested in headless Chromium 153 against the real app (`index.html` + `ledger.js`, CSP also sent as an HTTP header): `openAttachment()` with the 5-page scanner PDF → all 5 pages show; then with the old 6.2.108 main file forced in at the new path → the clear message after 30 s (no spinner, no crash). Not tested on the owner's device or through a real GitHub Pages deploy / service-worker upgrade.
 

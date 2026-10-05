@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v465";
+        const APP_VERSION = "v466";
         const APP_VERSION_DATE = "2026-10-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -12854,7 +12854,14 @@
                     // as an HTTP header also binds pdf.js's worker, so pdf.js falls back to the
                     // plain-JavaScript *_nowasm_fallback.js in the same folder — both are shipped.
                     const wasmUrl = new URL("lib/wasm/", document.baseURI).href;
-                    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, wasmUrl }).promise;
+                    // v466: canvasMaxAreaInBytes — a 600 dpi scanner page is one ~28-megapixel 1-bit image.
+                    // By default pdf.js GUESSES how big an OffscreenCanvas this browser can make (by trying
+                    // some), then turns the decoded image into an ImageBitmap in the worker; when that guess
+                    // or the allocation fails (memory/GPU pressure — so only SOMETIMES) the page stays blank
+                    // ("transferToImageBitmap ... ImageBitmap construction failed"). A fixed limit (32 MiB =
+                    // ~8.4 Mpx) makes pdf.js shrink such images first, every time; ~3300 px wide is still far
+                    // more than the viewer shows. Ordinary PDFs and photos are far below it, so unaffected.
+                    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, wasmUrl, canvasMaxAreaInBytes: 32 * 1024 * 1024 }).promise;
                     body.innerHTML = "";
                     const containerWidth = body.clientWidth || 320;
                     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {

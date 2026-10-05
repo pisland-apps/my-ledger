@@ -3584,3 +3584,11 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME` (sw.js) to 
 - `sw.js`: the five decoder files are in `ASSETS_TO_CACHE` so scanner PDFs also open offline. `CACHE_NAME` and `APP_VERSION` are v465.
 - The `quickjs-eval.*` files that ship in the same `wasm/` folder (pdf.js's PDF-form scripting sandbox) are deliberately **not** included.
 
+## v466: scanner PDFs sometimes still blank — large page images are now shrunk first
+
+Symptom (owner's DevTools console on the live site): after v465 a scanner PDF page sometimes still showed blank, with `Unable to decode image "img_p0_1": UnknownError: Failed to execute 'transferToImageBitmap' on 'OffscreenCanvas': ImageBitmap construction failed` and `Dependent image isn't ready yet`. The pages that failed were the big ones: a 600 dpi scan page is one ~28-megapixel 1-bit image, and turning it into a bitmap needs a canvas of that size. By default pdf.js *guesses* the largest canvas the browser can make and does not shrink anything below that guess; when the guess or the allocation fails (memory / GPU pressure, so it happens only sometimes) the image is dropped and the page stays white.
+
+Fix: `getDocument()` now also gets `canvasMaxAreaInBytes: 32 * 1024 * 1024` (`ledger.js`). With a fixed limit pdf.js reduces any image larger than ~8.4 megapixels before building the bitmap — a 6618×4234 scan page becomes about 3309×2117, still much sharper than the viewer's ~800 px page width. Ordinary PDFs and photos are far below the limit and are not touched. `APP_VERSION` / `CACHE_NAME` → v466.
+
+Tested in headless Chromium 153 with the same 5-page scan (`EXP2609.pdf`) and Ledger's CSP as an HTTP header, with the worker patched so that bitmaps over 16 megapixels fail the way they do on the owner's browser: default options → pages 1–4 blank (same console error); with the limit → all 5 pages show text; without the simulated failure the limit gives the same result. Not tested on the owner's real device, where the failure is memory-dependent.
+

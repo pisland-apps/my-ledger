@@ -17,7 +17,9 @@
            byte content, so there's nothing that can drift out of sync between a local build
            and what actually gets deployed. Also covers lib/pdf.min.mjs (v121, vendored locally,
            loaded via dynamic import() from ledger.js — see pdfjsLibPromise) — same-origin, so
-           no separate allowance needed.
+           no separate allowance needed. v465: same for lib/wasm/ (pdf.js's image decoders for scanner
+           PDFs): the *_nowasm_fallback.js files are plain same-origin scripts covered by 'self', and
+           the CSP deliberately has no 'wasm-unsafe-eval' — pdf.js uses the JS decoders instead.
          - style-src 'self' 'unsafe-inline': left loose — this app uses inline style="..."
            attributes throughout for one-off layout tweaks. Migrating all of those to CSS
            classes was judged high-effort/low-value: CSS injection has a much smaller blast

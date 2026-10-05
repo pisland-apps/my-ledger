@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v464";
-        const APP_VERSION_DATE = "2026-10-04";
+        const APP_VERSION = "v465";
+        const APP_VERSION_DATE = "2026-10-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -96,7 +96,8 @@
         // pdf.js could easily end up running after it, leaving window.pdfjsLib unset right
         // when it's needed. Awaiting this promise at the point of use (openAttachment())
         // avoids that regardless of load order. Worker vendored at lib/pdf.worker.min.mjs —
-        // must stay in lockstep with lib/pdf.min.mjs's package/version.
+        // must stay in lockstep with lib/pdf.min.mjs's package/version, and so must lib/wasm/
+        // (image decoders; see wasmUrl in the attachment viewer).
         const pdfjsLibPromise = import("./lib/pdf.min.mjs").then((mod) => {
             mod.GlobalWorkerOptions.workerSrc = "lib/pdf.worker.min.mjs";
             return mod;
@@ -12847,7 +12848,13 @@
                     // any internal optimization, so a malicious PDF can't get script execution
                     // out of the parser. Harmless for rendering — eval is only ever used there as
                     // a speed optimization, never a required code path.
-                    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false }).promise;
+                    // v465: wasmUrl — since pdf.js 5 the image decoders for scanner PDFs (1-bit CCITT /
+                    // JBIG2) and JPEG2000 live in lib/wasm/; without it those pages render blank
+                    // ("JBig2 failed to initialize"). The CSP has no 'wasm-unsafe-eval', and a CSP sent
+                    // as an HTTP header also binds pdf.js's worker, so pdf.js falls back to the
+                    // plain-JavaScript *_nowasm_fallback.js in the same folder — both are shipped.
+                    const wasmUrl = new URL("lib/wasm/", document.baseURI).href;
+                    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, wasmUrl }).promise;
                     body.innerHTML = "";
                     const containerWidth = body.clientWidth || 320;
                     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {

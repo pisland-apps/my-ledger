@@ -11,8 +11,10 @@ ledger.js       ← all app logic (external file — see CSP notes in index.html
 sw.js           ← Service Worker: offline caching (CACHE_NAME / ASSETS_TO_CACHE)
 manifest.json   ← Web App Manifest (installable as a PWA)
 icon-192.png / icon-512.png
-lib/            ← vendored pdf.js (pdf.min.mjs + pdf.worker.min.mjs), used by the
-                  transaction-attachment PDF viewer added in v121 — no CDN dependency
+lib/            ← vendored pdf.js 6.4.299 (pdf.min.mjs + pdf.worker.min.mjs) and
+                  lib/wasm/ (its image decoders: .wasm + plain-JS *_nowasm_fallback.js),
+                  used by the transaction-attachment PDF viewer added in v121 —
+                  no CDN dependency
 ```
 
 ## Deploy checklist
@@ -21,8 +23,12 @@ lib/            ← vendored pdf.js (pdf.min.mjs + pdf.worker.min.mjs), used by 
       logic to live in the external `ledger.js`; if only `index.html` goes
       up, the page loads to a blank screen (it requests a file that isn't there).
 - [ ] Push the **`lib/` folder too** (`pdf.min.mjs` + `pdf.worker.min.mjs`,
-      added v121) — without it, opening a PDF attachment fails (the camera/
-      image-attachment path is unaffected, only PDF preview needs these).
+      added v121, and since v465 the whole **`lib/wasm/`** subfolder) — without
+      it, opening a PDF attachment fails, or a scanner PDF shows blank pages
+      (the camera/image-attachment path is unaffected, only PDF preview needs
+      these). When updating pdf.js, replace all of `lib/` from the SAME
+      `pdfjs-dist` release (`build/` files + `wasm/` files, including the
+      `*_nowasm_fallback.js` ones).
 - [ ] Bump **both** version markers if you're shipping a change worth being
       able to identify at a glance — they do **not** sync automatically,
       since they live in different files:
@@ -3565,3 +3571,16 @@ Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME` (sw.js) to 
   the passcode and reloading. Adds a brief delay only when a sync was actually pending.
 
 Bumped `APP_VERSION`/`APP_VERSION_DATE` (ledger.js) and `CACHE_NAME` (sw.js) to v447.
+
+## v465: pdf.js updated to 6.4.299, and scanner PDFs no longer open blank
+
+**Update.** `lib/pdf.min.mjs` and `lib/pdf.worker.min.mjs` are now the official `pdfjs-dist` **6.4.299** build files (was 6.2.108; 6.4.299 was the latest release on 2026-10-05). Same file names and API, so the PDF viewer's `getPage` / `getViewport` / `render` calls did not change. `isEvalSupported: false` is kept.
+
+**Fix.** A PDF saved by a flat-bed scanner (1-bit black-and-white pages, CCITT/JBIG2 — for example EPSON Scan) opened in the attachment viewer as blank white pages, while ordinary PDFs looked fine. Since pdf.js 5 the decoders for those pages and for JPEG2000 images are WebAssembly files that must be given to `getDocument()` as `wasmUrl`; the app never did, so pdf.js logged "JBig2 failed to initialize" and drew nothing. This was already true with 6.2.108 — it is not caused by the update.
+
+- New folder `lib/wasm/`: `jbig2.wasm`, `openjpeg.wasm`, `qcms_bg.wasm`, **and** `jbig2_nowasm_fallback.js`, `openjpeg_nowasm_fallback.js` (plus the licence files), all from the same 6.4.299 package.
+- `ledger.js`: `getDocument({ …, wasmUrl })`, with `wasmUrl = new URL("lib/wasm/", document.baseURI).href`.
+- **Why the JavaScript fallbacks matter:** the CSP has no `'wasm-unsafe-eval'` and is not changed. A CSP delivered as an HTTP header (as some hosts add) also binds pdf.js's worker, so the worker may not compile `.wasm`; pdf.js then loads the plain-JavaScript decoder from the same folder, which is allowed by `script-src 'self'`. Without those two `.js` files the page stays blank. (Found in the companion Shelfmark app, where v1.65.2 with only the `.wasm` files did not fix the blank pages on the live site.)
+- `sw.js`: the five decoder files are in `ASSETS_TO_CACHE` so scanner PDFs also open offline. `CACHE_NAME` and `APP_VERSION` are v465.
+- The `quickjs-eval.*` files that ship in the same `wasm/` folder (pdf.js's PDF-form scripting sandbox) are deliberately **not** included.
+

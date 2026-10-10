@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v472";
+        const APP_VERSION = "v473";
         const APP_VERSION_DATE = "2026-10-10";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15298,8 +15298,14 @@
             const history = (policy.premiumHistory || []).filter(r => r && r.date)
                 .slice().sort((a, b) => b.date.localeCompare(a.date));
             const historyTotal = history.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-            const ledgerRows = (txs || []).filter(t => t.policyId === policy.id && t.type === "expense")
-                .map(t => ({ date: t.date || "", amount: insConvert(t.amount, t.currency || cur, cur), tx: t }))
+            // A refund (income + isRefund, made from ⋮ → Refund on the premium) carries no policyId of its
+            // own: it is subtracted from the policy that the expense it refunds (refundOf / refundOfIds)
+            // belongs to, so refunding a premium in the ledger lowers "Premiums paid" with no extra step.
+            const policyExpenseIds = new Set((txs || []).filter(t => t.policyId === policy.id && t.type === "expense").map(t => t.id));
+            const refundsThisPolicy = (t) => t.type === "income" && t.isRefund
+                && [t.refundOf, ...(Array.isArray(t.refundOfIds) ? t.refundOfIds : [])].some(id => id != null && policyExpenseIds.has(id));
+            const ledgerRows = (txs || []).filter(t => (t.policyId === policy.id && t.type === "expense") || refundsThisPolicy(t))
+                .map(t => ({ date: t.date || "", amount: (t.type === "income" ? -1 : 1) * insConvert(t.amount, t.currency || cur, cur), tx: t }))
                 .sort((a, b) => b.date.localeCompare(a.date));
             const ledgerTotal = ledgerRows.reduce((s, r) => s + r.amount, 0);
             const paid = historyTotal + ledgerTotal;
@@ -15353,6 +15359,15 @@
             row.style.display = show ? "flex" : "none";
         }
 
+        // "Premium currently paid via Accumulated Cash Bonus": the insurer deducts the premium from the
+        // policy's accumulated dividend instead of the owner paying cash — so no cash payment, no planned
+        // payment, and the policy is left out of the cash "Yearly premium" figure. Shown on the list
+        // card and on the detail sheet.
+        function insBonusBannerHtml(p, compact) {
+            if (!p.paidByBonus) return "";
+            return `<div style="background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.35); border-radius:10px; padding:7px 10px; font-size:0.74rem; font-weight:700; margin:${compact ? "0" : "0 0 10px"};">💰 Premium currently paid via Accumulated Cash Bonus${p.paidByBonusSince ? " · since " + escapeHtml(p.paidByBonusSince) : ""}</div>`;
+        }
+
         // --- Insurance page ---
 
         function navigateToInsurancePage() {
@@ -15377,7 +15392,16 @@
 
             const filtered = insuranceCache.filter(p => insuranceStatusFilter === "all" ? true
                 : (insuranceStatusFilter === "ended" ? !insIsLive(p) : insIsLive(p)))
-                .sort((a, b) => (insMemberName(a) + "|" + (a.product || "")).localeCompare(insMemberName(b) + "|" + (b.product || "")));
+                .sort((a, b) => {
+                    // Insurer first (blank insurer last), then type in the order of the Type list
+                    // (Life before Medical…), then plan name.
+                    const ia = (a.insurer || "").trim().toLowerCase(), ib = (b.insurer || "").trim().toLowerCase();
+                    if (ia !== ib) return !ia ? 1 : (!ib ? -1 : ia.localeCompare(ib));
+                    const typeOrder = Object.keys(INS_TYPES);
+                    const ta = typeOrder.indexOf(a.type || "other"), tb = typeOrder.indexOf(b.type || "other");
+                    if (ta !== tb) return ta - tb;
+                    return (a.product || "").localeCompare(b.product || "");
+                });
 
             empty.style.display = filtered.length ? "none" : "block";
             empty.textContent = insuranceCache.length === 0
@@ -15387,7 +15411,8 @@
             let annualBase = 0, paidBase = 0, svBase = 0, svCount = 0;
             const rows = filtered.map(p => {
                 const f = computePolicyFigures(p, txs, planned);
-                annualBase += insConvert(f.annual, f.cur, baseCurrency);
+                // Yearly premium = cash outlay: a policy whose premium comes out of its accumulated bonus is left out.
+                if (!p.paidByBonus) annualBase += insConvert(f.annual, f.cur, baseCurrency);
                 paidBase += insConvert(f.paid, f.cur, baseCurrency);
                 if (f.svValue != null) { svBase += insConvert(f.netSv, f.cur, baseCurrency); svCount++; }
                 const icon = INS_TYPE_ICONS[p.type] || INS_TYPE_ICONS.other;
@@ -15401,10 +15426,11 @@
                     const dd = Math.round((new Date(f.plan.dueDate + "T00:00:00") - new Date(todayLocalStr() + "T00:00:00")) / 86400000);
                     dueLine = `<span style="font-size:0.72rem; font-weight:700; color:${dd < 0 ? "var(--expense-color)" : "var(--text-muted)"};">Next premium ${escapeHtml(f.plan.dueDate)} · ${dd < 0 ? "overdue " + Math.abs(dd) + "d" : (dd === 0 ? "today" : dd + "d left")}</span>`;
                 }
-                const svText = f.svValue == null ? "No surrender value yet"
+                const svText = f.svValue == null ? ""
                     : `SV ${formatCurrency(f.svValue, f.cur)} · ${escapeHtml(f.latestSv.date)}${f.svStale ? " ⚠️" : ""}`;
                 return `
-                    <div class="config-item" data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; ${insIsLive(p) ? "" : "opacity:0.65;"}">
+                    <div class="config-item" data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; flex-direction:column; align-items:stretch; gap:8px; ${insIsLive(p) ? "" : "opacity:0.65;"}">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
                         <span class="category-display-badge" style="min-width:0;">
                             <span>${icon}</span>
                             <span style="display:flex; flex-direction:column; min-width:0;">
@@ -15415,8 +15441,10 @@
                         </span>
                         <span style="text-align:right; flex:0 0 auto;">
                             <span style="display:block; font-size:0.85rem; font-weight:700;">Paid ${formatCurrency(f.paid, f.cur)}</span>
-                            <span style="font-size:0.72rem; font-weight:700; color:${f.svStale ? "var(--expense-color)" : "var(--text-muted)"};">${svText}</span>
+                            ${svText ? `<span style="font-size:0.72rem; font-weight:700; color:${f.svStale ? "var(--expense-color)" : "var(--text-muted)"};">${svText}</span>` : ""}
                         </span>
+                        </div>
+                        ${(p.paidByBonus || p.notes) ? `<div>${insBonusBannerHtml(p, true)}${p.notes ? `<div style="${p.paidByBonus ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; white-space:pre-line; overflow-wrap:anywhere; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${escapeHtml(p.notes)}</div>` : ""}</div>` : ""}
                     </div>`;
             });
             list.innerHTML = rows.join("");
@@ -15471,6 +15499,8 @@
                     ${kv("Start", escapeHtml(p.startDate || ""))}
                     ${kv("Maturity / end", escapeHtml(p.maturityDate || ""))}
                 </div>
+                ${insBonusBannerHtml(p, false)}
+                ${p.notes ? `<p style="font-size:0.78rem; color:var(--text-muted); font-weight:600; white-space:pre-wrap; overflow-wrap:anywhere; margin:0 0 12px;">${escapeHtml(p.notes)}</p>` : ""}
 
                 <div style="border:1px solid var(--border-color); border-radius:12px; padding:12px;">
                     <div style="display:flex; justify-content:space-between; gap:12px;">
@@ -15479,11 +15509,11 @@
                             <div style="font-family:'Kalam', cursive; font-size:1.1rem; font-weight:800;">${formatCurrency(f.paid, cur)}</div>
                             <div style="font-size:0.68rem; color:var(--text-muted); font-weight:600;">Before ledger ${formatCurrency(f.historyTotal, cur)} · In ledger ${formatCurrency(f.ledgerTotal, cur)}</div>
                         </div>
-                        <div style="min-width:0; text-align:right;">
+                        ${f.latestSv ? `<div style="min-width:0; text-align:right;">
                             <div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Surrender value</div>
                             <div style="font-family:'Kalam', cursive; font-size:1.1rem; font-weight:800;">${f.svValue == null ? "—" : formatCurrency(f.svValue, cur)}</div>
-                            <div style="font-size:0.68rem; font-weight:600; color:${f.svStale ? "var(--expense-color)" : "var(--text-muted)"};">${f.latestSv ? `as of ${escapeHtml(f.latestSv.date)}${f.svStale ? " · ⚠️ over a year old" : ""}` : "not recorded"}</div>
-                        </div>
+                            <div style="font-size:0.68rem; font-weight:600; color:${f.svStale ? "var(--expense-color)" : "var(--text-muted)"};">as of ${escapeHtml(f.latestSv.date)}${f.svStale ? " · ⚠️ over a year old" : ""}</div>
+                        </div>` : ""}
                     </div>
                     ${f.loan > 0 ? `<div style="font-size:0.75rem; font-weight:700; margin-top:8px;">Loan outstanding −${formatCurrency(f.loan, cur)} → net ${f.netSv == null ? "—" : formatCurrency(f.netSv, cur)}</div>` : ""}
                     ${(f.svValue != null && f.svValue > 0 && (f.svParts.g != null || f.svParts.m != null)) ? `<div style="font-size:0.75rem; font-weight:700; margin-top:6px; color:var(--text-muted);">${[
@@ -15557,10 +15587,11 @@
             ].sort((a, b) => b.date.localeCompare(a.date));
             html += section(`Premium payments (${timeline.length})`);
             if (timeline.length) {
+                // A negative amount is a refund: shown green with a leading "+", like a refund in the transaction list.
                 html += `<div>` + timeline.map(r => line(
                     `${escapeHtml(r.date)}${r.source === "Ledger" ? " 🧾" : ""}`,
-                    formatCurrency(r.amount, cur),
-                    [r.note ? escapeHtml(r.note) : "", r.dup ? "⚠️ dated before the ledger-tracking date — may duplicate an earlier entry" : ""].filter(Boolean).join(" · ")
+                    r.amount < 0 ? `<span style="color:var(--income-color);">+${formatCurrency(-r.amount, cur)}</span>` : formatCurrency(r.amount, cur),
+                    [r.amount < 0 ? "↩ Refund" : "", r.note ? escapeHtml(r.note) : "", r.dup ? "⚠️ dated before the ledger-tracking date — may duplicate an earlier entry" : ""].filter(Boolean).join(" · ")
                 )).join("") + `</div>`;
                 if (parseFloat(p.statementTotal) > 0) {
                     const diff = f.historyTotal - parseFloat(p.statementTotal);
@@ -15573,8 +15604,9 @@
             }
 
             // Surrender value history
-            html += section(`Surrender value history (${f.svs.length})`);
+            // Nothing is shown for a policy with no surrender value (term, medical, motor… never have one).
             if (f.svs.length) {
+                html += section(`Surrender value history (${f.svs.length})`);
                 html += f.svs.map(r => {
                     const bits = [];
                     if (typeof r.guaranteed === "number") bits.push(`Guaranteed ${formatCurrency(r.guaranteed, cur)}`);
@@ -15590,11 +15622,7 @@
                     if (r.note) bits.push(escapeHtml(r.note));
                     return line(escapeHtml(r.date), insSvValue(r) == null ? "—" : formatCurrency(insSvValue(r), cur), bits.join(" · "));
                 }).join("");
-            } else {
-                html += `<p style="font-size:0.78rem; color:var(--text-muted);">No surrender value recorded yet — add one from Edit.</p>`;
             }
-
-            if (p.notes) html += section("Notes") + `<p style="font-size:0.82rem; white-space:pre-wrap; overflow-wrap:anywhere;">${escapeHtml(p.notes)}</p>`;
 
             document.getElementById("insuranceDetailBody").innerHTML = html;
             // Already open when re-rendered after linking/unlinking a planned payment.
@@ -15791,16 +15819,24 @@
         }
 
         // New payment rows continue the previous one (date + 1 year, same amount) — yearly premiums
-        // are then just "add row, adjust if it changed".
+        // are then just "add row, adjust if it changed". A row can be a REFUND (overpaid premium, premium
+        // returned…): the ↩ button flips it, and it is stored as a NEGATIVE amount, so every total (this
+        // sheet, the card, the check against the insurer's figure) is simply a sum. The amount box always
+        // shows the positive figure; green = refund.
         function addInsPaymentRow(data, continueFromLast) {
             const container = document.getElementById("insPaymentRows");
             let d = data || {};
             if (!data && continueFromLast) {
-                const lastRow = container.querySelector(".ins-row:last-child");
+                // continue from the last real PAYMENT row — a refund row's amount isn't the next premium
+                const payRows = [...container.querySelectorAll(".ins-row")].filter(r => !r.querySelector(".ins-refund-btn").classList.contains("on"));
+                const lastRow = payRows[payRows.length - 1];
                 const lastDate = lastRow ? lastRow.querySelector(".ins-pay-date").value : "";
                 const lastAmt = lastRow ? lastRow.querySelector(".ins-pay-amount").value : "";
                 d = { date: lastDate ? insAddYear(lastDate) : "", amount: lastAmt !== "" ? lastAmt : (document.getElementById("insPremium").value || "") };
             }
+            const num = parseFloat(d.amount);
+            const refund = isFinite(num) && num < 0;
+            const amountText = (d.amount === undefined || d.amount === null || d.amount === "") ? "" : (refund ? String(Math.abs(num)) : String(d.amount));
             insRowCounter++;
             const rowId = "insPay_" + insRowCounter;
             const row = document.createElement("div");
@@ -15808,12 +15844,27 @@
             row.id = rowId;
             row.innerHTML = `
                 <input type="date" class="ins-c-date ins-pay-date" value="${escapeHtml(d.date || "")}">
-                <input type="number" class="ins-c-num ins-pay-amount" step="0.01" min="0" placeholder="Amount" value="${d.amount !== undefined && d.amount !== "" ? escapeHtml(String(d.amount)) : ""}" data-input="insRecalcPaymentTotal">
-                <input type="text" class="ins-c-grow ins-pay-note" placeholder="Note" value="${escapeHtml(d.note || "")}">
+                <input type="number" class="ins-c-num ins-pay-amount${refund ? " refund" : ""}" step="0.01" min="0" placeholder="Amount" value="${escapeHtml(amountText)}" data-input="insRecalcPaymentTotal">
+                <input type="text" class="ins-c-grow ins-pay-note" placeholder="${refund ? "Refund reason" : "Note"}" value="${escapeHtml(d.note || "")}">
+                <button type="button" class="ins-refund-btn${refund ? " on" : ""}" data-click="toggleInsRefund" data-row-id="${rowId}" aria-pressed="${refund}" aria-label="Refund" title="Refund (money back)">↩</button>
                 <button type="button" class="ins-row-x" data-click="removeInsRow" data-row-id="${rowId}" aria-label="Remove">×</button>`;
             container.appendChild(row);
             insRecalcPaymentTotal();
             if (!data && continueFromLast) container.scrollTop = container.scrollHeight;
+        }
+
+        function toggleInsRefund(el) {
+            const row = document.getElementById(el.dataset.rowId);
+            if (!row) return;
+            const on = el.classList.toggle("on");
+            el.setAttribute("aria-pressed", on ? "true" : "false");
+            row.querySelector(".ins-pay-amount").classList.toggle("refund", on);
+            row.querySelector(".ins-pay-note").placeholder = on ? "Refund reason" : "Note";
+            insRecalcPaymentTotal();
+        }
+
+        function insBonusToggle() {
+            document.getElementById("insBonusDetail").style.display = document.getElementById("insPaidByBonus").checked ? "block" : "none";
         }
 
         // One surrender-value entry = Date + Guaranteed + Dividend + Terminal bonus + Total, mirroring the
@@ -16082,7 +16133,8 @@
             document.querySelectorAll("#insPaymentRows .ins-row").forEach(row => {
                 const date = row.querySelector(".ins-pay-date").value;
                 const amount = insNumOrNull(row.querySelector(".ins-pay-amount").value);
-                if (date && amount != null && amount >= 0) out.push({ id: makeInsuranceId(), date, amount, note: row.querySelector(".ins-pay-note").value.trim() });
+                const refund = row.querySelector(".ins-refund-btn").classList.contains("on");
+                if (date && amount != null && amount >= 0) out.push({ id: makeInsuranceId(), date, amount: refund ? -amount : amount, note: row.querySelector(".ins-pay-note").value.trim() });
             });
             return out.sort((a, b) => a.date.localeCompare(b.date));
         }
@@ -16123,7 +16175,8 @@
             const rows = collectInsPaymentRows();
             const total = rows.reduce((s, r) => s + r.amount, 0);
             const cur = document.getElementById("insCurrency").value || baseCurrency;
-            let text = `${rows.length} payment${rows.length === 1 ? "" : "s"} · total ${formatCurrency(total, cur)}`;
+            const nRefunds = rows.filter(r => r.amount < 0).length, nPays = rows.length - nRefunds;
+            let text = `${nPays} payment${nPays === 1 ? "" : "s"}${nRefunds ? ` + ${nRefunds} refund${nRefunds === 1 ? "" : "s"}` : ""} · total ${formatCurrency(total, cur)}`;
             let color = "var(--text-muted)";
             const stmt = insNumOrNull(document.getElementById("insStatementTotal").value);
             if (stmt != null && stmt > 0) {
@@ -16157,6 +16210,9 @@
             document.getElementById("insPremium").value = (p && p.premium != null) ? p.premium : "";
             document.getElementById("insLoan").value = (p && p.loanOutstanding) ? p.loanOutstanding : "";
             document.getElementById("insNotes").value = p ? (p.notes || "") : "";
+            document.getElementById("insPaidByBonus").checked = !!(p && p.paidByBonus);
+            document.getElementById("insPaidByBonusSince").value = (p && p.paidByBonusSince) || "";
+            insBonusToggle();
             document.getElementById("insStatementTotal").value = (p && p.statementTotal != null) ? p.statementTotal : "";
 
             // Ledger-tracking date — a new policy defaults to the day before the earliest
@@ -16210,6 +16266,8 @@
             record.historyCutoff = document.getElementById("insCutoff").value || "";
             record.statementTotal = insNumOrNull(document.getElementById("insStatementTotal").value);
             record.notes = document.getElementById("insNotes").value.trim();
+            record.paidByBonus = document.getElementById("insPaidByBonus").checked;
+            record.paidByBonusSince = record.paidByBonus ? (document.getElementById("insPaidByBonusSince").value || "") : "";
             record.coverages = collectInsCoverageRows();
             record.riders = collectInsRiderRows();
             record.premiumHistory = collectInsPaymentRows();
@@ -23229,6 +23287,7 @@
             handleDeleteInsurance: () => handleDeleteInsurance(),
             addInsCoverageRow: () => addInsCoverageRow(null),
             addInsRiderRow: () => addInsRiderRow(null), // v472
+            toggleInsRefund: (el) => toggleInsRefund(el), // v473
             addInsPaymentRow: () => addInsPaymentRow(null, true),
             addInsSvRow: () => insAddSvRowForType(),
             addInsFundLine: (el) => addInsFundLine(el), // v471
@@ -23317,6 +23376,7 @@
             insSvPartChange: (el) => insSvPartChange(el),
             insTypeChanged: () => updateInsSvAddUi(), // v471
             insCovKindChange: (el) => insCovKindChange(el), // v472
+            insBonusToggle: () => insBonusToggle(), // v473
             insRecalcPaymentTotal: () => insRecalcPaymentTotal(),
             handleInvAttachmentsSelected: (el, e) => handleInvAttachmentsSelected(e),
             recalcWarrantyRowEnd: (el) => recalcWarrantyRowEnd(el),

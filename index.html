@@ -2119,6 +2119,17 @@
         .ins-sv-block, .ins-card { border: 1px solid var(--border-color); border-radius: 12px; padding: 8px; margin-bottom: 8px; }
         .ins-row-line select.form-input { width: auto; flex: 1 1 0; min-width: 0; margin: 0; }
         .ins-rd-name, .ins-cov-label { flex: 1 1 0; }
+        /* v473: refund toggle on an earlier-payment row, "paid via accumulated cash bonus" box, notes box */
+        .ins-refund-btn { flex: 0 0 26px; height: 26px; border: none; border-radius: 50%; background: var(--chip-bg); color: var(--text-muted); font-size: 0.9rem; line-height: 1; padding: 0; cursor: pointer; }
+        .ins-refund-btn.on { background: rgba(16, 185, 129, 0.2); color: var(--income-color); font-weight: 800; }
+        input.ins-pay-amount.refund { color: var(--income-color); border-color: var(--income-color); }
+        .ins-bonus-box { background: var(--chip-bg); border-radius: 12px; padding: 12px; margin: 4px 0 14px; }
+        .ins-check { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 0.88rem; cursor: pointer; margin: 0; text-transform: none; letter-spacing: normal; color: var(--text-main); }
+        .ins-check input[type=checkbox] { width: 18px; height: 18px; flex: 0 0 auto; margin: 0; padding: 0; }
+        .ins-bonus-help { font-size: 0.72rem; color: var(--text-muted); margin: 8px 0; }
+        .ins-bonus-box label:not(.ins-check) { font-size: 0.7rem; font-weight: 700; color: var(--text-muted); display: block; margin: 6px 0 4px; }
+        .ins-notes { width: 100%; box-sizing: border-box; padding: 12px 14px; border: 1.5px solid var(--border-color); border-radius: 12px; background: var(--card-bg); color: var(--text-main); font-family: inherit; font-size: 0.9rem; line-height: 1.45; resize: vertical; min-height: 76px; }
+        .ins-notes:focus { outline: none; border-color: var(--primary); }
         .ins-sv-cell { flex: 1 1 0; min-width: 0; }
         .ins-sv-cell label { display: block; font-size: 0.62rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin: 0 0 2px; }
         .ins-sv-cell input { width: 100%; }
@@ -4039,6 +4050,14 @@
                     <div><label>Premium</label><input type="number" id="insPremium" step="0.01" min="0" placeholder="Per payment"></div>
                     <div><label>Frequency</label><select id="insFrequency" class="form-input"></select></div>
                 </div>
+                <div class="ins-bonus-box">
+                    <label class="ins-check"><input type="checkbox" id="insPaidByBonus" data-change="insBonusToggle"><span>Premium currently paid via Accumulated Cash Bonus</span></label>
+                    <div id="insBonusDetail" style="display:none;">
+                        <p class="ins-bonus-help">If you have enough accumulated bonus/dividend, the insurer can deduct future premiums from it instead of you paying cash. Record when this started.</p>
+                        <label>Since (date bonus started covering premium)</label>
+                        <input type="date" id="insPaidByBonusSince">
+                    </div>
+                </div>
                 <div class="form-row">
                     <label>Policy loan not yet deducted (Optional)</label>
                     <input type="number" id="insLoan" step="0.01" min="0" placeholder="Leave empty if the statement total is already net of loan">
@@ -4054,12 +4073,12 @@
                 <button type="button" class="submit-btn" data-click="addInsRiderRow" style="margin-top:2px; background:var(--chip-bg); color:var(--text-main);">＋ Add rider</button>
 
                 <div class="ins-section-title">Premiums paid before this ledger</div>
-                <p style="font-size:0.72rem; color:var(--text-muted); margin-bottom:8px;">Type in the payments made before you started using this ledger. Payments from now on are recorded as normal expenses and linked to this policy.</p>
+                <p style="font-size:0.72rem; color:var(--text-muted); margin-bottom:8px;">Type in the payments made before you started using this ledger. Payments from now on are recorded as normal expenses and linked to this policy. If a payment was refunded (overpaid premium, premium returned…), add it and tap <b>↩</b> on that row — it is subtracted from the total.</p>
                 <div class="form-row-inline">
                     <div><label>Ledger tracking starts</label><input type="date" id="insCutoff"></div>
                     <div><label>Insurer's total paid (check)</label><input type="number" id="insStatementTotal" step="0.01" min="0" placeholder="Optional" data-input="insRecalcPaymentTotal"></div>
                 </div>
-                <div class="ins-row-line ins-hdr"><span class="ins-c-date">Date</span><span class="ins-c-num">Amount</span><span class="ins-c-grow">Note</span><span style="flex:0 0 26px;"></span></div>
+                <div class="ins-row-line ins-hdr"><span class="ins-c-date">Date</span><span class="ins-c-num">Amount</span><span class="ins-c-grow">Note</span><span style="flex:0 0 26px; text-align:center;" title="Refund">↩</span><span style="flex:0 0 26px;"></span></div>
                 <div id="insPaymentRows" class="ins-rows-scroll"></div>
                 <p id="insPaymentTotal" style="font-size:0.74rem; font-weight:700; margin:6px 0 8px; color:var(--text-muted);"></p>
                 <button type="button" class="submit-btn" data-click="addInsPaymentRow" style="margin-top:2px; background:var(--chip-bg); color:var(--text-main);">＋ Add payment (copies the previous one, next year)</button>
@@ -4069,7 +4088,7 @@
                 <div id="insSvRows"></div>
                 <button type="button" class="submit-btn" id="insSvAddBtn" data-click="addInsSvRow" style="margin-top:2px; background:var(--chip-bg); color:var(--text-main);">＋ Add surrender value</button>
 
-                <div class="form-row" style="margin-top:14px;"><textarea id="insNotes" class="form-input" rows="2" placeholder="Notes (Optional)" style="width:100%; box-sizing:border-box;"></textarea></div>
+                <div class="form-row" style="margin-top:14px;"><textarea id="insNotes" class="ins-notes" rows="3" placeholder="Notes (Optional) — e.g. agent name & phone"></textarea></div>
             </div>
             <div style="flex-shrink:0; padding:12px 20px 20px;">
                 <button type="button" class="submit-btn" data-click="handleSaveInsurance" style="margin-top:0;">Save</button>

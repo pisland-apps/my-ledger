@@ -3672,3 +3672,13 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Coverage records: `{ id, kind, label (only for "other"), sumAssured, expiry, annualLimit, lifetimeLimit, lifetimeRemaining }`; policy gains `riders: [{id, name, startDate, endDate}]`. A coverage saved by v468–v471 (free-text label + sum, no `kind`) opens as **Other** with its label as the name, and keeps showing under that name. Nothing is rewritten until the policy is saved again.
 
 - `APP_VERSION` / `CACHE_NAME` → v472.
+
+## v473: Insurance — paid-by-bonus flag, refunds, sort by insurer, card shows notes
+
+- **"Premium currently paid via Accumulated Cash Bonus"** (checkbox + "Since" date) on a policy: the insurer deducts the premium from the accumulated dividend, so there is no cash payment. A yellow `💰 Premium currently paid via Accumulated Cash Bonus · since …` strip appears on the policy card and the detail sheet, and such a policy is **left out of the "Yearly premium" figure** (that figure is the cash outlay). New fields `paidByBonus`, `paidByBonusSince`. Recorded premiums still count in "Premiums paid".
+- **Policy card shows the Notes** (first two lines, e.g. the agent's name and phone) under the bonus strip; the detail sheet shows the notes at the top instead of at the bottom. The Notes box in the editor is restyled (rounded, padded, the app's focus colour) and relabelled.
+- **List order: Insurer → Type → Plan name** (blank insurer last; types in the order of the Type list, so Life comes before Medical). It used to be insured person → plan name.
+- **No "No surrender value yet" text.** A policy with no surrender value entry shows nothing for it on the card; the detail sheet leaves out the Surrender value column and the Surrender value history section too (term, medical, motor… never have one). Add one from Edit when there is one.
+- **Refunds.** Earlier payments (before the ledger): each row has a **↩** button — tap it for a refund (overpaid premium, premium returned…). It is stored as a **negative amount** (`premiumHistory[].amount < 0`), shown green with a leading `+` in the payment list, and subtracted from every total; the editor's total reads `23 payments + 1 refund · total …`. Continuing a row (`＋ Add payment`) copies the last real payment, not a refund. In the **ledger**, a refund made with ⋮ → Refund on a premium (an income entry with `isRefund` and `refundOf`/`refundOfIds`) is subtracted from the policy that the refunded expense is linked to — the refund itself carries no `policyId`.
+
+- `APP_VERSION` / `CACHE_NAME` → v473.

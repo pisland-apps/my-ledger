@@ -3612,3 +3612,23 @@ Fix:
 
 Tested in headless Chromium 153 against the real app (`index.html` + `ledger.js`, CSP also sent as an HTTP header): `openAttachment()` with the 5-page scanner PDF → all 5 pages show; then with the old 6.2.108 main file forced in at the new path → the clear message after 30 s (no spinner, no crash). Not tested on the owner's device or through a real GitHub Pages deploy / service-worker upgrade.
 
+## v468: Insurance — policies, premiums paid and latest surrender value
+
+New sidebar entry **Insurance** (next to Reminders). One record per policy, in a new `insurance` IndexedDB store (`DB_VERSION` 13 → 14; the store is created on upgrade, nothing existing is touched).
+
+What a policy holds: insurer / plan / policy number / type / status / insured person / start & maturity dates / premium & frequency / optional policy loan, a **coverage** list (benefit + sum assured), the **premium payments made before this ledger started** (typed in by hand — date, amount, note), and a **dated surrender-value history** (Guaranteed + Total, copied from the insurer's statements — never calculated).
+
+How premiums stay correct:
+- **Premiums paid = typed-in earlier payments + ledger Expense transactions linked to the policy.** It is computed live every time, never stored, so editing/deleting a transaction can't leave a stale total.
+- A transaction links to a policy through a new optional field `policyId`. The Add/Edit Transaction form shows a **🛡️ Policy** row only on an Expense whose category looks like insurance (or one already linked) and only when at least one policy exists. The field is carried through edits (the record is built field-by-field, same trap as `splitGroupId`/`isRefund`); split legs never carry it.
+- A **Planned Payment** links to a policy through its own optional `policyId` (one planned payment per policy; link it from the policy's detail sheet). A recurring planned payment keeps the link across "Mark as Paid", which pre-selects the policy on the form, so each year's premium is linked automatically. The policy's "Next premium" is read from that planned payment — the date is stored once, not twice.
+- **💳 Record premium** on a policy opens the Expense form pre-filled; when a planned payment is linked it goes through the same confirm path as "Mark as Paid", so the planned payment advances instead of being left to be paid twice.
+- "Ledger tracking starts" (defaults to the day before the earliest transaction) marks where typed-in history ends; a linked ledger transaction dated on/before it is flagged as a possible duplicate. An optional "Insurer's total paid" is compared against the typed-in payments while typing (✅ / ⚠️ with the difference).
+- A surrender value older than 12 months is flagged ⚠️ (insurers issue a fresh statement yearly).
+- A policy that still has linked transactions / a planned payment can't be deleted — set Status to Lapsed / Surrendered / Matured instead.
+
+Backup: `insurance` is included in export, restore and the Drive snapshot bundle (absent on older backups → skipped). Records are encrypted like every other store (keyPath `id` stays plain). No new files, no `sw.js` asset list change.
+
+Not in this version (planned): policy attachments, net-worth toggle, per-member coverage report, premiums-paid-vs-surrender-value report, investment-linked ↔ Funds link.
+
+- `APP_VERSION` / `CACHE_NAME` → v468.

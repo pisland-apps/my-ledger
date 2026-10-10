@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v467";
-        const APP_VERSION_DATE = "2026-10-05";
+        const APP_VERSION = "v468";
+        const APP_VERSION_DATE = "2026-10-09";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -124,12 +124,14 @@
         // active/disposed/lost status). Created either inline from an Expense entry (see the
         // "📦 Add to Inventory" block on the transaction form) or manually from the Inventory
         // page's own + button. See the "--- INVENTORY ---" section below.
-        const DB_VERSION = 13;
-        const STORES = { ACCOUNTS: "accounts", TRANSACTIONS: "transactions", SETTINGS: "settings", CATEGORIES: "categories", MEMBERS: "members", FUNDS: "funds", NAV_HISTORY: "navHistory", ATTACHMENTS: "attachments", TEMPLATES: "templates", TAGS: "tags", BUDGETS: "budgets", INVENTORY: "inventory", PLANNED_PAYMENTS: "plannedPayments", REMINDERS: "reminders", DRIVE_SNAPSHOTS: "driveSnapshots" };
+        // v468: DB_VERSION 13→14 adds the INSURANCE store (one record per insurance policy — coverage,
+        // typed-in premium history, surrender-value history; see the "--- INSURANCE ---" section).
+        const DB_VERSION = 14;
+        const STORES = { ACCOUNTS: "accounts", TRANSACTIONS: "transactions", SETTINGS: "settings", CATEGORIES: "categories", MEMBERS: "members", FUNDS: "funds", NAV_HISTORY: "navHistory", ATTACHMENTS: "attachments", TEMPLATES: "templates", TAGS: "tags", BUDGETS: "budgets", INVENTORY: "inventory", PLANNED_PAYMENTS: "plannedPayments", REMINDERS: "reminders", INSURANCE: "insurance", DRIVE_SNAPSHOTS: "driveSnapshots" };
         // Maps each object store to the field IndexedDB uses as its keyPath. That field must stay
         // unencrypted on the stored record (IndexedDB needs to read it directly to index/generate keys);
         // every other field on the record is encrypted as a single AES-GCM blob.
-        const STORE_KEYPATHS = { accounts: "id", transactions: "id", settings: "key", categories: "id", members: "id", funds: "id", navHistory: "date", attachments: "id", templates: "id", tags: "id", budgets: "id", inventory: "id", plannedPayments: "id", reminders: "id" };
+        const STORE_KEYPATHS = { accounts: "id", transactions: "id", settings: "key", categories: "id", members: "id", funds: "id", navHistory: "date", attachments: "id", templates: "id", tags: "id", budgets: "id", inventory: "id", plannedPayments: "id", reminders: "id", insurance: "id" };
 
         // Fixed palette offered when picking a member's color (sidebar dot, net-worth rows, etc.)
         const MEMBER_COLORS = ["#3b82f6", "#ec4899", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#0ea5e9", "#14b8a6", "#f97316", "#64748b"];
@@ -2121,6 +2123,7 @@
             const inventoryPage = document.getElementById("page-inventory");
             const plannedPaymentsPage = document.getElementById("page-plannedpayments");
             const remindersPage = document.getElementById("page-reminders");
+            const insurancePage = document.getElementById("page-insurance");
 
             if (!ledgerPage.classList.contains("hidden")) {
                 handleLedgerBackClick();
@@ -2164,7 +2167,8 @@
                 !currencyConfigPage.classList.contains("hidden") ||
                 !inventoryPage.classList.contains("hidden") ||
                 !plannedPaymentsPage.classList.contains("hidden") ||
-                !remindersPage.classList.contains("hidden")
+                !remindersPage.classList.contains("hidden") ||
+                !insurancePage.classList.contains("hidden")
             ) {
                 navigateToWorkspace();
             }
@@ -2258,6 +2262,16 @@
                         // family member (user's explicit choice) — one unified list. See the
                         // "--- REMINDERS ---" section for the full model.
                         database.createObjectStore(STORES.REMINDERS, { keyPath: "id" });
+                    }
+                    if (!database.objectStoreNames.contains(STORES.INSURANCE)) {
+                        // v468: one record per insurance policy — keyPath "id" (app-generated, see
+                        // makeInsuranceId()). Shape: { id, insurer, product, policyNo, type, status,
+                        // insuredMemberId, startDate, maturityDate, currency, premium, frequency,
+                        // historyCutoff, statementTotal, premiumHistory: [{id,date,amount,note}],
+                        // coverages: [{id,label,sumAssured}], surrenderHistory: [{id,date,guaranteed,
+                        // total}], loanOutstanding, notes, createdAt, updated }. See the
+                        // "--- INSURANCE ---" section for the full model.
+                        database.createObjectStore(STORES.INSURANCE, { keyPath: "id" });
                     }
                     if (!database.objectStoreNames.contains(STORES.DRIVE_SNAPSHOTS)) {
                         // v433: safety-net snapshots of THIS device's own data, taken right before
@@ -3225,7 +3239,7 @@
         // --- SPA NAVIGATION PIPELINE ---
         // Every top-level page div's id — used by showPage() to hide all but the target,
         // so adding a new page never risks leaving a stale one visible underneath.
-        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-database", "page-attachment-review", "page-total-summary", "page-monthly-trend", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-bgtheme", "page-networthcardstyle", "page-dashboardwidgets", "page-currencyconfig", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity", "page-inventory", "page-plannedpayments", "page-reminders"];
+        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-database", "page-attachment-review", "page-total-summary", "page-monthly-trend", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-bgtheme", "page-networthcardstyle", "page-dashboardwidgets", "page-currencyconfig", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity", "page-inventory", "page-plannedpayments", "page-reminders", "page-insurance"];
         // v406: which rail icon (by its data-click, and data-target for the one that uses
         // sidebarGo instead of its own navigateTo*Page()) corresponds to which Settings page —
         // used by updateSettingsIconRailActiveState() below to highlight the icon for whichever
@@ -3310,6 +3324,7 @@
                 case "page-dashboardwidgets": return "Dashboard Widgets";
                 case "page-currencyconfig": return "Currency Setting";
                 case "page-reminders": return "Reminders";
+                case "page-insurance": return "Insurance";
                 default: return "Ledger";
             }
         }
@@ -5468,6 +5483,7 @@
             else if (target === "inventory") navigateToInventoryPage();
             else if (target === "plannedpayments") navigateToPlannedPaymentsPage();
             else if (target === "reminders") navigateToRemindersPage();
+            else if (target === "insurance") navigateToInsurancePage();
             else if (target === "lock") lockAppNow();
         }
 
@@ -7231,6 +7247,11 @@
             }
             await refreshFundActivityPageIfVisible();
             await refreshCurrencyActivityPageIfVisible();
+            // v468: premiums paid are computed from linked transactions, so the Insurance page
+            // must redraw whenever a transaction changes while it is the visible page.
+            if (!document.getElementById("page-insurance").classList.contains("hidden")) {
+                await renderInsurancePage();
+            }
         }
 
         // Relabels the Add/Edit Fund form for Gold vs a regular unit-trust fund — the same DB
@@ -11896,6 +11917,7 @@
                 // updateTxTagsRowVisibility()'s own comment).
                 updateTxTagsRowVisibility();
                 resetTxTagsChips(tx.tags || []);
+                refreshTxPolicyRow(tx.policyId || null); // v468
 
                 document.getElementById("txManualFxToggle").checked = !!tx.manualFxRate;
                 document.getElementById("txManualFxRate").value = tx.manualFxRate || "";
@@ -12023,6 +12045,7 @@
                 document.getElementById("txInvWarrantyRows").innerHTML = "";
                 updateTxTagsRowVisibility();
                 resetTxTagsChips([]);
+                refreshTxPolicyRow(null); // v468
 
                 // Pre-select the user's default account, if one is set and still exists — new
                 // entries only, never when editing (handled above via tx.src). Income uses
@@ -12149,6 +12172,8 @@
             syncAccountPickerButtonText("srcAccount");
             syncAccountPickerButtonText("destAccount");
             syncAccountPickerButtonText("txCategory");
+            // v468: final re-check, now that every branch above has settled the category.
+            refreshTxPolicyRow();
 
             openModal("txModal");
             // v439: callers that preset Account/Currency programmatically right after this function
@@ -13856,6 +13881,13 @@
                 // the destination account is credited via a live currency conversion each time
                 // the app renders, as before (see computeAccountBalances()/applyToAccountBalance()).
                 destAmount: transferDestAmountOverride,
+                // v468: optional link to an Insurance policy — only meaningful for an Expense, and only
+                // read while the "Policy" row is actually showing (see refreshTxPolicyRow()). Listed
+                // here explicitly for the same reason as splitGroupId/isRefund below: this record is
+                // built field-by-field, so a field left out is silently wiped on every edit.
+                policyId: (document.getElementById("txType").value === "expense" && document.getElementById("txPolicyRow").style.display !== "none")
+                    ? (document.getElementById("txPolicyId").value || null)
+                    : undefined,
                 // v92 fix: writeDB() does a full put() that replaces the entire stored record, so
                 // an edit that omitted this field was silently stripping splitGroupId off of split
                 // parts, ungrouping them into standalone transactions the moment they were edited
@@ -13964,6 +13996,9 @@
                         // removed — claims are now Transfers, and Split Expenses is only ever
                         // reachable for Income/Expense, so a split leg can never be a claim.)
                         extraRecord.tags = [...record.tags];
+                        // v468: a split leg is a different category/amount than the premium itself —
+                        // only the main row carries the policy link, or the premium would be counted twice.
+                        extraRecord.policyId = undefined;
                         await writeDB(STORES.TRANSACTIONS, extraRecord);
                     }
                 } else {
@@ -14707,6 +14742,9 @@
                 const newCat = document.getElementById("txCategory").value;
                 if (newCat) payment.cat = newCat;
                 payment.notes = document.getElementById("txNotes").value.trim();
+                // v468: keep the Insurance link in step with what was just confirmed on the form.
+                const polRowEl = document.getElementById("txPolicyRow");
+                if (polRowEl && polRowEl.style.display !== "none") payment.policyId = document.getElementById("txPolicyId").value || null;
                 payment.attachments = [];
                 // v359: backfill anchorDay for a record created before it existed (v357/v358) —
                 // one-time, using its current dueDate's day as the best available reconstruction
@@ -14850,6 +14888,8 @@
             // "amount · account" pattern with "category · recurrence" (either half optional).
             const metaParts = [];
             if (p.cat) metaParts.push(escapeHtml(p.cat));
+            const linkedPolicy = p.policyId ? getPolicyById(p.policyId) : null; // v468
+            if (linkedPolicy) metaParts.push("🛡️ " + escapeHtml(policyLabel(linkedPolicy)));
             if (p.recur && !p.paused) metaParts.push(escapeHtml(recurLabel(p.recur)));
             const metaLine = metaParts.join(" · ");
             return `
@@ -15065,6 +15105,7 @@
                     syncAccountPickerButtonText("txCategory");
                 }
                 document.getElementById("txNotes").value = payment.notes || "";
+                refreshTxPolicyRow(payment.policyId || null); // v468
                 // Defaults to today (when it's actually being paid) rather than the original due
                 // date — adjustable, like every other field here, before Commit Entry.
                 document.getElementById("txDate").value = todayLocalStr();
@@ -15107,6 +15148,700 @@
                 if (!confirmed) return;
                 try { await deleteDB(STORES.PLANNED_PAYMENTS, paymentId); } catch (err) {}
                 await refreshPlannedPaymentsViews();
+            });
+        }
+
+        // --- INSURANCE (v468) --- one record per policy (life, savings, medical, critical illness,
+        // personal accident, investment-linked, ...). Everything about a policy that is NOT a
+        // ledger transaction lives here: coverage lines (sum assured per benefit), the premium
+        // history from BEFORE this ledger started (typed in by hand — the ledger itself only knows
+        // about payments made since it began), and a dated history of surrender values copied
+        // from the insurer's statements (never calculated — only the insurer's own table can say).
+        // Premiums paid from now on are ordinary Expense transactions carrying an optional
+        // `policyId` (see #txPolicyRow on the Add/Edit Transaction form), so "Premiums paid" is
+        // always computed live from both sources instead of being stored — editing or deleting a
+        // transaction can never leave a stale total behind. Record shape: { id, insurer, product,
+        // policyNo, type, status, insuredMemberId, startDate, maturityDate, currency, premium,
+        // frequency, historyCutoff, statementTotal, premiumHistory: [{id,date,amount,note}],
+        // coverages: [{id,label,sumAssured}], surrenderHistory: [{id,date,guaranteed,total,note}],
+        // loanOutstanding, notes, createdAt, updated }.
+        // A Planned Payment is linked to a policy through ITS OWN optional `policyId` field (one
+        // planned payment per policy), so the policy's "next due" is read from that single record
+        // rather than being stored a second time here. A recurring planned payment keeps its
+        // policyId across "Mark as Paid" (see advanceOrDeletePlannedPaymentAfterConfirm()).
+        const INS_TYPES = { life: "Life / Whole Life", savings: "Savings / Endowment", term: "Term", medical: "Medical", critical: "Critical Illness", accident: "Personal Accident", investment: "Investment-linked", other: "Other" };
+        const INS_TYPE_ICONS = { life: "🛡️", savings: "🏦", term: "⏳", medical: "🏥", critical: "🎗️", accident: "🩹", investment: "📈", other: "📄" };
+        const INS_STATUSES = { active: "In force", paidup: "Paid-up", lapsed: "Lapsed", surrendered: "Surrendered", matured: "Matured" };
+        const INS_LIVE_STATUSES = ["active", "paidup"];
+        // [label, payments per year] — a single-premium policy has no yearly premium to project.
+        const INS_FREQ = { monthly: ["Monthly", 12], quarterly: ["Quarterly", 4], halfyearly: ["Half-yearly", 2], yearly: ["Yearly", 1], single: ["Single payment", 0] };
+        const INS_INSURANCE_CAT_RE = /insur|takaful|保险|保險/i;
+
+        let insuranceCache = [];
+        let activeInsuranceId = null;
+        let insuranceStatusFilter = "active"; // "active" | "ended" | "all"
+        let insRowCounter = 0;
+
+        function makeInsuranceId() {
+            return "ins_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+        }
+
+        async function loadInsuranceCache() {
+            try { insuranceCache = await readAllDB(STORES.INSURANCE); } catch (err) { insuranceCache = []; }
+            return insuranceCache;
+        }
+
+        function getPolicyById(id) {
+            return insuranceCache.find(p => p.id === id);
+        }
+
+        function insIsLive(p) {
+            return INS_LIVE_STATUSES.includes(p.status || "active");
+        }
+
+        function insMemberName(p) {
+            const m = p.insuredMemberId ? getMemberById(p.insuredMemberId) : null;
+            return m ? m.name : "";
+        }
+
+        // "Plan name · Insurer" (policy number appended when there is one) — used wherever a
+        // policy has to be picked or named in a single line (transaction form, planned payment row).
+        function policyLabel(p) {
+            const parts = [p.product || p.insurer || "Policy"];
+            if (p.product && p.insurer) parts.push(p.insurer);
+            let s = parts.join(" · ");
+            if (p.policyNo) s += ` (${p.policyNo})`;
+            return s;
+        }
+
+        function insNumOrNull(v) {
+            const n = parseFloat(v);
+            return isFinite(n) ? n : null;
+        }
+
+        // Amount converted between two currencies. An unknown rate falls back to the unconverted
+        // amount rather than NaN, so one odd currency can never blank out a whole summary.
+        function insConvert(amount, from, to) {
+            const a = parseFloat(amount);
+            if (!isFinite(a)) return 0;
+            if (!from || !to || from === to) return a;
+            if (!fxRates[from] || !fxRates[to]) return a;
+            return convertCurrency(a, from, to);
+        }
+
+        // The number a surrender-value entry stands for: the Total (incl. bonuses) when it was
+        // entered, otherwise the Guaranteed figure.
+        function insSvValue(r) {
+            if (!r) return null;
+            if (typeof r.total === "number") return r.total;
+            if (typeof r.guaranteed === "number") return r.guaranteed;
+            return null;
+        }
+
+        function insAddYear(dateStr) {
+            const [y, m, d] = dateStr.split("-").map(Number);
+            const last = new Date(y + 1, m, 0).getDate();
+            return `${y + 1}-${String(m).padStart(2, "0")}-${String(Math.min(d, last)).padStart(2, "0")}`;
+        }
+
+        // Everything the list card and the detail sheet need, computed in one place so the two
+        // can never disagree. `txs` is the full transactions list, `planned` the Planned Payments.
+        function computePolicyFigures(policy, txs, planned) {
+            const cur = policy.currency || baseCurrency;
+            const today = todayLocalStr();
+            const history = (policy.premiumHistory || []).filter(r => r && r.date)
+                .slice().sort((a, b) => b.date.localeCompare(a.date));
+            const historyTotal = history.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+            const ledgerRows = (txs || []).filter(t => t.policyId === policy.id && t.type === "expense")
+                .map(t => ({ date: t.date || "", amount: insConvert(t.amount, t.currency || cur, cur), tx: t }))
+                .sort((a, b) => b.date.localeCompare(a.date));
+            const ledgerTotal = ledgerRows.reduce((s, r) => s + r.amount, 0);
+            const paid = historyTotal + ledgerTotal;
+            const svs = (policy.surrenderHistory || []).filter(r => r && r.date)
+                .slice().sort((a, b) => b.date.localeCompare(a.date));
+            const latestSv = svs[0] || null;
+            const svValue = insSvValue(latestSv);
+            const svAgeDays = latestSv
+                ? Math.round((new Date(today + "T00:00:00") - new Date(latestSv.date + "T00:00:00")) / 86400000)
+                : null;
+            const loan = parseFloat(policy.loanOutstanding) || 0;
+            const freq = INS_FREQ[policy.frequency];
+            const premium = parseFloat(policy.premium) || 0;
+            return {
+                cur, history, historyTotal, ledgerRows, ledgerTotal, paid, svs, latestSv, svValue, svAgeDays,
+                // A surrender value older than a year is probably out of date — insurers send a
+                // fresh statement every year — so the card flags it instead of presenting it as current.
+                svStale: svAgeDays != null && svAgeDays > 365,
+                loan,
+                netSv: svValue == null ? null : svValue - loan,
+                paybackPct: (svValue != null && paid > 0) ? (svValue / paid) * 100 : null,
+                annual: (freq && freq[1] > 0 && premium > 0) ? premium * freq[1] : 0,
+                plan: (planned || []).find(p => p.policyId === policy.id) || null
+            };
+        }
+
+        // --- Transaction form: "Policy" row ---
+
+        // Shown on an Expense entry only when at least one policy exists AND either the category
+        // looks like insurance or a policy is already chosen (so an existing link is never hidden
+        // from the person who set it). selectedId: undefined = keep whatever is chosen right now,
+        // null/"" = clear it, an id = select that policy.
+        function refreshTxPolicyRow(selectedId) {
+            const row = document.getElementById("txPolicyRow");
+            const sel = document.getElementById("txPolicyId");
+            if (!row || !sel) return;
+            const current = (selectedId === undefined) ? sel.value : (selectedId || "");
+            const catEl = document.getElementById("txCategory");
+            const catText = (catEl && catEl.selectedIndex >= 0)
+                ? (catEl.options[catEl.selectedIndex].textContent + " " + catEl.value) : "";
+            const policies = insuranceCache
+                .filter(p => insIsLive(p) || p.id === current)
+                .slice().sort((a, b) => policyLabel(a).localeCompare(policyLabel(b)));
+            sel.innerHTML = `<option value="">🛡️ Policy (Optional) — none</option>`
+                + policies.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(policyLabel(p))}</option>`).join("");
+            sel.value = policies.some(p => p.id === current) ? current : "";
+            const type = document.getElementById("txType").value;
+            const show = type === "expense" && policies.length > 0 && (INS_INSURANCE_CAT_RE.test(catText) || !!sel.value);
+            row.style.display = show ? "flex" : "none";
+        }
+
+        // --- Insurance page ---
+
+        function navigateToInsurancePage() {
+            showPage("page-insurance");
+            pushVirtualState("insurance");
+            renderInsurancePage();
+        }
+
+        function insuranceSetStatusFilter(el) {
+            insuranceStatusFilter = el.dataset.status;
+            document.querySelectorAll('#page-insurance .nav-view-toggle-btn').forEach(b => b.classList.toggle("active", b.dataset.status === insuranceStatusFilter));
+            renderInsurancePage();
+        }
+
+        async function renderInsurancePage() {
+            const list = document.getElementById("insurancePageList");
+            const empty = document.getElementById("insurancePageEmpty");
+            const summary = document.getElementById("insuranceSummary");
+            if (!list || !empty || !summary) return;
+            await loadInsuranceCache();
+            const [txs, planned] = await Promise.all([readAllDB(STORES.TRANSACTIONS), readAllDB(STORES.PLANNED_PAYMENTS)]);
+
+            const filtered = insuranceCache.filter(p => insuranceStatusFilter === "all" ? true
+                : (insuranceStatusFilter === "ended" ? !insIsLive(p) : insIsLive(p)))
+                .sort((a, b) => (insMemberName(a) + "|" + (a.product || "")).localeCompare(insMemberName(b) + "|" + (b.product || "")));
+
+            empty.style.display = filtered.length ? "none" : "block";
+            empty.textContent = insuranceCache.length === 0
+                ? "No policies yet — tap + to add one."
+                : (insuranceStatusFilter === "ended" ? "No ended policies." : "No policies match this filter.");
+
+            let annualBase = 0, paidBase = 0, svBase = 0, svCount = 0;
+            const rows = filtered.map(p => {
+                const f = computePolicyFigures(p, txs, planned);
+                annualBase += insConvert(f.annual, f.cur, baseCurrency);
+                paidBase += insConvert(f.paid, f.cur, baseCurrency);
+                if (f.svValue != null) { svBase += insConvert(f.netSv, f.cur, baseCurrency); svCount++; }
+                const icon = INS_TYPE_ICONS[p.type] || INS_TYPE_ICONS.other;
+                const metaParts = [];
+                if (p.product && p.insurer) metaParts.push(escapeHtml(p.insurer));
+                const who = insMemberName(p);
+                if (who) metaParts.push(escapeHtml(who));
+                if (!insIsLive(p)) metaParts.push(escapeHtml(INS_STATUSES[p.status] || p.status));
+                let dueLine = "";
+                if (f.plan && !f.plan.paused) {
+                    const dd = Math.round((new Date(f.plan.dueDate + "T00:00:00") - new Date(todayLocalStr() + "T00:00:00")) / 86400000);
+                    dueLine = `<span style="font-size:0.72rem; font-weight:700; color:${dd < 0 ? "var(--expense-color)" : "var(--text-muted)"};">Next premium ${escapeHtml(f.plan.dueDate)} · ${dd < 0 ? "overdue " + Math.abs(dd) + "d" : (dd === 0 ? "today" : dd + "d left")}</span>`;
+                }
+                const svText = f.svValue == null ? "No surrender value yet"
+                    : `SV ${formatCurrency(f.svValue, f.cur)} · ${escapeHtml(f.latestSv.date)}${f.svStale ? " ⚠️" : ""}`;
+                return `
+                    <div class="config-item" data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; ${insIsLive(p) ? "" : "opacity:0.65;"}">
+                        <span class="category-display-badge" style="min-width:0;">
+                            <span>${icon}</span>
+                            <span style="display:flex; flex-direction:column; min-width:0;">
+                                <strong>${escapeHtml(p.product || p.insurer || "Policy")}</strong>
+                                ${metaParts.length ? `<span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">${metaParts.join(" · ")}</span>` : ""}
+                                ${dueLine}
+                            </span>
+                        </span>
+                        <span style="text-align:right; flex:0 0 auto;">
+                            <span style="display:block; font-size:0.85rem; font-weight:700;">Paid ${formatCurrency(f.paid, f.cur)}</span>
+                            <span style="font-size:0.72rem; font-weight:700; color:${f.svStale ? "var(--expense-color)" : "var(--text-muted)"};">${svText}</span>
+                        </span>
+                    </div>`;
+            });
+            list.innerHTML = rows.join("");
+
+            const cell = (label, value) => `
+                <div style="flex:1 1 0; min-width:0; text-align:center;">
+                    <div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">${label}</div>
+                    <div style="font-family:'Kalam', cursive; font-size:1.05rem; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${value}</div>
+                </div>`;
+            summary.style.display = filtered.length ? "flex" : "none";
+            summary.innerHTML = cell("Yearly premium", formatCurrency(annualBase, baseCurrency))
+                + cell("Premiums paid", formatCurrency(paidBase, baseCurrency))
+                + cell("Surrender value", svCount ? formatCurrency(svBase, baseCurrency) : "—");
+        }
+
+        // --- Detail sheet (tapping a card) ---
+
+        async function insurancePolicyTap(el) {
+            await openInsuranceDetail(el.dataset.id);
+        }
+
+        async function openInsuranceDetail(id) {
+            await loadInsuranceCache();
+            const p = getPolicyById(id);
+            if (!p) return;
+            activeInsuranceId = id;
+            const [txs, planned] = await Promise.all([readAllDB(STORES.TRANSACTIONS), readAllDB(STORES.PLANNED_PAYMENTS)]);
+            const f = computePolicyFigures(p, txs, planned);
+            const cur = f.cur;
+            const today = todayLocalStr();
+
+            document.getElementById("insuranceDetailTitle").textContent = p.product || p.insurer || "Policy";
+
+            const kv = (k, v) => v ? `<div style="min-width:0;"><div style="font-size:0.66rem; color:var(--text-muted); font-weight:700;">${k}</div><div style="font-size:0.85rem; font-weight:700; overflow-wrap:anywhere;">${v}</div></div>` : "";
+            const freqLabel = INS_FREQ[p.frequency] ? INS_FREQ[p.frequency][0] : "";
+            const premiumText = parseFloat(p.premium) > 0 ? `${formatCurrency(p.premium, cur)}${freqLabel ? " · " + freqLabel : ""}` : "";
+            const section = (title) => `<div style="font-size:0.72rem; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin:16px 0 6px;">${title}</div>`;
+            const line = (left, right, sub) => `
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-color);">
+                    <span style="min-width:0; font-size:0.82rem; font-weight:600; overflow-wrap:anywhere;">${left}${sub ? `<br><span style="font-size:0.68rem; color:var(--text-muted);">${sub}</span>` : ""}</span>
+                    <span style="flex:0 0 auto; text-align:right; font-size:0.82rem; font-weight:700;">${right}</span>
+                </div>`;
+
+            let html = `
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; margin-bottom:14px;">
+                    ${kv("Insurer", escapeHtml(p.insurer || ""))}
+                    ${kv("Policy no.", escapeHtml(p.policyNo || ""))}
+                    ${kv("Type", escapeHtml(INS_TYPES[p.type] || ""))}
+                    ${kv("Status", escapeHtml(INS_STATUSES[p.status || "active"] || ""))}
+                    ${kv("Insured", escapeHtml(insMemberName(p)))}
+                    ${kv("Premium", premiumText)}
+                    ${kv("Start", escapeHtml(p.startDate || ""))}
+                    ${kv("Maturity / end", escapeHtml(p.maturityDate || ""))}
+                </div>
+
+                <div style="border:1px solid var(--border-color); border-radius:12px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; gap:12px;">
+                        <div style="min-width:0;">
+                            <div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Premiums paid</div>
+                            <div style="font-family:'Kalam', cursive; font-size:1.1rem; font-weight:800;">${formatCurrency(f.paid, cur)}</div>
+                            <div style="font-size:0.68rem; color:var(--text-muted); font-weight:600;">Before ledger ${formatCurrency(f.historyTotal, cur)} · In ledger ${formatCurrency(f.ledgerTotal, cur)}</div>
+                        </div>
+                        <div style="min-width:0; text-align:right;">
+                            <div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Surrender value</div>
+                            <div style="font-family:'Kalam', cursive; font-size:1.1rem; font-weight:800;">${f.svValue == null ? "—" : formatCurrency(f.svValue, cur)}</div>
+                            <div style="font-size:0.68rem; font-weight:600; color:${f.svStale ? "var(--expense-color)" : "var(--text-muted)"};">${f.latestSv ? `as of ${escapeHtml(f.latestSv.date)}${f.svStale ? " · ⚠️ over a year old" : ""}` : "not recorded"}</div>
+                        </div>
+                    </div>
+                    ${f.loan > 0 ? `<div style="font-size:0.75rem; font-weight:700; margin-top:8px;">Loan outstanding −${formatCurrency(f.loan, cur)} → net ${f.netSv == null ? "—" : formatCurrency(f.netSv, cur)}</div>` : ""}
+                    ${f.paybackPct != null ? `<div style="font-size:0.75rem; font-weight:700; margin-top:6px; color:var(--text-muted);">Surrender value is ${f.paybackPct.toFixed(1)}% of premiums paid</div>` : ""}
+                </div>`;
+
+            // Coverage
+            const covs = (p.coverages || []).filter(c => c && c.label);
+            if (covs.length) {
+                html += section("Coverage") + covs.map(c => line(escapeHtml(c.label), typeof c.sumAssured === "number" ? formatCurrency(c.sumAssured, cur) : "—")).join("");
+            }
+
+            // Linked Planned Payment
+            html += section("Next premium");
+            if (f.plan) {
+                const dd = Math.round((new Date(f.plan.dueDate + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000);
+                const when = f.plan.paused ? "⏸ Paused" : (dd < 0 ? `Overdue ${Math.abs(dd)}d` : (dd === 0 ? "Due today" : `${dd}d left`));
+                html += line(escapeHtml(f.plan.desc || "Planned payment"),
+                    `${formatCurrency(f.plan.amount, f.plan.currency || cur)}`,
+                    `${escapeHtml(f.plan.dueDate)} · ${when}${f.plan.recur ? " · " + escapeHtml(recurLabel(f.plan.recur)) : ""}`);
+                html += `<button type="button" class="submit-btn" data-click="insuranceUnlinkPlan" style="margin-top:8px; background:var(--chip-bg); color:var(--text-main);">Unlink planned payment</button>`;
+            } else {
+                html += `<p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:8px;">No planned payment linked to this policy.</p>
+                    <button type="button" class="submit-btn" data-click="insuranceOpenPlanPicker" style="margin-top:0; background:var(--chip-bg); color:var(--text-main);">🔗 Link a planned payment</button>`;
+            }
+
+            // Premium timeline — earlier (typed-in) payments and ledger payments in one list
+            const timeline = [
+                ...f.ledgerRows.map(r => ({ date: r.date, amount: r.amount, source: "Ledger", note: "", dup: !!(p.historyCutoff && r.date && r.date <= p.historyCutoff) })),
+                ...f.history.map(r => ({ date: r.date, amount: parseFloat(r.amount) || 0, source: "History", note: r.note || "", dup: false }))
+            ].sort((a, b) => b.date.localeCompare(a.date));
+            html += section(`Premium payments (${timeline.length})`);
+            if (timeline.length) {
+                html += `<div>` + timeline.map(r => line(
+                    `${escapeHtml(r.date)}${r.source === "Ledger" ? " 🧾" : ""}`,
+                    formatCurrency(r.amount, cur),
+                    [r.note ? escapeHtml(r.note) : "", r.dup ? "⚠️ dated before the ledger-tracking date — may duplicate an earlier entry" : ""].filter(Boolean).join(" · ")
+                )).join("") + `</div>`;
+                if (parseFloat(p.statementTotal) > 0) {
+                    const diff = f.historyTotal - parseFloat(p.statementTotal);
+                    html += `<p style="font-size:0.72rem; font-weight:700; margin-top:6px; color:${Math.abs(diff) < 0.005 ? "var(--income-color)" : "var(--expense-color)"};">${Math.abs(diff) < 0.005
+                        ? `✅ Earlier payments match the insurer's statement total (${formatCurrency(p.statementTotal, cur)})`
+                        : `⚠️ Earlier payments differ from the insurer's statement total (${formatCurrency(p.statementTotal, cur)}) by ${formatCurrency(Math.abs(diff), cur)}`}</p>`;
+                }
+            } else {
+                html += `<p style="font-size:0.78rem; color:var(--text-muted);">No payments recorded yet.</p>`;
+            }
+
+            // Surrender value history
+            html += section(`Surrender value history (${f.svs.length})`);
+            if (f.svs.length) {
+                html += f.svs.map(r => {
+                    const bits = [];
+                    if (typeof r.guaranteed === "number") bits.push(`Guaranteed ${formatCurrency(r.guaranteed, cur)}`);
+                    if (r.note) bits.push(escapeHtml(r.note));
+                    return line(escapeHtml(r.date), insSvValue(r) == null ? "—" : formatCurrency(insSvValue(r), cur), bits.join(" · "));
+                }).join("");
+            } else {
+                html += `<p style="font-size:0.78rem; color:var(--text-muted);">No surrender value recorded yet — add one from Edit.</p>`;
+            }
+
+            if (p.notes) html += section("Notes") + `<p style="font-size:0.82rem; white-space:pre-wrap; overflow-wrap:anywhere;">${escapeHtml(p.notes)}</p>`;
+
+            document.getElementById("insuranceDetailBody").innerHTML = html;
+            // Already open when re-rendered after linking/unlinking a planned payment.
+            if (!document.getElementById("insuranceDetailModal").classList.contains("active")) openModal("insuranceDetailModal");
+        }
+
+        function insuranceDetailEdit() {
+            const id = activeInsuranceId;
+            if (!id) return;
+            closeModalAndThen("insuranceDetailModal", () => openInsuranceModal(id));
+        }
+
+        // "💳 Record premium" — opens the ordinary Expense form pre-filled for this policy. When a
+        // Planned Payment is linked it goes through the SAME confirm path as "Mark as Paid"
+        // (currentPlannedPaymentIdBeingConfirmed), so the planned payment advances to its next due
+        // date instead of being left behind to be paid a second time.
+        async function insuranceRecordPremium() {
+            const p = getPolicyById(activeInsuranceId);
+            if (!p) return;
+            const planned = (await readAllDB(STORES.PLANNED_PAYMENTS)).find(x => x.policyId === p.id && !x.paused) || null;
+            closeModalAndThen("insuranceDetailModal", async () => {
+                await openTransactionForm("expense", null, planned && planned.accountId ? planned.accountId : null);
+                document.getElementById("txDesc").value = planned ? planned.desc : policyLabel(p);
+                document.getElementById("txAmount").value = planned ? planned.amount : (parseFloat(p.premium) > 0 ? p.premium : "");
+                const cur = (planned && planned.currency) || p.currency;
+                if (cur && [...document.getElementById("txCurrency").options].some(o => o.value === cur)) {
+                    document.getElementById("txCurrency").value = cur;
+                }
+                if (planned && planned.accountId && [...document.getElementById("srcAccount").options].some(o => o.value === planned.accountId)) {
+                    document.getElementById("srcAccount").value = planned.accountId;
+                    syncAccountPickerButtonText("srcAccount");
+                }
+                const catSel = document.getElementById("txCategory");
+                let cat = planned && planned.cat ? planned.cat : null;
+                if (!cat) {
+                    const opt = [...catSel.options].find(o => INS_INSURANCE_CAT_RE.test(o.textContent + " " + o.value));
+                    if (opt) cat = opt.value;
+                }
+                if (cat && [...catSel.options].some(o => o.value === cat)) {
+                    catSel.value = cat;
+                    syncAccountPickerButtonText("txCategory");
+                }
+                document.getElementById("txNotes").value = planned ? (planned.notes || "") : "";
+                document.getElementById("txDate").value = todayLocalStr();
+                if (planned) {
+                    const savePlannedBtn = document.getElementById("txSavePlannedBtn");
+                    if (savePlannedBtn) savePlannedBtn.style.display = "none";
+                    const repeatWrap = document.getElementById("txPlannedRepeatWrap");
+                    if (repeatWrap) repeatWrap.style.display = "none";
+                    currentPlannedPaymentIdBeingConfirmed = planned.id;
+                }
+                refreshTxPolicyRow(p.id);
+            });
+        }
+
+        // --- Link / unlink a Planned Payment ---
+
+        async function insuranceOpenPlanPicker() {
+            const p = getPolicyById(activeInsuranceId);
+            if (!p) return;
+            const all = await readAllDB(STORES.PLANNED_PAYMENTS);
+            const candidates = all.filter(x => x.type === "expense" && !x.policyId)
+                .sort((a, b) => {
+                    const ai = INS_INSURANCE_CAT_RE.test(a.cat || "") ? 0 : 1, bi = INS_INSURANCE_CAT_RE.test(b.cat || "") ? 0 : 1;
+                    return ai - bi || (a.dueDate || "").localeCompare(b.dueDate || "");
+                });
+            const listEl = document.getElementById("insurancePlanList");
+            listEl.innerHTML = candidates.length ? candidates.map(x => `
+                <div class="config-item" data-click="insurancePickPlan" data-id="${escapeHtml(x.id)}" style="cursor:pointer;">
+                    <span class="category-display-badge">
+                        <span>${x.recur ? "🔁" : "🕒"}</span>
+                        <span style="display:flex; flex-direction:column;">
+                            <strong>${escapeHtml(x.desc)}</strong>
+                            <span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">${escapeHtml([x.cat, x.recur ? recurLabel(x.recur) : ""].filter(Boolean).join(" · "))}</span>
+                        </span>
+                    </span>
+                    <span style="text-align:right;">
+                        <span style="display:block; font-size:0.85rem; font-weight:700;">${formatCurrency(x.amount, x.currency)}</span>
+                        <span style="font-size:0.72rem; font-weight:700; color:var(--text-muted);">${escapeHtml(x.dueDate || "")}</span>
+                    </span>
+                </div>`).join("")
+                : `<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:30px 10px;">No unlinked planned payments. Save one from the Add Expense form with "🕒 Save as Planned", then link it here.</p>`;
+            closeModalAndThen("insuranceDetailModal", () => openModal("insurancePlanModal"));
+        }
+
+        function insurancePickPlan(el) {
+            const policyId = activeInsuranceId;
+            const planId = el.dataset.id;
+            closeModalAndThen("insurancePlanModal", async () => {
+                const all = await readAllDB(STORES.PLANNED_PAYMENTS);
+                const plan = all.find(x => x.id === planId);
+                if (plan) {
+                    // One planned payment per policy: anything already linked to THIS policy is
+                    // released first, so the policy's "Next premium" can never be ambiguous.
+                    for (const other of all) {
+                        if (other.policyId === policyId && other.id !== planId) { other.policyId = null; await writeDB(STORES.PLANNED_PAYMENTS, other); }
+                    }
+                    plan.policyId = policyId;
+                    await writeDB(STORES.PLANNED_PAYMENTS, plan);
+                    showToast("Planned payment linked");
+                }
+                await refreshPlannedPaymentsViews();
+                await renderInsurancePage();
+                await openInsuranceDetail(policyId);
+            });
+        }
+
+        async function insuranceUnlinkPlan() {
+            const policyId = activeInsuranceId;
+            const all = await readAllDB(STORES.PLANNED_PAYMENTS);
+            for (const x of all) {
+                if (x.policyId === policyId) { x.policyId = null; await writeDB(STORES.PLANNED_PAYMENTS, x); }
+            }
+            await refreshPlannedPaymentsViews();
+            await renderInsurancePage();
+            await openInsuranceDetail(policyId);
+        }
+
+        // --- Add / Edit sheet ---
+
+        function insFillSelect(id, entries, selected) {
+            document.getElementById(id).innerHTML = entries.map(([v, label]) => `<option value="${escapeHtml(v)}"${v === selected ? " selected" : ""}>${escapeHtml(label)}</option>`).join("");
+        }
+
+        // Row editors. Each row is a self-contained .ins-row div; collect*() reads them back and
+        // silently skips a half-filled row (same forgiving convention as collectWarrantyRows()).
+        function addInsCoverageRow(data) {
+            const c = data || {};
+            insRowCounter++;
+            const rowId = "insCov_" + insRowCounter;
+            const row = document.createElement("div");
+            row.className = "ins-row ins-row-line";
+            row.id = rowId;
+            row.innerHTML = `
+                <input type="text" class="ins-c-grow ins-cov-label" placeholder="Benefit (e.g. Death, TPD, CI)" value="${escapeHtml(c.label || "")}">
+                <input type="number" class="ins-c-num ins-cov-sum" step="0.01" min="0" placeholder="Sum assured" value="${typeof c.sumAssured === "number" ? c.sumAssured : ""}">
+                <button type="button" class="ins-row-x" data-click="removeInsRow" data-row-id="${rowId}" aria-label="Remove">×</button>`;
+            document.getElementById("insCoverageRows").appendChild(row);
+        }
+
+        // New payment rows continue the previous one (date + 1 year, same amount) — yearly premiums
+        // are then just "add row, adjust if it changed".
+        function addInsPaymentRow(data, continueFromLast) {
+            const container = document.getElementById("insPaymentRows");
+            let d = data || {};
+            if (!data && continueFromLast) {
+                const lastRow = container.querySelector(".ins-row:last-child");
+                const lastDate = lastRow ? lastRow.querySelector(".ins-pay-date").value : "";
+                const lastAmt = lastRow ? lastRow.querySelector(".ins-pay-amount").value : "";
+                d = { date: lastDate ? insAddYear(lastDate) : "", amount: lastAmt !== "" ? lastAmt : (document.getElementById("insPremium").value || "") };
+            }
+            insRowCounter++;
+            const rowId = "insPay_" + insRowCounter;
+            const row = document.createElement("div");
+            row.className = "ins-row ins-row-line";
+            row.id = rowId;
+            row.innerHTML = `
+                <input type="date" class="ins-c-date ins-pay-date" value="${escapeHtml(d.date || "")}">
+                <input type="number" class="ins-c-num ins-pay-amount" step="0.01" min="0" placeholder="Amount" value="${d.amount !== undefined && d.amount !== "" ? escapeHtml(String(d.amount)) : ""}" data-input="insRecalcPaymentTotal">
+                <input type="text" class="ins-c-grow ins-pay-note" placeholder="Note" value="${escapeHtml(d.note || "")}">
+                <button type="button" class="ins-row-x" data-click="removeInsRow" data-row-id="${rowId}" aria-label="Remove">×</button>`;
+            container.appendChild(row);
+            insRecalcPaymentTotal();
+            if (!data && continueFromLast) container.scrollTop = container.scrollHeight;
+        }
+
+        function addInsSvRow(data) {
+            const r = data || {};
+            insRowCounter++;
+            const rowId = "insSv_" + insRowCounter;
+            const row = document.createElement("div");
+            row.className = "ins-row ins-row-line";
+            row.id = rowId;
+            row.innerHTML = `
+                <input type="date" class="ins-c-date ins-sv-date" value="${escapeHtml(r.date || todayLocalStr())}">
+                <input type="number" class="ins-c-num ins-sv-guaranteed" step="0.01" placeholder="Guaranteed" value="${typeof r.guaranteed === "number" ? r.guaranteed : ""}">
+                <input type="number" class="ins-c-num ins-sv-total" step="0.01" placeholder="Total" value="${typeof r.total === "number" ? r.total : ""}">
+                <button type="button" class="ins-row-x" data-click="removeInsRow" data-row-id="${rowId}" aria-label="Remove">×</button>`;
+            document.getElementById("insSvRows").appendChild(row);
+        }
+
+        function removeInsRow(el) {
+            const row = document.getElementById(el.dataset.rowId);
+            if (row) row.remove();
+            insRecalcPaymentTotal();
+        }
+
+        function collectInsCoverageRows() {
+            const out = [];
+            document.querySelectorAll("#insCoverageRows .ins-row").forEach(row => {
+                const label = row.querySelector(".ins-cov-label").value.trim();
+                const sum = insNumOrNull(row.querySelector(".ins-cov-sum").value);
+                if (label) out.push({ id: makeInsuranceId(), label, sumAssured: sum });
+            });
+            return out;
+        }
+
+        function collectInsPaymentRows() {
+            const out = [];
+            document.querySelectorAll("#insPaymentRows .ins-row").forEach(row => {
+                const date = row.querySelector(".ins-pay-date").value;
+                const amount = insNumOrNull(row.querySelector(".ins-pay-amount").value);
+                if (date && amount != null && amount >= 0) out.push({ id: makeInsuranceId(), date, amount, note: row.querySelector(".ins-pay-note").value.trim() });
+            });
+            return out.sort((a, b) => a.date.localeCompare(b.date));
+        }
+
+        function collectInsSvRows() {
+            const out = [];
+            document.querySelectorAll("#insSvRows .ins-row").forEach(row => {
+                const date = row.querySelector(".ins-sv-date").value;
+                const guaranteed = insNumOrNull(row.querySelector(".ins-sv-guaranteed").value);
+                const total = insNumOrNull(row.querySelector(".ins-sv-total").value);
+                if (date && (guaranteed != null || total != null)) out.push({ id: makeInsuranceId(), date, guaranteed, total });
+            });
+            return out.sort((a, b) => a.date.localeCompare(b.date));
+        }
+
+        // Live total of the typed-in payments, checked against the insurer's own statement total
+        // when one was entered — a wrong or missing year shows up here, while typing.
+        function insRecalcPaymentTotal() {
+            const out = document.getElementById("insPaymentTotal");
+            if (!out) return;
+            const rows = collectInsPaymentRows();
+            const total = rows.reduce((s, r) => s + r.amount, 0);
+            const cur = document.getElementById("insCurrency").value || baseCurrency;
+            let text = `${rows.length} payment${rows.length === 1 ? "" : "s"} · total ${formatCurrency(total, cur)}`;
+            let color = "var(--text-muted)";
+            const stmt = insNumOrNull(document.getElementById("insStatementTotal").value);
+            if (stmt != null && stmt > 0) {
+                const diff = total - stmt;
+                if (Math.abs(diff) < 0.005) { text += " · ✅ matches insurer's total"; color = "var(--income-color)"; }
+                else { text += ` · ⚠️ ${diff > 0 ? "over" : "under"} insurer's total by ${formatCurrency(Math.abs(diff), cur)}`; color = "var(--expense-color)"; }
+            }
+            out.textContent = text;
+            out.style.color = color;
+        }
+
+        async function openInsuranceModal(id) {
+            await loadInsuranceCache();
+            const p = id ? getPolicyById(id) : null;
+            if (id && !p) return;
+            document.getElementById("insId").value = id || "";
+            document.getElementById("insuranceModalTitle").textContent = id ? "Edit Policy" : "Add Policy";
+            document.getElementById("insProduct").value = p ? (p.product || "") : "";
+            document.getElementById("insInsurer").value = p ? (p.insurer || "") : "";
+            document.getElementById("insPolicyNo").value = p ? (p.policyNo || "") : "";
+            insFillSelect("insType", Object.entries(INS_TYPES), p ? (p.type || "other") : "life");
+            insFillSelect("insStatus", Object.entries(INS_STATUSES), p ? (p.status || "active") : "active");
+            insFillSelect("insMember", [["", "— not set —"], ...membersCache.map(m => [m.id, m.name])], p ? (p.insuredMemberId || "") : "");
+            const curs = Object.keys(fxRates);
+            const polCur = p ? (p.currency || baseCurrency) : baseCurrency;
+            if (!curs.includes(polCur)) curs.push(polCur);
+            insFillSelect("insCurrency", curs.map(c => [c, c]), polCur);
+            insFillSelect("insFrequency", Object.entries(INS_FREQ).map(([k, v]) => [k, v[0]]), p ? (p.frequency || "yearly") : "yearly");
+            document.getElementById("insStartDate").value = p ? (p.startDate || "") : "";
+            document.getElementById("insMaturityDate").value = p ? (p.maturityDate || "") : "";
+            document.getElementById("insPremium").value = (p && p.premium != null) ? p.premium : "";
+            document.getElementById("insLoan").value = (p && p.loanOutstanding) ? p.loanOutstanding : "";
+            document.getElementById("insNotes").value = p ? (p.notes || "") : "";
+            document.getElementById("insStatementTotal").value = (p && p.statementTotal != null) ? p.statementTotal : "";
+
+            // Ledger-tracking date — a new policy defaults to the day before the earliest
+            // transaction in the ledger, i.e. "everything before this is typed in below".
+            let cutoff = p ? (p.historyCutoff || "") : "";
+            if (!p) {
+                try {
+                    const dates = (await readAllDB(STORES.TRANSACTIONS)).map(t => t.date).filter(Boolean).sort();
+                    if (dates.length) {
+                        const d = new Date(dates[0] + "T00:00:00");
+                        d.setDate(d.getDate() - 1);
+                        cutoff = todayLocalStrFromDate(d);
+                    }
+                } catch (err) { /* leave blank */ }
+            }
+            document.getElementById("insCutoff").value = cutoff;
+
+            document.getElementById("insCoverageRows").innerHTML = "";
+            document.getElementById("insPaymentRows").innerHTML = "";
+            document.getElementById("insSvRows").innerHTML = "";
+            ((p && p.coverages) || []).forEach(c => addInsCoverageRow(c));
+            ((p && p.premiumHistory) || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(r => addInsPaymentRow(r));
+            ((p && p.surrenderHistory) || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(r => addInsSvRow(r));
+            insRecalcPaymentTotal();
+            document.getElementById("insDeleteBtn").style.display = id ? "block" : "none";
+            openModal("insuranceModal");
+        }
+
+        async function handleSaveInsurance() {
+            const id = document.getElementById("insId").value || null;
+            const product = document.getElementById("insProduct").value.trim();
+            const insurer = document.getElementById("insInsurer").value.trim();
+            if (!product && !insurer) { alert("Please enter the plan name or the insurance company."); return; }
+            const existing = id ? getPolicyById(id) : null;
+            const record = existing ? Object.assign({}, existing) : { id: makeInsuranceId(), createdAt: todayLocalStr() };
+            record.product = product;
+            record.insurer = insurer;
+            record.policyNo = document.getElementById("insPolicyNo").value.trim();
+            record.type = document.getElementById("insType").value;
+            record.status = document.getElementById("insStatus").value;
+            record.insuredMemberId = document.getElementById("insMember").value || null;
+            record.currency = document.getElementById("insCurrency").value || baseCurrency;
+            record.frequency = document.getElementById("insFrequency").value;
+            record.premium = insNumOrNull(document.getElementById("insPremium").value);
+            record.startDate = document.getElementById("insStartDate").value || "";
+            record.maturityDate = document.getElementById("insMaturityDate").value || "";
+            record.loanOutstanding = insNumOrNull(document.getElementById("insLoan").value) || 0;
+            record.historyCutoff = document.getElementById("insCutoff").value || "";
+            record.statementTotal = insNumOrNull(document.getElementById("insStatementTotal").value);
+            record.notes = document.getElementById("insNotes").value.trim();
+            record.coverages = collectInsCoverageRows();
+            record.premiumHistory = collectInsPaymentRows();
+            record.surrenderHistory = collectInsSvRows();
+            record.updated = todayLocalStr();
+            try {
+                await writeDB(STORES.INSURANCE, record);
+            } catch (err) {
+                alert("Could not save this policy: " + (err && err.message ? err.message : err));
+                return;
+            }
+            await loadInsuranceCache();
+            closeModal("insuranceModal");
+            await renderInsurancePage();
+            showToast("Policy saved");
+        }
+
+        // A policy that already has ledger payments or a planned payment attached is not deleted —
+        // that would leave those records pointing at nothing. It is set to Lapsed/Surrendered/
+        // Matured instead (Status), which keeps its history and drops it out of the In force list.
+        async function handleDeleteInsurance() {
+            const id = document.getElementById("insId").value;
+            if (!id) { closeModal("insuranceModal"); return; }
+            const [txs, planned] = await Promise.all([readAllDB(STORES.TRANSACTIONS), readAllDB(STORES.PLANNED_PAYMENTS)]);
+            const nTx = txs.filter(t => t.policyId === id).length;
+            const nPlan = planned.filter(x => x.policyId === id).length;
+            if (nTx || nPlan) {
+                alert(`This policy is linked to ${nTx} ledger transaction(s) and ${nPlan} planned payment(s), so it can't be deleted.\n\nSet its Status to Lapsed, Surrendered or Matured instead — it keeps its history and moves out of the In force list.`);
+                return;
+            }
+            closeModalAndThen("insuranceModal", async () => {
+                const confirmed = await customConfirm("Delete this policy and all its recorded history? This can't be undone.");
+                if (!confirmed) return;
+                try { await deleteDB(STORES.INSURANCE, id); } catch (err) {}
+                await loadInsuranceCache();
+                await renderInsurancePage();
             });
         }
 
@@ -20084,6 +20819,7 @@
                 await writeDB(STORES.MEMBERS, { id: "mem_kid", name: "Kid", color: MEMBER_COLORS[2] });
             }
             await loadMembersCache();
+            await loadInsuranceCache(); // v468
             renderSidebarMembers();
             renderSidebarAccountTypeShortcuts();
 
@@ -20404,6 +21140,10 @@
                 // v418: renewal-type reminders (passport, driving license, PR renewal, etc.) —
                 // see the "--- REMINDERS ---" section.
                 reminders: await readAllDB(STORES.REMINDERS),
+                // v468: insurance policies (coverage, premium history, surrender values) — see the
+                // "--- INSURANCE ---" section. Transactions/plannedPayments above carry their own
+                // `policyId`, so the links survive a restore as long as this list comes back too.
+                insurance: await readAllDB(STORES.INSURANCE),
                 // v65: full SETTINGS store dump ({key,value} rows — defaultPaymentAccount,
                 // defaultReceiveAccount, defaultIncomeCategory, defaultExpenseCategory, recentTx*
                 // widget filters, expandedAccountSubrows, plus baseCurrency/fxRates which are
@@ -20581,6 +21321,9 @@
                     if (db.objectStoreNames.contains(STORES.REMINDERS)) {
                         await clearStoreDB(STORES.REMINDERS);
                     }
+                    if (db.objectStoreNames.contains(STORES.INSURANCE)) {
+                        await clearStoreDB(STORES.INSURANCE);
+                    }
 
                     if (bundle.baseCurrency) baseCurrency = bundle.baseCurrency;
                     if (bundle.fxRates) fxRates = bundle.fxRates;
@@ -20648,6 +21391,10 @@
                     if (bundle.reminders) {
                         for (const rem of bundle.reminders) await writeDB(STORES.REMINDERS, rem);
                     }
+                    // v468: Insurance policies — same "absent on older backups → skip" pattern.
+                    if (bundle.insurance) {
+                        for (const pol of bundle.insurance) await writeDB(STORES.INSURANCE, pol);
+                    }
 
                     // v65: restore preferences from the SETTINGS store dump (defaultPaymentAccount,
                     // defaultIncomeCategory, defaultExpenseCategory, recentTx* widget filters,
@@ -20705,6 +21452,7 @@
 
                     await syncAndLoadCategories();
                     await loadMembersCache();
+                    await loadInsuranceCache(); // v468
                     renderSidebarMembers();
                     renderSidebarAccountTypeShortcuts();
                     renderApp();
@@ -22068,6 +22816,22 @@
             handleSaveReminder: () => handleSaveReminder(),
             handleDeleteReminderFromModal: () => handleDeleteReminderFromModal(),
             reminderRowTap: (el) => reminderRowTap(el),
+            // v468: INSURANCE
+            navigateToInsurancePage: () => navigateToInsurancePage(),
+            insuranceSetStatusFilter: (el) => insuranceSetStatusFilter(el),
+            openInsuranceModalNew: () => openInsuranceModal(null),
+            insurancePolicyTap: (el) => insurancePolicyTap(el),
+            handleSaveInsurance: () => handleSaveInsurance(),
+            handleDeleteInsurance: () => handleDeleteInsurance(),
+            addInsCoverageRow: () => addInsCoverageRow(null),
+            addInsPaymentRow: () => addInsPaymentRow(null, true),
+            addInsSvRow: () => addInsSvRow(null),
+            removeInsRow: (el) => removeInsRow(el),
+            insuranceDetailEdit: () => insuranceDetailEdit(),
+            insuranceRecordPremium: () => insuranceRecordPremium(),
+            insuranceOpenPlanPicker: () => insuranceOpenPlanPicker(),
+            insurancePickPlan: (el) => insurancePickPlan(el),
+            insuranceUnlinkPlan: () => insuranceUnlinkPlan(),
             closeReminderActionsModal: () => closeReminderActionsModal(),
             editReminderFromActionsModal: () => editReminderFromActionsModal(),
             archiveReminderFromActionsModal: () => archiveReminderFromActionsModal(),
@@ -22140,6 +22904,9 @@
             handleCrayonFontToggleChange: () => handleCrayonFontToggleChange(),
             // v318: INVENTORY
             toggleTxInventoryFields: () => toggleTxInventoryFields(),
+            // v468: INSURANCE — category change may reveal/hide the Policy row; currency change re-labels the payment total
+            onTxCategoryChangeInsurance: () => refreshTxPolicyRow(),
+            insRecalcPaymentTotal: () => insRecalcPaymentTotal(),
             handleInvAttachmentsSelected: (el, e) => handleInvAttachmentsSelected(e),
             recalcWarrantyRowEnd: (el) => recalcWarrantyRowEnd(el),
         };
@@ -22147,6 +22914,7 @@
         const INPUT_ACTIONS = {
             recalcClaimSettlePreview: () => recalcClaimSettlePreview(),
             recalcTxFdMaturity: () => { recalcTxFdMaturity(); syncTransferFxOnAmountChange(); recalcTxSplitTotal(); },
+            insRecalcPaymentTotal: () => insRecalcPaymentTotal(), // v468
             recalcResolveFdMaturity: () => recalcResolveFdMaturity(),
             recalcFdOpeningRowMaturity: (el) => recalcFdOpeningRowMaturity(el.dataset.rowId),
             recalcTxManualFxPreview: () => recalcTxManualFxPreview(),

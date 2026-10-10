@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v473";
+        const APP_VERSION = "v474";
         const APP_VERSION_DATE = "2026-10-10";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -9461,7 +9461,13 @@
         // expandedAccountSubrows (the Accounts-page fund/currency/FD subrow toggle, v62). The two
         // toggles look similar but control unrelated parts of the UI (sidebar drawer vs. main
         // content list) and were built to stay fully independent of each other.
-        let sidebarAccountShortcutsExpanded = true;
+        // v474: the choice is remembered per device (localStorage, like the other UI preferences), so closing
+        // the app or locking and logging back in keeps the last expand / collapse instead of resetting to
+        // expanded every time. No saved value → expanded, as before.
+        const SIDEBAR_ACCOUNTS_EXPANDED_KEY = "ledger.sidebarAccountShortcutsExpanded";
+        let sidebarAccountShortcutsExpanded = (() => {
+            try { return localStorage.getItem(SIDEBAR_ACCOUNTS_EXPANDED_KEY) !== "0"; } catch (e) { return true; }
+        })();
 
         async function renderSidebarAccountTypeShortcuts() {
             const wrap = document.getElementById("sidebarAccountTypeShortcuts");
@@ -9505,6 +9511,7 @@
         // active.
         function toggleSidebarAccountShortcuts() {
             sidebarAccountShortcutsExpanded = !sidebarAccountShortcutsExpanded;
+            try { localStorage.setItem(SIDEBAR_ACCOUNTS_EXPANDED_KEY, sidebarAccountShortcutsExpanded ? "1" : "0"); } catch (e) {}
             const wrap = document.getElementById("sidebarAccountTypeShortcuts");
             if (wrap) wrap.classList.toggle("hidden", !sidebarAccountShortcutsExpanded);
             const toggleBtn = document.getElementById("sidebarAccountShortcutsToggle");
@@ -15378,7 +15385,7 @@
 
         function insuranceSetStatusFilter(el) {
             insuranceStatusFilter = el.dataset.status;
-            document.querySelectorAll('#page-insurance .nav-view-toggle-btn').forEach(b => b.classList.toggle("active", b.dataset.status === insuranceStatusFilter));
+            document.querySelectorAll('#insuranceStatusToggle .nav-view-toggle-btn').forEach(b => b.classList.toggle("active", b.dataset.status === insuranceStatusFilter));
             renderInsurancePage();
         }
 
@@ -15388,6 +15395,19 @@
             const summary = document.getElementById("insuranceSummary");
             if (!list || !empty || !summary) return;
             await loadInsuranceCache();
+            // Tabs: "Policies" is this list; "By person" and "Car · Home · Travel" are the two reports.
+            const reportEl = document.getElementById("insuranceReport");
+            const statusToggle = document.getElementById("insuranceStatusToggle");
+            const isReport = insuranceView !== "policies";
+            reportEl.style.display = isReport ? "block" : "none";
+            if (statusToggle) statusToggle.style.display = isReport ? "none" : "";
+            if (isReport) {
+                list.innerHTML = "";
+                empty.style.display = "none";
+                summary.style.display = "none";
+                reportEl.innerHTML = insuranceView === "people" ? insReportPeopleHtml() : insReportAssetsHtml();
+                return;
+            }
             const [txs, planned] = await Promise.all([readAllDB(STORES.TRANSACTIONS), readAllDB(STORES.PLANNED_PAYMENTS)]);
 
             const filtered = insuranceCache.filter(p => insuranceStatusFilter === "all" ? true
@@ -15418,8 +15438,8 @@
                 const icon = INS_TYPE_ICONS[p.type] || INS_TYPE_ICONS.other;
                 const metaParts = [];
                 if (p.product && p.insurer) metaParts.push(escapeHtml(p.insurer));
-                const who = insMemberName(p);
-                if (who) metaParts.push(escapeHtml(who));
+                // Same coloured "● Name" tag as the account rows on the Accounts page (member's own colour).
+                if (p.insuredMemberId && getMemberById(p.insuredMemberId)) metaParts.push(accountOwnerTagHTML({ memberIds: [p.insuredMemberId] }));
                 if (!insIsLive(p)) metaParts.push(escapeHtml(INS_STATUSES[p.status] || p.status));
                 let dueLine = "";
                 if (f.plan && !f.plan.paused) {
@@ -15458,6 +15478,178 @@
             summary.innerHTML = cell("Yearly premium", formatCurrency(annualBase, baseCurrency))
                 + cell("Premiums paid", formatCurrency(paidBase, baseCurrency))
                 + cell("Surrender value", svCount ? formatCurrency(svBase, baseCurrency) : "—");
+        }
+
+        // --- Reports (the other two tabs of the Insurance page) ---
+        // "By person": what each insured person is covered for, by type — the Sum insured of every coverage
+        // row of their IN-FORCE policies added up per type (Life, Term, Medical, Critical Illness, Personal
+        // Accident…) in the base currency, the policies behind each total listed underneath; Medical rows
+        // also add up the annual / lifetime limits. "Car · Home · Travel": policies of those types are about
+        // things (or a trip), not people's lives, so they get their own report — sum insured, yearly premium
+        // and renewal date per policy — and stay out of the per-person one.
+        const INS_ASSET_TYPES = ["car", "home", "travel"];
+        const INS_COV_ORDER = ["life", "term", "medical", "critical", "accident", "other", "car", "home", "travel"];
+        let insuranceView = "policies"; // "policies" | "people" | "assets"
+
+        function insuranceSetView(el) {
+            insuranceView = el.dataset.view;
+            document.querySelectorAll("#insuranceViewTabs .nav-view-toggle-btn").forEach(b => b.classList.toggle("active", b.dataset.view === insuranceView));
+            renderInsurancePage();
+        }
+
+        // Yearly CASH premium of a policy in the base currency (0 when it is paid from accumulated bonus).
+        function insAnnualCashBase(p) {
+            if (p.paidByBonus) return 0;
+            const freq = INS_FREQ[p.frequency], prem = parseFloat(p.premium) || 0;
+            if (!freq || !(freq[1] > 0) || !(prem > 0)) return 0;
+            return insConvert(prem * freq[1], p.currency || baseCurrency, baseCurrency);
+        }
+
+        function insKindData() {
+            return { sum: 0, hasSum: false, annual: 0, hasAnnual: false, life: 0, hasLife: false, rem: 0, hasRem: false, items: [] };
+        }
+
+        function insAddCoverage(d, p, c) {
+            const cur = p.currency || baseCurrency;
+            if (typeof c.sumAssured === "number") { d.sum += insConvert(c.sumAssured, cur, baseCurrency); d.hasSum = true; }
+            if (typeof c.annualLimit === "number") { d.annual += insConvert(c.annualLimit, cur, baseCurrency); d.hasAnnual = true; }
+            if (typeof c.lifetimeLimit === "number") { d.life += insConvert(c.lifetimeLimit, cur, baseCurrency); d.hasLife = true; }
+            if (typeof c.lifetimeRemaining === "number") { d.rem += insConvert(c.lifetimeRemaining, cur, baseCurrency); d.hasRem = true; }
+            d.items.push({ p, c });
+        }
+
+        function insKindRowHtml(kind, d, withItems) {
+            const k = INS_COV_KINDS[kind];
+            const money = (n) => formatCurrency(n, baseCurrency);
+            const sub = [];
+            if (kind === "medical") {
+                if (d.hasAnnual) sub.push(`Annual limit ${money(d.annual)}`);
+                if (d.hasRem) sub.push(`Lifetime remaining ${money(d.rem)}${d.hasLife ? " / " + money(d.life) : ""}`);
+                else if (d.hasLife) sub.push(`Lifetime limit ${money(d.life)}`);
+            }
+            const nPolicies = new Set(d.items.map(i => i.p.id)).size;
+            const items = withItems ? d.items.map(({ p, c }) => {
+                const prefix = (kind === "other" && c.label) ? escapeHtml(c.label) + " " : "";
+                const amt = typeof c.sumAssured === "number" ? formatCurrency(c.sumAssured, p.currency || baseCurrency) : "no sum";
+                return `${escapeHtml(p.product || p.insurer || "Policy")}${p.insurer && p.product ? " (" + escapeHtml(p.insurer) + ")" : ""}: ${prefix}${amt}`;
+            }).join(" · ") : "";
+            return `<div style="padding:8px 0; border-bottom:1px solid var(--border-color);">
+                <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
+                    <span style="font-size:0.82rem; font-weight:700;">${k[2]} ${escapeHtml(k[1])} <span style="font-weight:600; color:var(--text-muted);">· ${nPolicies} ${nPolicies === 1 ? "policy" : "policies"}</span></span>
+                    <span style="font-size:0.92rem; font-weight:800; flex:0 0 auto;">${d.hasSum ? money(d.sum) : "—"}</span>
+                </div>
+                ${sub.length ? `<div style="font-size:0.72rem; font-weight:700; color:var(--text-muted); margin-top:3px;">${sub.join(" · ")}</div>` : ""}
+                ${items ? `<div style="font-size:0.7rem; color:var(--text-muted); margin-top:3px; overflow-wrap:anywhere;">${items}</div>` : ""}
+            </div>`;
+        }
+
+        function insReportPeopleHtml() {
+            const live = insuranceCache.filter(p => insIsLive(p) && !INS_ASSET_TYPES.includes(p.type));
+            if (!live.length) return `<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:40px 20px;">No in-force life, medical, critical illness or accident policies yet.</p>`;
+            const groups = new Map();
+            const everyone = new Map();
+            const noCoverage = [];
+            let foreign = false, anyMedical = false;
+            const kindOf = (map, k) => { if (!map.has(k)) map.set(k, insKindData()); return map.get(k); };
+            live.forEach(p => {
+                if ((p.currency || baseCurrency) !== baseCurrency) foreign = true;
+                const key = p.insuredMemberId && getMemberById(p.insuredMemberId) ? p.insuredMemberId : "";
+                if (!groups.has(key)) groups.set(key, { policies: [], kinds: new Map(), yearly: 0 });
+                const g = groups.get(key);
+                g.policies.push(p);
+                g.yearly += insAnnualCashBase(p);
+                const covs = (p.coverages || []).filter(c => c && (c.kind || c.label));
+                if (!covs.length) noCoverage.push(p);
+                covs.forEach(c => {
+                    const kind = INS_COV_KINDS[c.kind] ? c.kind : "other";
+                    if (kind === "medical") anyMedical = true;
+                    insAddCoverage(kindOf(g.kinds, kind), p, c);
+                    insAddCoverage(kindOf(everyone, kind), p, c);
+                });
+            });
+            const order = [...membersCache.map(m => m.id).filter(id => groups.has(id)), ...(groups.has("") ? [""] : [])];
+            const rowsFor = (kinds, withItems) => INS_COV_ORDER.filter(k => kinds.has(k)).map(k => insKindRowHtml(k, kinds.get(k), withItems)).join("")
+                || `<p style="font-size:0.75rem; color:var(--text-muted); padding:8px 0;">No coverage details recorded yet.</p>`;
+            let html = "";
+            if (order.length > 1) {
+                html += `<div style="border:1px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:12px;">
+                    <div style="font-size:0.9rem; font-weight:800; margin-bottom:2px;">👪 Everyone</div>
+                    ${rowsFor(everyone, false)}
+                </div>`;
+            }
+            order.forEach(key => {
+                const g = groups.get(key);
+                const m = key ? getMemberById(key) : null;
+                const head = m
+                    ? `<span class="member-color-dot" style="background:${m.color};"></span><span style="font-weight:800; font-size:0.9rem;">${escapeHtml(m.name)}</span>`
+                    : `<span style="font-weight:800; font-size:0.9rem; color:var(--text-muted);">Insured person not set</span>`;
+                html += `<div style="border:1px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:2px;">
+                        <span style="display:flex; align-items:center; gap:8px; min-width:0;">${head}</span>
+                        <span style="font-size:0.72rem; font-weight:700; color:var(--text-muted); text-align:right; flex:0 0 auto;">${g.policies.length} ${g.policies.length === 1 ? "policy" : "policies"} · ${formatCurrency(g.yearly, baseCurrency)}/yr</span>
+                    </div>
+                    ${rowsFor(g.kinds, true)}
+                </div>`;
+            });
+            if (noCoverage.length) {
+                html += `<div style="background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.35); border-radius:10px; padding:9px 12px; font-size:0.76rem; font-weight:700; margin-bottom:12px;">⚠️ ${noCoverage.length} in-force ${noCoverage.length === 1 ? "policy has" : "policies have"} no coverage details yet, so ${noCoverage.length === 1 ? "it is" : "they are"} not in the totals — tap to add: ${noCoverage.map(p => `<span data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}" style="text-decoration:underline; cursor:pointer;">${escapeHtml(p.product || p.insurer || "Policy")}</span>`).join(", ")}</div>`;
+            }
+            const notes = [`In-force policies only. Amounts are the Sum insured of each coverage row${foreign ? `, converted to ${escapeHtml(baseCurrency)} at today's rates` : ""}. “/yr” is the cash premium per year (policies paid from accumulated bonus are not counted).`];
+            if (anyMedical) notes.push("Medical limits of different plans can overlap (each plan pays up to its own limit for the same bill), so the medical totals show what is arranged, not what you would receive.");
+            html += `<p style="font-size:0.7rem; color:var(--text-muted); line-height:1.5;">${notes.join(" ")}</p>`;
+            return html;
+        }
+
+        function insReportAssetsHtml() {
+            const live = insuranceCache.filter(p => insIsLive(p) && INS_ASSET_TYPES.includes(p.type));
+            if (!live.length) return `<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:40px 20px;">No in-force car, home / fire or travel policies yet — add one with + and choose that Type.</p>`;
+            const today = todayLocalStr();
+            const money = (n) => formatCurrency(n, baseCurrency);
+            let totalYearly = 0, foreign = false;
+            const sections = INS_ASSET_TYPES.map(type => {
+                const ps = live.filter(p => p.type === type)
+                    .sort((a, b) => (a.maturityDate || "9999").localeCompare(b.maturityDate || "9999") || (a.product || "").localeCompare(b.product || ""));
+                if (!ps.length) return "";
+                let sumBase = 0, hasSum = false, yearlyBase = 0;
+                const rows = ps.map(p => {
+                    const cur = p.currency || baseCurrency;
+                    if (cur !== baseCurrency) foreign = true;
+                    const sums = (p.coverages || []).filter(c => c && typeof c.sumAssured === "number");
+                    const sumNative = sums.reduce((s, c) => s + c.sumAssured, 0);
+                    if (sums.length) { sumBase += insConvert(sumNative, cur, baseCurrency); hasSum = true; }
+                    const yearly = insAnnualCashBase(p);
+                    yearlyBase += yearly;
+                    const freq = INS_FREQ[p.frequency], prem = parseFloat(p.premium) || 0;
+                    const yearlyNative = (freq && freq[1] > 0 && prem > 0 && !p.paidByBonus) ? prem * freq[1] : 0;
+                    let endLine = "";
+                    if (p.maturityDate) {
+                        const dd = Math.round((new Date(p.maturityDate + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000);
+                        const color = dd < 0 ? "var(--expense-color)" : (dd <= 60 ? "#d97706" : "var(--text-muted)");
+                        endLine = `<span style="font-size:0.72rem; font-weight:700; color:${color};">${dd < 0 ? `⚠️ Expired ${-dd} day${-dd === 1 ? "" : "s"} ago` : (dd === 0 ? "⚠️ Expires today" : `Ends ${escapeHtml(p.maturityDate)} · ${dd} day${dd === 1 ? "" : "s"} left`)}${dd < 0 ? ` (${escapeHtml(p.maturityDate)})` : ""}</span>`;
+                    }
+                    const who = p.insuredMemberId && getMemberById(p.insuredMemberId) ? accountOwnerTagHTML({ memberIds: [p.insuredMemberId] }) : "";
+                    const meta = [p.insurer ? escapeHtml(p.insurer) : "", p.policyNo ? escapeHtml(p.policyNo) : "", who].filter(Boolean).join(" · ");
+                    return `<div data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; padding:9px 0; border-top:1px solid var(--border-color); display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+                        <span style="min-width:0; display:flex; flex-direction:column; gap:2px;">
+                            <strong style="font-size:0.85rem; overflow-wrap:anywhere;">${escapeHtml(p.product || p.insurer || "Policy")}</strong>
+                            ${meta ? `<span style="font-size:0.72rem; color:var(--text-muted); font-weight:600; overflow-wrap:anywhere;">${meta}</span>` : ""}
+                            ${endLine}
+                        </span>
+                        <span style="text-align:right; flex:0 0 auto; display:flex; flex-direction:column; gap:2px;">
+                            <span style="font-size:0.85rem; font-weight:800;">${sums.length ? formatCurrency(sumNative, cur) : "—"}</span>
+                            <span style="font-size:0.7rem; color:var(--text-muted); font-weight:700;">${yearlyNative > 0 ? formatCurrency(yearlyNative, cur) + "/yr" : ""}</span>
+                        </span>
+                    </div>`;
+                }).join("");
+                totalYearly += yearlyBase;
+                return `<div style="border:1px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:6px;">
+                        <span style="font-weight:800; font-size:0.9rem;">${INS_TYPE_ICONS[type]} ${escapeHtml(INS_TYPES[type])} <span style="font-weight:600; font-size:0.75rem; color:var(--text-muted);">· ${ps.length} ${ps.length === 1 ? "policy" : "policies"}</span></span>
+                        <span style="font-size:0.72rem; font-weight:700; color:var(--text-muted); text-align:right;">Sum insured ${hasSum ? money(sumBase) : "—"} · ${money(yearlyBase)}/yr</span>
+                    </div>${rows}
+                </div>`;
+            }).join("");
+            return sections + `<p style="font-size:0.7rem; color:var(--text-muted); line-height:1.5;">In-force policies only, nearest end date first. Sum insured adds up the coverage rows of each policy${foreign ? `; section totals are converted to ${escapeHtml(baseCurrency)} at today's rates` : ""}. Yearly cash premium of all of these: ${money(totalYearly)}.</p>`;
         }
 
         // --- Detail sheet (tapping a card) ---
@@ -16084,7 +16276,13 @@
 
         // Policy type drives which kind of entry "＋ Add" creates, and what the help text says.
         function updateInsSvAddUi() {
-            const ilp = document.getElementById("insType").value === "investment";
+            // The person box means something different by type: the insured person for life / medical…,
+            // but for a car or a building it is the owner, and for travel the traveller — and it can
+            // stay empty (a fire policy on a warehouse has no insured person).
+            const t = document.getElementById("insType").value;
+            const memberLabel = document.getElementById("insMemberLabel");
+            if (memberLabel) memberLabel.textContent = (t === "car" || t === "home") ? "Owner (optional)" : (t === "travel" ? "Traveller (optional)" : "Insured person");
+            const ilp = t === "investment";
             document.getElementById("insSvAddBtn").textContent = ilp ? "＋ Add fund value (units × price)" : "＋ Add surrender value";
             document.getElementById("insSvHelp").innerHTML = ilp
                 ? "For an investment-linked policy, copy the fund lines from the insurer's unit statement: <b>fund name, units and price (NAV) as at the date shown</b> — the value is units × price. If the statement shows a surrender charge or other deduction, enter it under <b>Deduction</b>; the <b>Surrender value</b> fills in as fund value − deduction. The latest entry is the value shown on the policy."
@@ -23280,6 +23478,7 @@
             reminderRowTap: (el) => reminderRowTap(el),
             // v468: INSURANCE
             navigateToInsurancePage: () => navigateToInsurancePage(),
+            insuranceSetView: (el) => insuranceSetView(el), // v474
             insuranceSetStatusFilter: (el) => insuranceSetStatusFilter(el),
             openInsuranceModalNew: () => openInsuranceModal(null),
             insurancePolicyTap: (el) => insurancePolicyTap(el),

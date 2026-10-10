@@ -3977,15 +3977,22 @@
             </div>
         </div>
 
+        <div class="nav-view-toggle" id="insuranceViewTabs" style="margin:0 0 14px;">
+            <button type="button" class="nav-view-toggle-btn active" data-click="insuranceSetView" data-view="policies" style="flex:1;">Policies</button>
+            <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetView" data-view="people" style="flex:1;">By person</button>
+            <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetView" data-view="assets" style="flex:1;">Car · Home · Travel</button>
+        </div>
+
         <div id="insuranceSummary" style="display:none; gap:8px; padding:12px 8px; margin:0 0 14px; border:1px solid var(--border-color); border-radius:12px;"></div>
 
-        <div class="nav-view-toggle" style="margin:0 0 14px;">
+        <div class="nav-view-toggle" id="insuranceStatusToggle" style="margin:0 0 14px;">
             <button type="button" class="nav-view-toggle-btn active" data-click="insuranceSetStatusFilter" data-status="active" style="flex:1;">In force</button>
             <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetStatusFilter" data-status="ended" style="flex:1;">Ended</button>
             <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetStatusFilter" data-status="all" style="flex:1;">All</button>
         </div>
 
-        <div id="insurancePageList"></div>
+        <div id="insurancePageList" style="padding-bottom:90px;"></div>
+        <div id="insuranceReport" style="display:none; padding-bottom:90px;"></div>
         <p id="insurancePageEmpty" style="display:none; text-align:center; color:var(--text-muted); font-size:0.85rem; padding:40px 20px;">No policies yet — tap + to add one.</p>
 
         <button class="fab-btn" data-click="openInsuranceModalNew" aria-label="Add policy" title="Add policy"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
@@ -4039,7 +4046,7 @@
                     <div><label>Status</label><select id="insStatus" class="form-input"></select></div>
                 </div>
                 <div class="form-row-inline">
-                    <div><label>Insured person</label><select id="insMember" class="form-input"></select></div>
+                    <div><label id="insMemberLabel">Insured person</label><select id="insMember" class="form-input"></select></div>
                     <div><label>Policy currency</label><select id="insCurrency" class="form-input" data-input="insRecalcPaymentTotal" data-change="insRecalcPaymentTotal"></select></div>
                 </div>
                 <div class="form-row-inline">

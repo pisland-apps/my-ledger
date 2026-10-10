@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v471";
+        const APP_VERSION = "v472";
         const APP_VERSION_DATE = "2026-10-10";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15169,8 +15169,17 @@
         // planned payment per policy), so the policy's "next due" is read from that single record
         // rather than being stored a second time here. A recurring planned payment keeps its
         // policyId across "Mark as Paid" (see advanceOrDeletePlannedPaymentAfterConfirm()).
-        const INS_TYPES = { life: "Life / Whole Life", savings: "Savings / Endowment", term: "Term", medical: "Medical", critical: "Critical Illness", accident: "Personal Accident", investment: "Investment-linked", other: "Other" };
-        const INS_TYPE_ICONS = { life: "🛡️", savings: "🏦", term: "⏳", medical: "🏥", critical: "🎗️", accident: "🩹", investment: "📈", other: "📄" };
+        const INS_TYPES = { life: "Life / Whole Life", savings: "Savings / Endowment", term: "Term", medical: "Medical", critical: "Critical Illness", accident: "Personal Accident", investment: "Investment-linked", car: "Car", home: "Home / Fire", travel: "Travel", other: "Other" };
+        const INS_TYPE_ICONS = { life: "🛡️", savings: "🏦", term: "⏳", medical: "🏥", critical: "🎗️", accident: "🩹", investment: "📈", car: "🚗", home: "🏠", travel: "✈️", other: "📄" };
+        // Preset coverage types for the rows of "Coverage(s) in this policy" (a bundled plan can carry several):
+        // kind -> [name in the picker, short name on the policy, icon]. "other" takes a free-text name.
+        // A coverage saved by v468–v471 has only a free-text `label` (no `kind`); it opens as "Other".
+        const INS_COV_KINDS = {
+            life: ["Life (Whole Life)", "Life", "🛡️"], term: ["Term Life", "Term Life", "⏳"],
+            medical: ["Health / Medical", "Health/Medical", "🏥"], critical: ["Critical Illness", "Critical Illness", "🎗️"],
+            accident: ["Personal Accident", "Personal Accident", "🩹"], car: ["Car", "Car", "🚗"],
+            home: ["Home / Fire", "Home/Fire", "🏠"], travel: ["Travel", "Travel", "✈️"], other: ["Other", "Other", "📄"]
+        };
         const INS_STATUSES = { active: "In force", paidup: "Paid-up", lapsed: "Lapsed", surrendered: "Surrendered", matured: "Matured" };
         const INS_LIVE_STATUSES = ["active", "paidup"];
         // [label, payments per year] — a single-premium policy has no yearly premium to project.
@@ -15487,11 +15496,46 @@
                 </div>`;
 
             // Coverage
-            const covs = (p.coverages || []).filter(c => c && c.label);
+            // Coverage — one card per coverage: type chip + sum insured; Health / Medical adds its limits
+            const covs = (p.coverages || []).filter(c => c && (c.kind || c.label));
             if (covs.length) {
-                html += section("Coverage") + covs.map(c => line(escapeHtml(c.label), typeof c.sumAssured === "number" ? formatCurrency(c.sumAssured, cur) : "—")).join("");
+                const cell = (label, valueHtml) => `<div><div style="font-size:0.62rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">${label}</div><div style="font-size:0.85rem; font-weight:800;">${valueHtml}</div></div>`;
+                html += section("Coverage") + covs.map(c => {
+                    const k = INS_COV_KINDS[c.kind];
+                    const name = (k && c.kind !== "other") ? k[1] : (c.label || (k ? k[1] : "Coverage"));
+                    const money = (n) => formatCurrency(n, cur);
+                    let limits = "";
+                    if (c.kind === "medical") {
+                        const cells = [];
+                        if (typeof c.annualLimit === "number") cells.push(cell("Annual limit", money(c.annualLimit)));
+                        if (typeof c.lifetimeRemaining === "number") {
+                            cells.push(cell("Lifetime limit remaining", money(c.lifetimeRemaining) + (typeof c.lifetimeLimit === "number" ? ` <span style="font-size:0.7rem; font-weight:600; color:var(--text-muted);">/ ${money(c.lifetimeLimit)}</span>` : "")));
+                        } else if (typeof c.lifetimeLimit === "number") {
+                            cells.push(cell("Lifetime limit", money(c.lifetimeLimit)));
+                        }
+                        if (cells.length) limits = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; margin-top:8px;">${cells.join("")}</div>`;
+                    }
+                    const expired = c.expiry && c.expiry < today;
+                    const expiryLine = c.expiry ? `<div style="font-size:0.7rem; font-weight:700; margin-top:6px; color:${expired ? "var(--expense-color)" : "var(--text-muted)"};">${expired ? "Expired " : "Until "}${escapeHtml(c.expiry)}</div>` : "";
+                    return `<div style="border:1px solid var(--border-color); border-radius:12px; padding:10px 12px; margin-bottom:8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                            <span style="background:var(--chip-bg); border-radius:999px; padding:3px 10px; font-size:0.74rem; font-weight:700; min-width:0; overflow-wrap:anywhere;">${k ? k[2] + " " : ""}${escapeHtml(name)}</span>
+                            <span style="font-weight:800; font-size:0.9rem; flex:0 0 auto;">${typeof c.sumAssured === "number" ? money(c.sumAssured) : ""}</span>
+                        </div>${limits}${expiryLine}
+                    </div>`;
+                }).join("");
             }
 
+            // Riders
+            const riders = (p.riders || []).filter(r => r && r.name);
+            if (riders.length) {
+                html += section(`Riders (${riders.length})`) + riders.map(r => {
+                    const ended = r.endDate && r.endDate < today;
+                    return line(escapeHtml(r.name),
+                        r.endDate ? `<span style="color:${ended ? "var(--expense-color)" : "var(--text-muted)"};">${ended ? "Ended " : "Until "}${escapeHtml(r.endDate)}</span>` : "",
+                        r.startDate ? `From ${escapeHtml(r.startDate)}` : "");
+                }).join("");
+            }
             // Linked Planned Payment
             html += section("Next premium");
             if (f.plan) {
@@ -15677,18 +15721,73 @@
 
         // Row editors. Each row is a self-contained .ins-row div; collect*() reads them back and
         // silently skips a half-filled row (same forgiving convention as collectWarrantyRows()).
+        // One coverage row = type (preset) + sum insured + optional expiry when the coverage ends on a
+        // different date from the policy. Health / Medical adds the three limits a medical plan has that
+        // other coverages don't: annual limit, lifetime limit and lifetime limit REMAINING (the remaining
+        // figure is copied from the insurer's statement — the app can't know what has been claimed).
+        // Record: { id, kind, label (only for "other"), sumAssured, expiry, annualLimit, lifetimeLimit,
+        // lifetimeRemaining }; every number is optional.
         function addInsCoverageRow(data) {
             const c = data || {};
             insRowCounter++;
             const rowId = "insCov_" + insRowCounter;
+            const kind = INS_COV_KINDS[c.kind] ? c.kind : (data ? "other" : "life");
+            const val = (n) => (typeof n === "number" ? n : "");
             const row = document.createElement("div");
-            row.className = "ins-row ins-row-line";
+            row.className = "ins-row ins-card ins-cov-block";
             row.id = rowId;
             row.innerHTML = `
-                <input type="text" class="ins-c-grow ins-cov-label" placeholder="Benefit (e.g. Death, TPD, CI)" value="${escapeHtml(c.label || "")}">
-                <input type="number" class="ins-c-num ins-cov-sum" step="0.01" min="0" placeholder="Sum assured" value="${typeof c.sumAssured === "number" ? c.sumAssured : ""}">
-                <button type="button" class="ins-row-x" data-click="removeInsRow" data-row-id="${rowId}" aria-label="Remove">×</button>`;
+                <div class="ins-row-line">
+                    <select class="form-input ins-cov-kind" data-change="insCovKindChange" aria-label="Coverage type">${Object.entries(INS_COV_KINDS).map(([k, v]) => `<option value="${k}"${k === kind ? " selected" : ""}>${v[2]} ${escapeHtml(v[0])}</option>`).join("")}</select>
+                    <button type="button" class="ins-row-x" data-click="removeInsRow" data-row-id="${rowId}" aria-label="Remove">×</button>
+                </div>
+                <div class="ins-row-line ins-cov-namewrap"><input type="text" class="ins-cov-label" placeholder="Coverage name (e.g. TPD, Hospital income)" value="${escapeHtml(c.label || "")}"></div>
+                <div class="ins-row-line">
+                    <div class="ins-sv-cell"><label>Sum insured</label><input type="number" class="ins-cov-sum" step="0.01" min="0" placeholder="Optional" value="${val(c.sumAssured)}"></div>
+                    <div class="ins-sv-cell ins-cov-med"><label>Annual limit</label><input type="number" class="ins-cov-annual" step="0.01" min="0" placeholder="Optional" value="${val(c.annualLimit)}"></div>
+                </div>
+                <div class="ins-row-line ins-cov-med">
+                    <div class="ins-sv-cell"><label>Lifetime limit</label><input type="number" class="ins-cov-lifetime" step="0.01" min="0" placeholder="Optional" value="${val(c.lifetimeLimit)}"></div>
+                    <div class="ins-sv-cell"><label>Lifetime remaining</label><input type="number" class="ins-cov-remaining" step="0.01" min="0" placeholder="Optional" value="${val(c.lifetimeRemaining)}"></div>
+                </div>
+                <div class="ins-row-line">
+                    <div class="ins-sv-cell"><label>Coverage expiry (only if different from the policy's end date)</label><input type="date" class="ins-cov-expiry" value="${escapeHtml(c.expiry || "")}"></div>
+                </div>`;
             document.getElementById("insCoverageRows").appendChild(row);
+            insCovApplyKind(row);
+        }
+
+        // "Other" shows a name box; Health / Medical shows the limit boxes.
+        function insCovApplyKind(row) {
+            const kind = row.querySelector(".ins-cov-kind").value;
+            row.querySelector(".ins-cov-namewrap").style.display = kind === "other" ? "flex" : "none";
+            row.querySelectorAll(".ins-cov-med").forEach(e => { e.style.display = kind === "medical" ? "" : "none"; });
+        }
+
+        function insCovKindChange(el) {
+            insCovApplyKind(el.closest(".ins-row"));
+        }
+
+        // Riders: name + optional start and expiry date (a rider usually ends before the base policy does).
+        // A rider that carries its own sum insured is better ALSO entered as a coverage row, so that the
+        // sum counts towards the coverage totals; this list is the record of what is attached and until when.
+        function addInsRiderRow(data) {
+            const r = data || {};
+            insRowCounter++;
+            const rowId = "insRd_" + insRowCounter;
+            const row = document.createElement("div");
+            row.className = "ins-row ins-card ins-rider-block";
+            row.id = rowId;
+            row.innerHTML = `
+                <div class="ins-row-line">
+                    <input type="text" class="ins-rd-name" placeholder="Rider name" value="${escapeHtml(r.name || "")}">
+                    <button type="button" class="ins-row-x" data-click="removeInsRow" data-row-id="${rowId}" aria-label="Remove">×</button>
+                </div>
+                <div class="ins-row-line">
+                    <div class="ins-sv-cell"><label>Start date (optional)</label><input type="date" class="ins-rd-start" value="${escapeHtml(r.startDate || "")}"></div>
+                    <div class="ins-sv-cell"><label>Expiry date (optional)</label><input type="date" class="ins-rd-end" value="${escapeHtml(r.endDate || "")}"></div>
+                </div>`;
+            document.getElementById("insRiderRows").appendChild(row);
         }
 
         // New payment rows continue the previous one (date + 1 year, same amount) — yearly premiums
@@ -15950,9 +16049,30 @@
         function collectInsCoverageRows() {
             const out = [];
             document.querySelectorAll("#insCoverageRows .ins-row").forEach(row => {
-                const label = row.querySelector(".ins-cov-label").value.trim();
-                const sum = insNumOrNull(row.querySelector(".ins-cov-sum").value);
-                if (label) out.push({ id: makeInsuranceId(), label, sumAssured: sum });
+                const kind = row.querySelector(".ins-cov-kind").value;
+                const medical = kind === "medical";
+                const label = kind === "other" ? row.querySelector(".ins-cov-label").value.trim() : "";
+                const sumAssured = insNumOrNull(row.querySelector(".ins-cov-sum").value);
+                const expiry = row.querySelector(".ins-cov-expiry").value || "";
+                // A blank "Other" row (no name, no amount, no date) is an unused row, not a coverage.
+                if (kind === "other" && !label && sumAssured == null && !expiry) return;
+                out.push({
+                    id: makeInsuranceId(), kind, label, sumAssured, expiry,
+                    annualLimit: medical ? insNumOrNull(row.querySelector(".ins-cov-annual").value) : null,
+                    lifetimeLimit: medical ? insNumOrNull(row.querySelector(".ins-cov-lifetime").value) : null,
+                    lifetimeRemaining: medical ? insNumOrNull(row.querySelector(".ins-cov-remaining").value) : null
+                });
+            });
+            return out;
+        }
+
+        function collectInsRiderRows() {
+            const out = [];
+            document.querySelectorAll("#insRiderRows .ins-row").forEach(row => {
+                const name = row.querySelector(".ins-rd-name").value.trim();
+                const startDate = row.querySelector(".ins-rd-start").value || "";
+                const endDate = row.querySelector(".ins-rd-end").value || "";
+                if (name || startDate || endDate) out.push({ id: makeInsuranceId(), name, startDate, endDate });
             });
             return out;
         }
@@ -16055,9 +16175,11 @@
             document.getElementById("insCutoff").value = cutoff;
 
             document.getElementById("insCoverageRows").innerHTML = "";
+            document.getElementById("insRiderRows").innerHTML = "";
             document.getElementById("insPaymentRows").innerHTML = "";
             document.getElementById("insSvRows").innerHTML = "";
             ((p && p.coverages) || []).forEach(c => addInsCoverageRow(c));
+            ((p && p.riders) || []).forEach(r => addInsRiderRow(r));
             ((p && p.premiumHistory) || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(r => addInsPaymentRow(r));
             ((p && p.surrenderHistory) || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(r => (Array.isArray(r.funds) ? addInsFundSvRow(r) : addInsSvRow(r)));
             insRecalcPaymentTotal();
@@ -16089,6 +16211,7 @@
             record.statementTotal = insNumOrNull(document.getElementById("insStatementTotal").value);
             record.notes = document.getElementById("insNotes").value.trim();
             record.coverages = collectInsCoverageRows();
+            record.riders = collectInsRiderRows();
             record.premiumHistory = collectInsPaymentRows();
             record.surrenderHistory = collectInsSvRows();
             record.updated = todayLocalStr();
@@ -23105,6 +23228,7 @@
             handleSaveInsurance: () => handleSaveInsurance(),
             handleDeleteInsurance: () => handleDeleteInsurance(),
             addInsCoverageRow: () => addInsCoverageRow(null),
+            addInsRiderRow: () => addInsRiderRow(null), // v472
             addInsPaymentRow: () => addInsPaymentRow(null, true),
             addInsSvRow: () => insAddSvRowForType(),
             addInsFundLine: (el) => addInsFundLine(el), // v471
@@ -23192,6 +23316,7 @@
             insSvTotalChange: (el) => insSvTotalChange(el), // v469
             insSvPartChange: (el) => insSvPartChange(el),
             insTypeChanged: () => updateInsSvAddUi(), // v471
+            insCovKindChange: (el) => insCovKindChange(el), // v472
             insRecalcPaymentTotal: () => insRecalcPaymentTotal(),
             handleInvAttachmentsSelected: (el, e) => handleInvAttachmentsSelected(e),
             recalcWarrantyRowEnd: (el) => recalcWarrantyRowEnd(el),

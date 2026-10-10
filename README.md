@@ -3662,3 +3662,13 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Not in this version: pulling the latest NAV from the Funds page (units × current price as a live estimate).
 
 - `APP_VERSION` / `CACHE_NAME` → v471.
+
+## v472: Insurance — preset coverage types, coverage expiry, medical limits, riders
+
+- **Coverage(s) in this policy**: each row is a preset type — Life (Whole Life), Term Life, Health / Medical, Critical Illness, Personal Accident, Car, Home / Fire, Travel, Other (free-text name, e.g. TPD) — plus an optional **Sum insured** and an optional **Coverage expiry** for a coverage that ends on a different date from the policy. Because the type is a preset rather than free text, per-person totals by type (life cover, medical limits…) can be added later.
+- **Health / Medical** rows also take **Annual limit**, **Lifetime limit** and **Lifetime remaining** (all optional; sum insured too). Remaining is copied from the insurer's statement — the app can't know what has been claimed. The policy detail shows each coverage as a card: type chip + sum insured, then `ANNUAL LIMIT` and `LIFETIME LIMIT REMAINING / total`, then `Until …` / `Expired …`.
+- **Riders**: name + optional start and expiry date; shown on the policy detail (`Until …` / `Ended …`). A rider that has its own sum insured is best also entered as a coverage row so the sum counts.
+- Policy **Type** gains Car, Home / Fire and Travel.
+- Coverage records: `{ id, kind, label (only for "other"), sumAssured, expiry, annualLimit, lifetimeLimit, lifetimeRemaining }`; policy gains `riders: [{id, name, startDate, endDate}]`. A coverage saved by v468–v471 (free-text label + sum, no `kind`) opens as **Other** with its label as the name, and keeps showing under that name. Nothing is rewritten until the policy is saved again.
+
+- `APP_VERSION` / `CACHE_NAME` → v472.

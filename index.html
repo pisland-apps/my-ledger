@@ -2116,7 +2116,9 @@
         .ins-row-x { flex: 0 0 26px; height: 26px; border: none; border-radius: 50%; background: var(--chip-bg); color: var(--expense-color); font-size: 1.1rem; line-height: 1; padding: 0; cursor: pointer; }
         .ins-rows-scroll { max-height: 300px; overflow-y: auto; }
         .ins-hdr { margin-bottom: 2px; }
-        .ins-sv-block { border: 1px solid var(--border-color); border-radius: 12px; padding: 8px; margin-bottom: 8px; }
+        .ins-sv-block, .ins-card { border: 1px solid var(--border-color); border-radius: 12px; padding: 8px; margin-bottom: 8px; }
+        .ins-row-line select.form-input { width: auto; flex: 1 1 0; min-width: 0; margin: 0; }
+        .ins-rd-name, .ins-cov-label { flex: 1 1 0; }
         .ins-sv-cell { flex: 1 1 0; min-width: 0; }
         .ins-sv-cell label { display: block; font-size: 0.62rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin: 0 0 2px; }
         .ins-sv-cell input { width: 100%; }
@@ -4042,9 +4044,14 @@
                     <input type="number" id="insLoan" step="0.01" min="0" placeholder="Leave empty if the statement total is already net of loan">
                 </div>
 
-                <div class="ins-section-title">Coverage</div>
+                <div class="ins-section-title">Coverage(s) in this policy</div>
+                <p style="font-size:0.72rem; color:var(--text-muted); margin-bottom:8px;">Bundled plans can combine several coverages under one policy — e.g. Life + Medical + Critical Illness. Add one row per coverage.</p>
                 <div id="insCoverageRows"></div>
                 <button type="button" class="submit-btn" data-click="addInsCoverageRow" style="margin-top:2px; background:var(--chip-bg); color:var(--text-main);">＋ Add coverage</button>
+
+                <div class="ins-section-title">Riders</div>
+                <div id="insRiderRows"></div>
+                <button type="button" class="submit-btn" data-click="addInsRiderRow" style="margin-top:2px; background:var(--chip-bg); color:var(--text-main);">＋ Add rider</button>
 
                 <div class="ins-section-title">Premiums paid before this ledger</div>
                 <p style="font-size:0.72rem; color:var(--text-muted); margin-bottom:8px;">Type in the payments made before you started using this ledger. Payments from now on are recorded as normal expenses and linked to this policy.</p>

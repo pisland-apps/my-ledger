@@ -3768,3 +3768,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Savings / investment panel: on screens ≤600px the three figures (Paid to SV date / Surrender value / Net) stack as label-left, value-right rows; the "…" truncation is gone everywhere (values now wrap instead of ellipsis).
 - Policy cards on phones: Paid and SV (with the % chip and "as of" date) move to their own full-width row below the title/coverage, so plan names and sum insured use the full card width. Desktop layout unchanged.
 - `APP_VERSION` / `CACHE_NAME` → v484.
+
+## v485: Insurance — separate Agent name / Agent phone-email fields
+- New policy fields `agentName`, `agentContact` (stored on the policy record, so backups/Drive sync carry them automatically; no DB version change).
+- Edit Policy: two rows under Policy number. If both are empty and the Notes contain a line starting with "Agent", a "Move the 'Agent …' line from Notes here" button appears: it splits name vs. contact (at the first digit / email), asks to confirm, fills the fields and removes that line from Notes.
+- Policy detail sheet: an Agent box above the Notes; phone numbers in the contact text are tap-to-call (`tel:`) links.
+- Policy list card: a "🧑‍💼 name · contact" line above the Notes (plain text — the card itself is tappable).
+- Notes placeholder no longer suggests putting agent details there. `APP_VERSION` / `CACHE_NAME` → v485.

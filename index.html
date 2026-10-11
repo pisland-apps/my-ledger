@@ -4100,6 +4100,9 @@
                 <div class="form-row form-row-icon"><span class="field-icon" aria-hidden="true">🛡️</span><input type="text" id="insProduct" placeholder="Plan / product name" aria-label="Plan name" autocomplete="off"></div>
                 <div class="form-row form-row-icon"><span class="field-icon" aria-hidden="true">🏢</span><input type="text" id="insInsurer" placeholder="Insurance company" aria-label="Insurance company" autocomplete="off"></div>
                 <div class="form-row form-row-icon"><span class="field-icon" aria-hidden="true">🔖</span><input type="text" id="insPolicyNo" placeholder="Policy number (Optional)" aria-label="Policy number" autocomplete="off"></div>
+                <div class="form-row form-row-icon"><span class="field-icon" aria-hidden="true">🧑‍💼</span><input type="text" id="insAgentName" placeholder="Agent name (Optional)" aria-label="Agent name" autocomplete="off" data-input="insAgentMoveRefresh"></div>
+                <div class="form-row form-row-icon"><span class="field-icon" aria-hidden="true">📞</span><input type="text" id="insAgentContact" placeholder="Agent phone / email (Optional)" aria-label="Agent phone or email" autocomplete="off" data-input="insAgentMoveRefresh"></div>
+                <div id="insAgentMoveRow" style="display:none; margin:-4px 0 10px;"><button type="button" class="ins-mini-btn" data-click="insAgentFromNotes">Move the “Agent …” line from Notes here</button></div>
 
                 <div class="form-row-inline">
                     <div><label>Type</label><select id="insType" class="form-input" data-change="insTypeChanged"></select></div>
@@ -4155,7 +4158,7 @@
                 <div id="insSvRows"></div>
                 <button type="button" class="submit-btn" id="insSvAddBtn" data-click="addInsSvRow" style="margin-top:2px; background:var(--chip-bg); color:var(--text-main);">＋ Add surrender value</button>
 
-                <div class="form-row" style="margin-top:14px;"><textarea id="insNotes" class="ins-notes" rows="3" placeholder="Notes (Optional) — e.g. agent name & phone"></textarea></div>
+                <div class="form-row" style="margin-top:14px;"><textarea id="insNotes" class="ins-notes" rows="3" placeholder="Notes (Optional)" data-input="insAgentMoveRefresh"></textarea></div>
             </div>
             <div style="flex-shrink:0; padding:12px 20px 20px;">
                 <button type="button" class="submit-btn" data-click="handleSaveInsurance" style="margin-top:0;">Save</button>

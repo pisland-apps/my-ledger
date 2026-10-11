@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v484";
+        const APP_VERSION = "v485";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15571,7 +15571,7 @@
                             ${f.svValue != null ? `<span class="ins-pol-sv" style="display:block;">${svText}</span>` : ""}
                         </span>
                         </div>
-                        ${(p.paidByBonus || p.notes) ? `<div>${insBonusBannerHtml(p, true)}${p.notes ? `<div style="${p.paidByBonus ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; white-space:pre-line; overflow-wrap:anywhere; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${escapeHtml(p.notes)}</div>` : ""}</div>` : ""}
+                        ${(p.paidByBonus || p.notes || insAgentLine(p)) ? `<div>${insBonusBannerHtml(p, true)}${insAgentLine(p) ? `<div style="${p.paidByBonus ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; overflow-wrap:anywhere;">🧑‍💼 ${escapeHtml(insAgentLine(p))}</div>` : ""}${p.notes ? `<div style="${(p.paidByBonus || insAgentLine(p)) ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; white-space:pre-line; overflow-wrap:anywhere; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${escapeHtml(p.notes)}</div>` : ""}</div>` : ""}
                     </div>`;
             });
             list.innerHTML = rows.join("");
@@ -15846,6 +15846,7 @@
                     ${kv("Start", escapeHtml(p.startDate || ""))}
                     ${kv("Maturity / end", escapeHtml(p.maturityDate || ""))}
                 </div>
+                ${(p.agentName || p.agentContact) ? `<div style="display:flex; align-items:flex-start; gap:10px; padding:10px 12px; margin:0 0 12px; border:1px solid var(--border-color); border-radius:12px;"><span style="font-size:1.1rem; line-height:1.3;">🧑‍💼</span><div style="min-width:0;"><div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Agent</div>${p.agentName ? `<div style="font-size:0.88rem; font-weight:800; overflow-wrap:anywhere;">${escapeHtml(p.agentName)}</div>` : ""}${p.agentContact ? `<div style="font-size:0.82rem; font-weight:600; color:var(--text-muted); overflow-wrap:anywhere;">${insLinkifyPhones(p.agentContact)}</div>` : ""}</div></div>` : ""}
                 ${insBonusBannerHtml(p, false)}
                 ${p.notes ? `<p style="font-size:0.78rem; color:var(--text-muted); font-weight:600; white-space:pre-wrap; overflow-wrap:anywhere; margin:0 0 12px;">${escapeHtml(p.notes)}</p>` : ""}
 
@@ -16611,6 +16612,43 @@
             out.style.color = color;
         }
 
+        // --- v485: agent / contact as their own fields (used to be typed into Notes) ---
+        function insAgentLine(p) { return [p && p.agentName, p && p.agentContact].map(x => String(x || "").trim()).filter(Boolean).join(" · "); }
+        // Phone numbers in the contact text become tap-to-call links (detail sheet only — the list card is itself tappable).
+        function insLinkifyPhones(text) {
+            return escapeHtml(String(text || "")).replace(/(\+?\d[\d \-]{5,}\d)/g, m => `<a href="tel:${m.replace(/[^\d+]/g, "")}" style="color:var(--primary); text-decoration:none; font-weight:700;">${m}</a>`);
+        }
+        function insFindAgentLine(text) {
+            const lines = String(text || "").split(/\r?\n/);
+            const idx = lines.findIndex(l => /^\s*agent\b/i.test(l));
+            return idx < 0 ? null : { idx, lines, raw: lines[idx] };
+        }
+        // "Agent -SIA KET THIAM -016 8311700" → { name: "SIA KET THIAM", contact: "016 8311700" }
+        function insSplitAgentLine(raw) {
+            const t = String(raw || "").replace(/^\s*agent\b\s*[-:–—.]*\s*/i, "").trim();
+            const m = t.search(/\+?\d|[^\s@]+@/);
+            const name = (m < 0 ? t : t.slice(0, m)).replace(/[\s\-–—:,(]+$/, "").trim();
+            const contact = m < 0 ? "" : t.slice(m).trim();
+            return { name, contact };
+        }
+        function insAgentMoveRefresh() {
+            const row = document.getElementById("insAgentMoveRow");
+            if (!row) return;
+            const empty = !document.getElementById("insAgentName").value.trim() && !document.getElementById("insAgentContact").value.trim();
+            row.style.display = (empty && insFindAgentLine(document.getElementById("insNotes").value)) ? "block" : "none";
+        }
+        function insAgentFromNotes() {
+            const notesEl = document.getElementById("insNotes");
+            const found = insFindAgentLine(notesEl.value);
+            if (!found) return;
+            const { name, contact } = insSplitAgentLine(found.raw);
+            if (!confirm(`Move this line from Notes into the agent fields?\n\n"${found.raw.trim()}"\n\nAgent name: ${name || "—"}\nContact: ${contact || "—"}`)) return;
+            document.getElementById("insAgentName").value = name;
+            document.getElementById("insAgentContact").value = contact;
+            notesEl.value = found.lines.filter((_, i) => i !== found.idx).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+            insAgentMoveRefresh();
+        }
+
         async function openInsuranceModal(id) {
             await loadInsuranceCache();
             const p = id ? getPolicyById(id) : null;
@@ -16620,6 +16658,8 @@
             document.getElementById("insProduct").value = p ? (p.product || "") : "";
             document.getElementById("insInsurer").value = p ? (p.insurer || "") : "";
             document.getElementById("insPolicyNo").value = p ? (p.policyNo || "") : "";
+            document.getElementById("insAgentName").value = p ? (p.agentName || "") : "";
+            document.getElementById("insAgentContact").value = p ? (p.agentContact || "") : "";
             insFillSelect("insType", Object.entries(INS_TYPES), p ? (p.type || "other") : "life");
             insFillSelect("insStatus", Object.entries(INS_STATUSES), p ? (p.status || "active") : "active");
             insFillSelect("insMember", [["", "— not set —"], ...membersCache.map(m => [m.id, m.name])], p ? (p.insuredMemberId || "") : "");
@@ -16633,6 +16673,7 @@
             document.getElementById("insPremium").value = (p && p.premium != null) ? p.premium : "";
             document.getElementById("insLoan").value = (p && p.loanOutstanding) ? p.loanOutstanding : "";
             document.getElementById("insNotes").value = p ? (p.notes || "") : "";
+            insAgentMoveRefresh(); // v485
             document.getElementById("insPaidByBonus").checked = !!(p && p.paidByBonus);
             document.getElementById("insPaidByBonusSince").value = (p && p.paidByBonusSince) || "";
             insBonusToggle();
@@ -16677,6 +16718,8 @@
             record.product = product;
             record.insurer = insurer;
             record.policyNo = document.getElementById("insPolicyNo").value.trim();
+            record.agentName = document.getElementById("insAgentName").value.trim(); // v485
+            record.agentContact = document.getElementById("insAgentContact").value.trim();
             record.type = document.getElementById("insType").value;
             record.status = document.getElementById("insStatus").value;
             record.insuredMemberId = document.getElementById("insMember").value || null;
@@ -23718,6 +23761,7 @@
             addInsFundLine: (el) => addInsFundLine(el), // v471
             removeInsFundLine: (el) => removeInsFundLine(el),
             removeInsRow: (el) => removeInsRow(el),
+            insAgentFromNotes: () => insAgentFromNotes(), // v485
             addInsSchedStep: (el) => addInsSchedStep(el), // v482 (v483: moved here from CHANGE_ACTIONS — buttons fire click, not change)
             insSchedPasteFromNote: (el) => insSchedPasteFromNote(el), // v482 (v483: same fix)
             insuranceDetailEdit: () => insuranceDetailEdit(),
@@ -23813,6 +23857,7 @@
             recalcClaimSettlePreview: () => recalcClaimSettlePreview(),
             recalcTxFdMaturity: () => { recalcTxFdMaturity(); syncTransferFxOnAmountChange(); recalcTxSplitTotal(); },
             insRecalcPaymentTotal: () => insRecalcPaymentTotal(), // v468
+            insAgentMoveRefresh: () => insAgentMoveRefresh(), // v485
             insSvRowInput: (el) => insSvRowInput(el), // v469
             insSvTotalInput: (el) => insSvTotalInput(el),
             insFundLineInput: (el) => insFundLineInput(el), // v471

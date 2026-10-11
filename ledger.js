@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v490";
+        const APP_VERSION = "v491";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15404,6 +15404,9 @@
                 .sort((a, b) => b.date.localeCompare(a.date));
             const ledgerTotal = ledgerRows.reduce((s, r) => s + r.amount, 0);
             const paid = historyTotal + ledgerTotal;
+            // v491: split of "Premiums paid" — history rows tagged paidBy:"parent" vs everything else (own rows + linked expenses)
+            const parentTotal = history.filter(r => r.paidBy === "parent").reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+            const hasParentSplit = history.some(r => r.paidBy === "parent");
             const svs = (policy.surrenderHistory || []).filter(r => r && r.date)
                 .slice().sort((a, b) => b.date.localeCompare(a.date));
             const latestSv = svs[0] || null;
@@ -15423,7 +15426,7 @@
             const freq = INS_FREQ[policy.frequency];
             const premium = parseFloat(policy.premium) || 0;
             return {
-                cur, history, historyTotal, ledgerRows, ledgerTotal, paid, paidToSv, svs, latestSv, svValue, svGuaranteed, svParts, svAgeDays,
+                cur, history, historyTotal, parentTotal, hasParentSplit, selfTotal: paid - parentTotal, ledgerRows, ledgerTotal, paid, paidToSv, svs, latestSv, svValue, svGuaranteed, svParts, svAgeDays,
                 // A surrender value older than a year is probably out of date — insurers send a
                 // fresh statement every year — so the card flags it instead of presenting it as current.
                 svStale: svAgeDays != null && svAgeDays > 365,
@@ -15944,7 +15947,7 @@
                         <div style="min-width:0;">
                             <div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Premiums paid</div>
                             <div style="font-family:'Kalam', cursive; font-size:1.1rem; font-weight:800;">${formatCurrency(f.paid, cur)}</div>
-                            ${insPaidBreakdownHtml(f, cur)}
+                            ${insPaidBreakdownHtml(f, cur, p)}
                         </div>
                         ${f.latestSv ? `<div style="min-width:0; text-align:right;">
                             <div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Surrender value</div>
@@ -16333,7 +16336,8 @@
                 const lastRow = payRows[payRows.length - 1];
                 const lastDate = lastRow ? lastRow.querySelector(".ins-pay-date").value : "";
                 const lastAmt = lastRow ? lastRow.querySelector(".ins-pay-amount").value : "";
-                d = { date: lastDate ? insAddYear(lastDate) : "", amount: lastAmt !== "" ? lastAmt : (document.getElementById("insPremium").value || "") };
+                d = { date: lastDate ? insAddYear(lastDate) : "", amount: lastAmt !== "" ? lastAmt : (document.getElementById("insPremium").value || ""),
+                    paidBy: (lastRow && lastRow.querySelector(".ins-parent-btn").classList.contains("on")) ? "parent" : "" };
             }
             const num = parseFloat(d.amount);
             const refund = isFinite(num) && num < 0;
@@ -16347,11 +16351,19 @@
                 <input type="date" class="ins-c-date ins-pay-date" value="${escapeHtml(d.date || "")}">
                 <input type="number" class="ins-c-num ins-pay-amount${refund ? " refund" : ""}" step="0.01" min="0" placeholder="Amount" value="${escapeHtml(amountText)}" data-input="insRecalcPaymentTotal">
                 <input type="text" class="ins-c-grow ins-pay-note" placeholder="${refund ? "Refund reason" : "Note"}" value="${escapeHtml(d.note || "")}">
+                <button type="button" class="ins-parent-btn${d.paidBy === "parent" ? " on" : ""}" data-click="toggleInsParent" aria-pressed="${d.paidBy === "parent"}" aria-label="Paid by parent" title="Paid by parent">P</button>
                 <button type="button" class="ins-refund-btn${refund ? " on" : ""}" data-click="toggleInsRefund" data-row-id="${rowId}" aria-pressed="${refund}" aria-label="Refund" title="Refund (money back)">↩</button>
                 <button type="button" class="ins-row-x" data-click="removeInsRow" data-row-id="${rowId}" aria-label="Remove">×</button>`;
             container.appendChild(row);
             insRecalcPaymentTotal();
             if (!data && continueFromLast) container.scrollTop = container.scrollHeight;
+        }
+
+        // v491: a premium-history row can be tagged "paid by parent" (P button). Untagged rows count as
+        // paid by the ledger owner. New rows copy the previous row's tag.
+        function toggleInsParent(el) {
+            const on = el.classList.toggle("on");
+            el.setAttribute("aria-pressed", on ? "true" : "false");
         }
 
         function toggleInsRefund(el) {
@@ -16643,7 +16655,11 @@
                 const date = row.querySelector(".ins-pay-date").value;
                 const amount = insNumOrNull(row.querySelector(".ins-pay-amount").value);
                 const refund = row.querySelector(".ins-refund-btn").classList.contains("on");
-                if (date && amount != null && amount >= 0) out.push({ id: makeInsuranceId(), date, amount: refund ? -amount : amount, note: row.querySelector(".ins-pay-note").value.trim() });
+                if (date && amount != null && amount >= 0) {
+                    const rec = { id: makeInsuranceId(), date, amount: refund ? -amount : amount, note: row.querySelector(".ins-pay-note").value.trim() };
+                    if (row.querySelector(".ins-parent-btn").classList.contains("on")) rec.paidBy = "parent";
+                    out.push(rec);
+                }
             });
             return out.sort((a, b) => a.date.localeCompare(b.date));
         }
@@ -16701,9 +16717,18 @@
         // (1) plain-language "where the paid figure comes from" (hidden unless BOTH parts exist);
         // (2) a stacked bar + legend for the surrender-value make-up (Guaranteed / Dividend / Terminal bonus);
         // (3) the payback % in green plus an annualised return (XIRR) worked out from the dated premiums.
-        function insPaidBreakdownHtml(f, cur) {
-            if (!(Math.abs(f.historyTotal) >= 0.005 && Math.abs(f.ledgerTotal) >= 0.005)) return "";
-            return `<div style="font-size:0.68rem; color:var(--text-muted); font-weight:600;">${formatCurrency(f.historyTotal, cur)} entered manually (earlier years) · ${formatCurrency(f.ledgerTotal, cur)} recorded in the ledger</div>`;
+        function insPaidBreakdownHtml(f, cur, p) {
+            let out = "";
+            if (f.hasParentSplit) {
+                const line = (label, v) => `<div style="display:flex; justify-content:space-between; gap:10px; font-size:0.72rem; font-weight:700;"><span>${label}</span><span>${formatCurrency(v, cur)}</span></div>`;
+                const st = p ? parseFloat(p.statementTotal) : 0;
+                const mismatch = st > 0 && Math.abs(f.historyTotal - st) >= 0.005;
+                out += `<div style="margin-top:6px; padding:6px 8px; border-radius:8px; background:var(--chip-bg);">${line("👪 Paid by parent", f.parentTotal)}${line("🙋 Paid by you", f.selfTotal)}${mismatch ? `<div style="font-size:0.66rem; font-weight:700; color:var(--expense-color); margin-top:3px;">⚠️ Typed-in history ≠ insurer's total paid</div>` : ""}</div>`;
+            }
+            if (Math.abs(f.historyTotal) >= 0.005 && Math.abs(f.ledgerTotal) >= 0.005) {
+                out += `<div style="font-size:0.68rem; color:var(--text-muted); font-weight:600;">${formatCurrency(f.historyTotal, cur)} entered manually (earlier years) · ${formatCurrency(f.ledgerTotal, cur)} recorded in the ledger</div>`;
+            }
+            return out;
         }
 
         // Annualised return: money out on each premium date, the surrender value (after any policy loan) in on the
@@ -24033,6 +24058,7 @@
             addInsRiderRow: () => addInsRiderRow(null), // v472
             toggleInsRefund: (el) => toggleInsRefund(el), // v473
             addInsPaymentRow: () => addInsPaymentRow(null, true),
+            toggleInsParent,
             addInsSvRow: () => insAddSvRowForType(),
             addInsFundLine: (el) => addInsFundLine(el), // v471
             removeInsFundLine: (el) => removeInsFundLine(el),

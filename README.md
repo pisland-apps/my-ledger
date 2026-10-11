@@ -3805,3 +3805,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v490: Dashboard Insurance SV switch — hover tooltip removed
 - The tooltip from v489 is gone: on a PC it covered the Financial Assets amount, which is exactly what you look at when switching On/Off to compare. The description is in Setting > Net Worth Card > Insurance. The chip itself (tap to switch, auto-hidden when no policy has a surrender value) is unchanged.
 - `APP_VERSION` / `CACHE_NAME` → v490.
+
+## v491: Insurance premium history — "Paid by parent" tag and parent / you split
+- Each row in a policy's premium history (Premiums paid before this ledger) has a small **P** button: on = that premium was paid by a parent. A new row copies the previous row's tag, so a yearly premium is "＋ Add payment" (next year, same amount, same tag). Stored as `paidBy: "parent"` on the row; untagged rows and linked ledger expenses count as paid by the ledger owner.
+- Policy detail > Premiums paid: when any row is tagged, a small box shows **Paid by parent** and **Paid by you** (they add up to the combined total). Payback % and annualised return still use the combined total. The box also warns if the typed-in history does not match the insurer's total paid.
+- List cards unchanged. `computePolicyFigures` gained `parentTotal`, `selfTotal`, `hasParentSplit`; `insPaidBreakdownHtml(f, cur, p)`; new action `toggleInsParent`.
+- `APP_VERSION` / `CACHE_NAME` -> v491.
+

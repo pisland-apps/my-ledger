@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v475";
+        const APP_VERSION = "v476";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15406,6 +15406,8 @@
             const statusToggle = document.getElementById("insuranceStatusToggle");
             const isReport = insuranceView !== "policies";
             reportEl.style.display = isReport ? "block" : "none";
+            const filterRow = document.getElementById("insuranceFilterRow");
+            if (filterRow) filterRow.style.display = isReport ? "none" : "flex";
             if (statusToggle) statusToggle.style.display = isReport ? "none" : "";
             if (isReport) {
                 list.innerHTML = "";

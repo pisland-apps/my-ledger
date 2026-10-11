@@ -3701,3 +3701,11 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **Premiums are counted only up to each policy's latest SV date** (earlier-payments rows + linked ledger expenses, refunds netted), so a March SV is not compared against premiums paid since. The per-policy "Paid" on each card is unchanged.
 - Net is a rough guide, not an investment return (riders, participating bonuses and ILP fund prices move). IRR / break-even year would need payment-date history per policy — not done.
 - `APP_VERSION` / `CACHE_NAME` → v475.
+
+## v476: Insurance — primary tabs and status filter no longer look alike
+
+- **Policies | By person | Car · Home · Travel** are now **underline tabs** (active one gets an indigo underline, thin divider below) — they are pages.
+- **In force | Ended | All** is now a row of small left-aligned **pills** under a "Show" label (active pill = light indigo tint + indigo border, not a solid fill), and sits **above** the Yearly premium / Savings totals because it changes them. Hidden on the two report tabs as before.
+- Styling is scoped to new `.ins-tabs` / `.ins-pills` modifier classes; the shared `.nav-view-toggle` look on other pages (Budget, Inventory, Reminders, NAV update…) is unchanged. No logic change — the same buttons and handlers.
+- `APP_VERSION` / `CACHE_NAME` → v476.
+

@@ -692,6 +692,30 @@
         }
         .nav-view-toggle-btn + .nav-view-toggle-btn { border-left: 1.5px solid var(--border-color); }
         .nav-view-toggle-btn.active { background: var(--primary); color: #fff; }
+        /* v476: Insurance — primary tabs = underline tabs, secondary filter = small left-aligned pills,
+           so the two rows no longer look like the same control. Scoped by modifier class; the shared
+           .nav-view-toggle styling used by other pages is untouched. */
+        .nav-view-toggle.ins-tabs {
+            border: none; border-bottom: 1.5px solid var(--border-color); border-radius: 0;
+            overflow: visible; width: 100%;
+        }
+        .ins-tabs .nav-view-toggle-btn {
+            background: transparent; border: none; border-bottom: 3px solid transparent; margin-bottom: -1.5px;
+            padding: 10px 6px; font-size: 0.86rem; border-radius: 0;
+        }
+        .ins-tabs .nav-view-toggle-btn + .nav-view-toggle-btn { border-left: none; }
+        .ins-tabs .nav-view-toggle-btn.active { background: transparent; color: var(--primary); border-bottom-color: var(--primary); }
+        .ins-filter-row { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+        .ins-filter-label { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+        .nav-view-toggle.ins-pills { border: none; border-radius: 0; overflow: visible; gap: 6px; }
+        .ins-pills .nav-view-toggle-btn {
+            background: transparent; border: 1.5px solid var(--border-color); border-radius: 999px;
+            padding: 4px 12px; font-size: 0.72rem;
+        }
+        .ins-pills .nav-view-toggle-btn + .nav-view-toggle-btn { border-left: 1.5px solid var(--border-color); }
+        .ins-pills .nav-view-toggle-btn.active {
+            background: rgba(99, 102, 241, 0.12); color: var(--primary); border-color: var(--primary);
+        }
         .navfund-card-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -3977,20 +4001,22 @@
             </div>
         </div>
 
-        <div class="nav-view-toggle" id="insuranceViewTabs" style="margin:0 0 14px;">
+        <div class="nav-view-toggle ins-tabs" id="insuranceViewTabs" style="margin:0 0 14px;">
             <button type="button" class="nav-view-toggle-btn active" data-click="insuranceSetView" data-view="policies" style="flex:1;">Policies</button>
             <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetView" data-view="people" style="flex:1;">By person</button>
             <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetView" data-view="assets" style="flex:1;">Car · Home · Travel</button>
         </div>
 
+        <div class="ins-filter-row" id="insuranceFilterRow"><span class="ins-filter-label">Show</span>
+        <div class="nav-view-toggle ins-pills" id="insuranceStatusToggle">
+            <button type="button" class="nav-view-toggle-btn active" data-click="insuranceSetStatusFilter" data-status="active">In force</button>
+            <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetStatusFilter" data-status="ended">Ended</button>
+            <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetStatusFilter" data-status="all">All</button>
+        </div>
+        </div>
         <div id="insuranceSummary" style="display:none; gap:8px; padding:12px 8px; margin:0 0 14px; border:1px solid var(--border-color); border-radius:12px;"></div>
         <div id="insuranceSavingsSummary" style="display:none; padding:12px 8px; margin:-6px 0 14px; border:1px solid var(--border-color); border-radius:12px;"></div>
 
-        <div class="nav-view-toggle" id="insuranceStatusToggle" style="margin:0 0 14px;">
-            <button type="button" class="nav-view-toggle-btn active" data-click="insuranceSetStatusFilter" data-status="active" style="flex:1;">In force</button>
-            <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetStatusFilter" data-status="ended" style="flex:1;">Ended</button>
-            <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetStatusFilter" data-status="all" style="flex:1;">All</button>
-        </div>
 
         <div id="insurancePageList" style="padding-bottom:90px;"></div>
         <div id="insuranceReport" style="display:none; padding-bottom:90px;"></div>

@@ -3693,3 +3693,11 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - The person box in the policy editor is relabelled by Type: **Owner (optional)** for Car / Home / Fire, **Traveller (optional)** for Travel, **Insured person** otherwise — a fire policy on a warehouse has no insured person, and leaving it empty is correct.
 
 - `APP_VERSION` / `CACHE_NAME` → v474.
+
+## v475: Insurance — Savings / investment policies comparison
+
+- **The all-policy "Premiums paid" no longer sits next to Surrender value on its own.** It mixes protection cover (medical, PA, fire, travel — premiums spent, never returned) with cash-value plans, so it is relabelled **Premiums paid (all)** and stays as the cost-of-insurance view.
+- **New "Savings / investment policies" panel** under the summary on Policies: only policies that have a surrender value (the SV entry is the filter — no new Type field), showing **Paid to SV date**, **Surrender value** (net of any policy loan, as before), **Net** (green gain / red loss) and **SV as % of premiums paid**, with **"SV as of <date>"** (a range when policies differ; ⚠️ if the oldest is over a year old). Follows the In force / Ended / All filter; hidden when no policy in view has an SV.
+- **Premiums are counted only up to each policy's latest SV date** (earlier-payments rows + linked ledger expenses, refunds netted), so a March SV is not compared against premiums paid since. The per-policy "Paid" on each card is unchanged.
+- Net is a rough guide, not an investment return (riders, participating bonuses and ILP fund prices move). IRR / break-even year would need payment-date history per policy — not done.
+- `APP_VERSION` / `CACHE_NAME` → v475.

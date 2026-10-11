@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v474";
-        const APP_VERSION_DATE = "2026-10-10";
+        const APP_VERSION = "v475";
+        const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -15325,11 +15325,17 @@
             const svAgeDays = latestSv
                 ? Math.round((new Date(today + "T00:00:00") - new Date(latestSv.date + "T00:00:00")) / 86400000)
                 : null;
+            // v475: premiums paid only up to the latest surrender-value date, so the Savings comparison
+            // sets the SV against what had been paid by then (not against premiums paid since).
+            const paidToSv = latestSv
+                ? history.filter(r => r.date <= latestSv.date).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
+                    + ledgerRows.filter(r => (r.date || "") <= latestSv.date).reduce((s, r) => s + r.amount, 0)
+                : null;
             const loan = parseFloat(policy.loanOutstanding) || 0;
             const freq = INS_FREQ[policy.frequency];
             const premium = parseFloat(policy.premium) || 0;
             return {
-                cur, history, historyTotal, ledgerRows, ledgerTotal, paid, svs, latestSv, svValue, svGuaranteed, svParts, svAgeDays,
+                cur, history, historyTotal, ledgerRows, ledgerTotal, paid, paidToSv, svs, latestSv, svValue, svGuaranteed, svParts, svAgeDays,
                 // A surrender value older than a year is probably out of date — insurers send a
                 // fresh statement every year — so the card flags it instead of presenting it as current.
                 svStale: svAgeDays != null && svAgeDays > 365,
@@ -15405,6 +15411,8 @@
                 list.innerHTML = "";
                 empty.style.display = "none";
                 summary.style.display = "none";
+                const svPanelOff = document.getElementById("insuranceSavingsSummary");
+                if (svPanelOff) svPanelOff.style.display = "none";
                 reportEl.innerHTML = insuranceView === "people" ? insReportPeopleHtml() : insReportAssetsHtml();
                 return;
             }
@@ -15429,12 +15437,20 @@
                 : (insuranceStatusFilter === "ended" ? "No ended policies." : "No policies match this filter.");
 
             let annualBase = 0, paidBase = 0, svBase = 0, svCount = 0;
+            let savPaidBase = 0, savSvBase = 0, savMinDate = null, savMaxDate = null;
             const rows = filtered.map(p => {
                 const f = computePolicyFigures(p, txs, planned);
                 // Yearly premium = cash outlay: a policy whose premium comes out of its accumulated bonus is left out.
                 if (!p.paidByBonus) annualBase += insConvert(f.annual, f.cur, baseCurrency);
                 paidBase += insConvert(f.paid, f.cur, baseCurrency);
-                if (f.svValue != null) { svBase += insConvert(f.netSv, f.cur, baseCurrency); svCount++; }
+                if (f.svValue != null) {
+                    svBase += insConvert(f.netSv, f.cur, baseCurrency); svCount++;
+                    // v475: Savings / investment comparison — only policies that have a surrender value.
+                    savPaidBase += insConvert(f.paidToSv, f.cur, baseCurrency);
+                    savSvBase += insConvert(f.netSv, f.cur, baseCurrency);
+                    if (!savMinDate || f.latestSv.date < savMinDate) savMinDate = f.latestSv.date;
+                    if (!savMaxDate || f.latestSv.date > savMaxDate) savMaxDate = f.latestSv.date;
+                }
                 const icon = INS_TYPE_ICONS[p.type] || INS_TYPE_ICONS.other;
                 const metaParts = [];
                 if (p.product && p.insurer) metaParts.push(escapeHtml(p.insurer));
@@ -15476,8 +15492,32 @@
                 </div>`;
             summary.style.display = filtered.length ? "flex" : "none";
             summary.innerHTML = cell("Yearly premium", formatCurrency(annualBase, baseCurrency))
-                + cell("Premiums paid", formatCurrency(paidBase, baseCurrency))
+                + cell("Premiums paid (all)", formatCurrency(paidBase, baseCurrency))
                 + cell("Surrender value", svCount ? formatCurrency(svBase, baseCurrency) : "—");
+
+            // v475: Savings / investment policies — the like-for-like comparison. Pure protection (medical,
+            // PA, fire, travel…) has no surrender value, so it drops out here by itself.
+            const savEl = document.getElementById("insuranceSavingsSummary");
+            if (savEl) {
+                if (!filtered.length || !svCount) {
+                    savEl.style.display = "none";
+                } else {
+                    const net = savSvBase - savPaidBase;
+                    const pct = savPaidBase > 0 ? (savSvBase / savPaidBase) * 100 : null;
+                    const netColor = net >= 0 ? "var(--income-color)" : "var(--expense-color)";
+                    const asOf = savMinDate === savMaxDate ? savMinDate : `${savMinDate} → ${savMaxDate}`;
+                    savEl.style.display = "block";
+                    savEl.innerHTML = `
+                        <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); text-align:center; margin-bottom:8px;">Savings / investment policies (${svCount})</div>
+                        <div style="display:flex; gap:8px;">
+                            ${cell("Paid to SV date", formatCurrency(savPaidBase, baseCurrency))}
+                            ${cell("Surrender value", formatCurrency(savSvBase, baseCurrency))}
+                            ${cell("Net", `<span style="color:${netColor};">${net >= 0 ? "+" : "−"}${formatCurrency(Math.abs(net), baseCurrency)}</span>`)}
+                        </div>
+                        <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-align:center; margin-top:8px;">${pct != null ? `SV is ${pct.toFixed(1)}% of premiums paid · ` : ""}SV as of ${escapeHtml(asOf)}${savMinDate < todayLocalStr() && Math.round((new Date(todayLocalStr() + "T00:00:00") - new Date(savMinDate + "T00:00:00")) / 86400000) > 365 ? " ⚠️" : ""}</div>
+                        <div style="font-size:0.66rem; font-weight:600; color:var(--text-muted); text-align:center; margin-top:4px;">Premiums counted only up to each policy's SV date. Net is a rough guide, not an investment return (riders, bonuses and fund prices move).</div>`;
+                }
+            }
         }
 
         // --- Reports (the other two tabs of the Insurance page) ---

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v485";
+        const APP_VERSION = "v486";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15571,7 +15571,7 @@
                             ${f.svValue != null ? `<span class="ins-pol-sv" style="display:block;">${svText}</span>` : ""}
                         </span>
                         </div>
-                        ${(p.paidByBonus || p.notes || insAgentLine(p)) ? `<div>${insBonusBannerHtml(p, true)}${insAgentLine(p) ? `<div style="${p.paidByBonus ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; overflow-wrap:anywhere;">🧑‍💼 ${escapeHtml(insAgentLine(p))}</div>` : ""}${p.notes ? `<div style="${(p.paidByBonus || insAgentLine(p)) ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; white-space:pre-line; overflow-wrap:anywhere; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${escapeHtml(p.notes)}</div>` : ""}</div>` : ""}
+                        ${(p.paidByBonus || p.notes || insAgentLine(p) || insAttCount(p)) ? `<div>${insBonusBannerHtml(p, true)}${insAgentLine(p) ? `<div style="${p.paidByBonus ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; overflow-wrap:anywhere;">🧑‍💼 ${escapeHtml(insAgentLine(p))}</div>` : ""}${p.notes ? `<div style="${(p.paidByBonus || insAgentLine(p)) ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; white-space:pre-line; overflow-wrap:anywhere; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${escapeHtml(p.notes)}</div>` : ""}${insAttCount(p) ? `<div style="${(p.paidByBonus || p.notes || insAgentLine(p)) ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:700;">📎 ${insAttCount(p)} attachment${insAttCount(p) === 1 ? "" : "s"}</div>` : ""}</div>` : ""}
                     </div>`;
             });
             list.innerHTML = rows.join("");
@@ -15849,6 +15849,7 @@
                 ${(p.agentName || p.agentContact) ? `<div style="display:flex; align-items:flex-start; gap:10px; padding:10px 12px; margin:0 0 12px; border:1px solid var(--border-color); border-radius:12px;"><span style="font-size:1.1rem; line-height:1.3;">🧑‍💼</span><div style="min-width:0;"><div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Agent</div>${p.agentName ? `<div style="font-size:0.88rem; font-weight:800; overflow-wrap:anywhere;">${escapeHtml(p.agentName)}</div>` : ""}${p.agentContact ? `<div style="font-size:0.82rem; font-weight:600; color:var(--text-muted); overflow-wrap:anywhere;">${insLinkifyPhones(p.agentContact)}</div>` : ""}</div></div>` : ""}
                 ${insBonusBannerHtml(p, false)}
                 ${p.notes ? `<p style="font-size:0.78rem; color:var(--text-muted); font-weight:600; white-space:pre-wrap; overflow-wrap:anywhere; margin:0 0 12px;">${escapeHtml(p.notes)}</p>` : ""}
+                ${insAttachmentsHtml(p)}
 
                 <div style="border:1px solid var(--border-color); border-radius:12px; padding:12px;">
                     <div style="display:flex; justify-content:space-between; gap:12px;">
@@ -16612,6 +16613,88 @@
             out.style.color = color;
         }
 
+        // --- v486: policy attachments (PDF + images). Same store/shape as transaction, planned-payment and
+        // inventory attachments: the policy keeps refs [{id,name,mime,thumb,size}], the file bytes live in
+        // STORES.ATTACHMENTS (so backups and Drive sync already carry them). Own temp/existing arrays so the
+        // policy form never disturbs the transaction form's. Nothing is written until Save. ---
+        let insExistingAttachments = [];
+        let insTempAttachments = [];
+        let insAttOriginalIds = [];
+
+        function insAttCount(p) { return Array.isArray(p && p.attachments) ? p.attachments.length : 0; }
+
+        async function handleInsAttachmentsSelected(event) {
+            const files = Array.from(event.target.files || []);
+            for (const file of files) {
+                const isImage = file.type.startsWith("image/");
+                const isPdf = file.type === "application/pdf";
+                if (!isImage && !isPdf) { alert(`"${file.name}" isn't an image or a PDF — skipped.`); continue; }
+                if (isPdf && file.size > 8 * 1024 * 1024) {
+                    const mb = (file.size / 1024 / 1024).toFixed(1);
+                    if (!confirm(`"${file.name}" is ${mb}MB. Large PDFs take longer to store. Add it anyway?`)) continue;
+                }
+                let data, thumb;
+                if (isImage) {
+                    const raw = await readFileAsDataUrl(file);
+                    if (!raw) { alert(`Couldn't read "${file.name}" — it wasn't added.`); continue; }
+                    try {
+                        // a little larger than receipts (1280/0.75): policy schedules are small print
+                        data = await compressImage(raw, 1600, 0.8);
+                        thumb = await compressImage(raw, 96, 0.5);
+                    } catch (err) { alert(`Could not process "${file.name}" — it wasn't added.`); continue; }
+                } else {
+                    data = await readFileAsDataUrl(file);
+                    if (!data) { alert(`Couldn't read "${file.name}" — it wasn't added.`); continue; }
+                    thumb = null;
+                }
+                insTempAttachments.push({ id: makeAttId(), name: file.name, mime: isImage ? "image/jpeg" : "application/pdf", data, thumb, size: data.length });
+            }
+            renderInsAttachmentPreview();
+            document.getElementById("insCameraInput").value = "";
+            document.getElementById("insFilesInput").value = "";
+        }
+
+        function renderInsAttachmentPreview() {
+            const wrap = document.getElementById("insAttachmentPreview");
+            const items = [];
+            insExistingAttachments.forEach((att, idx) => items.push(renderTxAttachmentRow(att, `removeExistingInsAttachment" data-idx="${idx}`)));
+            insTempAttachments.forEach((att, idx) => items.push(renderTxAttachmentRow(att, `removeTempInsAttachment" data-idx="${idx}`)));
+            wrap.innerHTML = items.join("");
+            wrap.style.display = items.length ? "flex" : "none";
+        }
+
+        function removeExistingInsAttachment(el) {
+            insExistingAttachments.splice(parseInt(el.dataset.idx, 10), 1);
+            renderInsAttachmentPreview();
+        }
+
+        function removeTempInsAttachment(el) {
+            insTempAttachments.splice(parseInt(el.dataset.idx, 10), 1);
+            renderInsAttachmentPreview();
+        }
+
+        // Detail sheet: tap a row to open it in the shared viewer (txId null → the viewer's Delete button stays
+        // hidden; removing a policy file is done from the policy's Edit form, like inventory).
+        function insAttachmentsHtml(p) {
+            const atts = Array.isArray(p.attachments) ? p.attachments : [];
+            if (!atts.length) return "";
+            return `<div style="font-size:0.72rem; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin:16px 0 6px;">Attachments (${atts.length})</div>
+                <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px;">${atts.map((att, idx) => {
+                    const isImage = (att.mime || "").startsWith("image/");
+                    return `<div class="tx-att-item" data-click="openInsAttachment" data-idx="${idx}" style="cursor:pointer; display:flex; align-items:center; gap:8px; background:var(--chip-bg); border:1px solid var(--border-color); border-radius:8px; padding:6px 8px;">
+                        <div style="width:36px; height:36px; border-radius:6px; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1.1rem;">${att.thumb ? `<img src="${att.thumb}" alt="" style="width:100%; height:100%; object-fit:cover;">` : (isImage ? "🖼️" : "📄")}</div>
+                        <div style="flex:1; min-width:0;"><div style="font-size:0.8rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(att.name || "Attachment")}</div><div style="font-size:0.68rem; color:var(--text-muted);">${formatAttBytes(att.size)}</div></div>
+                        <span style="color:var(--text-muted); font-weight:700;">›</span>
+                    </div>`;
+                }).join("")}</div>`;
+        }
+
+        function openInsAttachment(el) {
+            const p = getPolicyById(activeInsuranceId);
+            const att = p && Array.isArray(p.attachments) ? p.attachments[parseInt(el.dataset.idx, 10)] : null;
+            if (att) openAttachment(att, null);
+        }
+
         // --- v485: agent / contact as their own fields (used to be typed into Notes) ---
         function insAgentLine(p) { return [p && p.agentName, p && p.agentContact].map(x => String(x || "").trim()).filter(Boolean).join(" · "); }
         // Phone numbers in the contact text become tap-to-call links (detail sheet only — the list card is itself tappable).
@@ -16704,6 +16787,10 @@
             ((p && p.surrenderHistory) || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(r => (Array.isArray(r.funds) ? addInsFundSvRow(r) : addInsSvRow(r)));
             insRecalcPaymentTotal();
             updateInsSvAddUi();
+            insExistingAttachments = (p && Array.isArray(p.attachments)) ? p.attachments.map(a => ({ ...a })) : []; // v486
+            insTempAttachments = [];
+            insAttOriginalIds = insExistingAttachments.map(a => a.id);
+            renderInsAttachmentPreview();
             document.getElementById("insDeleteBtn").style.display = id ? "block" : "none";
             openModal("insuranceModal");
         }
@@ -16739,12 +16826,25 @@
             record.premiumHistory = collectInsPaymentRows();
             record.surrenderHistory = collectInsSvRows();
             record.updated = todayLocalStr();
+            // v486: attachments — refs on the policy, bytes in STORES.ATTACHMENTS. New files are written first;
+            // files removed in this edit are deleted only after the policy itself saved.
+            record.attachments = [...insExistingAttachments, ...insTempAttachments.map(a => ({ id: a.id, name: a.name, mime: a.mime, thumb: a.thumb, size: a.size }))];
             try {
+                for (const att of insTempAttachments) {
+                    await writeDB(STORES.ATTACHMENTS, { id: att.id, name: att.name, mime: att.mime, data: att.data });
+                }
                 await writeDB(STORES.INSURANCE, record);
             } catch (err) {
-                alert("Could not save this policy: " + (err && err.message ? err.message : err));
+                const full = err && (err.name === "QuotaExceededError" || /quota/i.test(String(err.message || "")));
+                alert(full ? "Not enough storage space to save these attachments. Try removing one or freeing up space."
+                           : "Could not save this policy: " + (err && err.message ? err.message : err));
                 return;
             }
+            const keptAttIds = new Set(record.attachments.map(a => a.id));
+            for (const oldId of insAttOriginalIds) {
+                if (oldId != null && !keptAttIds.has(oldId)) { try { await deleteDB(STORES.ATTACHMENTS, oldId); } catch (err) { /* a leftover blob costs storage, not correctness */ } }
+            }
+            insTempAttachments = []; insExistingAttachments = []; insAttOriginalIds = [];
             await loadInsuranceCache();
             closeModal("insuranceModal");
             await renderInsurancePage();
@@ -16767,7 +16867,10 @@
             closeModalAndThen("insuranceModal", async () => {
                 const confirmed = await customConfirm("Delete this policy and all its recorded history? This can't be undone.");
                 if (!confirmed) return;
+                const doomed = getPolicyById(id);
                 try { await deleteDB(STORES.INSURANCE, id); } catch (err) {}
+                // v486: its attached files go with it (no orphaned blobs)
+                for (const att of ((doomed && doomed.attachments) || [])) { try { await deleteDB(STORES.ATTACHMENTS, att.id); } catch (err) {} }
                 await loadInsuranceCache();
                 await renderInsurancePage();
             });
@@ -23762,6 +23865,9 @@
             removeInsFundLine: (el) => removeInsFundLine(el),
             removeInsRow: (el) => removeInsRow(el),
             insAgentFromNotes: () => insAgentFromNotes(), // v485
+            openInsAttachment: (el) => openInsAttachment(el), // v486
+            removeExistingInsAttachment: (el) => removeExistingInsAttachment(el),
+            removeTempInsAttachment: (el) => removeTempInsAttachment(el),
             addInsSchedStep: (el) => addInsSchedStep(el), // v482 (v483: moved here from CHANGE_ACTIONS — buttons fire click, not change)
             insSchedPasteFromNote: (el) => insSchedPasteFromNote(el), // v482 (v483: same fix)
             insuranceDetailEdit: () => insuranceDetailEdit(),
@@ -23850,6 +23956,7 @@
             insBonusToggle: () => insBonusToggle(), // v473
             insRecalcPaymentTotal: () => insRecalcPaymentTotal(),
             handleInvAttachmentsSelected: (el, e) => handleInvAttachmentsSelected(e),
+            handleInsAttachmentsSelected: (el, e) => handleInsAttachmentsSelected(e), // v486
             recalcWarrantyRowEnd: (el) => recalcWarrantyRowEnd(el),
         };
 

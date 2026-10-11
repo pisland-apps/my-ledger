@@ -3775,3 +3775,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Policy detail sheet: an Agent box above the Notes; phone numbers in the contact text are tap-to-call (`tel:`) links.
 - Policy list card: a "🧑‍💼 name · contact" line above the Notes (plain text — the card itself is tappable).
 - Notes placeholder no longer suggests putting agent details there. `APP_VERSION` / `CACHE_NAME` → v485.
+
+## v486: Insurance — policy attachments (PDF + images)
+- Edit Policy: new "Attachments" section above Notes — 📷 Camera and 📎 Add Files (images are re-encoded as JPEG at max 1600px / quality 0.8 with a 96px thumb; PDFs stored as-is, >8 MB asks first). Files are only written on Save; each can be removed with ✕ in the form.
+- Storage: same as transaction / planned-payment / inventory attachments — the policy holds refs `attachments: [{id,name,mime,thumb,size}]`, the bytes live in `STORES.ATTACHMENTS`, so export/import and Drive sync already carry them (no DB version change).
+- Policy detail sheet: "Attachments (N)" rows under the notes; tap opens the shared attachment viewer (images / PDF via pdf.js, Download button). The viewer's Delete button is hidden here — remove files from Edit.
+- List card: "📎 N attachments" line. Removing a file in Edit (after Save) or deleting the policy deletes the blobs from `STORES.ATTACHMENTS`.
+- `APP_VERSION` / `CACHE_NAME` → v486.

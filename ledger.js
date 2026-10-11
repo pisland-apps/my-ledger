@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v494";
+        const APP_VERSION = "v495";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15614,9 +15614,12 @@
             const statusToggle = document.getElementById("insuranceStatusToggle");
             const isReport = insuranceView !== "policies";
             reportEl.style.display = isReport ? "block" : "none";
+            // v495: the In force / Ended / All filter now also drives Car · Home · Travel (so an ended car
+            // policy can still be found); only "By person" (in-force cover totals) has no filter.
+            const showStatusFilter = insuranceView !== "people";
             const filterRow = document.getElementById("insuranceFilterRow");
-            if (filterRow) filterRow.style.display = isReport ? "none" : "flex";
-            if (statusToggle) statusToggle.style.display = isReport ? "none" : "";
+            if (filterRow) filterRow.style.display = showStatusFilter ? "flex" : "none";
+            if (statusToggle) statusToggle.style.display = showStatusFilter ? "" : "none";
             if (isReport) {
                 list.innerHTML = "";
                 list.style.paddingBottom = "0"; // v479: its 90px bottom padding sat as a blank gap above the reports
@@ -15630,7 +15633,10 @@
             list.style.paddingBottom = "90px";
             const [txs, planned] = await Promise.all([readAllDB(STORES.TRANSACTIONS), readAllDB(STORES.PLANNED_PAYMENTS)]);
 
-            const filtered = insuranceCache.filter(p => insuranceStatusFilter === "all" ? true
+            // v495: car / home / travel policies are listed only under their own tab, so no policy is
+            // shown twice and the summary figures below add up exactly what this list shows.
+            const personalPolicies = insuranceCache.filter(p => !INS_ASSET_TYPES.includes(p.type));
+            const filtered = personalPolicies.filter(p => insuranceStatusFilter === "all" ? true
                 : (insuranceStatusFilter === "ended" ? !insIsLive(p) : insIsLive(p)))
                 .sort((a, b) => {
                     // Insurer first (blank insurer last), then type in the order of the Type list
@@ -15646,7 +15652,9 @@
             empty.style.display = filtered.length ? "none" : "block";
             empty.textContent = insuranceCache.length === 0
                 ? "No policies yet — tap + to add one."
-                : (insuranceStatusFilter === "ended" ? "No ended policies." : "No policies match this filter.");
+                : (personalPolicies.length === 0
+                    ? "No life or medical policies yet — car, home and travel policies are under the Car · Home · Travel tab."
+                    : (insuranceStatusFilter === "ended" ? "No ended policies." : "No policies match this filter."));
 
             let annualBase = 0, paidBase = 0, svBase = 0, svCount = 0;
             let savPaidBase = 0, savSvBase = 0, savMinDate = null, savMaxDate = null;
@@ -15710,10 +15718,12 @@
                     <div class="ins-sum-val" style="font-size:1rem; font-weight:800; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;">${value}</div>
                 </div>`;
             summary.style.display = filtered.length ? "flex" : "none";
+            summary.style.flexWrap = "wrap";
             // v477: Surrender value lives only in the Savings panel below (it was a duplicate here, and
             // sat next to an all-policy paid figure it can't be compared with).
             summary.innerHTML = cell("Yearly premium", formatCurrency(annualBase, baseCurrency))
-                + cell("Premiums paid (all)", formatCurrency(paidBase, baseCurrency));
+                + cell("Premiums paid", formatCurrency(paidBase, baseCurrency))
+                + `<div class="ins-sum-scope" style="flex:0 0 100%; text-align:center; font-size:0.66rem; font-weight:600; color:var(--text-muted);">Life, medical &amp; other personal policies${insuranceStatusFilter === "all" ? "" : (insuranceStatusFilter === "ended" ? " (ended)" : " (in force)")} — car, home &amp; travel are on their own tab</div>`;
 
             // v475: Savings / investment policies — the like-for-like comparison. Pure protection (medical,
             // PA, fire, travel…) has no surrender value, so it drops out here by itself.
@@ -15884,8 +15894,15 @@
         }
 
         function insReportAssetsHtml() {
-            const live = insuranceCache.filter(p => insIsLive(p) && INS_ASSET_TYPES.includes(p.type));
-            if (!live.length) return `<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:40px 20px;">No in-force car, home / fire or travel policies yet — add one with + and choose that Type.</p>`;
+            // v495: follows the In force / Ended / All filter (was in-force only).
+            const live = insuranceCache.filter(p => INS_ASSET_TYPES.includes(p.type) && (insuranceStatusFilter === "all" ? true
+                : (insuranceStatusFilter === "ended" ? !insIsLive(p) : insIsLive(p))));
+            if (!live.length) {
+                const anyAsset = insuranceCache.some(p => INS_ASSET_TYPES.includes(p.type));
+                const msg = !anyAsset ? "No car, home / fire or travel policies yet — add one with + and choose that Type."
+                    : (insuranceStatusFilter === "ended" ? "No ended car, home / fire or travel policies." : "No in-force car, home / fire or travel policies — choose Ended or All above to see the others.");
+                return `<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:40px 20px;">${msg}</p>`;
+            }
             const today = todayLocalStr();
             const money = (n) => formatCurrency(n, baseCurrency);
             let totalYearly = 0, foreign = false;
@@ -15899,20 +15916,22 @@
                     if (cur !== baseCurrency) foreign = true;
                     const sums = (p.coverages || []).filter(c => c && typeof c.sumAssured === "number");
                     const sumNative = sums.reduce((s, c) => s + c.sumAssured, 0);
-                    if (sums.length) { sumBase += insConvert(sumNative, cur, baseCurrency); hasSum = true; }
-                    const yearly = insAnnualCashBase(p);
+                    if (sums.length && insIsLive(p)) { sumBase += insConvert(sumNative, cur, baseCurrency); hasSum = true; }
+                    const yearly = insIsLive(p) ? insAnnualCashBase(p) : 0; // v495: an ended policy has no yearly cost
                     yearlyBase += yearly;
                     const freq = INS_FREQ[p.frequency], prem = parseFloat(p.premium) || 0;
-                    const yearlyNative = (freq && freq[1] > 0 && prem > 0 && !p.paidByBonus) ? prem * freq[1] : 0;
+                    const yearlyNative = (freq && freq[1] > 0 && prem > 0 && !p.paidByBonus && insIsLive(p)) ? prem * freq[1] : 0;
                     let endLine = "";
-                    if (p.maturityDate) {
+                    if (!insIsLive(p)) {
+                        endLine = `<span style="font-size:0.72rem; font-weight:700; color:var(--text-muted);">${escapeHtml(INS_STATUSES[p.status] || p.status)}${p.maturityDate ? " · " + escapeHtml(p.maturityDate) : ""}</span>`;
+                    } else if (p.maturityDate) {
                         const dd = Math.round((new Date(p.maturityDate + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000);
                         const color = dd < 0 ? "var(--expense-color)" : (dd <= 60 ? "#d97706" : "var(--text-muted)");
                         endLine = `<span style="font-size:0.72rem; font-weight:700; color:${color};">${dd < 0 ? `⚠️ Expired ${-dd} day${-dd === 1 ? "" : "s"} ago` : (dd === 0 ? "⚠️ Expires today" : `Ends ${escapeHtml(p.maturityDate)} · ${dd} day${dd === 1 ? "" : "s"} left`)}${dd < 0 ? ` (${escapeHtml(p.maturityDate)})` : ""}</span>`;
                     }
                     const who = p.insuredMemberId && getMemberById(p.insuredMemberId) ? accountOwnerTagHTML({ memberIds: [p.insuredMemberId] }) : "";
                     const meta = [p.insurer ? escapeHtml(p.insurer) : "", p.policyNo ? escapeHtml(p.policyNo) : "", who].filter(Boolean).join(" · ");
-                    return `<div data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; padding:9px 0; border-top:1px solid var(--border-color); display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+                    return `<div data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; ${insIsLive(p) ? "" : "opacity:0.65; "}padding:9px 0; border-top:1px solid var(--border-color); display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
                         <span style="min-width:0; display:flex; flex-direction:column; gap:2px;">
                             <strong style="font-size:0.85rem; overflow-wrap:anywhere;">${escapeHtml(p.product || p.insurer || "Policy")}</strong>
                             ${meta ? `<span style="font-size:0.72rem; color:var(--text-muted); font-weight:600; overflow-wrap:anywhere;">${meta}</span>` : ""}
@@ -15928,11 +15947,11 @@
                 return `<div style="border:1px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:12px;">
                     <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:6px;">
                         <span style="font-weight:800; font-size:0.9rem;">${INS_TYPE_ICONS[type]} ${escapeHtml(INS_TYPES[type])} <span style="font-weight:600; font-size:0.75rem; color:var(--text-muted);">· ${ps.length} ${ps.length === 1 ? "policy" : "policies"}</span></span>
-                        <span style="font-size:0.72rem; font-weight:700; color:var(--text-muted); text-align:right;">Sum insured ${hasSum ? money(sumBase) : "—"} · ${money(yearlyBase)}/yr</span>
+                        <span style="font-size:0.72rem; font-weight:700; color:var(--text-muted); text-align:right;">Sum insured ${hasSum ? money(sumBase) : "—"}${yearlyBase > 0 ? ` · ${money(yearlyBase)}/yr` : ""}</span>
                     </div>${rows}
                 </div>`;
             }).join("");
-            return sections + `<p style="font-size:0.7rem; color:var(--text-muted); line-height:1.5;">In-force policies only, nearest end date first. Sum insured adds up the coverage rows of each policy${foreign ? `; section totals are converted to ${escapeHtml(baseCurrency)} at today's rates` : ""}. Yearly cash premium of all of these: ${money(totalYearly)}.</p>`;
+            return sections + `<p style="font-size:0.7rem; color:var(--text-muted); line-height:1.5;">${insuranceStatusFilter === "ended" ? "Ended policies — they are not counted in the totals" : (insuranceStatusFilter === "all" ? "Ended policies are dimmed and not counted in the totals" : "In-force policies only")}, nearest end date first. Sum insured adds up the coverage rows of each policy${foreign ? `; section totals are converted to ${escapeHtml(baseCurrency)} at today's rates` : ""}.${totalYearly > 0 ? ` Yearly cash premium of all of these: ${money(totalYearly)}.` : ""}</p>`;
         }
 
         // --- Detail sheet (tapping a card) ---

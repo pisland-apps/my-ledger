@@ -3829,3 +3829,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Income after Tax icon changed from "$" to a percent mark.
 - `APP_VERSION` / `CACHE_NAME` -> v494.
 
+
+## v495: Insurance tabs no longer overlap
+- **Policies** lists life / medical / other policies only (no car, home or travel). Yearly premium and Premiums paid cover just that list, with a one-line scope note under them ("Premiums paid (all)" -> "Premiums paid").
+- **Car · Home · Travel** now follows the In force / Ended / All filter. Ended policies are dimmed with their status and are left out of the section totals.
+- **By person** unchanged (in-force cover totals, no filter).
+- Display only: `insurance` store, backup/import, Drive sync, net-worth SV and the transaction policy picker are untouched; `DB_VERSION` unchanged.
+- `APP_VERSION` / `CACHE_NAME` -> v495.

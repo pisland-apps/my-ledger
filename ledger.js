@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v492";
+        const APP_VERSION = "v493";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -21593,6 +21593,7 @@
         // Income = income transactions in the ticked income categories (refunds excluded). Tax = expenses in
         // the ticked tax categories, minus refunds (income + isRefund) of those categories.
         let incomeTaxCfg = null;
+        let incomeTaxLast = null; // v493: what the page last showed, so the CSV export always matches it
         async function loadIncomeTaxCfg() {
             if (incomeTaxCfg) return incomeTaxCfg;
             const rows = await readAllDB(STORES.SETTINGS);
@@ -21648,6 +21649,8 @@
             const td = "padding:8px 10px; text-align:right; white-space:nowrap;";
             const rows = ys.map(y => { const r = years[y]; ti += r.inc; tt += r.tax;
                 return `<tr><td style="padding:8px 10px; font-weight:700;">${y}</td><td style="${td}">${formatCurrency(r.inc, baseCurrency)}</td><td style="${td}">${formatCurrency(r.tax, baseCurrency)}</td><td style="${td} font-weight:800;">${formatCurrency(r.inc - r.tax, baseCurrency)}</td><td style="${td}">${pct(r.tax, r.inc)}</td></tr>`; }).join("");
+            incomeTaxLast = { ys, years, ti, tt, from: cfg.from || "",
+                inc: incList.filter(n => incSel.has(n)), tax: expList.filter(n => taxSel.has(n)) };
             document.getElementById("itResult").innerHTML = ys.length ? `
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
                     <div><div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Total income</div><div style="font-weight:800;">${formatCurrency(ti, baseCurrency)}</div></div>
@@ -21660,6 +21663,33 @@
                 <tfoot><tr style="border-top:2px solid var(--border-color); font-weight:800;"><td style="padding:8px 10px;">Total</td><td style="${td}">${formatCurrency(ti, baseCurrency)}</td><td style="${td}">${formatCurrency(tt, baseCurrency)}</td><td style="${td}">${formatCurrency(ti - tt, baseCurrency)}</td><td style="${td}">${pct(tt, ti)}</td></tr></tfoot></table>`
                 : `<p style="color:var(--text-muted); font-weight:600;">No income or tax found for the chosen categories.</p>`;
         }
+        async function exportIncomeTaxCsv() {
+            await renderIncomeTaxPage(false);
+            const d = incomeTaxLast;
+            if (!d || !d.ys.length) { showToast("No income or tax to export"); return; }
+            const pct = (tax, inc) => inc > 0 ? (tax / inc * 100).toFixed(1) : "";
+            const row = (label, inc, tax) => [label, inc.toFixed(2), tax.toFixed(2), (inc - tax).toFixed(2), pct(tax, inc)];
+            const rows = [
+                ["Year", `Income (${baseCurrency})`, `Tax (${baseCurrency})`, `After tax (${baseCurrency})`, "Tax %"],
+                ...d.ys.map(y => row(y, d.years[y].inc, d.years[y].tax)),
+                row("Total", d.ti, d.tt),
+                [],
+                ["From", d.from || "first transaction"],
+                ["Income categories counted", d.inc.join("; ")],
+                ["Tax categories", d.tax.join("; ")],
+                ["Exported", todayLocalStr()]
+            ];
+            const csv = rows.map(r => r.map(csvEscape).join(",")).join("\r\n");
+            const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `income_after_tax_${todayLocalStr()}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast("\ud83d\udce4 Exported Income after Tax to CSV");
+        }
+
         function navigateToIncomeTaxPage() {
             workspaceScrollY = window.scrollY;
             showPage("page-incometax");
@@ -24148,6 +24178,7 @@
             addInsPaymentRow: () => addInsPaymentRow(null, true),
             toggleInsParent,
             itCfgAll: (el) => itCfgAll(el),
+            exportIncomeTaxCsv: () => exportIncomeTaxCsv(),
             addInsSvRow: () => insAddSvRowForType(),
             addInsFundLine: (el) => addInsFundLine(el), // v471
             removeInsFundLine: (el) => removeInsFundLine(el),

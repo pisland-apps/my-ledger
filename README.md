@@ -3818,3 +3818,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Nothing else reads this setting, and it ignores the "Exclude from Net Savings Report" flag, so Net Savings Statement and every other report are unchanged. Base currency only.
 - `APP_VERSION` / `CACHE_NAME` -> v492.
 
+## v493: Income after Tax — Export to CSV
+- 📤 button in the page header. The file has Year / Income / Tax / After tax / Tax % per year plus Total, then the From date and the income and tax categories that were counted, and the export date, so the file records what it included. Re-renders first, so it always matches the page.
+- `APP_VERSION` / `CACHE_NAME` -> v493.
+

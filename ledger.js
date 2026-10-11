@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v487";
+        const APP_VERSION = "v488";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2369,6 +2369,9 @@
         // Persisted via SETTINGS like the widget settings above; defaults to true (unchanged
         // behaviour for existing installs).
         let showMonthlyTrendOnDashboard = true;
+        // v488: Setting > Net Worth Card > "Count insurance surrender value". Off by default, so the
+        // headline Net Worth stays exactly what it was until the user opts in. See insSvNetWorth().
+        let includeInsuranceSvInNetWorth = false;
         // v334: which of the current month's Category Budgets (if any) also get their own mini
         // progress row on the Dashboard's "Remaining Budget" widget, opted in one-by-one via the
         // Dashboard Widgets settings panel — see renderDashboardBudgetCategoryToggles(). Empty by
@@ -2746,6 +2749,15 @@
         function applyMonthlyTrendDashboardVisibility() {
             const slot = document.getElementById("monthlyTrendDashboardSlot");
             if (slot) slot.style.display = showMonthlyTrendOnDashboard ? "" : "none";
+        }
+
+        // v488: Setting > Net Worth Card > "Count insurance surrender value". Saved in the SETTINGS
+        // store (so it rides along with Backup & Restore and Drive sync); the dashboard is re-rendered
+        // straight away, every report page recalculates when it is next opened.
+        async function handleInsuranceSvNetWorthToggleChange(el) {
+            includeInsuranceSvInNetWorth = !!el.checked;
+            await writeDB(STORES.SETTINGS, { key: "includeInsuranceSvInNetWorth", value: includeInsuranceSvInNetWorth });
+            renderApp();
         }
 
         async function handleDashboardMonthlyTrendToggleChange(el) {
@@ -8732,6 +8744,8 @@
             buildNetWorthCardStyleSwatchGrid();
             applyMascotTargetUI(mascotTarget || mascotSettingsTarget);
             buildCompanionSwatchGrid();
+            const insSvToggle = document.getElementById("insuranceSvNetWorthToggle"); // v488
+            if (insSvToggle) insSvToggle.checked = includeInsuranceSvInNetWorth;
         }
 
         // --- v341: Companion (Setting page) --------------------------------------------------
@@ -9572,8 +9586,10 @@
         // else. Same includeInNetWorth opt-out as summarizeAccountsNetWorth, so a property
         // excluded from Net Worth is excluded here too (from both the Real Estate and Total
         // figures — it simply doesn't contribute to either side of the split).
-        function summarizeOwnerAssetSplit(accountsSubset, nativeBalances) {
-            let realEstate = 0, total = 0;
+        // v488: optional 3rd argument = insurance surrender value (base currency) to count as a
+        // financial asset — see insSvNetWorth(); omitted/0 leaves the result exactly as before.
+        function summarizeOwnerAssetSplit(accountsSubset, nativeBalances, insSvBase = 0) {
+            let realEstate = 0, total = insSvBase || 0;
             accountsSubset.forEach(a => {
                 if (a.includeInNetWorth === false) return;
                 const val = accountBaseValue(a, nativeBalances);
@@ -9590,7 +9606,9 @@
         // only for the Grand Total row and % of Net Worth column. Same includeInNetWorth opt-out
         // and Real Estate group-based split as summarizeOwnerAssetSplit, so a currency row here
         // always reconciles against that report's Real Estate total for the same account subset.
-        function summarizeCurrencySplit(accountsSubset, nativeBalances) {
+        // v488: optional 3rd argument = insSvNetWorth() scope; its policies' native net surrender
+        // values are added to each currency's Financial figure (and to totalBase).
+        function summarizeCurrencySplit(accountsSubset, nativeBalances, insScope = null) {
             const byCurrency = {};
             let totalBase = 0;
             const bump = (curr, amt, isRealEstate) => {
@@ -9612,11 +9630,18 @@
                     bump(a.currency, amt, isRealEstate);
                 }
             });
+            if (insScope) {
+                const ins = insSvNetWorth(insScope);
+                Object.entries(ins.byCurrency).forEach(([curr, amt]) => bump(curr, amt, false));
+                totalBase += ins.base;
+            }
             return { byCurrency, totalBase };
         }
 
         // Sums a subset of accounts into { total (in baseCurrency), currencyTotals { CODE: nativeAmt } }
-        function summarizeAccountsNetWorth(accountsSubset, nativeBalances) {
+        // v488: optional 3rd argument = insSvNetWorth() scope (a member id / "unassigned"); the
+        // matching policies' net surrender value is added to the total and the per-currency chips.
+        function summarizeAccountsNetWorth(accountsSubset, nativeBalances, insScope = null) {
             let total = 0;
             const currencyTotals = {};
             accountsSubset.forEach(a => {
@@ -9635,6 +9660,11 @@
                     currencyTotals[a.currency] = (currencyTotals[a.currency] || 0) + (nativeBalances[a.id] || 0);
                 }
             });
+            if (insScope) {
+                const ins = insSvNetWorth(insScope);
+                total += ins.base;
+                Object.entries(ins.byCurrency).forEach(([curr, amt]) => { currencyTotals[curr] = (currencyTotals[curr] || 0) + amt; });
+            }
             return { total, currencyTotals };
         }
 
@@ -9705,6 +9735,13 @@
                 };
             };
             const assets = build(assetDefs);
+            // v488: one extra Assets row (not tied to an account group, so not tappable) when the
+            // Setting > Net Worth Card toggle is on and at least one policy has a surrender value.
+            const insSv = insSvNetWorth("all");
+            if (insSv.count > 0) {
+                assets.total += insSv.base;
+                if (Math.abs(insSv.base) >= 0.005) assets.rows.push({ label: "Insurance (surrender value)", group: "", subgroup: "", amount: insSv.base, noClick: true });
+            }
             const liabilities = build(liabDefs);          // total is already negative (or 0)
             const netCurrentAssets = assets.total + liabilities.total;
             const realEstateTotal = sumGroup("Real Estate");
@@ -9719,7 +9756,12 @@
 
         async function renderNetWorthStatementPage() {
             const d = await computeNetWorthStatementData();
-            const nwsRow = r => `
+            const nwsRow = r => r.noClick ? `
+                <div class="statement-row" style="cursor:default;">
+                    <span>${escapeHtml(r.label)}</span>
+                    <span style="font-weight:700;">${formatBalanceHTML(r.amount, baseCurrency)}</span>
+                </div>
+            ` : `
                 <div class="statement-row" data-click="sidebarFilterAccountsByType" data-group="${escapeHtml(r.group)}" data-subgroup="${escapeHtml(r.subgroup)}" data-label="${escapeHtml(r.label)}">
                     <span>${escapeHtml(r.label)}</span>
                     <span style="font-weight:700;">${formatBalanceHTML(r.amount, baseCurrency)}</span>
@@ -9818,7 +9860,7 @@
             let html = "";
             membersCache.forEach(m => {
                 const subset = filterAccountsByOwnership(accounts, "member", [m.id]);
-                const { total } = summarizeAccountsNetWorth(subset, nativeBalances);
+                const { total } = summarizeAccountsNetWorth(subset, nativeBalances, m.id);
                 html += `
                     <div class="member-networth-row" data-click="sidebarGoMember" data-key="m:${m.id}">
                         <div class="member-row-left">
@@ -9858,8 +9900,8 @@
             });
 
             const unassigned = accounts.filter(a => !Array.isArray(a.memberIds) || a.memberIds.length === 0);
-            if (unassigned.length > 0) {
-                const { total } = summarizeAccountsNetWorth(unassigned, nativeBalances);
+            if (unassigned.length > 0 || insSvNetWorth("unassigned").count > 0) {
+                const { total } = summarizeAccountsNetWorth(unassigned, nativeBalances, "unassigned");
                 html += `
                     <div class="member-networth-row" style="cursor:default;">
                         <div class="member-row-left">
@@ -9884,7 +9926,7 @@
             const { type, ids } = activeMemberFilter;
             const { accounts, txs, nativeBalances } = await computeAccountBalances();
             const subset = filterAccountsByOwnership(accounts, type, ids);
-            const { total, currencyTotals } = summarizeAccountsNetWorth(subset, nativeBalances);
+            const { total, currencyTotals } = summarizeAccountsNetWorth(subset, nativeBalances, type === "member" ? ids[0] : null); // v488: member's insurance SV
             // v186: same fund/FD-placement subrow data the global Accounts page builds (see
             // renderAccountsPage) — needed here now that this page's cards match that page's
             // card style/arrangement (accountAvatarHTML, group headers, subrows) instead of the
@@ -15215,6 +15257,37 @@
             return INS_LIVE_STATUSES.includes(p.status || "active");
         }
 
+        // v488: the insurance part of Net Worth, behind the Setting > Net Worth Card toggle
+        // (includeInsuranceSvInNetWorth, off by default). A policy counts only while it is still in
+        // force (In force / Paid-up — a Lapsed, Surrendered or Matured policy has no cash value left to
+        // count), only if it has a surrender value on file, at its LATEST surrender value less any policy
+        // loan outstanding (the same "net SV" the policy detail shows). Protection policies (term,
+        // medical, car, home, travel) have no surrender value, so they drop out by themselves.
+        // `scope`: "all" | "joint" | "unassigned" | <memberId> — a policy belongs to its insured
+        // member (insuredMemberId); one with no (or a deleted) member is Unassigned; none is Joint.
+        // Returns { base (in baseCurrency), byCurrency {CODE: native}, count }; all zero when the toggle is off.
+        function insSvNetWorth(scope) {
+            const out = { base: 0, byCurrency: {}, count: 0 };
+            if (!includeInsuranceSvInNetWorth) return out;
+            (insuranceCache || []).forEach(p => {
+                if (!insIsLive(p)) return;
+                const latest = (p.surrenderHistory || []).filter(r => r && r.date)
+                    .slice().sort((a, b) => b.date.localeCompare(a.date))[0];
+                const sv = insSvValue(latest);
+                if (sv == null) return;
+                const hasMember = !!(p.insuredMemberId && getMemberById(p.insuredMemberId));
+                if (scope === "joint") return;
+                if (scope === "unassigned" && hasMember) return;
+                if (scope && scope !== "all" && scope !== "unassigned" && p.insuredMemberId !== scope) return;
+                const cur = p.currency || baseCurrency;
+                const native = sv - (parseFloat(p.loanOutstanding) || 0);
+                out.base += insConvert(native, cur, baseCurrency);
+                out.byCurrency[cur] = (out.byCurrency[cur] || 0) + native;
+                out.count++;
+            });
+            return out;
+        }
+
         function insMemberName(p) {
             const m = p.insuredMemberId ? getMemberById(p.insuredMemberId) : null;
             return m ? m.name : "";
@@ -18881,6 +18954,11 @@
                     currencyTotals[a.currency] = (currencyTotals[a.currency] || 0) + nativeBalances[a.id];
                 }
             });
+            // v488: + insurance surrender value when Setting > Net Worth Card > "Count insurance
+            // surrender value" is on (zero otherwise — see insSvNetWorth()). Counted as a financial
+            // asset in the Financial Assets / Real Estate split below so the two still add up.
+            const insSvAll = insSvNetWorth("all");
+            globalBaseNetWorth += insSvAll.base;
             document.getElementById("netWorthDisplay").innerHTML = formatBalanceHTML(globalBaseNetWorth, baseCurrency);
 
             // v309: Dashboard hero badge for the same "compare also in" preference the Net Worth
@@ -18906,7 +18984,7 @@
             const hasRealEstateAccount = accounts.some(a => (a.group || DEFAULT_ACCOUNT_GROUP) === "Real Estate");
             document.getElementById("netWorthSplitRow").classList.toggle("hidden", !hasRealEstateAccount);
             if (hasRealEstateAccount) {
-                const { financial, realEstate } = summarizeOwnerAssetSplit(accounts, nativeBalances);
+                const { financial, realEstate } = summarizeOwnerAssetSplit(accounts, nativeBalances, insSvAll.base);
                 document.getElementById("financialAssetsDisplay").innerHTML = formatBalanceHTML(financial, baseCurrency);
                 document.getElementById("realEstateDisplay").innerHTML = formatBalanceHTML(realEstate, baseCurrency);
             }
@@ -21243,13 +21321,14 @@
         // single blended total the dashboard section shows.
         async function renderOwnerNetWorthReportPage() {
             const { accounts, nativeBalances } = await computeAccountBalances();
-            const grandTotal = summarizeOwnerAssetSplit(accounts, nativeBalances).total;
+            const insSvAllOwners = insSvNetWorth("all").base; // v488
+            const grandTotal = summarizeOwnerAssetSplit(accounts, nativeBalances, insSvAllOwners).total;
             document.getElementById("ownerNetWorthBaseCurrLabel").textContent = baseCurrency;
 
             const pctOf = (total) => grandTotal !== 0 ? ((total / grandTotal) * 100).toFixed(1) + "%" : "—";
 
-            const rowHTML = (label, colorDotsHTML, subset) => {
-                const { financial, realEstate, total } = summarizeOwnerAssetSplit(subset, nativeBalances);
+            const rowHTML = (label, colorDotsHTML, subset, insScope) => {
+                const { financial, realEstate, total } = summarizeOwnerAssetSplit(subset, nativeBalances, insSvNetWorth(insScope).base);
                 return `
                     <tr>
                         <td style="padding:8px 10px;">
@@ -21267,7 +21346,7 @@
             membersCache.forEach(m => {
                 const subset = filterAccountsByOwnership(accounts, "member", [m.id]);
                 const dot = `<span class="member-color-dot" style="background:${m.color};"></span>`;
-                rows += rowHTML(m.name, dot, subset);
+                rows += rowHTML(m.name, dot, subset, m.id);
             });
 
             const jointGroups = {};
@@ -21280,13 +21359,13 @@
                 const ids = key.split(",");
                 const subset = filterAccountsByOwnership(accounts, "joint", ids);
                 const dots = ids.map(id => `<span class="member-color-dot" style="background:${getMemberById(id)?.color || '#94a3b8'}; margin-left:-4px;"></span>`).join("");
-                rows += rowHTML(`${memberNamesForIds(ids)} (Joint)`, dots, subset);
+                rows += rowHTML(`${memberNamesForIds(ids)} (Joint)`, dots, subset, "joint");
             });
 
             const unassigned = accounts.filter(a => !Array.isArray(a.memberIds) || a.memberIds.length === 0);
-            if (unassigned.length > 0) {
+            if (unassigned.length > 0 || insSvNetWorth("unassigned").count > 0) {
                 const dot = `<span class="member-color-dot" style="background:#cbd5e1;"></span>`;
-                rows += rowHTML("Unassigned", dot, unassigned);
+                rows += rowHTML("Unassigned", dot, unassigned, "unassigned");
             }
 
             const wrap = document.getElementById("ownerNetWorthTableWrap");
@@ -21295,7 +21374,7 @@
                 return;
             }
 
-            const { financial: gFinancial, realEstate: gRealEstate } = summarizeOwnerAssetSplit(accounts, nativeBalances);
+            const { financial: gFinancial, realEstate: gRealEstate } = summarizeOwnerAssetSplit(accounts, nativeBalances, insSvAllOwners);
             wrap.innerHTML = `
                 <table style="width:100%; border-collapse:collapse; font-size:0.78rem; white-space:nowrap;">
                     <thead>
@@ -21393,7 +21472,7 @@
                 ? (() => { const ids = accountIdsForMemberFilter(accounts, filterMember); return accounts.filter(a => ids.has(a.id)); })()
                 : accounts;
 
-            const { byCurrency, totalBase: grandTotal } = summarizeCurrencySplit(subset, nativeBalances);
+            const { byCurrency, totalBase: grandTotal } = summarizeCurrencySplit(subset, nativeBalances, filterMember); // v488: filterMember = "all" | "joint" | member id
             const pctOf = (base) => grandTotal !== 0 ? ((base / grandTotal) * 100).toFixed(1) + "%" : "—";
 
             const wrap = document.getElementById("currencyReportTableWrap");
@@ -21869,6 +21948,9 @@
 
             const storedRecentTxCollapsed = await readKeyDB("settings", "recentTxCollapsed"); // v442
             if (storedRecentTxCollapsed) recentTxCollapsed = storedRecentTxCollapsed.value === true;
+
+            const storedInsSvNw = await readKeyDB("settings", "includeInsuranceSvInNetWorth"); // v488
+            if (storedInsSvNw) includeInsuranceSvInNetWorth = storedInsSvNw.value === true;
 
             const storedShowMonthlyTrend = await readKeyDB("settings", "showMonthlyTrendOnDashboard");
             if (storedShowMonthlyTrend) showMonthlyTrendOnDashboard = storedShowMonthlyTrend.value !== false;
@@ -22530,6 +22612,7 @@
                                 case "recentTxCount": recentTxCount = rec.value || 5; break;
                                 case "recentTxCollapsed": recentTxCollapsed = rec.value === true; break; // v442
                                 case "showMonthlyTrendOnDashboard": showMonthlyTrendOnDashboard = rec.value !== false; break;
+                                case "includeInsuranceSvInNetWorth": includeInsuranceSvInNetWorth = rec.value === true; break; // v488
                                 case "dashboardWidgetOrder": dashboardWidgetOrder = rec.value === "recenttx-first" ? "recenttx-first" : "accounts-first"; break;
                                 case "dashboardBudgetCategoriesShown": dashboardBudgetCategoriesShown = Array.isArray(rec.value) ? rec.value : []; break;
                                 case "dashboardBudgetWidgetEnabled": dashboardBudgetWidgetEnabled = rec.value !== false; break;
@@ -24000,6 +24083,7 @@
             handlePinnedAccountCountChange: () => handlePinnedAccountCountChange(),
             handleDashboardWidgetOrderChange: () => handleDashboardWidgetOrderChange(),
             handleDashboardMonthlyTrendToggleChange: (el) => handleDashboardMonthlyTrendToggleChange(el),
+            handleInsuranceSvNetWorthToggleChange: (el) => handleInsuranceSvNetWorthToggleChange(el),
             handleDashboardBudgetCategoryToggleChange: (el) => handleDashboardBudgetCategoryToggleChange(el),
             handleDashboardBudgetWidgetToggleChange: (el) => handleDashboardBudgetWidgetToggleChange(el),
             handlePinnedAccountSlotChange: (el) => handlePinnedAccountSlotChange(el),

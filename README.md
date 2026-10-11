@@ -3782,3 +3782,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Policy detail sheet: "Attachments (N)" rows under the notes; tap opens the shared attachment viewer (images / PDF via pdf.js, Download button). The viewer's Delete button is hidden here — remove files from Edit.
 - List card: "📎 N attachments" line. Removing a file in Edit (after Save) or deleting the policy deletes the blobs from `STORES.ATTACHMENTS`.
 - `APP_VERSION` / `CACHE_NAME` → v486.
+
+## v487: Insurance detail — clearer "Premiums paid / Surrender value" box
+- "Before ledger … · In ledger …" is gone. The line now only appears when BOTH parts have an amount, in plain words: "RM… entered manually (earlier years) · RM… recorded in the ledger" (`insPaidBreakdownHtml()`).
+- Surrender-value make-up (Guaranteed / Dividend / Terminal bonus, plus "Other" if the parts don't add up) is now a stacked bar with a legend (colour swatch + % + amount) instead of one long sentence (`insSvBreakdownHtml()`); uses `var(--primary)` at different opacities so every theme works; the bar has an aria-label. Unit-linked (fund) policies keep the Fund value line and get no bar. A note says the terminal bonus isn't guaranteed.
+- The payback line is bold: "149.5% of premiums paid" (green at/above 100%, primary colour below), followed by "annualised return ≈ x.x%" with an (i) explanation (`insPayoutLineHtml()`).
+- Annualised return = XIRR over every premium dated on/before the latest surrender-value date (typed-in history + ledger rows, refunds as money back) vs the surrender value (net of policy loan) on that date (`insAnnualisedReturn()`, `insXirr()`, bisection). Hidden when: fewer than 2 dated payments, span under 1 year, no surrender value, or the typed-in earlier payments don't match the insurer's statement total.
+- `APP_VERSION` / `CACHE_NAME` → v487.

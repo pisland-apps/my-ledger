@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v486";
+        const APP_VERSION = "v487";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15856,7 +15856,7 @@
                         <div style="min-width:0;">
                             <div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Premiums paid</div>
                             <div style="font-family:'Kalam', cursive; font-size:1.1rem; font-weight:800;">${formatCurrency(f.paid, cur)}</div>
-                            <div style="font-size:0.68rem; color:var(--text-muted); font-weight:600;">Before ledger ${formatCurrency(f.historyTotal, cur)} · In ledger ${formatCurrency(f.ledgerTotal, cur)}</div>
+                            ${insPaidBreakdownHtml(f, cur)}
                         </div>
                         ${f.latestSv ? `<div style="min-width:0; text-align:right;">
                             <div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Surrender value</div>
@@ -15865,13 +15865,9 @@
                         </div>` : ""}
                     </div>
                     ${f.loan > 0 ? `<div style="font-size:0.75rem; font-weight:700; margin-top:8px;">Loan outstanding −${formatCurrency(f.loan, cur)} → net ${f.netSv == null ? "—" : formatCurrency(f.netSv, cur)}</div>` : ""}
-                    ${(f.svValue != null && f.svValue > 0 && (f.svParts.g != null || f.svParts.m != null)) ? `<div style="font-size:0.75rem; font-weight:700; margin-top:6px; color:var(--text-muted);">${[
-                        f.svParts.g != null ? `Guaranteed ${formatCurrency(f.svParts.g, cur)} (${(f.svParts.g / f.svValue * 100).toFixed(0)}%)` : "",
-                        f.svParts.d != null && f.svParts.d !== 0 ? `Dividend ${formatCurrency(f.svParts.d, cur)} (${(f.svParts.d / f.svValue * 100).toFixed(0)}%)` : "",
-                        f.svParts.m != null && f.svParts.m !== 0 ? `Terminal bonus ${formatCurrency(f.svParts.m, cur)} (${(f.svParts.m / f.svValue * 100).toFixed(0)}%) — can change each year` : ""
-                    ].filter(Boolean).join(" · ")}</div>` : ""}
+                    ${insSvBreakdownHtml(f, cur)}
                     ${(f.latestSv && Array.isArray(f.latestSv.funds) && typeof f.latestSv.fundValue === "number") ? `<div style="font-size:0.75rem; font-weight:700; margin-top:6px; color:var(--text-muted);">Fund value ${formatCurrency(f.latestSv.fundValue, cur)}${f.latestSv.deduction > 0 ? ` − deduction ${formatCurrency(f.latestSv.deduction, cur)}` : ""} · ${f.latestSv.funds.length} fund${f.latestSv.funds.length === 1 ? "" : "s"} · price date ${escapeHtml(f.latestSv.date)}</div>` : ""}
-                    ${f.paybackPct != null ? `<div style="font-size:0.75rem; font-weight:700; margin-top:6px; color:var(--text-muted);">Surrender value is ${f.paybackPct.toFixed(1)}% of premiums paid</div>` : ""}
+                    ${insPayoutLineHtml(p, f)}
                 </div>`;
 
             // Coverage
@@ -16611,6 +16607,83 @@
             }
             out.textContent = text;
             out.style.color = color;
+        }
+
+        // --- v487: Premiums-paid box on the policy detail sheet ---
+        // (1) plain-language "where the paid figure comes from" (hidden unless BOTH parts exist);
+        // (2) a stacked bar + legend for the surrender-value make-up (Guaranteed / Dividend / Terminal bonus);
+        // (3) the payback % in green plus an annualised return (XIRR) worked out from the dated premiums.
+        function insPaidBreakdownHtml(f, cur) {
+            if (!(Math.abs(f.historyTotal) >= 0.005 && Math.abs(f.ledgerTotal) >= 0.005)) return "";
+            return `<div style="font-size:0.68rem; color:var(--text-muted); font-weight:600;">${formatCurrency(f.historyTotal, cur)} entered manually (earlier years) · ${formatCurrency(f.ledgerTotal, cur)} recorded in the ledger</div>`;
+        }
+
+        // Annualised return: money out on each premium date, the surrender value (after any policy loan) in on the
+        // latest surrender-value date. Only premiums dated on or before that day are used — the same set as
+        // "Paid to SV date" on the Savings panel. Returns null when the data can't support an honest number.
+        function insXirr(flows) {
+            const f = (r) => flows.reduce((sum, c) => sum + c.amt / Math.pow(1 + r, c.t), 0);
+            let lo = -0.95, hi = 5, flo = f(lo), fhi = f(hi);
+            if (!isFinite(flo) || !isFinite(fhi) || flo * fhi > 0) return null;
+            for (let i = 0; i < 200; i++) {
+                const mid = (lo + hi) / 2, fm = f(mid);
+                if (flo * fm <= 0) { hi = mid; fhi = fm; } else { lo = mid; flo = fm; }
+            }
+            return (lo + hi) / 2;
+        }
+        function insAnnualisedReturn(p, f) {
+            if (!f.latestSv || f.svValue == null || !(f.svValue > 0)) return null;
+            // typed-in earlier payments don't reconcile with the insurer's total → the history is incomplete
+            if (parseFloat(p.statementTotal) > 0 && Math.abs(f.historyTotal - parseFloat(p.statementTotal)) >= 0.005) return null;
+            const end = f.latestSv.date;
+            const rows = [
+                ...f.history.map(r => ({ date: r.date, amount: parseFloat(r.amount) || 0 })),
+                ...f.ledgerRows.map(r => ({ date: r.date || "", amount: r.amount }))
+            ].filter(r => r.date && r.date <= end && r.amount !== 0);
+            if (rows.length < 2) return null;
+            const day = (d) => Date.parse(d + "T00:00:00Z") / 86400000;
+            const t0 = Math.min(...rows.map(r => day(r.date)));
+            const spanDays = day(end) - t0;
+            if (!(spanDays >= 365)) return null;
+            const flows = rows.map(r => ({ t: (day(r.date) - t0) / 365, amt: -r.amount }));
+            flows.push({ t: spanDays / 365, amt: f.svValue - (f.loan || 0) });
+            const r = insXirr(flows);
+            return (r == null || !isFinite(r)) ? null : r;
+        }
+
+        function insSvBreakdownHtml(f, cur) {
+            if (!(f.svValue != null && f.svValue > 0 && (f.svParts.g != null || f.svParts.m != null))) return "";
+            if (f.latestSv && Array.isArray(f.latestSv.funds)) return ""; // unit-linked: shown as fund value instead
+            const pp = f.svParts;
+            const segs = [];
+            if (pp.g != null && pp.g > 0) segs.push({ label: "Guaranteed", amt: pp.g, op: 1 });
+            if (pp.d != null && pp.d > 0) segs.push({ label: "Dividend", amt: pp.d, op: 0.6 });
+            if (pp.m != null && pp.m > 0) segs.push({ label: "Terminal bonus", amt: pp.m, op: 0.3 });
+            const rest = f.svValue - (pp.g || 0) - (pp.d || 0) - (pp.m || 0);
+            if (rest >= 0.005) segs.push({ label: "Other", amt: rest, op: 0.15 });
+            const total = segs.reduce((a, x) => a + x.amt, 0);
+            if (!segs.length || !(total > 0)) return "";
+            const pct = (x) => (x.amt / f.svValue * 100).toFixed(0);
+            const aria = segs.map(x => `${x.label} ${pct(x)}%`).join(", ");
+            return `<div style="margin-top:10px;">
+                <div role="img" aria-label="${escapeHtml(aria)}" style="display:flex; height:10px; border-radius:6px; overflow:hidden; background:var(--chip-bg);">${segs.map(x => `<div style="flex:${(x.amt / total * 100).toFixed(2)} 1 0; background:var(--primary); opacity:${x.op};"></div>`).join("")}</div>
+                <div style="display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:7px;">${segs.map(x => `<span style="display:inline-flex; align-items:center; gap:5px; font-size:0.72rem; font-weight:700; color:var(--text-muted);"><span style="width:9px; height:9px; border-radius:2px; background:var(--primary); opacity:${x.op}; flex:0 0 auto;"></span>${x.label} ${pct(x)}% · ${formatCurrency(x.amt, cur)}</span>`).join("")}</div>
+                ${(pp.m != null && pp.m > 0) ? `<div style="font-size:0.68rem; color:var(--text-muted); font-weight:600; margin-top:4px;">Terminal bonus is not guaranteed — it can change each year.</div>` : ""}
+            </div>`;
+        }
+
+        function insPayoutLineHtml(p, f) {
+            if (f.paybackPct == null) return "";
+            const good = f.paybackPct >= 100;
+            const ret = insAnnualisedReturn(p, f);
+            const retHtml = ret == null ? "" : `<span style="font-size:0.74rem; font-weight:700; color:var(--text-muted);">annualised return ≈ ${ret < 0 ? "−" : ""}${(Math.abs(ret) * 100).toFixed(1)}%<button type="button" class="ins-info-btn" data-click="insToggleReturnNote" aria-label="About the annualised return">i</button></span>`;
+            const note = ret == null ? "" : `<div class="ins-med-note">Worked out from the dates and amounts of every premium paid up to the surrender-value date, against the surrender value${f.loan > 0 ? " after the policy loan" : ""}. It is not a pure investment return: part of each premium pays for the protection (life cover, riders), so it reads lower than a fund's return, and the early years are always weak. It moves each year with the insurer's bonus.</div>`;
+            return `<div class="ins-ret-wrap" style="margin-top:10px;">
+                <div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 12px;">
+                    <span style="font-size:0.95rem; font-weight:800; color:${good ? "var(--income-color)" : "var(--primary)"};">${f.paybackPct.toFixed(1)}% of premiums paid</span>
+                    ${retHtml}
+                </div>${note}
+            </div>`;
         }
 
         // --- v486: policy attachments (PDF + images). Same store/shape as transaction, planned-payment and
@@ -23850,6 +23923,7 @@
             // v468: INSURANCE
             navigateToInsurancePage: () => navigateToInsurancePage(),
             insuranceSetView: (el) => insuranceSetView(el), // v474
+            insToggleReturnNote: (el) => { const w = el.closest(".ins-ret-wrap"); const n = w && w.querySelector(".ins-med-note"); if (n) n.classList.toggle("open"); }, // v487
             insToggleMedNote: (el) => { const row = el.closest(".ins-kind-row"); const n = row && row.querySelector(".ins-med-note"); if (n) n.classList.toggle("open"); }, // v479
             insuranceSetStatusFilter: (el) => insuranceSetStatusFilter(el),
             openInsuranceModalNew: () => openInsuranceModal(null),

@@ -3759,3 +3759,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Nothing is calculated: type the steps from the insurer's schedule. Existing policies are unaffected until a schedule is added.
 - `APP_VERSION` / `CACHE_NAME` → v482.
 
+
+## v483: Fix — reducing-cover "Add step" / "Paste from note" buttons did nothing
+- Cause: in v482 `addInsSchedStep` and `insSchedPasteFromNote` were registered in `CHANGE_ACTIONS`, but the buttons use `data-click`, which is dispatched from `CLICK_ACTIONS`. Moved both entries to `CLICK_ACTIONS`.
+- `APP_VERSION` / `CACHE_NAME` → v483.

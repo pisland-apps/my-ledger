@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v482";
+        const APP_VERSION = "v483";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -23718,6 +23718,8 @@
             addInsFundLine: (el) => addInsFundLine(el), // v471
             removeInsFundLine: (el) => removeInsFundLine(el),
             removeInsRow: (el) => removeInsRow(el),
+            addInsSchedStep: (el) => addInsSchedStep(el), // v482 (v483: moved here from CHANGE_ACTIONS — buttons fire click, not change)
+            insSchedPasteFromNote: (el) => insSchedPasteFromNote(el), // v482 (v483: same fix)
             insuranceDetailEdit: () => insuranceDetailEdit(),
             insuranceRecordPremium: () => insuranceRecordPremium(),
             insuranceOpenPlanPicker: () => insuranceOpenPlanPicker(),
@@ -23801,8 +23803,6 @@
             insSvPartChange: (el) => insSvPartChange(el),
             insTypeChanged: () => updateInsSvAddUi(), // v471
             insCovKindChange: (el) => insCovKindChange(el), // v472
-            addInsSchedStep: (el) => addInsSchedStep(el), // v482
-            insSchedPasteFromNote: (el) => insSchedPasteFromNote(el), // v482
             insBonusToggle: () => insBonusToggle(), // v473
             insRecalcPaymentTotal: () => insRecalcPaymentTotal(),
             handleInvAttachmentsSelected: (el, e) => handleInvAttachmentsSelected(e),

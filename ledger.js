@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v489";
+        const APP_VERSION = "v490";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2754,10 +2754,9 @@
         // v488: Setting > Net Worth Card > "Count insurance surrender value". Saved in the SETTINGS
         // store (so it rides along with Backup & Restore and Drive sync); the dashboard is re-rendered
         // straight away, every report page recalculates when it is next opened.
-        // v489: keeps the dashboard chip (checkbox + hover tooltip) and the Setting checkbox in step
-        // with includeInsuranceSvInNetWorth, and hides the chip when no in-force policy has a
-        // surrender value (nothing for it to switch). The tooltip says what the switch does and, in
-        // both states, how many policies are involved (never the amount, which would show through Privacy Mode).
+        // v489: keeps the dashboard chip's checkbox and the Setting checkbox in step with
+        // includeInsuranceSvInNetWorth, and hides the chip when no in-force policy has a surrender
+        // value (nothing for it to switch). v490: no hover tooltip any more.
         function updateInsuranceSvChip() {
             const chip = document.getElementById("nwInsChip");
             const cb = document.getElementById("nwInsChipToggle");
@@ -2765,13 +2764,7 @@
             if (cb) cb.checked = includeInsuranceSvInNetWorth;
             if (settingCb) settingCb.checked = includeInsuranceSvInNetWorth;
             if (!chip) return;
-            const sv = insSvNetWorth("all", true);
-            chip.classList.toggle("hidden", sv.count === 0);
-            // No amount in the tooltip: it is plain text, so it would show through Privacy Mode's blur.
-            const n = `${sv.count} polic${sv.count === 1 ? "y" : "ies"}`;
-            chip.dataset.tip = "Count insurance surrender value in Net Worth.\n"
-                + "Latest surrender value of in-force policies, minus any policy loan.\n"
-                + (includeInsuranceSvInNetWorth ? `ON: counting ${n}.` : `OFF: turn on to count ${n}.`);
+            chip.classList.toggle("hidden", insSvNetWorth("all", true).count === 0);
         }
 
         async function handleInsuranceSvNetWorthToggleChange(el) {

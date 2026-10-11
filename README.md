@@ -3802,3 +3802,6 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - The chip is hidden when no in-force policy has a surrender value. `insSvNetWorth(scope, ignoreToggle)` gained the `ignoreToggle` argument for this.
 - `APP_VERSION` / `CACHE_NAME` → v489.
 
+## v490: Dashboard Insurance SV switch — hover tooltip removed
+- The tooltip from v489 is gone: on a PC it covered the Financial Assets amount, which is exactly what you look at when switching On/Off to compare. The description is in Setting > Net Worth Card > Insurance. The chip itself (tap to switch, auto-hidden when no policy has a surrender value) is unchanged.
+- `APP_VERSION` / `CACHE_NAME` → v490.

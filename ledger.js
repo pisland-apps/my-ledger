@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v496";
+        const APP_VERSION = "v497";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -16169,7 +16169,8 @@
             };
             const planCell = (p) => `<b>${titleName(p)}</b><small>${esc(p.insurer || "")}${showNo && p.policyNo ? `${p.insurer ? " · " : ""}${esc(p.policyNo)}` : ""}</small><small>${INS_TYPE_ICONS[p.type] || INS_TYPE_ICONS.other} ${esc(INS_TYPES[p.type] || "Other")}${insIsLive(p) ? "" : ` · <b>${esc(INS_STATUSES[p.status] || p.status)}</b>`}</small>`;
             const register = (list, isAsset) => {
-                const rows = list.map(p => {
+                const ncol = 6; // personal: Policy, Sum insured, Premium, Next premium, Paid, Surrender value; assets: …, Ends, Paid
+                const rowHtml = (p) => {
                     const f = fig.get(p.id), live = insIsLive(p);
                     const cov = insPrintCoverLines(p);
                     let endCell = "";
@@ -16185,13 +16186,30 @@
                         if (f.svValue == null) svCell = `<td class="r">—</td>`;
                         else svCell = `<td class="r"><b>${formatCurrency(f.svValue, f.cur)}</b><small class="${f.svStale ? "insr-bad" : ""}">as of ${esc(f.latestSv.date)}${f.svStale ? " ⚠" : ""}</small>${f.loan > 0 ? `<small>less loan ${formatCurrency(f.loan, f.cur)}</small>` : ""}</td>`;
                     }
-                    return `<tr class="${live ? "" : "insr-ended"}"><td>${planCell(p)}</td><td>${esc(insMemberName(p)) || "—"}</td><td>${cov.length ? cov.join("<br>") : `<span class="insr-muted">not set</span>`}</td><td class="r">${premCell(p, f)}</td><td>${dueCell(p, f)}</td>${endCell}<td class="r">${formatCurrency(f.paid, f.cur)}</td>${svCell}</tr>`;
+                    return `<tr class="${live ? "" : "insr-ended"}"><td>${planCell(p)}</td><td>${cov.length ? cov.join("<br>") : `<span class="insr-muted">not set</span>`}</td><td class="r">${premCell(p, f)}</td><td>${dueCell(p, f)}</td>${endCell}<td class="r">${formatCurrency(f.paid, f.cur)}</td>${svCell}</tr>`;
+                };
+                const yearlyOf = (arr) => arr.filter(insIsLive).reduce((s, p) => s + insAnnualCashBase(p), 0);
+                const paidOf = (arr) => arr.reduce((s, p) => s + insConvert(fig.get(p.id).paid, fig.get(p.id).cur, baseCurrency), 0);
+                // v497: grouped by insured person (members in their usual order, "not set" last). With a single
+                // group that has no person there is nothing to group by, so no heading is drawn.
+                const groups = new Map();
+                list.forEach(p => {
+                    const key = p.insuredMemberId && getMemberById(p.insuredMemberId) ? p.insuredMemberId : "";
+                    if (!groups.has(key)) groups.set(key, []);
+                    groups.get(key).push(p);
+                });
+                const order = [...membersCache.map(m => m.id).filter(id => groups.has(id)), ...(groups.has("") ? [""] : [])];
+                const grouped = order.length > 1 || order[0] !== "";
+                const body = order.map(key => {
+                    const arr = groups.get(key), m = key ? getMemberById(key) : null;
+                    if (!grouped) return arr.map(rowHtml).join("");
+                    const head = `<tr class="insr-grp"><td colspan="${ncol}">${m ? esc(m.name) : "Insured person not set"} <span>· ${arr.length} ${arr.length === 1 ? "policy" : "policies"}</span></td></tr>`;
+                    const sub = order.length > 1 ? `<tr class="insr-sub"><td colspan="2">Subtotal${m ? " — " + esc(m.name) : ""}</td><td class="r">${money(yearlyOf(arr))}<small>per year, in force</small></td><td${isAsset ? ' colspan="2"' : ""}></td><td class="r">${money(paidOf(arr))}</td>${isAsset ? "" : "<td></td>"}</tr>` : "";
+                    return head + arr.map(rowHtml).join("") + sub;
                 }).join("");
-                const yearly = list.filter(insIsLive).reduce((s, p) => s + insAnnualCashBase(p), 0);
-                const paid = list.reduce((s, p) => s + insConvert(fig.get(p.id).paid, fig.get(p.id).cur, baseCurrency), 0);
-                return `<table class="insr-t insr-reg"><thead><tr><th>Policy</th><th>Insured</th><th>Sum insured</th><th class="r">Premium</th><th>Next premium</th>${isAsset ? "<th>Ends</th>" : ""}<th class="r">Paid to date</th>${isAsset ? "" : `<th class="r">Surrender value</th>`}</tr></thead>
-                    <tbody>${rows}</tbody>
-                    <tfoot><tr><td colspan="3">Total (${esc(baseCurrency)})</td><td class="r">${money(yearly)}<small>per year, in force</small></td><td${isAsset ? ' colspan="2"' : ""}></td><td class="r">${money(paid)}</td>${isAsset ? "" : "<td></td>"}</tr></tfoot></table>`;
+                return `<table class="insr-t insr-reg"><thead><tr><th>Policy</th><th>Sum insured</th><th class="r">Premium</th><th>Next premium</th>${isAsset ? "<th>Ends</th>" : ""}<th class="r">Paid to date</th>${isAsset ? "" : `<th class="r">Surrender value</th>`}</tr></thead>
+                    <tbody>${body}</tbody>
+                    <tfoot><tr><td colspan="2">Total (${esc(baseCurrency)})</td><td class="r">${money(yearlyOf(list))}<small>per year, in force</small></td><td${isAsset ? ' colspan="2"' : ""}></td><td class="r">${money(paidOf(list))}</td>${isAsset ? "" : "<td></td>"}</tr></tfoot></table>`;
             };
             const regNote = scopeAll ? "Ended policies are shaded and not counted in the yearly total; premiums paid include them." : "";
             const personalHtml = personal.length ? section(`Policy register — life, medical &amp; other (${personal.length})`, register(personal, false), regNote) : "";
@@ -16217,7 +16235,8 @@
             // ---- Detail blocks (optional) ----
             let detailHtml = "";
             if (opts.details) {
-                const blocks = included.map(p => {
+                const personRank = (p) => { const i = membersCache.findIndex(m => m.id === p.insuredMemberId); return i < 0 ? 9999 : i; };
+                const blocks = included.slice().sort((a, b) => personRank(a) - personRank(b)).map(p => {
                     const f = fig.get(p.id), cur = f.cur, live = insIsLive(p);
                     const cm = (n) => formatCurrency(n, cur);
                     const facts = [];

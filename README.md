@@ -3843,3 +3843,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Sections: Summary (policies, yearly premium, premiums paid, savings/investment SV panel) → Needs attention (overdue / due within 30 days premiums, policies ended or ending within 60 days, surrender values over a year old, sum insured not set) → Cover by person → Policy register (life / medical / other) → Car, home & travel → Agents → optional per-policy details (covers incl. reducing schedule, latest 12 premium payments, surrender-value history).
 - New: `openInsurancePrintSheet`, `insurancePrintRun`, `printInsuranceReport`, `buildInsuranceReportHtml`, `insPrintCoverLines`; `#insurancePrintModal`, `#insurancePrintReport` (hidden on screen; shown only while `body.ins-printing`). `printCurrentApp()` hands the Insurance page over to the sheet.
 - No data or DB change. `APP_VERSION` / `CACHE_NAME` -> v496.
+
+## v497: Insurance report grouped by insured
+- The Policy register (and the Car, home & travel table) is grouped by insured person: a heading row per person, that person's policies, a Subtotal row (yearly premium in force, paid to date), then the grand Total. People appear in the usual member order, "Insured person not set" last. The Insured column is gone (the heading says it). With only one group and no person set, no headings are drawn.
+- The optional per-policy detail blocks follow the same person order.
+- Print layout only; no data change. `APP_VERSION` / `CACHE_NAME` -> v497.

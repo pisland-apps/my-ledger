@@ -3723,3 +3723,13 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - An **in-force policy with no amount entered** shows a muted "Sum insured not set ⚠️"; ended policies show nothing in that case.
 - `APP_VERSION` / `CACHE_NAME` → v478.
 
+## v479: Insurance — By person report tidy-up
+
+- **Per-policy lines are now a list**, one policy per line (name left, amount right, thin left rule) instead of one dot-separated paragraph; first 3 shown, the rest under a tap-to-open **"+N more"** (`<details>`, no JS).
+- **Rider tag:** a coverage that isn't the policy's own main cover (e.g. a Personal Accident rider on a life plan) is marked "· rider" instead of reading like a separate product. Custom "Other" coverages still show their name (e.g. Personal Liability).
+- **Everyone card only from 3 people up** (with two it just repeated them).
+- **Medical note moved into an (i) button** next to the Health/Medical heading (tap to show / hide, works on phones); the footer keeps only the "In-force policies only / /yr" note.
+- **Tab / pill outline fixed:** the dark box on the tab or pill you just clicked is gone (underline / tint already marks it); keyboard focus still shows a ring. Scoped to `.ins-tabs` / `.ins-pills`.
+- **Blank gap above the reports fixed:** the empty Policies list kept its 90px bottom padding in report view; it is now 0 there (90px restored on Policies).
+- `APP_VERSION` / `CACHE_NAME` → v479.
+

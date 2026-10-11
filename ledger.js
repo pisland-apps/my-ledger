@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v478";
+        const APP_VERSION = "v479";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15440,6 +15440,7 @@
             if (statusToggle) statusToggle.style.display = isReport ? "none" : "";
             if (isReport) {
                 list.innerHTML = "";
+                list.style.paddingBottom = "0"; // v479: its 90px bottom padding sat as a blank gap above the reports
                 empty.style.display = "none";
                 summary.style.display = "none";
                 const svPanelOff = document.getElementById("insuranceSavingsSummary");
@@ -15447,6 +15448,7 @@
                 reportEl.innerHTML = insuranceView === "people" ? insReportPeopleHtml() : insReportAssetsHtml();
                 return;
             }
+            list.style.paddingBottom = "90px";
             const [txs, planned] = await Promise.all([readAllDB(STORES.TRANSACTIONS), readAllDB(STORES.PLANNED_PAYMENTS)]);
 
             const filtered = insuranceCache.filter(p => insuranceStatusFilter === "all" ? true
@@ -15606,18 +15608,29 @@
                 else if (d.hasLife) sub.push(`Lifetime limit ${money(d.life)}`);
             }
             const nPolicies = new Set(d.items.map(i => i.p.id)).size;
-            const items = withItems ? d.items.map(({ p, c }) => {
-                const prefix = (kind === "other" && c.label) ? escapeHtml(c.label) + " " : "";
+            // v479: one line per policy (name left, amount right) instead of a dot-separated wall. A coverage
+            // that is not the policy's own main cover (e.g. a PA rider on a life plan) is tagged "rider"
+            // rather than repeating the full policy name as if it were a separate product.
+            const MAIN_KIND = { life: "life", savings: "life", investment: "life", term: "term", medical: "medical", critical: "critical", accident: "accident" };
+            const itemRow = ({ p, c }) => {
+                const prefix = (kind === "other" && c.label) ? escapeHtml(c.label) + " · " : "";
                 const amt = typeof c.sumAssured === "number" ? formatCurrency(c.sumAssured, p.currency || baseCurrency) : "no sum";
-                return `${escapeHtml(p.product || p.insurer || "Policy")}${p.insurer && p.product ? " (" + escapeHtml(p.insurer) + ")" : ""}: ${prefix}${amt}`;
-            }).join(" · ") : "";
-            return `<div style="padding:8px 0; border-bottom:1px solid var(--border-color);">
+                const isRider = kind !== "other" && MAIN_KIND[p.type] && MAIN_KIND[p.type] !== kind;
+                const name = `${prefix}${escapeHtml(p.product || p.insurer || "Policy")}${p.insurer && p.product ? " (" + escapeHtml(p.insurer) + ")" : ""}`;
+                return `<div class="ins-item"><span style="min-width:0; overflow-wrap:anywhere;">${name}${isRider ? ` <span class="ins-item-rider">· rider</span>` : ""}</span><span class="ins-item-amt">${amt}</span></div>`;
+            };
+            const items = withItems
+                ? `<div class="ins-item-list">${d.items.slice(0, 3).map(itemRow).join("")}${d.items.length > 3
+                    ? `<details class="ins-more"><summary>+${d.items.length - 3} more</summary>${d.items.slice(3).map(itemRow).join("")}</details>` : ""}</div>`
+                : "";
+            return `<div class="ins-kind-row" style="padding:8px 0; border-bottom:1px solid var(--border-color);">
                 <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
-                    <span style="font-size:0.82rem; font-weight:700;">${k[2]} ${escapeHtml(k[1])} <span style="font-weight:600; color:var(--text-muted);">· ${nPolicies} ${nPolicies === 1 ? "policy" : "policies"}</span></span>
+                    <span style="font-size:0.82rem; font-weight:700;">${k[2]} ${escapeHtml(k[1])} <span style="font-weight:600; color:var(--text-muted);">· ${nPolicies} ${nPolicies === 1 ? "policy" : "policies"}</span>${kind === "medical" ? `<button type="button" class="ins-info-btn" data-click="insToggleMedNote" aria-label="About medical limits">i</button>` : ""}</span>
                     <span style="font-size:0.92rem; font-weight:800; flex:0 0 auto;">${d.hasSum ? money(d.sum) : "—"}</span>
                 </div>
+                ${kind === "medical" ? `<div class="ins-med-note">Medical limits of different plans can overlap (each plan pays up to its own limit for the same bill), so these totals show what is arranged, not what you would receive.</div>` : ""}
                 ${sub.length ? `<div style="font-size:0.72rem; font-weight:700; color:var(--text-muted); margin-top:3px;">${sub.join(" · ")}</div>` : ""}
-                ${items ? `<div style="font-size:0.7rem; color:var(--text-muted); margin-top:3px; overflow-wrap:anywhere;">${items}</div>` : ""}
+                ${items}
             </div>`;
         }
 
@@ -15649,7 +15662,8 @@
             const rowsFor = (kinds, withItems) => INS_COV_ORDER.filter(k => kinds.has(k)).map(k => insKindRowHtml(k, kinds.get(k), withItems)).join("")
                 || `<p style="font-size:0.75rem; color:var(--text-muted); padding:8px 0;">No coverage details recorded yet.</p>`;
             let html = "";
-            if (order.length > 1) {
+            // v479: with only two people the card just repeats them; from three people it earns its place.
+            if (order.length > 2) {
                 html += `<div style="border:1px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:12px;">
                     <div style="font-size:0.9rem; font-weight:800; margin-bottom:2px;">👪 Everyone</div>
                     ${rowsFor(everyone, false)}
@@ -15673,7 +15687,6 @@
                 html += `<div style="background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.35); border-radius:10px; padding:9px 12px; font-size:0.76rem; font-weight:700; margin-bottom:12px;">⚠️ ${noCoverage.length} in-force ${noCoverage.length === 1 ? "policy has" : "policies have"} no coverage details yet, so ${noCoverage.length === 1 ? "it is" : "they are"} not in the totals — tap to add: ${noCoverage.map(p => `<span data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}" style="text-decoration:underline; cursor:pointer;">${escapeHtml(p.product || p.insurer || "Policy")}</span>`).join(", ")}</div>`;
             }
             const notes = [`In-force policies only. Amounts are the Sum insured of each coverage row${foreign ? `, converted to ${escapeHtml(baseCurrency)} at today's rates` : ""}. “/yr” is the cash premium per year (policies paid from accumulated bonus are not counted).`];
-            if (anyMedical) notes.push("Medical limits of different plans can overlap (each plan pays up to its own limit for the same bill), so the medical totals show what is arranged, not what you would receive.");
             html += `<p style="font-size:0.7rem; color:var(--text-muted); line-height:1.5;">${notes.join(" ")}</p>`;
             return html;
         }
@@ -23557,6 +23570,7 @@
             // v468: INSURANCE
             navigateToInsurancePage: () => navigateToInsurancePage(),
             insuranceSetView: (el) => insuranceSetView(el), // v474
+            insToggleMedNote: (el) => { const row = el.closest(".ins-kind-row"); const n = row && row.querySelector(".ins-med-note"); if (n) n.classList.toggle("open"); }, // v479
             insuranceSetStatusFilter: (el) => insuranceSetStatusFilter(el),
             openInsuranceModalNew: () => openInsuranceModal(null),
             insurancePolicyTap: (el) => insurancePolicyTap(el),

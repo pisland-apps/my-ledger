@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v480";
+        const APP_VERSION = "v481";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15370,10 +15370,11 @@
             if (!groups.size) {
                 return insIsLive(p) ? wrap("Sum insured not set ⚠️") : "";
             }
-            const items = [...groups.entries()].map(([name, amt]) => `${escapeHtml(name)} ${formatCurrency(amt, cur)}`);
-            const shown = items.slice(0, 2).join(" · ");
-            const more = items.length > 2 ? ` · +${items.length - 2} more` : "";
-            return wrap(`<span style="font-weight:600;">Sum insured</span> ${shown}${more}`, "var(--text-main)");
+            // v481: one cover per row (a second cover used to wrap mid-line, leaving its amount orphaned on
+            // the next line). Up to 4 rows, the rest as "+N more"; amount sits right after its name.
+            const entries = [...groups.entries()];
+            const row = ([name, amt]) => `<div style="display:flex; gap:8px; align-items:baseline; font-size:0.72rem; line-height:1.4;"><span style="color:var(--text-muted); font-weight:600;">${escapeHtml(name)}</span><span style="font-weight:800; color:var(--text-main);">${formatCurrency(amt, cur)}</span></div>`;
+            return `<div style="margin-top:2px;"><div style="font-size:0.62rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Sum insured</div>${entries.slice(0, 4).map(row).join("")}${entries.length > 4 ? `<div style="font-size:0.7rem; font-weight:700; color:var(--text-muted);">+${entries.length - 4} more</div>` : ""}</div>`;
         }
 
         // --- Transaction form: "Policy" row ---
@@ -15495,8 +15496,14 @@
                     const dd = Math.round((new Date(f.plan.dueDate + "T00:00:00") - new Date(todayLocalStr() + "T00:00:00")) / 86400000);
                     dueLine = `<span style="font-size:0.72rem; font-weight:700; color:${dd < 0 ? "var(--expense-color)" : "var(--text-muted)"};">Next premium ${escapeHtml(f.plan.dueDate)} · ${dd < 0 ? "overdue " + Math.abs(dd) + "d" : (dd === 0 ? "today" : dd + "d left")}</span>`;
                 }
+                // v481: SV is the figure to compare with Paid, so it is bold with a small "% of paid" chip
+                // (green at/above paid to its date, neutral below — a young policy is normally below, not "bad");
+                // the date sits on its own muted line (red + ⚠️ once over a year old).
+                const svBasis = (f.paidToSv != null && f.paidToSv > 0) ? f.paidToSv : (f.paid > 0 ? f.paid : null);
+                const svPct = (f.svValue != null && svBasis) ? (f.svValue / svBasis) * 100 : null;
+                const svChip = svPct == null ? "" : `<span style="display:inline-block; margin-left:6px; padding:1px 7px; border-radius:999px; font-size:0.66rem; font-weight:800; ${svPct >= 100 ? "background:rgba(16,185,129,0.14); color:var(--income-color);" : "background:rgba(99,102,241,0.12); color:var(--primary);"}">${svPct.toFixed(0)}%</span>`;
                 const svText = f.svValue == null ? ""
-                    : `SV ${formatCurrency(f.svValue, f.cur)} · ${escapeHtml(f.latestSv.date)}${f.svStale ? " ⚠️" : ""}`;
+                    : `<span style="display:block; font-size:0.85rem; font-weight:800; color:var(--text-main);">SV ${formatCurrency(f.svValue, f.cur)}${svChip}</span><span style="display:block; font-size:0.68rem; font-weight:600; color:${f.svStale ? "var(--expense-color)" : "var(--text-muted)"};">as of ${escapeHtml(f.latestSv.date)}${f.svStale ? " ⚠️" : ""}</span>`;
                 return `
                     <div class="config-item" data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; flex-direction:column; align-items:stretch; gap:8px; ${insIsLive(p) ? "" : "opacity:0.65;"}">
                         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
@@ -15510,8 +15517,8 @@
                             </span>
                         </span>
                         <span style="text-align:right; flex:0 0 auto;">
-                            <span style="display:block; font-size:0.85rem; font-weight:700;">Paid ${formatCurrency(f.paid, f.cur)}</span>
-                            ${svText ? `<span style="font-size:0.72rem; font-weight:700; color:${f.svStale ? "var(--expense-color)" : "var(--text-muted)"};">${svText}</span>` : ""}
+                            <span style="display:block; font-size:0.85rem; font-weight:600;${f.svValue != null ? " color:var(--text-muted);" : ""}">Paid ${formatCurrency(f.paid, f.cur)}</span>
+                            ${svText}
                         </span>
                         </div>
                         ${(p.paidByBonus || p.notes) ? `<div>${insBonusBannerHtml(p, true)}${p.notes ? `<div style="${p.paidByBonus ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; white-space:pre-line; overflow-wrap:anywhere; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${escapeHtml(p.notes)}</div>` : ""}</div>` : ""}
@@ -15522,7 +15529,7 @@
             const cell = (label, value) => `
                 <div style="flex:1 1 0; min-width:0; text-align:center;">
                     <div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">${label}</div>
-                    <div style="font-family:'Kalam', cursive; font-size:1.05rem; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${value}</div>
+                    <div style="font-size:1rem; font-weight:800; font-variant-numeric:tabular-nums; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${value}</div>
                 </div>`;
             summary.style.display = filtered.length ? "flex" : "none";
             // v477: Surrender value lives only in the Savings panel below (it was a duplicate here, and

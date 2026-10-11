@@ -3742,3 +3742,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **Health / Medical:** heading amount captioned "sum insured"; the limits line is muted and reads "Lifetime limit remaining … / …" (was bold "Lifetime remaining"), so it no longer looks like a second total. (Policy cards on the Policies tab show the annual limit for medical — a different number from this sum.)
 - `APP_VERSION` / `CACHE_NAME` → v480.
 
+## v481: Insurance — Policies tab polish
+
+- **Summary numbers (Yearly premium, Premiums paid (all), the Savings panel) use the app's normal sans-serif with tabular digits** instead of the handwriting font, so six-figure amounts line up and compare cleanly. Insurance page only; other pages keep Kalam.
+- **Right side of a card with a surrender value:** `Paid` is regular weight and muted; **`SV` is bold with a small "% of paid" chip** (green at/above premiums paid up to the SV date, neutral indigo below — not red, since a young policy is normally below); the SV date is its own muted line, "as of <date>" (red + ⚠️ when over a year old). Cards without an SV keep a single Paid line.
+- **"Sum insured" is one cover per row** (name, then its amount right after it) under a small "SUM INSURED" label — up to 4 rows, then "+N more" — instead of one wrapping sentence that left an amount orphaned on its own line.
+- `APP_VERSION` / `CACHE_NAME` → v481.
+

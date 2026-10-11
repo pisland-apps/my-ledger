@@ -2872,6 +2872,56 @@
             a[href]::after { content: none !important; }
         }
 
+        /* ===== v496: Insurance print report (printInsuranceReport() in ledger.js) =====
+           Hidden on screen. While body has .ins-printing only #insurancePrintReport is shown (everything
+           else on the Insurance page is hidden), on landscape A4 through the named page "insr". Colours
+           are fixed (not theme variables) so the printout looks the same under every theme, dark ones too. */
+        #insurancePrintReport { display: none; }
+        @page insr { size: A4 landscape; margin: 11mm 12mm 14mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8pt Arial, sans-serif; color: #64748b; } }
+        @media print {
+            body.ins-printing #page-insurance > :not(#insurancePrintReport) { display: none !important; }
+            body.ins-printing #insurancePrintReport { display: block !important; page: insr; color: #0f172a; background: #fff; font-size: 9pt; line-height: 1.35; }
+            #insurancePrintReport, #insurancePrintReport * { font-family: Arial, "Helvetica Neue", "Noto Sans", "Noto Sans SC", sans-serif !important; box-sizing: border-box; }
+            #insurancePrintReport h1 { font-size: 16pt; font-weight: 800; margin: 0; color: #0f172a; }
+            #insurancePrintReport h3 { font-size: 10.5pt; font-weight: 800; margin: 0 0 6px; padding-bottom: 3px; border-bottom: 1.5px solid #0f172a; color: #0f172a; break-after: avoid; }
+            #insurancePrintReport small { display: block; font-size: 7pt; font-weight: 600; color: #475569; line-height: 1.3; }
+            #insurancePrintReport .insr-head { padding-bottom: 8px; margin-bottom: 12px; border-bottom: 2.5px solid #0f172a; }
+            #insurancePrintReport .insr-sub { font-size: 8.5pt; color: #475569; margin-top: 2px; }
+            #insurancePrintReport .insr-sec { margin-bottom: 14px; }
+            #insurancePrintReport .insr-note { font-size: 7.5pt; color: #475569; margin: 5px 0 0; }
+            #insurancePrintReport .insr-foot { font-size: 7.5pt; color: #64748b; margin-top: 16px; padding-top: 6px; border-top: 1px solid #cbd5e1; }
+            #insurancePrintReport .insr-muted { color: #64748b; }
+            #insurancePrintReport .insr-bad { color: #b91c1c !important; font-weight: 800; }
+            #insurancePrintReport .insr-boxes { display: flex; gap: 8px; }
+            #insurancePrintReport .insr-box { flex: 1 1 0; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px 9px; break-inside: avoid; }
+            #insurancePrintReport .insr-box-l { font-size: 7pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; color: #475569; }
+            #insurancePrintReport .insr-box-v { font-size: 13pt; font-weight: 800; margin-top: 1px; }
+            #insurancePrintReport .insr-box-s { font-size: 7.5pt; color: #475569; margin-top: 1px; }
+            #insurancePrintReport .insr-sav { margin-top: 8px; padding: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; break-inside: avoid; }
+            #insurancePrintReport .insr-sav-t { font-size: 8pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; color: #475569; margin-bottom: 5px; }
+            #insurancePrintReport .insr-list { margin: 0; padding-left: 16px; font-size: 9pt; }
+            #insurancePrintReport .insr-list li { margin-bottom: 3px; }
+            #insurancePrintReport .insr-persons { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+            #insurancePrintReport .insr-person { flex: 1 1 46%; min-width: 0; break-inside: avoid; }
+            #insurancePrintReport .insr-person-h { display: flex; justify-content: space-between; gap: 8px; font-size: 9.5pt; font-weight: 800; margin-bottom: 3px; }
+            #insurancePrintReport .insr-person-h span { font-size: 7.5pt; font-weight: 600; color: #475569; }
+            #insurancePrintReport table.insr-t { width: 100%; border-collapse: collapse; font-size: 8pt; margin-bottom: 6px; }
+            #insurancePrintReport .insr-t th { text-align: left; background: #f1f5f9; color: #334155; font-size: 7pt; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; padding: 4px 6px; border-bottom: 1px solid #94a3b8; }
+            #insurancePrintReport .insr-t td { padding: 4px 6px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+            #insurancePrintReport .insr-t th.r, #insurancePrintReport .insr-t td.r { text-align: right; }
+            #insurancePrintReport .insr-t thead { display: table-header-group; }
+            #insurancePrintReport .insr-t tr { break-inside: avoid; }
+            #insurancePrintReport .insr-t tfoot td { font-weight: 800; border-top: 1.5px solid #0f172a; border-bottom: 0; background: #f8fafc; }
+            #insurancePrintReport .insr-ended td { background: #f1f5f9; color: #475569; }
+            #insurancePrintReport .insr-details { break-before: page; }
+            #insurancePrintReport .insr-pol { margin-bottom: 14px; padding-bottom: 6px; border-bottom: 1px dashed #94a3b8; }
+            #insurancePrintReport .insr-pol-h { font-size: 10.5pt; font-weight: 800; margin-bottom: 4px; break-after: avoid; }
+            #insurancePrintReport .insr-pol-h span { font-size: 8pt; font-weight: 600; color: #475569; }
+            #insurancePrintReport .insr-facts { display: flex; flex-wrap: wrap; gap: 3px 18px; font-size: 8pt; margin-bottom: 5px; }
+            #insurancePrintReport .insr-facts span, #insurancePrintReport .insr-pol-notes span { font-size: 7pt; font-weight: 800; text-transform: uppercase; color: #475569; margin-right: 4px; }
+            #insurancePrintReport .insr-pol-notes { font-size: 8pt; white-space: pre-line; }
+        }
+
         /* v245: 蠟筆小新 (Crayon Shin-chan) preset — scoped entirely under this attribute
            selector (set by applyBgTheme()/the head no-flash script) so every other preset is
            completely untouched. The shared --border-color/--card-shadow vars (see BG_THEMES'
@@ -4082,6 +4132,7 @@
                 <h3 style="font-weight:800; font-size:1.2rem;">Insurance</h3>
                 <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Coverage, premiums paid and latest surrender values.</p>
             </div>
+            <button type="button" class="icon-edit-btn" data-click="openInsurancePrintSheet" title="Print insurance report" aria-label="Print insurance report">🖨️</button>
         </div>
 
         <div class="nav-view-toggle ins-tabs" id="insuranceViewTabs" style="margin:0 0 14px;">
@@ -4119,6 +4170,29 @@
             <div style="flex-shrink:0; padding:12px 20px 20px; display:flex; gap:8px;">
                 <button type="button" class="submit-btn" data-click="insuranceRecordPremium" style="margin-top:0; flex:1;">💳 Record premium</button>
                 <button type="button" class="submit-btn" data-click="insuranceDetailEdit" style="margin-top:0; flex:1; background:var(--chip-bg); color:var(--text-main);">✏️ Edit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- v496: MODAL: Print insurance report — choose what goes in, then the browser's print dialog opens
+         (Save as PDF to keep a copy). The report itself is built by buildInsuranceReportHtml() in ledger.js. -->
+    <div class="modal" id="insurancePrintModal">
+        <div class="modal-sheet" style="padding:0; display:flex; flex-direction:column; overflow:hidden;">
+            <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:20px 20px 12px; flex-shrink:0; border-bottom:1px solid var(--border-color);">
+                <h3 style="font-weight:800; flex:1; min-width:0;">Print insurance report</h3>
+                <button type="button" data-click="closeModal" data-modal="insurancePrintModal" style="background:none; border:none; font-size:1.5rem; padding:8px; flex:0 0 auto;">&times;</button>
+            </div>
+            <div style="flex:1 1 auto; min-height:0; overflow-y:auto; padding:16px 20px;">
+                <div style="font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin-bottom:6px;">Policies</div>
+                <label style="display:flex; align-items:center; gap:10px; padding:8px 0; font-size:0.9rem; font-weight:600;"><input type="radio" name="insPrintScope" value="active" checked style="width:18px; height:18px; padding:0; flex:0 0 auto;"> In-force policies only</label>
+                <label style="display:flex; align-items:center; gap:10px; padding:8px 0; font-size:0.9rem; font-weight:600;"><input type="radio" name="insPrintScope" value="all" style="width:18px; height:18px; padding:0; flex:0 0 auto;"> All policies, including ended</label>
+                <div style="font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin:14px 0 6px;">Extras</div>
+                <label style="display:flex; align-items:flex-start; gap:10px; padding:8px 0; font-size:0.9rem; font-weight:600;"><input type="checkbox" id="insPrintDetails" style="width:18px; height:18px; padding:0; flex:0 0 auto; margin-top:2px;"> <span>A detail block for each policy<br><span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Covers, latest premium payments and surrender-value history</span></span></label>
+                <label style="display:flex; align-items:flex-start; gap:10px; padding:8px 0; font-size:0.9rem; font-weight:600;"><input type="checkbox" id="insPrintContacts" checked style="width:18px; height:18px; padding:0; flex:0 0 auto; margin-top:2px;"> <span>Policy numbers and agent contacts<br><span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Untick before sharing the printout with someone else</span></span></label>
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600; margin-top:12px; line-height:1.5;">Always included: summary, what needs attention, cover by person, policy register, car / home / travel. Prints on landscape A4 — choose "Save as PDF" in the print dialog to keep a copy.</p>
+            </div>
+            <div style="flex-shrink:0; padding:12px 20px 20px;">
+                <button type="button" class="submit-btn" data-click="insurancePrintRun" style="margin-top:0; width:100%;">🖨️ Print / Save as PDF</button>
             </div>
         </div>
     </div>

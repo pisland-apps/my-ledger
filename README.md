@@ -3836,3 +3836,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **By person** unchanged (in-force cover totals, no filter).
 - Display only: `insurance` store, backup/import, Drive sync, net-worth SV and the transaction policy picker are untouched; `DB_VERSION` unchanged.
 - `APP_VERSION` / `CACHE_NAME` -> v495.
+
+## v496: Insurance print report
+- New 🖨️ button in the Insurance header (the floating print button on this page opens the same thing). It opens an options sheet: **In-force only / All incl. ended**, **a detail block for each policy**, **policy numbers & agent contacts** (untick before sharing). The browser's print dialog then opens (Save as PDF to keep a copy).
+- The report is built from the data (`buildInsuranceReportHtml()`), not copied from the screen, so it does not depend on the open tab. Landscape A4 (named `@page insr`), fixed print colours, plain font, header row repeats on each page.
+- Sections: Summary (policies, yearly premium, premiums paid, savings/investment SV panel) → Needs attention (overdue / due within 30 days premiums, policies ended or ending within 60 days, surrender values over a year old, sum insured not set) → Cover by person → Policy register (life / medical / other) → Car, home & travel → Agents → optional per-policy details (covers incl. reducing schedule, latest 12 premium payments, surrender-value history).
+- New: `openInsurancePrintSheet`, `insurancePrintRun`, `printInsuranceReport`, `buildInsuranceReportHtml`, `insPrintCoverLines`; `#insurancePrintModal`, `#insurancePrintReport` (hidden on screen; shown only while `body.ins-printing`). `printCurrentApp()` hands the Insurance page over to the sheet.
+- No data or DB change. `APP_VERSION` / `CACHE_NAME` -> v496.

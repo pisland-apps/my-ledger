@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v495";
+        const APP_VERSION = "v496";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -3413,6 +3413,8 @@
                 return el && !el.classList.contains("hidden");
             });
             if (!activePageId) { window.print(); return; }
+            // v496: the Insurance page has its own report (options sheet first).
+            if (activePageId === "page-insurance") { openInsurancePrintSheet(); return; }
 
             const activeEl = document.getElementById(activePageId);
             const title = getActivePageTitle(activePageId);
@@ -15954,6 +15956,325 @@
             return sections + `<p style="font-size:0.7rem; color:var(--text-muted); line-height:1.5;">${insuranceStatusFilter === "ended" ? "Ended policies — they are not counted in the totals" : (insuranceStatusFilter === "all" ? "Ended policies are dimmed and not counted in the totals" : "In-force policies only")}, nearest end date first. Sum insured adds up the coverage rows of each policy${foreign ? `; section totals are converted to ${escapeHtml(baseCurrency)} at today's rates` : ""}.${totalYearly > 0 ? ` Yearly cash premium of all of these: ${money(totalYearly)}.` : ""}</p>`;
         }
 
+        // --- v496: Insurance print report ---
+        // A purpose-built printout (the 🖨️ button in the Insurance header, and the floating print button
+        // while this page is open): summary → needs attention → cover by person → policy register →
+        // car / home / travel → agents → (optional) one detail block per policy. It is built from the
+        // data, not copied from the screen, so it does not depend on which tab is open. The HTML goes into
+        // #insurancePrintReport, which is hidden on screen and the only thing shown while body has
+        // .ins-printing (see the v496 print CSS in index.html). Landscape A4 via the named @page "insr".
+        let insPrintOpts = { scope: "active", details: false, contacts: true };
+
+        function openInsurancePrintSheet() {
+            const sc = document.querySelector(`input[name="insPrintScope"][value="${insPrintOpts.scope}"]`);
+            if (sc) sc.checked = true;
+            const d = document.getElementById("insPrintDetails"); if (d) d.checked = insPrintOpts.details;
+            const c = document.getElementById("insPrintContacts"); if (c) c.checked = insPrintOpts.contacts;
+            openModal("insurancePrintModal");
+        }
+
+        async function insurancePrintRun() {
+            const scopeEl = document.querySelector('input[name="insPrintScope"]:checked');
+            insPrintOpts = {
+                scope: scopeEl ? scopeEl.value : "active",
+                details: !!(document.getElementById("insPrintDetails") || {}).checked,
+                contacts: !!(document.getElementById("insPrintContacts") || {}).checked
+            };
+            // closeModal() goes through history.back(); wait for its popstate before the print dialog opens.
+            closeModalAndThen("insurancePrintModal", () => { printInsuranceReport(insPrintOpts); });
+        }
+
+        async function printInsuranceReport(opts) {
+            await loadInsuranceCache();
+            const [txs, planned] = await Promise.all([readAllDB(STORES.TRANSACTIONS), readAllDB(STORES.PLANNED_PAYMENTS)]);
+            const page = document.getElementById("page-insurance");
+            if (!page) return;
+            let host = document.getElementById("insurancePrintReport");
+            if (!host) { host = document.createElement("div"); host.id = "insurancePrintReport"; page.appendChild(host); }
+            host.innerHTML = buildInsuranceReportHtml(opts, txs, planned);
+            document.body.classList.add("ins-printing");
+            const prevDocTitle = document.title;
+            document.title = `Ledger - Insurance report ${todayLocalStr()}`;
+            let cleanedUp = false;
+            const cleanup = () => {
+                if (cleanedUp) return;
+                cleanedUp = true;
+                clearTimeout(fallbackTimer);
+                document.body.classList.remove("ins-printing");
+                document.title = prevDocTitle;
+                host.innerHTML = "";
+            };
+            // Some mobile browsers fire afterprint before the preview has been drawn, so the report is
+            // removed a moment later rather than at once.
+            window.addEventListener("afterprint", () => setTimeout(cleanup, 1500), { once: true });
+            const fallbackTimer = setTimeout(cleanup, 60000);
+            window.print();
+        }
+
+        // Plain-text cover lines for a policy ("Life RM50,000"): same grouping as the list card, each in the
+        // policy's own currency; Medical shows its annual limit (else lifetime limit / sum).
+        function insPrintCoverLines(p) {
+            const cur = p.currency || baseCurrency;
+            const groups = new Map();
+            (p.coverages || []).filter(c => c && (c.kind || c.label)).forEach(c => {
+                const k = INS_COV_KINDS[c.kind];
+                const name = (k && c.kind !== "other") ? k[1] : (c.label || (k ? k[1] : "Cover"));
+                let amount = null, tag = "";
+                if (c.kind === "medical" && typeof c.annualLimit === "number") { amount = c.annualLimit; tag = " (annual limit)"; }
+                else if (typeof insCovSum(c) === "number") amount = insCovSum(c);
+                else if (c.kind === "medical" && typeof c.lifetimeLimit === "number") { amount = c.lifetimeLimit; tag = " (lifetime limit)"; }
+                if (amount == null) return;
+                const key = name + tag;
+                groups.set(key, (groups.get(key) || 0) + amount);
+            });
+            return [...groups.entries()].map(([n, a]) => `${escapeHtml(n)} <b>${formatCurrency(a, cur)}</b>`);
+        }
+
+        function buildInsuranceReportHtml(opts, txs, planned) {
+            const esc = escapeHtml;
+            const today = todayLocalStr();
+            const money = (n) => formatCurrency(n, baseCurrency);
+            const daysTo = (d) => Math.round((new Date(d + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000);
+            const scopeAll = opts.scope === "all";
+            const typeOrder = Object.keys(INS_TYPES);
+            const included = insuranceCache.filter(p => scopeAll || insIsLive(p)).slice().sort((a, b) => {
+                const ia = (a.insurer || "").trim().toLowerCase(), ib = (b.insurer || "").trim().toLowerCase();
+                if (ia !== ib) return !ia ? 1 : (!ib ? -1 : ia.localeCompare(ib));
+                const ta = typeOrder.indexOf(a.type || "other"), tb = typeOrder.indexOf(b.type || "other");
+                if (ta !== tb) return ta - tb;
+                return (a.product || "").localeCompare(b.product || "");
+            });
+            const fig = new Map(included.map(p => [p.id, computePolicyFigures(p, txs, planned)]));
+            const personal = included.filter(p => !INS_ASSET_TYPES.includes(p.type));
+            const assets = included.filter(p => INS_ASSET_TYPES.includes(p.type));
+            const livePersonal = personal.filter(insIsLive), liveAssets = assets.filter(insIsLive);
+            const liveAll = included.filter(insIsLive);
+            let foreign = false;
+            included.forEach(p => { if ((p.currency || baseCurrency) !== baseCurrency) foreign = true; });
+
+            const titleName = (p) => esc(p.product || p.insurer || "Policy");
+            const section = (title, body, note) => `<div class="insr-sec"><h3>${title}</h3>${body}${note ? `<p class="insr-note">${note}</p>` : ""}</div>`;
+            const box = (label, value, sub) => `<div class="insr-box"><div class="insr-box-l">${label}</div><div class="insr-box-v">${value}</div>${sub ? `<div class="insr-box-s">${sub}</div>` : ""}</div>`;
+
+            if (!included.length) {
+                return `<div class="insr-head"><h1>🛡️ Insurance report</h1><div class="insr-sub">Printed ${esc(new Date().toLocaleString())}</div></div>
+                    <p class="insr-note" style="font-size:10pt;">No ${scopeAll ? "" : "in-force "}policies to report.</p>`;
+            }
+
+            // ---- Summary ----
+            const yearlyPersonal = livePersonal.reduce((s, p) => s + insAnnualCashBase(p), 0);
+            const yearlyAssets = liveAssets.reduce((s, p) => s + insAnnualCashBase(p), 0);
+            const paidPersonal = personal.reduce((s, p) => s + insConvert(fig.get(p.id).paid, fig.get(p.id).cur, baseCurrency), 0);
+            const paidAssets = assets.reduce((s, p) => s + insConvert(fig.get(p.id).paid, fig.get(p.id).cur, baseCurrency), 0);
+            let savPaid = 0, savSv = 0, savN = 0, savMin = null, savMax = null;
+            livePersonal.forEach(p => {
+                const f = fig.get(p.id);
+                if (f.svValue == null) return;
+                savN++;
+                savPaid += insConvert(f.paidToSv, f.cur, baseCurrency);
+                savSv += insConvert(f.netSv, f.cur, baseCurrency);
+                if (!savMin || f.latestSv.date < savMin) savMin = f.latestSv.date;
+                if (!savMax || f.latestSv.date > savMax) savMax = f.latestSv.date;
+            });
+            const anyBonusPaid = liveAll.some(p => p.paidByBonus);
+            const summary = `<div class="insr-boxes">
+                ${box("Policies", `${liveAll.length} in force`, `${livePersonal.length} life / medical / other · ${liveAssets.length} car, home, travel${scopeAll && included.length > liveAll.length ? ` · ${included.length - liveAll.length} ended listed` : ""}`)}
+                ${box("Yearly premium", money(yearlyPersonal + yearlyAssets), `Personal ${money(yearlyPersonal)} · Car / home / travel ${money(yearlyAssets)}`)}
+                ${box("Premiums paid to date", money(paidPersonal + paidAssets), `Personal ${money(paidPersonal)} · Car / home / travel ${money(paidAssets)}`)}
+            </div>`
+            + (savN ? `<div class="insr-sav"><div class="insr-sav-t">Savings / investment policies (${savN}, in force)</div>
+                <div class="insr-boxes">
+                    ${box("Paid up to SV date", money(savPaid))}
+                    ${box("Surrender value", money(savSv), savMin === savMax ? `as of ${esc(savMin)}` : `dated ${esc(savMin)} to ${esc(savMax)}`)}
+                    ${box("Net", `<span style="color:${savSv - savPaid >= 0 ? "#047857" : "#b91c1c"};">${savSv - savPaid >= 0 ? "+" : "−"}${money(Math.abs(savSv - savPaid))}</span>`, savPaid > 0 ? `SV is ${(savSv / savPaid * 100).toFixed(1)}% of premiums paid` : "")}
+                </div>
+                <p class="insr-note">Premiums counted only up to each policy's SV date; surrender values are net of any policy loan. Net is a rough guide, not an investment return (riders, bonuses and fund prices move).</p></div>` : "");
+            const summaryNote = `${anyBonusPaid ? "Yearly premium leaves out policies whose premium is paid from accumulated bonus. " : ""}${foreign ? `Totals in other currencies are converted to ${esc(baseCurrency)} at today's rates.` : ""}`;
+
+            // ---- Needs attention ----
+            const att = [];
+            liveAll.forEach(p => {
+                const f = fig.get(p.id);
+                const nm = `<b>${titleName(p)}</b>${p.insurer && p.product ? " (" + esc(p.insurer) + ")" : ""}`;
+                if (f.plan && !f.plan.paused) {
+                    const dd = daysTo(f.plan.dueDate);
+                    if (dd < 0) att.push([0, `${nm}: premium <b>overdue ${-dd} day${-dd === 1 ? "" : "s"}</b> (was due ${esc(f.plan.dueDate)}).`]);
+                    else if (dd <= 30) att.push([1, `${nm}: premium due ${dd === 0 ? "<b>today</b>" : `in <b>${dd} day${dd === 1 ? "" : "s"}</b>`} (${esc(f.plan.dueDate)}).`]);
+                }
+                if (p.maturityDate) {
+                    const md = daysTo(p.maturityDate);
+                    if (md < 0) att.push([0, `${nm}: end date <b>${-md} day${-md === 1 ? "" : "s"} ago</b> (${esc(p.maturityDate)}) but still marked in force.`]);
+                    else if (md <= 60) att.push([1, `${nm}: ends ${md === 0 ? "<b>today</b>" : `in <b>${md} day${md === 1 ? "" : "s"}</b>`} (${esc(p.maturityDate)}).`]);
+                }
+                if (f.svStale) att.push([2, `${nm}: surrender value is over a year old (as of ${esc(f.latestSv.date)}) — update it from the latest statement.`]);
+                if (!insPrintCoverLines(p).length) att.push([2, `${nm}: sum insured not set.`]);
+            });
+            att.sort((a, b) => a[0] - b[0]);
+            const attention = att.length
+                ? `<ul class="insr-list">${att.map(a => `<li>${a[1]}</li>`).join("")}</ul>`
+                : `<p class="insr-note" style="font-size:9pt;">Nothing needs attention: no overdue or imminent premiums, no policy ending within 60 days, no out-of-date surrender values.</p>`;
+
+            // ---- Cover by person (in-force life / medical / other only, as on the By person tab) ----
+            let personHtml = "";
+            if (livePersonal.length) {
+                const groups = new Map(), everyone = new Map();
+                const kindOf = (map, k) => { if (!map.has(k)) map.set(k, insKindData()); return map.get(k); };
+                livePersonal.forEach(p => {
+                    const key = p.insuredMemberId && getMemberById(p.insuredMemberId) ? p.insuredMemberId : "";
+                    if (!groups.has(key)) groups.set(key, { policies: [], kinds: new Map(), yearly: 0 });
+                    const g = groups.get(key);
+                    g.policies.push(p);
+                    g.yearly += insAnnualCashBase(p);
+                    (p.coverages || []).filter(c => c && (c.kind || c.label)).forEach(c => {
+                        const kind = INS_COV_KINDS[c.kind] ? c.kind : "other";
+                        insAddCoverage(kindOf(g.kinds, kind), p, c);
+                        insAddCoverage(kindOf(everyone, kind), p, c);
+                    });
+                });
+                const order = [...membersCache.map(m => m.id).filter(id => groups.has(id)), ...(groups.has("") ? [""] : [])];
+                const kindRows = (kinds) => INS_COV_ORDER.filter(k => kinds.has(k)).map(k => {
+                    const d = kinds.get(k), kd = INS_COV_KINDS[k];
+                    const sub = [];
+                    if (k === "medical") {
+                        if (d.hasAnnual) sub.push(`annual limit ${money(d.annual)}`);
+                        if (d.hasRem) sub.push(`lifetime limit remaining ${money(d.rem)}${d.hasLife ? " / " + money(d.life) : ""}`);
+                        else if (d.hasLife) sub.push(`lifetime limit ${money(d.life)}`);
+                    }
+                    const n = new Set(d.items.map(i => i.p.id)).size;
+                    return `<tr><td>${kd[2]} ${esc(kd[1])}</td><td class="r">${n}</td><td class="r"><b>${d.hasSum ? money(d.sum) : "—"}</b></td><td>${sub.join(" · ")}</td></tr>`;
+                }).join("") || `<tr><td colspan="4" class="insr-muted">No coverage details recorded.</td></tr>`;
+                const tbl = (rows) => `<table class="insr-t"><thead><tr><th>Cover</th><th class="r">Policies</th><th class="r">Sum insured</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
+                const blocks = [];
+                if (order.length > 2) blocks.push(`<div class="insr-person"><div class="insr-person-h">👪 Everyone</div>${tbl(kindRows(everyone))}</div>`);
+                order.forEach(key => {
+                    const g = groups.get(key), m = key ? getMemberById(key) : null;
+                    blocks.push(`<div class="insr-person"><div class="insr-person-h">${m ? esc(m.name) : "Insured person not set"}<span>${g.policies.length} ${g.policies.length === 1 ? "policy" : "policies"} · ${money(g.yearly)}/yr</span></div>${tbl(kindRows(g.kinds))}</div>`);
+                });
+                personHtml = section("Cover by person", `<div class="insr-persons">${blocks.join("")}</div>`,
+                    `In-force life, medical and other personal policies only. Sum insured is the current figure (reducing cover steps down on its dates). Medical limits of different plans can overlap — each plan pays up to its own limit for the same bill — so these totals show what is arranged, not what would be received.`);
+            }
+
+            // ---- Policy register ----
+            const showNo = !!opts.contacts;
+            const dueCell = (p, f) => {
+                if (!insIsLive(p) || !f.plan || f.plan.paused) return "—";
+                const dd = daysTo(f.plan.dueDate);
+                return `${esc(f.plan.dueDate)}<small class="${dd < 0 ? "insr-bad" : ""}">${dd < 0 ? "overdue " + (-dd) + "d" : (dd === 0 ? "today" : dd + "d left")}</small>`;
+            };
+            const premCell = (p, f) => {
+                const freq = INS_FREQ[p.frequency], prem = parseFloat(p.premium) || 0;
+                if (p.paidByBonus) return `<small>Paid from accumulated bonus</small>`;
+                if (!(prem > 0)) return "—";
+                return `${formatCurrency(prem, f.cur)}<small>${freq ? esc(freq[0]) : ""}${(f.annual > 0 && freq && freq[1] > 1) ? ` · ${formatCurrency(f.annual, f.cur)}/yr` : ""}</small>`;
+            };
+            const planCell = (p) => `<b>${titleName(p)}</b><small>${esc(p.insurer || "")}${showNo && p.policyNo ? `${p.insurer ? " · " : ""}${esc(p.policyNo)}` : ""}</small><small>${INS_TYPE_ICONS[p.type] || INS_TYPE_ICONS.other} ${esc(INS_TYPES[p.type] || "Other")}${insIsLive(p) ? "" : ` · <b>${esc(INS_STATUSES[p.status] || p.status)}</b>`}</small>`;
+            const register = (list, isAsset) => {
+                const rows = list.map(p => {
+                    const f = fig.get(p.id), live = insIsLive(p);
+                    const cov = insPrintCoverLines(p);
+                    let endCell = "";
+                    if (isAsset) {
+                        if (!live) endCell = `<td>${p.maturityDate ? esc(p.maturityDate) : "—"}</td>`;
+                        else if (p.maturityDate) {
+                            const md = daysTo(p.maturityDate);
+                            endCell = `<td>${esc(p.maturityDate)}<small class="${md < 0 || md <= 60 ? "insr-bad" : ""}">${md < 0 ? "expired " + (-md) + "d ago" : (md === 0 ? "expires today" : md + "d left")}</small></td>`;
+                        } else endCell = `<td>—</td>`;
+                    }
+                    let svCell = "";
+                    if (!isAsset) {
+                        if (f.svValue == null) svCell = `<td class="r">—</td>`;
+                        else svCell = `<td class="r"><b>${formatCurrency(f.svValue, f.cur)}</b><small class="${f.svStale ? "insr-bad" : ""}">as of ${esc(f.latestSv.date)}${f.svStale ? " ⚠" : ""}</small>${f.loan > 0 ? `<small>less loan ${formatCurrency(f.loan, f.cur)}</small>` : ""}</td>`;
+                    }
+                    return `<tr class="${live ? "" : "insr-ended"}"><td>${planCell(p)}</td><td>${esc(insMemberName(p)) || "—"}</td><td>${cov.length ? cov.join("<br>") : `<span class="insr-muted">not set</span>`}</td><td class="r">${premCell(p, f)}</td><td>${dueCell(p, f)}</td>${endCell}<td class="r">${formatCurrency(f.paid, f.cur)}</td>${svCell}</tr>`;
+                }).join("");
+                const yearly = list.filter(insIsLive).reduce((s, p) => s + insAnnualCashBase(p), 0);
+                const paid = list.reduce((s, p) => s + insConvert(fig.get(p.id).paid, fig.get(p.id).cur, baseCurrency), 0);
+                return `<table class="insr-t insr-reg"><thead><tr><th>Policy</th><th>Insured</th><th>Sum insured</th><th class="r">Premium</th><th>Next premium</th>${isAsset ? "<th>Ends</th>" : ""}<th class="r">Paid to date</th>${isAsset ? "" : `<th class="r">Surrender value</th>`}</tr></thead>
+                    <tbody>${rows}</tbody>
+                    <tfoot><tr><td colspan="3">Total (${esc(baseCurrency)})</td><td class="r">${money(yearly)}<small>per year, in force</small></td><td${isAsset ? ' colspan="2"' : ""}></td><td class="r">${money(paid)}</td>${isAsset ? "" : "<td></td>"}</tr></tfoot></table>`;
+            };
+            const regNote = scopeAll ? "Ended policies are shaded and not counted in the yearly total; premiums paid include them." : "";
+            const personalHtml = personal.length ? section(`Policy register — life, medical &amp; other (${personal.length})`, register(personal, false), regNote) : "";
+            const assetHtml = assets.length ? section(`Car, home &amp; travel (${assets.length})`, register(assets, true), regNote) : "";
+
+            // ---- Agents ----
+            let agentHtml = "";
+            if (opts.contacts) {
+                const byAgent = new Map();
+                included.forEach(p => {
+                    const nm = String(p.agentName || "").trim(), ct = String(p.agentContact || "").trim();
+                    if (!nm && !ct) return;
+                    const key = nm + "|" + ct;
+                    if (!byAgent.has(key)) byAgent.set(key, { nm, ct, list: [] });
+                    byAgent.get(key).list.push(p);
+                });
+                if (byAgent.size) {
+                    agentHtml = section("Agents", `<table class="insr-t"><thead><tr><th>Agent</th><th>Contact</th><th>Policies</th></tr></thead><tbody>${[...byAgent.values()].map(a =>
+                        `<tr><td><b>${esc(a.nm) || "—"}</b></td><td>${esc(a.ct) || "—"}</td><td>${a.list.map(p => titleName(p) + (p.insurer && p.product ? " (" + esc(p.insurer) + ")" : "")).join("; ")}</td></tr>`).join("")}</tbody></table>`);
+                }
+            }
+
+            // ---- Detail blocks (optional) ----
+            let detailHtml = "";
+            if (opts.details) {
+                const blocks = included.map(p => {
+                    const f = fig.get(p.id), cur = f.cur, live = insIsLive(p);
+                    const cm = (n) => formatCurrency(n, cur);
+                    const facts = [];
+                    const fact = (l, v) => { if (v !== "" && v != null) facts.push(`<div><span>${l}</span>${v}</div>`); };
+                    fact("Insurer", esc(p.insurer || ""));
+                    if (showNo) fact("Policy no.", esc(p.policyNo || ""));
+                    fact("Insured", esc(insMemberName(p)));
+                    fact("Type", esc(INS_TYPES[p.type] || ""));
+                    fact("Status", esc(INS_STATUSES[p.status] || p.status || ""));
+                    fact("Start", esc(p.startDate || ""));
+                    fact("Ends / matures", esc(p.maturityDate || ""));
+                    const freq = INS_FREQ[p.frequency], prem = parseFloat(p.premium) || 0;
+                    fact("Premium", p.paidByBonus ? "Paid from accumulated bonus" : (prem > 0 ? `${cm(prem)}${freq ? " · " + esc(freq[0]) : ""}` : ""));
+                    if (f.loan > 0) fact("Policy loan", cm(f.loan));
+                    if (showNo && (p.agentName || p.agentContact)) fact("Agent", esc(insAgentLine(p)));
+                    const covs = (p.coverages || []).filter(c => c && (c.kind || c.label));
+                    const covRows = covs.map(c => {
+                        const k = INS_COV_KINDS[c.kind];
+                        const name = (k && c.kind !== "other") ? k[1] : (c.label || (k ? k[1] : "Cover"));
+                        const cc = insCovCurrent(c);
+                        const extra = [];
+                        if (typeof c.annualLimit === "number") extra.push(`annual limit ${cm(c.annualLimit)}`);
+                        if (typeof c.lifetimeLimit === "number") extra.push(`lifetime limit ${cm(c.lifetimeLimit)}${typeof c.lifetimeRemaining === "number" ? " (remaining " + cm(c.lifetimeRemaining) + ")" : ""}`);
+                        if (cc.steps.length) extra.push("reducing: " + cc.steps.map(st => `${esc(st.date)} → ${cm(st.amount)}`).join(", "));
+                        return `<tr><td>${esc(name)}</td><td class="r">${typeof cc.amount === "number" ? cm(cc.amount) : "—"}</td><td>${extra.join(" · ")}</td></tr>`;
+                    }).join("");
+                    const pays = f.history.map(r => ({ date: r.date, amount: parseFloat(r.amount) || 0, note: [r.paidBy === "parent" ? "paid by parent" : "", r.note || ""].filter(Boolean).join(" · ") }))
+                        .concat(f.ledgerRows.map(r => ({ date: r.date || "", amount: r.amount, note: r.amount < 0 ? "refund (Ledger)" : "Ledger" })))
+                        .sort((a, b) => b.date.localeCompare(a.date));
+                    const shown = pays.slice(0, 12), older = pays.slice(12);
+                    const payRows = shown.map(r => `<tr><td>${esc(r.date)}</td><td class="r">${cm(r.amount)}</td><td>${esc(r.note)}</td></tr>`).join("")
+                        + (older.length ? `<tr class="insr-muted"><td colspan="3">${older.length} earlier payment${older.length === 1 ? "" : "s"} not listed — together ${cm(older.reduce((s, r) => s + r.amount, 0))}</td></tr>` : "");
+                    const svRows = f.svs.map(r => {
+                        const pr = insSvParts(r), tot = insSvValue(r);
+                        const part = (n) => n == null ? "—" : cm(n);
+                        return `<tr><td>${esc(r.date)}</td><td class="r">${part(pr.g)}</td><td class="r">${part(pr.d)}</td><td class="r">${part(pr.m)}</td><td class="r"><b>${tot == null ? "—" : cm(tot)}</b></td></tr>`;
+                    }).join("");
+                    return `<div class="insr-pol">
+                        <div class="insr-pol-h">${INS_TYPE_ICONS[p.type] || INS_TYPE_ICONS.other} ${titleName(p)}${p.insurer && p.product ? ` <span>${esc(p.insurer)}</span>` : ""}${live ? "" : ` <span>· ${esc(INS_STATUSES[p.status] || p.status)}</span>`}</div>
+                        <div class="insr-facts">${facts.join("")}</div>
+                        ${covRows ? `<table class="insr-t"><thead><tr><th>Cover</th><th class="r">Sum insured</th><th>Details</th></tr></thead><tbody>${covRows}</tbody></table>` : ""}
+                        ${payRows ? `<table class="insr-t"><thead><tr><th>Premium payments</th><th class="r">Amount</th><th>Note</th></tr></thead><tbody>${payRows}</tbody><tfoot><tr><td>Total paid</td><td class="r">${cm(f.paid)}</td><td></td></tr></tfoot></table>` : ""}
+                        ${svRows ? `<table class="insr-t"><thead><tr><th>Surrender value</th><th class="r">Guaranteed</th><th class="r">Dividend</th><th class="r">Terminal</th><th class="r">Total</th></tr></thead><tbody>${svRows}</tbody></table>` : ""}
+                        ${p.notes ? `<div class="insr-pol-notes"><span>Notes</span> ${esc(p.notes)}</div>` : ""}
+                    </div>`;
+                }).join("");
+                detailHtml = `<div class="insr-sec insr-details"><h3>Policy details</h3>${blocks}</div>`;
+            }
+
+            return `<div class="insr-head"><h1>🛡️ Insurance report</h1>
+                    <div class="insr-sub">${scopeAll ? "All policies, including ended" : "In-force policies"} · amounts in ${esc(baseCurrency)} unless a policy's own currency is shown · printed ${esc(new Date().toLocaleString())}</div></div>
+                ${section("Summary", summary, summaryNote)}
+                ${section("Needs attention", attention)}
+                ${personHtml}${personalHtml}${assetHtml}${agentHtml}${detailHtml}
+                <p class="insr-foot">Prepared from the figures recorded in My Ledger. Surrender values are the insurer's statement figures on the dates shown and are not guaranteed; check the policy documents for the exact terms.</p>`;
+        }
+
         // --- Detail sheet (tapping a card) ---
 
         async function insurancePolicyTap(el) {
@@ -24215,6 +24536,8 @@
             // v468: INSURANCE
             navigateToInsurancePage: () => navigateToInsurancePage(),
             insuranceSetView: (el) => insuranceSetView(el), // v474
+            openInsurancePrintSheet: () => openInsurancePrintSheet(), // v496
+            insurancePrintRun: () => insurancePrintRun(), // v496
             insToggleReturnNote: (el) => { const w = el.closest(".ins-ret-wrap"); const n = w && w.querySelector(".ins-med-note"); if (n) n.classList.toggle("open"); }, // v487
             insToggleMedNote: (el) => { const row = el.closest(".ins-kind-row"); const n = row && row.querySelector(".ins-med-note"); if (n) n.classList.toggle("open"); }, // v479
             insuranceSetStatusFilter: (el) => insuranceSetStatusFilter(el),

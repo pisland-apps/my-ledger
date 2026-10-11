@@ -3214,6 +3214,9 @@
             <button class="sidebar-item" data-click="sidebarGo" data-target="owner-networth-report">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span> Financial Assets vs Real Estate
             </button>
+            <button class="sidebar-item" data-click="sidebarGo" data-target="incometax">
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span> Income after Tax
+            </button>
             <button class="sidebar-item" data-click="sidebarGo" data-target="currency-report">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span> Net Worth by Currency
             </button>
@@ -4915,6 +4918,32 @@
          grand total which convert for comparison), split Financial Assets / Real Estate the same
          way the owner report splits by group. Answers "how much do I have in MYR vs SGD",
          independent of which member owns it (unless the Member filter narrows it down). -->
+    <div id="page-incometax" class="page hidden">
+        <div class="nav-header">
+            <button class="back-btn" data-click="navigateToWorkspace">&larr; Back</button>
+            <div>
+                <h3 style="font-weight:800; font-size:1.2rem;">Income after Tax</h3>
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Total income less tax paid, kept separate from other reports</p>
+            </div>
+        </div>
+        <div class="form-row print-filter-row" style="margin-bottom:12px;">
+            <label>From (blank = first transaction)</label>
+            <input type="date" id="itFrom" class="form-input" data-change="itCfgChange">
+        </div>
+        <details class="report-card" style="margin-bottom:10px; padding:10px 12px;">
+            <summary id="itIncomeSummary" style="font-weight:800; cursor:pointer;">Income categories counted</summary>
+            <div style="display:flex; gap:8px; margin:8px 0;"><button type="button" class="btn-util" data-click="itCfgAll" data-list="income" data-on="1">All</button><button type="button" class="btn-util" data-click="itCfgAll" data-list="income" data-on="0">None</button></div>
+            <div id="itIncomeList"></div>
+        </details>
+        <details class="report-card" style="margin-bottom:12px; padding:10px 12px;">
+            <summary id="itTaxSummary" style="font-weight:800; cursor:pointer;">Tax categories (expenses)</summary>
+            <div style="display:flex; gap:8px; margin:8px 0;"><button type="button" class="btn-util" data-click="itCfgAll" data-list="tax" data-on="0">None</button></div>
+            <div id="itTaxList"></div>
+        </details>
+        <div class="report-card" id="itResult" style="overflow-x:auto;"></div>
+        <p style="font-size:0.72rem; color:var(--text-muted); margin-top:8px;">Uses its own category choices; the Net Savings Statement and other reports are not affected. Tax refunds reduce tax paid. Amounts are in your base currency.</p>
+    </div>
+
     <div id="page-currency-report" class="page hidden">
         <div class="nav-header">
             <button class="back-btn" data-click="navigateToWorkspace">&larr; Back</button>

@@ -3812,3 +3812,9 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - List cards unchanged. `computePolicyFigures` gained `parentTotal`, `selfTotal`, `hasParentSplit`; `insPaidBreakdownHtml(f, cur, p)`; new action `toggleInsParent`.
 - `APP_VERSION` / `CACHE_NAME` -> v491.
 
+## v492: New report — Income after Tax (standalone)
+- Sidebar > Income after Tax (`page-incometax`). Total income since the first transaction (or a From date) less tax paid, per year plus Total, with Income / Tax / After tax / Tax %.
+- Own category choices: tick the income categories to count and the expense categories that are tax (stored in the setting `incomeAfterTaxCfg`, included in backups). Until set up, all income categories count and expense categories with "tax" in the name are pre-ticked. Tax refunds (income + isRefund in a ticked tax category) reduce tax paid.
+- Nothing else reads this setting, and it ignores the "Exclude from Net Savings Report" flag, so Net Savings Statement and every other report are unchanged. Base currency only.
+- `APP_VERSION` / `CACHE_NAME` -> v492.
+

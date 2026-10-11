@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v491";
+        const APP_VERSION = "v492";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2095,6 +2095,7 @@
             const portfolioReportPage = document.getElementById("page-portfolio-report");
             const ownerNetWorthReportPage = document.getElementById("page-owner-networth-report");
             const currencyReportPage = document.getElementById("page-currency-report");
+            const incomeTaxPage = document.getElementById("page-incometax");
             const navUpdatePage = document.getElementById("page-navupdate");
             const dataSecurityPage = document.getElementById("page-datasecurity");
             // v394: the items that used to be inline panels on page-datasecurity (Background
@@ -2159,6 +2160,7 @@
                 !portfolioReportPage.classList.contains("hidden") ||
                 !ownerNetWorthReportPage.classList.contains("hidden") ||
                 !currencyReportPage.classList.contains("hidden") ||
+                !incomeTaxPage.classList.contains("hidden") ||
                 !navUpdatePage.classList.contains("hidden") ||
                 !dataSecurityPage.classList.contains("hidden") ||
                 !bgThemePage.classList.contains("hidden") ||
@@ -3264,7 +3266,7 @@
         // --- SPA NAVIGATION PIPELINE ---
         // Every top-level page div's id — used by showPage() to hide all but the target,
         // so adding a new page never risks leaving a stale one visible underneath.
-        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-database", "page-attachment-review", "page-total-summary", "page-monthly-trend", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-datasecurity", "page-bgtheme", "page-networthcardstyle", "page-dashboardwidgets", "page-currencyconfig", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity", "page-inventory", "page-plannedpayments", "page-reminders", "page-insurance"];
+        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-database", "page-attachment-review", "page-total-summary", "page-monthly-trend", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-incometax", "page-datasecurity", "page-bgtheme", "page-networthcardstyle", "page-dashboardwidgets", "page-currencyconfig", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity", "page-inventory", "page-plannedpayments", "page-reminders", "page-insurance"];
         // v406: which rail icon (by its data-click, and data-target for the one that uses
         // sidebarGo instead of its own navigateTo*Page()) corresponds to which Settings page —
         // used by updateSettingsIconRailActiveState() below to highlight the icon for whichever
@@ -3339,6 +3341,7 @@
                 case "page-portfolio-report": return "Unit Trust Portfolio";
                 case "page-owner-networth-report": return "Financial Assets vs Real Estate";
                 case "page-currency-report": return "Net Worth by Currency";
+                case "page-incometax": return "Income after Tax";
                 case "page-datasecurity": return "Settings";
                 case "page-navupdate": return "Daily NAV Update";
                 case "page-member": return document.getElementById("memberPageTitle")?.textContent || "Member";
@@ -5448,6 +5451,7 @@
             const portfolioReportHidden = document.getElementById("page-portfolio-report").classList.contains("hidden");
             const ownerNetWorthReportHidden = document.getElementById("page-owner-networth-report").classList.contains("hidden");
             const currencyReportHidden = document.getElementById("page-currency-report").classList.contains("hidden");
+            const incomeTaxHidden = document.getElementById("page-incometax").classList.contains("hidden");
             const navUpdateHidden = document.getElementById("page-navupdate").classList.contains("hidden");
             const inventoryHidden = document.getElementById("page-inventory").classList.contains("hidden");
             const plannedPaymentsHidden = document.getElementById("page-plannedpayments").classList.contains("hidden");
@@ -5466,6 +5470,7 @@
             else if (!portfolioReportHidden) target = "portfolio-report";
             else if (!ownerNetWorthReportHidden) target = "owner-networth-report";
             else if (!currencyReportHidden) target = "currency-report";
+            else if (!incomeTaxHidden) target = "incometax";
             else if (!navUpdateHidden) target = "navupdate";
             else if (!ledgerHidden) {
                 const isUnfiltered = activeLedgerAccountView === "all" && activeCategoryView === "all" && directTypeView === "all";
@@ -5503,6 +5508,7 @@
             else if (target === "portfolio-report") navigateToPortfolioReportPage();
             else if (target === "owner-networth-report") navigateToOwnerNetWorthReportPage();
             else if (target === "currency-report") navigateToCurrencyReportPage();
+            else if (target === "incometax") navigateToIncomeTaxPage();
             else if (target === "tag-report") navigateToTagReportPage();
             else if (target === "budget") navigateToBudgetPage();
             else if (target === "inventory") navigateToInventoryPage();
@@ -21580,6 +21586,88 @@
                 </table>`;
         }
 
+        // --- INCOME AFTER TAX REPORT (v492) ---
+        // Standalone reference report: income since the start (or a chosen date) less tax paid, per year.
+        // Its category choices live in their own setting ("incomeAfterTaxCfg") and are read by nothing
+        // else, so no other report (incl. Net Savings Statement and its exclude flag) is affected.
+        // Income = income transactions in the ticked income categories (refunds excluded). Tax = expenses in
+        // the ticked tax categories, minus refunds (income + isRefund) of those categories.
+        let incomeTaxCfg = null;
+        async function loadIncomeTaxCfg() {
+            if (incomeTaxCfg) return incomeTaxCfg;
+            const rows = await readAllDB(STORES.SETTINGS);
+            const r = rows.find(x => x && x.key === "incomeAfterTaxCfg");
+            incomeTaxCfg = (r && r.value) || { incomeCats: null, taxCats: null, from: "" };
+            return incomeTaxCfg;
+        }
+        async function itCfgChange() {
+            const cfg = await loadIncomeTaxCfg();
+            cfg.from = document.getElementById("itFrom").value || "";
+            const picked = (id) => [...document.querySelectorAll("#" + id + " input:checked")].map(i => i.value);
+            cfg.incomeCats = picked("itIncomeList");
+            cfg.taxCats = picked("itTaxList");
+            await writeDB(STORES.SETTINGS, { key: "incomeAfterTaxCfg", value: cfg });
+            renderIncomeTaxPage(false);
+        }
+        function itCfgAll(el) {
+            const box = document.getElementById(el.dataset.list === "income" ? "itIncomeList" : "itTaxList");
+            box.querySelectorAll("input").forEach(i => { i.checked = el.dataset.on === "1"; });
+            itCfgChange();
+        }
+        async function renderIncomeTaxPage(rebuildLists = true) {
+            const cfg = await loadIncomeTaxCfg();
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const incNames = new Set(dynamicCategories.filter(c => c.type === "income").map(c => c.name));
+            const expNames = new Set(dynamicCategories.filter(c => c.type === "expense").map(c => c.name));
+            txs.forEach(t => { if (!t.cat) return; if (t.type === "income" && !t.isRefund) incNames.add(t.cat); else if (t.type === "expense") expNames.add(t.cat); });
+            const incList = [...incNames].sort(), expList = [...expNames].sort();
+            // not configured yet: every income category counts; tax categories start as those named "...tax..."
+            const incSel = new Set(cfg.incomeCats || incList);
+            const taxSel = new Set(cfg.taxCats || expList.filter(n => /tax/i.test(n)));
+            document.getElementById("itFrom").value = cfg.from || "";
+            if (rebuildLists) {
+                const boxes = (list, sel) => list.map(n => `<label style="display:flex; align-items:center; gap:8px; padding:5px 0; font-weight:600; font-size:0.85rem;"><input type="checkbox" value="${escapeHtml(n)}" ${sel.has(n) ? "checked" : ""} data-change="itCfgChange" style="width:18px; height:18px; flex:0 0 auto;"><span style="overflow-wrap:anywhere;">${escapeHtml(n)}</span></label>`).join("") || `<p style="color:var(--text-muted); font-size:0.8rem;">No categories yet.</p>`;
+                document.getElementById("itIncomeList").innerHTML = boxes(incList, incSel);
+                document.getElementById("itTaxList").innerHTML = boxes(expList, taxSel);
+            }
+            document.getElementById("itIncomeSummary").textContent = `Income categories counted (${[...incSel].filter(n => incNames.has(n)).length} of ${incList.length})`;
+            document.getElementById("itTaxSummary").textContent = `Tax categories (${[...taxSel].filter(n => expNames.has(n)).length} selected)`;
+            const years = {};
+            const yr = (y) => (years[y] = years[y] || { inc: 0, tax: 0 });
+            txs.forEach(t => {
+                if (!t.date || (cfg.from && t.date < cfg.from)) return;
+                const y = t.date.slice(0, 4), b = convertTxAmountToBase(t, accounts);
+                if (t.type === "income" && t.isRefund) { if (taxSel.has(t.cat)) yr(y).tax -= b; }
+                else if (t.type === "income") { if (incSel.has(t.cat)) yr(y).inc += b; }
+                else if (t.type === "expense") { if (taxSel.has(t.cat)) yr(y).tax += b; }
+            });
+            const ys = Object.keys(years).sort();
+            const pct = (tax, inc) => inc > 0 ? (tax / inc * 100).toFixed(1) + "%" : "—";
+            let ti = 0, tt = 0;
+            const td = "padding:8px 10px; text-align:right; white-space:nowrap;";
+            const rows = ys.map(y => { const r = years[y]; ti += r.inc; tt += r.tax;
+                return `<tr><td style="padding:8px 10px; font-weight:700;">${y}</td><td style="${td}">${formatCurrency(r.inc, baseCurrency)}</td><td style="${td}">${formatCurrency(r.tax, baseCurrency)}</td><td style="${td} font-weight:800;">${formatCurrency(r.inc - r.tax, baseCurrency)}</td><td style="${td}">${pct(r.tax, r.inc)}</td></tr>`; }).join("");
+            document.getElementById("itResult").innerHTML = ys.length ? `
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                    <div><div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Total income</div><div style="font-weight:800;">${formatCurrency(ti, baseCurrency)}</div></div>
+                    <div><div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Tax paid</div><div style="font-weight:800;">${formatCurrency(tt, baseCurrency)}</div></div>
+                    <div><div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Income after tax</div><div style="font-weight:800; font-size:1.15rem;">${formatCurrency(ti - tt, baseCurrency)}</div></div>
+                    <div><div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Tax %</div><div style="font-weight:800;">${pct(tt, ti)}</div></div>
+                </div>
+                <table style="width:100%; border-collapse:collapse; font-size:0.82rem;"><thead><tr style="color:var(--text-muted); font-size:0.68rem; text-transform:uppercase;"><th style="padding:6px 10px; text-align:left;">Year</th><th style="padding:6px 10px; text-align:right;">Income</th><th style="padding:6px 10px; text-align:right;">Tax</th><th style="padding:6px 10px; text-align:right;">After tax</th><th style="padding:6px 10px; text-align:right;">Tax %</th></tr></thead>
+                <tbody>${rows}</tbody>
+                <tfoot><tr style="border-top:2px solid var(--border-color); font-weight:800;"><td style="padding:8px 10px;">Total</td><td style="${td}">${formatCurrency(ti, baseCurrency)}</td><td style="${td}">${formatCurrency(tt, baseCurrency)}</td><td style="${td}">${formatCurrency(ti - tt, baseCurrency)}</td><td style="${td}">${pct(tt, ti)}</td></tr></tfoot></table>`
+                : `<p style="color:var(--text-muted); font-weight:600;">No income or tax found for the chosen categories.</p>`;
+        }
+        function navigateToIncomeTaxPage() {
+            workspaceScrollY = window.scrollY;
+            showPage("page-incometax");
+            window.scrollTo(0, 0);
+            pushVirtualState("incometax");
+            renderIncomeTaxPage();
+        }
+
         function navigateToCurrencyReportPage() {
             workspaceScrollY = window.scrollY;
             showPage("page-currency-report");
@@ -24059,6 +24147,7 @@
             toggleInsRefund: (el) => toggleInsRefund(el), // v473
             addInsPaymentRow: () => addInsPaymentRow(null, true),
             toggleInsParent,
+            itCfgAll: (el) => itCfgAll(el),
             addInsSvRow: () => insAddSvRowForType(),
             addInsFundLine: (el) => addInsFundLine(el), // v471
             removeInsFundLine: (el) => removeInsFundLine(el),
@@ -24118,6 +24207,7 @@
             renderIncomeBreakdownPage: () => renderIncomeBreakdownPage(),
             renderPortfolioReportPage: () => renderPortfolioReportPage(),
             renderCurrencyReportPage: () => renderCurrencyReportPage(),
+            itCfgChange: () => itCfgChange(),
             handleCurrencyReportSecondaryChange: () => handleCurrencyReportSecondaryChange(),
             renderTotalSummaryPage: () => renderTotalSummaryPage(),
             toggleTxTransferFx: () => toggleTxTransferFx(),

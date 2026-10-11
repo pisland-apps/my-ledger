@@ -733,6 +733,17 @@
         .ins-info-btn { border: 1.5px solid var(--border-color); background: transparent; color: var(--text-muted); border-radius: 50%; width: 18px; height: 18px; font-size: 0.66rem; font-weight: 800; line-height: 1; cursor: pointer; margin-left: 6px; padding: 0; vertical-align: middle; }
         .ins-med-note { display: none; font-size: 0.7rem; line-height: 1.45; color: var(--text-muted); background: var(--chip-bg); border-radius: 8px; padding: 7px 10px; margin-top: 6px; }
         .ins-med-note.open { display: block; }
+        /* v484: Insurance list on phones — Savings panel becomes a 3-row list (no truncated numbers) and each
+           policy card puts its Paid / SV figures on their own full-width row under the title. */
+        @media (max-width: 600px) {
+            .ins-sav-grid { flex-direction: column; gap: 0 !important; }
+            .ins-sav-grid .ins-sum-cell { flex: 0 0 auto !important; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; text-align: left !important; padding: 8px 6px; border-top: 1px solid var(--border-color); }
+            .ins-sav-grid .ins-sum-cell:first-child { border-top: 0; padding-top: 2px; }
+            .ins-sav-grid .ins-sum-val { font-size: 1.05rem !important; text-align: right; }
+            .ins-pol-top { flex-direction: column; align-items: stretch !important; gap: 8px !important; }
+            .ins-pol-fig { display: flex !important; justify-content: space-between; align-items: flex-end; gap: 10px; text-align: left !important; border-top: 1px dashed var(--border-color); padding-top: 8px; }
+            .ins-pol-sv { text-align: right; }
+        }
         /* v482: reducing-cover schedule (editor + detail sheet accordion) */
         .ins-sched-edit, .ins-sched { border-top: 1px dashed var(--border-color); margin-top: 6px; padding-top: 6px; }
         .ins-sched > summary, .ins-sched-edit > summary { cursor: pointer; font-size: 0.74rem; font-weight: 700; color: var(--primary); list-style: none; padding: 4px 0; }

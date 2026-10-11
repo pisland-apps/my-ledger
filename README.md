@@ -3763,3 +3763,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v483: Fix — reducing-cover "Add step" / "Paste from note" buttons did nothing
 - Cause: in v482 `addInsSchedStep` and `insSchedPasteFromNote` were registered in `CHANGE_ACTIONS`, but the buttons use `data-click`, which is dispatched from `CLICK_ACTIONS`. Moved both entries to `CLICK_ACTIONS`.
 - `APP_VERSION` / `CACHE_NAME` → v483.
+
+## v484: Insurance list — phone layout
+- Savings / investment panel: on screens ≤600px the three figures (Paid to SV date / Surrender value / Net) stack as label-left, value-right rows; the "…" truncation is gone everywhere (values now wrap instead of ellipsis).
+- Policy cards on phones: Paid and SV (with the % chip and "as of" date) move to their own full-width row below the title/coverage, so plan names and sum insured use the full card width. Desktop layout unchanged.
+- `APP_VERSION` / `CACHE_NAME` → v484.

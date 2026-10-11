@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v483";
+        const APP_VERSION = "v484";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15556,7 +15556,7 @@
                     : `<span style="display:block; font-size:0.85rem; font-weight:800; color:var(--text-main);">SV ${formatCurrency(f.svValue, f.cur)}${svChip}</span><span style="display:block; font-size:0.68rem; font-weight:600; color:${f.svStale ? "var(--expense-color)" : "var(--text-muted)"};">as of ${escapeHtml(f.latestSv.date)}${f.svStale ? " ⚠️" : ""}</span>`;
                 return `
                     <div class="config-item" data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; flex-direction:column; align-items:stretch; gap:8px; ${insIsLive(p) ? "" : "opacity:0.65;"}">
-                        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                        <div class="ins-pol-top" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
                         <span class="category-display-badge" style="min-width:0;">
                             <span>${icon}</span>
                             <span style="display:flex; flex-direction:column; min-width:0;">
@@ -15566,9 +15566,9 @@
                                 ${dueLine}
                             </span>
                         </span>
-                        <span style="text-align:right; flex:0 0 auto;">
-                            <span style="display:block; font-size:0.85rem; font-weight:600;${f.svValue != null ? " color:var(--text-muted);" : ""}">Paid ${formatCurrency(f.paid, f.cur)}</span>
-                            ${svText}
+                        <span class="ins-pol-fig" style="text-align:right; flex:0 0 auto;">
+                            <span class="ins-pol-paid" style="display:block; font-size:0.85rem; font-weight:600;${f.svValue != null ? " color:var(--text-muted);" : ""}">Paid ${formatCurrency(f.paid, f.cur)}</span>
+                            ${f.svValue != null ? `<span class="ins-pol-sv" style="display:block;">${svText}</span>` : ""}
                         </span>
                         </div>
                         ${(p.paidByBonus || p.notes) ? `<div>${insBonusBannerHtml(p, true)}${p.notes ? `<div style="${p.paidByBonus ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; white-space:pre-line; overflow-wrap:anywhere; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${escapeHtml(p.notes)}</div>` : ""}</div>` : ""}
@@ -15577,9 +15577,9 @@
             list.innerHTML = rows.join("");
 
             const cell = (label, value) => `
-                <div style="flex:1 1 0; min-width:0; text-align:center;">
-                    <div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">${label}</div>
-                    <div style="font-size:1rem; font-weight:800; font-variant-numeric:tabular-nums; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${value}</div>
+                <div class="ins-sum-cell" style="flex:1 1 0; min-width:0; text-align:center;">
+                    <div class="ins-sum-label" style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">${label}</div>
+                    <div class="ins-sum-val" style="font-size:1rem; font-weight:800; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;">${value}</div>
                 </div>`;
             summary.style.display = filtered.length ? "flex" : "none";
             // v477: Surrender value lives only in the Savings panel below (it was a duplicate here, and
@@ -15604,7 +15604,7 @@
                     savEl.style.display = "block";
                     savEl.innerHTML = `
                         <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); text-align:center; margin-bottom:8px;">Savings / investment policies (${svCount})</div>
-                        <div style="display:flex; gap:8px;">
+                        <div class="ins-sav-grid" style="display:flex; gap:8px;">
                             ${cell("Paid to SV date", formatCurrency(savPaidBase, baseCurrency))}
                             ${cell("Surrender value", formatCurrency(savSvBase, baseCurrency))}
                             ${cell("Net", `<span style="color:${netColor};">${net >= 0 ? "+" : "−"}${formatCurrency(Math.abs(net), baseCurrency)}</span>`)}

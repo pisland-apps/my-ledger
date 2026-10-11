@@ -3715,3 +3715,11 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **SV date label reworded:** "Surrender values as of <date>" when all policies share a date, otherwise "Surrender values dated <oldest> to <newest> (varies by policy)" (per-policy dates stay on each card). The ⚠️ is now its own red line — "Oldest surrender value is over a year old — update it from the latest statement" — shown when the oldest SV date is more than 365 days back.
 - `APP_VERSION` / `CACHE_NAME` → v477.
 
+## v478: Insurance — policy cards show the sum insured
+
+- **New "Sum insured" line on each policy card** (under the insurer / member tag, above "Next premium"): e.g. `Sum insured Life RM100,000 · Critical Illness RM50,000`. It reads the coverage rows already entered in the policy editor — no new fields.
+- Rows of the same type are **merged (summed)**; **at most 2 items** are shown, the rest as "+N more" (the detail sheet has the full list). Figures are in the **policy's own currency**, not converted, and are **never added into one grand total** across different cover types.
+- **Health / Medical shows its annual limit** (else lifetime limit, else sum insured) — labelled "Health/Medical annual limit …". Home / Fire, Car and Travel show their sum insured the same way.
+- An **in-force policy with no amount entered** shows a muted "Sum insured not set ⚠️"; ended policies show nothing in that case.
+- `APP_VERSION` / `CACHE_NAME` → v478.
+

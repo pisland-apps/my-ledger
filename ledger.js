@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v477";
+        const APP_VERSION = "v478";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15347,6 +15347,35 @@
             };
         }
 
+        // v478: one line of cover for a policy card — "Sum insured  Life RM100,000 · Critical Illness RM50,000".
+        // Coverage rows of the same type are merged (summed) so a rider doesn't repeat; each item shows in the
+        // POLICY's own currency (no conversion — it is that policy's own figure, not a total). Health / Medical
+        // shows its annual limit (else lifetime limit / sum) because that is the number that matters for it.
+        // At most 2 items, the rest folded into "+N" (full list is in the detail sheet). A live policy with no
+        // amount at all gets a muted "Sum insured not set ⚠️" so a missing entry is visible, not blank.
+        function insCardCoverHtml(p, cur) {
+            const groups = new Map();
+            (p.coverages || []).filter(c => c && (c.kind || c.label)).forEach(c => {
+                const k = INS_COV_KINDS[c.kind];
+                const name = (k && c.kind !== "other") ? k[1] : (c.label || (k ? k[1] : "Cover"));
+                let amount = null, tag = "";
+                if (c.kind === "medical" && typeof c.annualLimit === "number") { amount = c.annualLimit; tag = " annual limit"; }
+                else if (typeof c.sumAssured === "number") amount = c.sumAssured;
+                else if (c.kind === "medical" && typeof c.lifetimeLimit === "number") { amount = c.lifetimeLimit; tag = " lifetime limit"; }
+                if (amount == null) return;
+                const key = name + tag;
+                groups.set(key, (groups.get(key) || 0) + amount);
+            });
+            const wrap = (inner, color) => `<span style="font-size:0.72rem; font-weight:700; color:${color || "var(--text-muted)"};">${inner}</span>`;
+            if (!groups.size) {
+                return insIsLive(p) ? wrap("Sum insured not set ⚠️") : "";
+            }
+            const items = [...groups.entries()].map(([name, amt]) => `${escapeHtml(name)} ${formatCurrency(amt, cur)}`);
+            const shown = items.slice(0, 2).join(" · ");
+            const more = items.length > 2 ? ` · +${items.length - 2} more` : "";
+            return wrap(`<span style="font-weight:600;">Sum insured</span> ${shown}${more}`, "var(--text-main)");
+        }
+
         // --- Transaction form: "Policy" row ---
 
         // Shown on an Expense entry only when at least one policy exists AND either the category
@@ -15474,6 +15503,7 @@
                             <span style="display:flex; flex-direction:column; min-width:0;">
                                 <strong>${escapeHtml(p.product || p.insurer || "Policy")}</strong>
                                 ${metaParts.length ? `<span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">${metaParts.join(" · ")}</span>` : ""}
+                                ${insCardCoverHtml(p, f.cur)}
                                 ${dueLine}
                             </span>
                         </span>

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v488";
+        const APP_VERSION = "v489";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2754,6 +2754,26 @@
         // v488: Setting > Net Worth Card > "Count insurance surrender value". Saved in the SETTINGS
         // store (so it rides along with Backup & Restore and Drive sync); the dashboard is re-rendered
         // straight away, every report page recalculates when it is next opened.
+        // v489: keeps the dashboard chip (checkbox + hover tooltip) and the Setting checkbox in step
+        // with includeInsuranceSvInNetWorth, and hides the chip when no in-force policy has a
+        // surrender value (nothing for it to switch). The tooltip says what the switch does and, in
+        // both states, how many policies are involved (never the amount, which would show through Privacy Mode).
+        function updateInsuranceSvChip() {
+            const chip = document.getElementById("nwInsChip");
+            const cb = document.getElementById("nwInsChipToggle");
+            const settingCb = document.getElementById("insuranceSvNetWorthToggle");
+            if (cb) cb.checked = includeInsuranceSvInNetWorth;
+            if (settingCb) settingCb.checked = includeInsuranceSvInNetWorth;
+            if (!chip) return;
+            const sv = insSvNetWorth("all", true);
+            chip.classList.toggle("hidden", sv.count === 0);
+            // No amount in the tooltip: it is plain text, so it would show through Privacy Mode's blur.
+            const n = `${sv.count} polic${sv.count === 1 ? "y" : "ies"}`;
+            chip.dataset.tip = "Count insurance surrender value in Net Worth.\n"
+                + "Latest surrender value of in-force policies, minus any policy loan.\n"
+                + (includeInsuranceSvInNetWorth ? `ON: counting ${n}.` : `OFF: turn on to count ${n}.`);
+        }
+
         async function handleInsuranceSvNetWorthToggleChange(el) {
             includeInsuranceSvInNetWorth = !!el.checked;
             await writeDB(STORES.SETTINGS, { key: "includeInsuranceSvInNetWorth", value: includeInsuranceSvInNetWorth });
@@ -15266,9 +15286,11 @@
         // `scope`: "all" | "joint" | "unassigned" | <memberId> — a policy belongs to its insured
         // member (insuredMemberId); one with no (or a deleted) member is Unassigned; none is Joint.
         // Returns { base (in baseCurrency), byCurrency {CODE: native}, count }; all zero when the toggle is off.
-        function insSvNetWorth(scope) {
+        // v489: `ignoreToggle` = work the figure out even while the switch is off (the dashboard chip
+        // uses it to show what turning it on would add).
+        function insSvNetWorth(scope, ignoreToggle = false) {
             const out = { base: 0, byCurrency: {}, count: 0 };
-            if (!includeInsuranceSvInNetWorth) return out;
+            if (!includeInsuranceSvInNetWorth && !ignoreToggle) return out;
             (insuranceCache || []).forEach(p => {
                 if (!insIsLive(p)) return;
                 const latest = (p.surrenderHistory || []).filter(r => r && r.date)
@@ -18959,6 +18981,7 @@
             // asset in the Financial Assets / Real Estate split below so the two still add up.
             const insSvAll = insSvNetWorth("all");
             globalBaseNetWorth += insSvAll.base;
+            updateInsuranceSvChip();
             document.getElementById("netWorthDisplay").innerHTML = formatBalanceHTML(globalBaseNetWorth, baseCurrency);
 
             // v309: Dashboard hero badge for the same "compare also in" preference the Net Worth

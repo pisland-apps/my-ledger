@@ -3795,3 +3795,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - When on, every policy that is still in force (In force / Paid-up) and has a surrender value on file adds its LATEST surrender value minus any policy loan outstanding (the "net SV" the policy detail shows), converted to the base currency, to Net Worth as a financial asset. Lapsed / Surrendered / Matured policies and policies with no surrender value (term, medical, car, home, travel) are left out. One helper does all of it: `insSvNetWorth(scope)`.
 - Where it shows up: Dashboard Portfolio Net Worth (+ the Financial Assets / Real Estate split and the secondary-currency badge), Net Worth Statement (one extra "Insurance (surrender value)" row under What I Have — not tappable — and in the CSV export), Net Worth by Member rows and a member's own page (policy counts under its insured member; a policy with no / a deleted member goes to "Unassigned"; joint groups get none), Financial Assets vs Real Estate report, Net Worth by Currency report (added to the policy's own currency; follows the member filter).
 - `APP_VERSION` / `CACHE_NAME` → v488.
+
+## v489: Insurance surrender value switch also on the Dashboard card
+- A small "🛡️ Insurance SV" on/off chip now sits on the Portfolio Net Worth card, so the figure can be compared with and without insurance in one tap. It is the same setting as Setting > Net Worth Card > Insurance (`includeInsuranceSvInNetWorth`); both checkboxes stay in step (`updateInsuranceSvChip()`).
+- Hovering (or keyboard-focusing) the chip shows a tooltip: what the switch counts, and how many policies are involved. The tooltip never shows an amount, because it is plain text and would show through Privacy Mode.
+- The chip is hidden when no in-force policy has a surrender value. `insSvNetWorth(scope, ignoreToggle)` gained the `ignoreToggle` argument for this.
+- `APP_VERSION` / `CACHE_NAME` → v489.
+

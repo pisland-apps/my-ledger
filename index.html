@@ -335,6 +335,37 @@
             border-left: 3px solid rgba(255,255,255,0.65);
         }
         .net-worth-hero-card .net-worth-split-card.net-worth-split-realestate { border-left-color: var(--salary-color); }
+        /* v489: quick "Insurance SV" on/off chip on the hero card — same switch as Setting > Net
+           Worth Card > Insurance, kept here so the figure can be compared with and without it.
+           The hover/focus tooltip is pure CSS (data-tip), so it needs no script and works with
+           the keyboard; hidden by renderApp() when no in-force policy has a surrender value. */
+        .nw-ins-chip {
+            position: relative; display: inline-flex; align-items: center; gap: 7px;
+            margin-top: 10px; padding: 3px 10px 3px 9px; cursor: pointer;
+            font-size: 0.72rem; font-weight: 700; color: rgba(255,255,255,0.92);
+            background: rgba(255,255,255,0.16); border-radius: 999px; user-select: none;
+        }
+        .nw-ins-chip.hidden { display: none; }
+        .nw-ins-chip input { position: absolute; opacity: 0; width: 0; height: 0; }
+        .nw-ins-track {
+            position: relative; width: 26px; height: 15px; flex-shrink: 0; border-radius: 999px;
+            background: rgba(255,255,255,0.35); transition: background .15s;
+        }
+        .nw-ins-track::after {
+            content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px;
+            border-radius: 50%; background: #fff; transition: transform .15s;
+        }
+        .nw-ins-chip input:checked + .nw-ins-track { background: var(--income-color, #22c55e); }
+        .nw-ins-chip input:checked + .nw-ins-track::after { transform: translateX(11px); }
+        .nw-ins-chip input:focus-visible + .nw-ins-track { outline: 2px solid #fff; outline-offset: 2px; }
+        .nw-ins-chip::after {
+            content: attr(data-tip); position: absolute; left: 0; top: calc(100% + 6px); z-index: 20;
+            width: max-content; max-width: min(260px, 80vw); padding: 7px 10px; border-radius: 8px;
+            font-size: 0.7rem; font-weight: 600; line-height: 1.35; white-space: pre-line;
+            color: #fff; background: rgba(15,23,42,0.96); box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+            opacity: 0; pointer-events: none; transform: translateY(-2px); transition: opacity .12s, transform .12s;
+        }
+        .nw-ins-chip:hover::after, .nw-ins-chip:focus-within::after { opacity: 1; transform: none; }
         .net-worth-hero-card .net-worth-split-label { color: rgba(255,255,255,0.8); }
         .net-worth-hero-card .net-worth-split-value { color: #fff; }
 
@@ -3350,6 +3381,14 @@
                     <div class="net-worth-companion" id="netWorthCompanion" data-click="toggleCompanionSettingsFromDashboard" title="Companion — tap to change in Settings" style="display:none;"></div>
                 </div>
 
+                <!-- v489: quick on/off for counting insurance surrender value — the same setting as
+                     Setting > Net Worth Card > Insurance (includeInsuranceSvInNetWorth); the tooltip
+                     text (data-tip) is filled by renderApp(). Hidden when no policy has a surrender value. -->
+                <label class="nw-ins-chip hidden" id="nwInsChip" data-tip="Insurance surrender value">
+                    <input type="checkbox" id="nwInsChipToggle" data-change="handleInsuranceSvNetWorthToggleChange" aria-label="Count insurance surrender value in Net Worth">
+                    <span class="nw-ins-track"></span>
+                    <span>🛡️ Insurance SV</span>
+                </label>
                 <!-- v157: Financial Assets / Real Estate split — only shown when at least one Real
                      Estate account exists (toggled in renderApp()); otherwise stays hidden and the
                      Portfolio Net Worth figure above is the only total shown, per design. -->

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v481";
+        const APP_VERSION = "v482";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15347,6 +15347,53 @@
             };
         }
 
+        // v482: reducing-cover schedule. A coverage row may carry schedule: [{date:"YYYY-MM-DD", amount}] — the
+        // sum insured steps down on those dates (reducing term / mortgage cover). The CURRENT sum insured is the
+        // latest step dated on or before today; before the first step (or with no schedule) it is the row's own
+        // Sum insured. Everything that shows or adds up a sum insured goes through insCovSum().
+        function insCovSchedule(c) {
+            return (c && Array.isArray(c.schedule) ? c.schedule : [])
+                .filter(r => r && r.date && typeof r.amount === "number")
+                .slice().sort((a, b) => a.date.localeCompare(b.date));
+        }
+        function insCovCurrent(c) {
+            const today = todayLocalStr();
+            const steps = insCovSchedule(c);
+            let cur = null, next = null;
+            steps.forEach(st => { if (st.date <= today) cur = st; else if (!next) next = st; });
+            const base = (c && typeof c.sumAssured === "number") ? c.sumAssured : null;
+            return { amount: cur ? cur.amount : base, from: cur ? cur.date : null, next, steps, today };
+        }
+        function insCovSum(c) { return insCovCurrent(c).amount; }
+
+        // v482: collapsed accordion with the reducing schedule as a small table (Date | Sum insured | Change).
+        // The step in force today is highlighted; the next one is flagged.
+        function insSchedAccordionHtml(c, money) {
+            const cc = insCovCurrent(c);
+            if (!cc.steps.length) return "";
+            const base = (typeof c.sumAssured === "number") ? c.sumAssured : null;
+            let prev = base;
+            const rows = [];
+            if (base != null) rows.push({ date: "Start", amount: base, change: null, state: cc.from ? "" : "now" });
+            cc.steps.forEach(st => {
+                const change = prev != null ? st.amount - prev : null;
+                prev = st.amount;
+                rows.push({ date: st.date, amount: st.amount, change, state: st.date === cc.from ? "now" : (cc.next && st.date === cc.next.date ? "next" : "") });
+            });
+            const td = "padding:5px 6px; font-size:0.74rem;";
+            return `<details class="ins-sched" style="margin-top:8px;">
+                <summary>↘ Reducing cover schedule (${cc.steps.length} ${cc.steps.length === 1 ? "step" : "steps"})</summary>
+                <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; margin-top:6px;">
+                    <thead><tr style="text-align:left; color:var(--text-muted); font-size:0.62rem; text-transform:uppercase;"><th style="${td}">Date</th><th style="${td} text-align:right;">Sum insured</th><th style="${td} text-align:right;">Change</th></tr></thead>
+                    <tbody>${rows.map(r => `<tr style="border-top:1px solid var(--border-color);${r.state === "now" ? " background:rgba(99,102,241,0.10); font-weight:800;" : ""}">
+                        <td style="${td}">${escapeHtml(r.date)}${r.state === "now" ? ` <span class="ins-rider-pill">now</span>` : (r.state === "next" ? ` <span class="ins-rider-pill" style="background:rgba(245,158,11,0.18); color:#b45309;">next</span>` : "")}</td>
+                        <td style="${td} text-align:right;">${money(r.amount)}</td>
+                        <td style="${td} text-align:right; color:var(--text-muted);">${r.change == null ? "—" : (r.change < 0 ? "−" : "+") + money(Math.abs(r.change))}</td>
+                    </tr>`).join("")}</tbody>
+                </table></div>
+            </details>`;
+        }
+
         // v478: one line of cover for a policy card — "Sum insured  Life RM100,000 · Critical Illness RM50,000".
         // Coverage rows of the same type are merged (summed) so a rider doesn't repeat; each item shows in the
         // POLICY's own currency (no conversion — it is that policy's own figure, not a total). Health / Medical
@@ -15355,16 +15402,19 @@
         // amount at all gets a muted "Sum insured not set ⚠️" so a missing entry is visible, not blank.
         function insCardCoverHtml(p, cur) {
             const groups = new Map();
+            const reducing = [];
             (p.coverages || []).filter(c => c && (c.kind || c.label)).forEach(c => {
                 const k = INS_COV_KINDS[c.kind];
                 const name = (k && c.kind !== "other") ? k[1] : (c.label || (k ? k[1] : "Cover"));
                 let amount = null, tag = "";
                 if (c.kind === "medical" && typeof c.annualLimit === "number") { amount = c.annualLimit; tag = " annual limit"; }
-                else if (typeof c.sumAssured === "number") amount = c.sumAssured;
+                else if (typeof insCovSum(c) === "number") amount = insCovSum(c);
                 else if (c.kind === "medical" && typeof c.lifetimeLimit === "number") { amount = c.lifetimeLimit; tag = " lifetime limit"; }
                 if (amount == null) return;
                 const key = name + tag;
                 groups.set(key, (groups.get(key) || 0) + amount);
+                const cc = insCovCurrent(c);
+                if (cc.steps.length && cc.next) reducing.push({ name, next: cc.next });
             });
             const wrap = (inner, color) => `<span style="font-size:0.72rem; font-weight:700; color:${color || "var(--text-muted)"};">${inner}</span>`;
             if (!groups.size) {
@@ -15374,7 +15424,7 @@
             // the next line). Up to 4 rows, the rest as "+N more"; amount sits right after its name.
             const entries = [...groups.entries()];
             const row = ([name, amt]) => `<div style="display:flex; gap:8px; align-items:baseline; font-size:0.72rem; line-height:1.4;"><span style="color:var(--text-muted); font-weight:600;">${escapeHtml(name)}</span><span style="font-weight:800; color:var(--text-main);">${formatCurrency(amt, cur)}</span></div>`;
-            return `<div style="margin-top:2px;"><div style="font-size:0.62rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Sum insured</div>${entries.slice(0, 4).map(row).join("")}${entries.length > 4 ? `<div style="font-size:0.7rem; font-weight:700; color:var(--text-muted);">+${entries.length - 4} more</div>` : ""}</div>`;
+            return `<div style="margin-top:2px;"><div style="font-size:0.62rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Sum insured</div>${entries.slice(0, 4).map(row).join("")}${entries.length > 4 ? `<div style="font-size:0.7rem; font-weight:700; color:var(--text-muted);">+${entries.length - 4} more</div>` : ""}${reducing.slice(0, 1).map(r => `<div style="font-size:0.68rem; font-weight:600; color:var(--text-muted);">↘ Reducing · next ${formatCurrency(r.next.amount, cur)} from ${escapeHtml(r.next.date)}</div>`).join("")}</div>`;
         }
 
         // --- Transaction form: "Policy" row ---
@@ -15598,7 +15648,7 @@
 
         function insAddCoverage(d, p, c) {
             const cur = p.currency || baseCurrency;
-            if (typeof c.sumAssured === "number") { d.sum += insConvert(c.sumAssured, cur, baseCurrency); d.hasSum = true; }
+            if (typeof insCovSum(c) === "number") { d.sum += insConvert(insCovSum(c), cur, baseCurrency); d.hasSum = true; }
             if (typeof c.annualLimit === "number") { d.annual += insConvert(c.annualLimit, cur, baseCurrency); d.hasAnnual = true; }
             if (typeof c.lifetimeLimit === "number") { d.life += insConvert(c.lifetimeLimit, cur, baseCurrency); d.hasLife = true; }
             if (typeof c.lifetimeRemaining === "number") { d.rem += insConvert(c.lifetimeRemaining, cur, baseCurrency); d.hasRem = true; }
@@ -15621,15 +15671,15 @@
             const MAIN_KIND = { life: "life", savings: "life", investment: "life", term: "term", medical: "medical", critical: "critical", accident: "accident" };
             const itemRow = ({ p, c }, hideAmt) => {
                 const prefix = (kind === "other" && c.label) ? escapeHtml(c.label) + " · " : "";
-                const amt = typeof c.sumAssured === "number" ? formatCurrency(c.sumAssured, p.currency || baseCurrency) : "no sum";
+                const amt = typeof insCovSum(c) === "number" ? formatCurrency(insCovSum(c), p.currency || baseCurrency) : "no sum";
                 const isRider = kind !== "other" && MAIN_KIND[p.type] && MAIN_KIND[p.type] !== kind;
                 const name = `${prefix}${escapeHtml(p.product || p.insurer || "Policy")}${p.insurer && p.product ? " (" + escapeHtml(p.insurer) + ")" : ""}`;
-                return `<div class="ins-item"><span style="min-width:0; overflow-wrap:anywhere;">${name}${isRider ? ` <span class="ins-rider-pill">rider</span>` : ""}</span>${(hideAmt && typeof c.sumAssured === "number") ? "" : `<span class="ins-item-amt">${amt}</span>`}</div>`;
+                return `<div class="ins-item"><span style="min-width:0; overflow-wrap:anywhere;">${name}${isRider ? ` <span class="ins-rider-pill">rider</span>` : ""}</span>${(hideAmt && typeof insCovSum(c) === "number") ? "" : `<span class="ins-item-amt">${amt}</span>`}</div>`;
             };
             // Biggest first, own-cover before riders, so the rows hidden under "Show N more" are the small ones.
             const riderOf = ({ p }) => kind !== "other" && MAIN_KIND[p.type] && MAIN_KIND[p.type] !== kind;
             const sorted = d.items.slice().sort((a, b) => (riderOf(a) - riderOf(b))
-                || (insConvert(b.c.sumAssured || 0, b.p.currency || baseCurrency, baseCurrency) - insConvert(a.c.sumAssured || 0, a.p.currency || baseCurrency, baseCurrency)));
+                || (insConvert(insCovSum(b.c) || 0, b.p.currency || baseCurrency, baseCurrency) - insConvert(insCovSum(a.c) || 0, a.p.currency || baseCurrency, baseCurrency)));
             const items = withItems
                 ? (sorted.length === 1
                     // one policy only: the heading already shows the amount, so just name the policy
@@ -15847,8 +15897,8 @@
                     return `<div style="border:1px solid var(--border-color); border-radius:12px; padding:10px 12px; margin-bottom:8px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
                             <span style="background:var(--chip-bg); border-radius:999px; padding:3px 10px; font-size:0.74rem; font-weight:700; min-width:0; overflow-wrap:anywhere;">${k ? k[2] + " " : ""}${escapeHtml(name)}</span>
-                            <span style="font-weight:800; font-size:0.9rem; flex:0 0 auto;">${typeof c.sumAssured === "number" ? money(c.sumAssured) : ""}</span>
-                        </div>${limits}${expiryLine}
+                            <span style="font-weight:800; font-size:0.9rem; flex:0 0 auto;">${typeof insCovSum(c) === "number" ? money(insCovSum(c)) : ""}</span>
+                        </div>${limits}${expiryLine}${insSchedAccordionHtml(c, money)}
                     </div>`;
                 }).join("");
             }
@@ -16050,7 +16100,7 @@
         // different date from the policy. Health / Medical adds the three limits a medical plan has that
         // other coverages don't: annual limit, lifetime limit and lifetime limit REMAINING (the remaining
         // figure is copied from the insurer's statement — the app can't know what has been claimed).
-        // Record: { id, kind, label (only for "other"), sumAssured, expiry, annualLimit, lifetimeLimit,
+        // Record: { id, kind, label (only for "other"), sumAssured, expiry, schedule [{date,amount}] (v482), annualLimit, lifetimeLimit,
         // lifetimeRemaining }; every number is optional.
         function addInsCoverageRow(data) {
             const c = data || {};
@@ -16077,9 +16127,77 @@
                 </div>
                 <div class="ins-row-line">
                     <div class="ins-sv-cell"><label>Coverage expiry (only if different from the policy's end date)</label><input type="date" class="ins-cov-expiry" value="${escapeHtml(c.expiry || "")}"></div>
-                </div>`;
+                </div>
+                <details class="ins-sched-edit"${Array.isArray(c.schedule) && c.schedule.length ? " open" : ""}>
+                    <summary>↘ Reducing cover schedule (optional)</summary>
+                    <div class="ins-sched-help">For reducing term / mortgage cover: the sum insured on each step date. The Sum insured above is the starting amount; the card and reports use the latest step on or before today.</div>
+                    <div class="ins-sched-rows"></div>
+                    <div class="ins-row-line" style="gap:8px; margin-top:6px;">
+                        <button type="button" class="ins-mini-btn" data-click="addInsSchedStep" data-row-id="${rowId}">＋ Add step</button>
+                        <button type="button" class="ins-mini-btn" data-click="insSchedPasteFromNote" data-row-id="${rowId}">Paste from note</button>
+                    </div>
+                </details>`;
             document.getElementById("insCoverageRows").appendChild(row);
+            (Array.isArray(c.schedule) ? c.schedule : []).slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach(st => addInsSchedStepTo(row, st));
             insCovApplyKind(row);
+        }
+
+        // --- v482: reducing-cover schedule editor ---
+        function addInsSchedStepTo(row, st) {
+            const d = st || {};
+            insRowCounter++;
+            const stepId = "insStep_" + insRowCounter;
+            const line = document.createElement("div");
+            line.className = "ins-row-line ins-step-line";
+            line.id = stepId;
+            line.innerHTML = `
+                <input type="date" class="ins-c-date ins-step-date" value="${escapeHtml(d.date || "")}">
+                <input type="number" class="ins-c-num ins-step-amount" step="0.01" min="0" placeholder="Sum insured" value="${typeof d.amount === "number" ? d.amount : ""}">
+                <button type="button" class="ins-row-x" data-click="removeInsRow" data-row-id="${stepId}" aria-label="Remove step">×</button>`;
+            row.querySelector(".ins-sched-rows").appendChild(line);
+            const det = row.querySelector(".ins-sched-edit");
+            if (det) det.open = true;
+        }
+
+        function addInsSchedStep(el) {
+            const row = document.getElementById(el.dataset.rowId);
+            if (!row) return;
+            // continue from the last step: same day next year, same amount (adjust after)
+            const lines = row.querySelectorAll(".ins-step-line");
+            const last = lines.length ? lines[lines.length - 1] : null;
+            const lastDate = last ? last.querySelector(".ins-step-date").value : "";
+            addInsSchedStepTo(row, { date: lastDate ? insAddYear(lastDate) : "", amount: last ? insNumOrNull(last.querySelector(".ins-step-amount").value) : insNumOrNull(row.querySelector(".ins-cov-sum").value) });
+        }
+
+        // Reads lines such as "12/11/2026 - 497,587" (dd/mm/yyyy, like the PC date field) from the policy's Notes.
+        function insParseScheduleLines(text) {
+            const found = [];
+            const re = /(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})\s*[-–—:=]?\s*(?:[A-Za-z]{0,3}\s*)?([\d,]+(?:\.\d+)?)/;
+            String(text || "").split(/\r?\n/).forEach((line, idx) => {
+                const m = line.match(re);
+                if (!m) return;
+                const dd = parseInt(m[1], 10), mm = parseInt(m[2], 10), yy = parseInt(m[3], 10);
+                const amount = parseFloat(m[4].replace(/,/g, ""));
+                if (!(dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12) || !isFinite(amount)) return;
+                found.push({ idx, date: `${yy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`, amount });
+            });
+            return found;
+        }
+
+        function insSchedPasteFromNote(el) {
+            const row = document.getElementById(el.dataset.rowId);
+            const notesEl = document.getElementById("insNotes");
+            if (!row || !notesEl) return;
+            const found = insParseScheduleLines(notesEl.value);
+            if (!found.length) { alert("No schedule lines found in the Notes.\n\nExpected one step per line, like:\n12/11/2026 - 497,587"); return; }
+            const preview = found.map(f => `${f.date}   ${f.amount.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`).join("\n");
+            if (!confirm(`Add these ${found.length} steps to this coverage? (dates read as dd/mm/yyyy)\n\n${preview}`)) return;
+            const have = new Set([...row.querySelectorAll(".ins-step-line")].map(l => l.querySelector(".ins-step-date").value));
+            found.forEach(f => { if (!have.has(f.date)) addInsSchedStepTo(row, { date: f.date, amount: f.amount }); });
+            if (confirm("Remove those lines from the Notes now that they are in the schedule?")) {
+                const drop = new Set(found.map(f => f.idx));
+                notesEl.value = notesEl.value.split(/\r?\n/).filter((_, i) => !drop.has(i)).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+            }
         }
 
         // "Other" shows a name box; Health / Medical shows the limit boxes.
@@ -16409,9 +16527,11 @@
                 const sumAssured = insNumOrNull(row.querySelector(".ins-cov-sum").value);
                 const expiry = row.querySelector(".ins-cov-expiry").value || "";
                 // A blank "Other" row (no name, no amount, no date) is an unused row, not a coverage.
-                if (kind === "other" && !label && sumAssured == null && !expiry) return;
+                const schedule = [...row.querySelectorAll(".ins-step-line")].map(l => ({ date: l.querySelector(".ins-step-date").value || "", amount: insNumOrNull(l.querySelector(".ins-step-amount").value) }))
+                    .filter(st => st.date && st.amount != null).sort((a, b) => a.date.localeCompare(b.date));
+                if (kind === "other" && !label && sumAssured == null && !expiry && !schedule.length) return;
                 out.push({
-                    id: makeInsuranceId(), kind, label, sumAssured, expiry,
+                    id: makeInsuranceId(), kind, label, sumAssured, expiry, schedule,
                     annualLimit: medical ? insNumOrNull(row.querySelector(".ins-cov-annual").value) : null,
                     lifetimeLimit: medical ? insNumOrNull(row.querySelector(".ins-cov-lifetime").value) : null,
                     lifetimeRemaining: medical ? insNumOrNull(row.querySelector(".ins-cov-remaining").value) : null
@@ -23681,6 +23801,8 @@
             insSvPartChange: (el) => insSvPartChange(el),
             insTypeChanged: () => updateInsSvAddUi(), // v471
             insCovKindChange: (el) => insCovKindChange(el), // v472
+            addInsSchedStep: (el) => addInsSchedStep(el), // v482
+            insSchedPasteFromNote: (el) => insSchedPasteFromNote(el), // v482
             insBonusToggle: () => insBonusToggle(), // v473
             insRecalcPaymentTotal: () => insRecalcPaymentTotal(),
             handleInvAttachmentsSelected: (el, e) => handleInvAttachmentsSelected(e),

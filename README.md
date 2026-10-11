@@ -3749,3 +3749,13 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **"Sum insured" is one cover per row** (name, then its amount right after it) under a small "SUM INSURED" label — up to 4 rows, then "+N more" — instead of one wrapping sentence that left an amount orphaned on its own line.
 - `APP_VERSION` / `CACHE_NAME` → v481.
 
+## v482: Insurance — reducing-cover schedule (replaces schedules typed into Notes)
+
+- **New optional "↘ Reducing cover schedule" inside each coverage row** of the policy editor: date + sum insured per step (`schedule: [{date, amount}]` on the coverage record; the row's own Sum insured is the starting amount). **＋ Add step** continues from the last one (same day next year, same amount).
+- **"Paste from note"** reads lines like `12/11/2026 - 497,587` (dd/mm/yyyy) from the policy's Notes, shows a preview, adds the steps on confirm (skipping dates already there), then offers to remove those lines from the Notes.
+- **Current sum insured follows the schedule:** the latest step dated on or before today (before the first step, the row's own Sum insured). Used by the policy card, the By person report and its totals, and the detail sheet — so Term Life no longer counts the original, pre-reduction amount.
+- **Detail sheet:** a collapsed accordion under the coverage with a small table (Date | Sum insured | Change); the step in force is highlighted ("now"), the next one flagged ("next").
+- **Policy card:** one muted line "↘ Reducing · next RM… from <date>" (no accordion on the card itself — the whole card is a tap target that opens the sheet, so a nested toggle would fight with it).
+- Nothing is calculated: type the steps from the insurer's schedule. Existing policies are unaffected until a schedule is added.
+- `APP_VERSION` / `CACHE_NAME` → v482.
+

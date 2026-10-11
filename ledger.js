@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v479";
+        const APP_VERSION = "v480";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15604,7 +15604,7 @@
             const sub = [];
             if (kind === "medical") {
                 if (d.hasAnnual) sub.push(`Annual limit ${money(d.annual)}`);
-                if (d.hasRem) sub.push(`Lifetime remaining ${money(d.rem)}${d.hasLife ? " / " + money(d.life) : ""}`);
+                if (d.hasRem) sub.push(`Lifetime limit remaining ${money(d.rem)}${d.hasLife ? " / " + money(d.life) : ""}`);
                 else if (d.hasLife) sub.push(`Lifetime limit ${money(d.life)}`);
             }
             const nPolicies = new Set(d.items.map(i => i.p.id)).size;
@@ -15612,24 +15612,31 @@
             // that is not the policy's own main cover (e.g. a PA rider on a life plan) is tagged "rider"
             // rather than repeating the full policy name as if it were a separate product.
             const MAIN_KIND = { life: "life", savings: "life", investment: "life", term: "term", medical: "medical", critical: "critical", accident: "accident" };
-            const itemRow = ({ p, c }) => {
+            const itemRow = ({ p, c }, hideAmt) => {
                 const prefix = (kind === "other" && c.label) ? escapeHtml(c.label) + " · " : "";
                 const amt = typeof c.sumAssured === "number" ? formatCurrency(c.sumAssured, p.currency || baseCurrency) : "no sum";
                 const isRider = kind !== "other" && MAIN_KIND[p.type] && MAIN_KIND[p.type] !== kind;
                 const name = `${prefix}${escapeHtml(p.product || p.insurer || "Policy")}${p.insurer && p.product ? " (" + escapeHtml(p.insurer) + ")" : ""}`;
-                return `<div class="ins-item"><span style="min-width:0; overflow-wrap:anywhere;">${name}${isRider ? ` <span class="ins-item-rider">· rider</span>` : ""}</span><span class="ins-item-amt">${amt}</span></div>`;
+                return `<div class="ins-item"><span style="min-width:0; overflow-wrap:anywhere;">${name}${isRider ? ` <span class="ins-rider-pill">rider</span>` : ""}</span>${(hideAmt && typeof c.sumAssured === "number") ? "" : `<span class="ins-item-amt">${amt}</span>`}</div>`;
             };
+            // Biggest first, own-cover before riders, so the rows hidden under "Show N more" are the small ones.
+            const riderOf = ({ p }) => kind !== "other" && MAIN_KIND[p.type] && MAIN_KIND[p.type] !== kind;
+            const sorted = d.items.slice().sort((a, b) => (riderOf(a) - riderOf(b))
+                || (insConvert(b.c.sumAssured || 0, b.p.currency || baseCurrency, baseCurrency) - insConvert(a.c.sumAssured || 0, a.p.currency || baseCurrency, baseCurrency)));
             const items = withItems
-                ? `<div class="ins-item-list">${d.items.slice(0, 3).map(itemRow).join("")}${d.items.length > 3
-                    ? `<details class="ins-more"><summary>+${d.items.length - 3} more</summary>${d.items.slice(3).map(itemRow).join("")}</details>` : ""}</div>`
+                ? (sorted.length === 1
+                    // one policy only: the heading already shows the amount, so just name the policy
+                    ? `<div class="ins-item-list">${itemRow(sorted[0], true)}</div>`
+                    : `<div class="ins-item-list">${sorted.slice(0, 3).map(x => itemRow(x)).join("")}${sorted.length > 3
+                        ? `<details class="ins-more"><summary><span class="ins-more-show">Show ${sorted.length - 3} more ▾</span><span class="ins-more-hide">Show less ▴</span></summary>${sorted.slice(3).map(x => itemRow(x)).join("")}</details>` : ""}</div>`)
                 : "";
             return `<div class="ins-kind-row" style="padding:8px 0; border-bottom:1px solid var(--border-color);">
                 <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
                     <span style="font-size:0.82rem; font-weight:700;">${k[2]} ${escapeHtml(k[1])} <span style="font-weight:600; color:var(--text-muted);">· ${nPolicies} ${nPolicies === 1 ? "policy" : "policies"}</span>${kind === "medical" ? `<button type="button" class="ins-info-btn" data-click="insToggleMedNote" aria-label="About medical limits">i</button>` : ""}</span>
-                    <span style="font-size:0.92rem; font-weight:800; flex:0 0 auto;">${d.hasSum ? money(d.sum) : "—"}</span>
+                    <span style="font-size:0.92rem; font-weight:800; flex:0 0 auto; text-align:right;">${d.hasSum ? money(d.sum) : "—"}${kind === "medical" ? `<span style="display:block; font-size:0.62rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.03em;">sum insured</span>` : ""}</span>
                 </div>
                 ${kind === "medical" ? `<div class="ins-med-note">Medical limits of different plans can overlap (each plan pays up to its own limit for the same bill), so these totals show what is arranged, not what you would receive.</div>` : ""}
-                ${sub.length ? `<div style="font-size:0.72rem; font-weight:700; color:var(--text-muted); margin-top:3px;">${sub.join(" · ")}</div>` : ""}
+                ${sub.length ? `<div style="font-size:0.72rem; font-weight:600; color:var(--text-muted); margin-top:3px;">${sub.join(" · ")}</div>` : ""}
                 ${items}
             </div>`;
         }

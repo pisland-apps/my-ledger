@@ -723,10 +723,13 @@
         .ins-pills .nav-view-toggle-btn:focus-visible { border-radius: 999px; outline-offset: 1px; }
         .ins-item-list { margin-top: 4px; }
         .ins-item { display: flex; justify-content: space-between; gap: 10px; font-size: 0.72rem; color: var(--text-muted); padding: 2px 0 2px 10px; border-left: 2px solid var(--border-color); margin-bottom: 3px; }
-        .ins-item-amt { flex: 0 0 auto; font-weight: 700; color: var(--text-main); }
-        .ins-item-rider { font-weight: 700; opacity: 0.8; }
-        .ins-more > summary { font-size: 0.7rem; font-weight: 700; color: var(--primary); cursor: pointer; padding: 2px 0 2px 10px; list-style: none; }
+        .ins-item-amt { flex: 0 0 auto; font-weight: 600; color: var(--text-muted); }
+        .ins-rider-pill { display: inline-block; font-size: 0.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--primary); background: rgba(99, 102, 241, 0.12); border-radius: 999px; padding: 1px 7px; margin-left: 4px; vertical-align: 1px; }
+        .ins-more > summary { font-size: 0.74rem; font-weight: 700; color: var(--primary); cursor: pointer; padding: 8px 10px; list-style: none; }
         .ins-more > summary::-webkit-details-marker { display: none; }
+        .ins-more .ins-more-hide { display: none; }
+        .ins-more[open] .ins-more-show { display: none; }
+        .ins-more[open] .ins-more-hide { display: inline; }
         .ins-info-btn { border: 1.5px solid var(--border-color); background: transparent; color: var(--text-muted); border-radius: 50%; width: 18px; height: 18px; font-size: 0.66rem; font-weight: 800; line-height: 1; cursor: pointer; margin-left: 6px; padding: 0; vertical-align: middle; }
         .ins-med-note { display: none; font-size: 0.7rem; line-height: 1.45; color: var(--text-muted); background: var(--chip-bg); border-radius: 8px; padding: 7px 10px; margin-top: 6px; }
         .ins-med-note.open { display: block; }

@@ -3733,3 +3733,12 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **Blank gap above the reports fixed:** the empty Policies list kept its 90px bottom padding in report view; it is now 0 there (90px restored on Policies).
 - `APP_VERSION` / `CACHE_NAME` → v479.
 
+## v480: Insurance — By person report, second polish pass
+
+- **Totals stand out:** the per-policy amounts are now regular-weight muted text; only the category total is bold and dark.
+- **"rider" is a small pill** (light indigo tint, rounded, uppercase) instead of plain "· rider" text.
+- **Rows sorted biggest first, own-cover before riders**, so the rows folded under the toggle are the small ones. The toggle reads **"Show N more ▾" / "Show less ▴"** with a larger tap area.
+- **Single-policy categories no longer repeat the amount** — the heading carries it, the row just names the policy.
+- **Health / Medical:** heading amount captioned "sum insured"; the limits line is muted and reads "Lifetime limit remaining … / …" (was bold "Lifetime remaining"), so it no longer looks like a second total. (Policy cards on the Policies tab show the annual limit for medical — a different number from this sum.)
+- `APP_VERSION` / `CACHE_NAME` → v480.
+

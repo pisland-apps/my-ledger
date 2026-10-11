@@ -1246,6 +1246,11 @@
             color: var(--text-muted);
             padding: 18px 20px 6px;
         }
+        /* v494: collapsible Reports sub-groups in the sidebar */
+        .sidebar-group-head { display: flex; align-items: center; justify-content: space-between; width: 100%; border: none; background: transparent; color: var(--text-muted); font-size: 0.74rem; font-weight: 800; padding: 12px 20px 4px; cursor: pointer; text-align: left; }
+        .sidebar-group-head .chevron-icon { transition: transform 0.2s ease; }
+        .sidebar-group-head.collapsed .chevron-icon { transform: rotate(-90deg); }
+        .sidebar-group-body.collapsed { display: none; }
         .sidebar-item {
             display: flex;
             align-items: center;
@@ -3130,9 +3135,6 @@
                 </button>
             </div>
             <div id="sidebarAccountTypeShortcuts"></div>
-            <button class="sidebar-item" data-click="navigateToNavUpdatePage">
-                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> Daily NAV Update
-            </button>
             <!-- v126: "Transactions" — added on request. Wired to the existing "all-ledger"
                  sidebarGo() target (navigateToLedgerPage("all") → the unfiltered "Portfolio
                  General Log" view, every transaction across every account). That state/view
@@ -3143,13 +3145,14 @@
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span> Transactions
             </button>
 
+            <div class="sidebar-divider"></div>
+            <div class="sidebar-section-label">Manage</div>
             <!-- v318: Inventory — items logged either inline from an Expense entry's "📦 Add to
                  Inventory" toggle, or manually via this page's own + button. See
                  renderInventoryPage()/openInventoryItemModal() in ledger.js. -->
             <button class="sidebar-item" data-click="sidebarGo" data-target="inventory">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><line x1="10" y1="12" x2="14" y2="12"/></svg></span> Inventory
             </button>
-
             <!-- v361: Planned Payments — full list of everything saved (including anything more
                  than 3 days out, and anything paused), since the Dashboard widget itself only
                  shows what's due within 3 days or overdue (see renderPlannedPaymentsWidget()'s
@@ -3158,7 +3161,6 @@
             <button class="sidebar-item" data-click="sidebarGo" data-target="plannedpayments">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span> Planned Payments
             </button>
-
             <!-- v418: Reminders — renewal-type dates (passport, driving license, PR renewal,
                  insurance, credit card, etc.), own icon at the same tier as Inventory/Planned
                  Payments (not tucked into the Settings icon rail — per-user request). Not tied to
@@ -3167,33 +3169,25 @@
             <button class="sidebar-item" data-click="sidebarGo" data-target="reminders">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span> Reminders
             </button>
-
             <!-- v468: Insurance — policies with coverage, premiums paid and latest surrender value.
                  See renderInsurancePage()/openInsuranceDetail() in ledger.js. -->
             <button class="sidebar-item" data-click="sidebarGo" data-target="insurance">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></span> Insurance
             </button>
+            <button class="sidebar-item" data-click="navigateToNavUpdatePage">
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> Daily NAV Update
+            </button>
 
             <div class="sidebar-divider"></div>
             <div class="sidebar-section-label">Reports</div>
+            <button type="button" class="sidebar-group-head" data-click="toggleSidebarGroup" data-group="cashflow" aria-expanded="true"><span>Cash flow</span><svg class="chevron-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <div class="sidebar-group-body" data-group-body="cashflow">
             <!-- v268: "Total Bill Summary" — user referenced a reference-app screenshot (a
                  Date/Income/Expense/Balance table: grand total row + one row per year). Placed
                  first in Reports since it's the highest-level overview, above the narrower
                  category/currency/tag-scoped reports below it. See renderTotalSummaryPage(). -->
             <button class="sidebar-item" data-click="sidebarGo" data-target="total-summary">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg></span> Total Bill Summary
-            </button>
-            <!-- v462: Net Savings Statement as its own Reports entry (it used to be reachable only
-                 from the Dashboard report card). Year/month filters + CSV export live on the page
-                 itself — see renderSavingsStatement()/exportSavingsCsv(). -->
-            <button class="sidebar-item" data-click="sidebarGo" data-target="savings">
-                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg></span> Net Savings Statement
-            </button>
-            <!-- v463: Net Worth Statement (What I Have / What I Owe / What's Left) as a Reports entry
-                 too — before this it was reachable only by tapping the Dashboard's Net Worth figure.
-                 See renderNetWorthStatementPage(). -->
-            <button class="sidebar-item" data-click="sidebarGo" data-target="networth-statement">
-                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span> Net Worth Statement
             </button>
             <!-- v386: Monthly Trend — the Dashboard's month-by-month income/expense chart + table,
                  now also reachable as its own report page (the same DOM node is moved here; see
@@ -3202,23 +3196,26 @@
             <button class="sidebar-item" data-click="sidebarGo" data-target="monthly-trend">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> Monthly Trend
             </button>
+            <!-- v462: Net Savings Statement as its own Reports entry (it used to be reachable only
+                 from the Dashboard report card). Year/month filters + CSV export live on the page
+                 itself — see renderSavingsStatement()/exportSavingsCsv(). -->
+            <button class="sidebar-item" data-click="sidebarGo" data-target="savings">
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg></span> Net Savings Statement
+            </button>
+            <button class="sidebar-item" data-click="sidebarGo" data-target="incometax">
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></span> Income after Tax
+            </button>
+            <button class="sidebar-item" data-click="sidebarGo" data-target="budget">
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span> Budget
+            </button>
+            </div>
+            <button type="button" class="sidebar-group-head" data-click="toggleSidebarGroup" data-group="spending" aria-expanded="true"><span>Spending &amp; income</span><svg class="chevron-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <div class="sidebar-group-body" data-group-body="spending">
             <button class="sidebar-item" data-click="sidebarGo" data-target="spending-breakdown">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></span> Spending Breakdown
             </button>
             <button class="sidebar-item" data-click="sidebarGo" data-target="income-breakdown">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span> Income Breakdown
-            </button>
-            <button class="sidebar-item" data-click="sidebarGo" data-target="portfolio-report">
-                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span> Unit Trust Portfolio
-            </button>
-            <button class="sidebar-item" data-click="sidebarGo" data-target="owner-networth-report">
-                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span> Financial Assets vs Real Estate
-            </button>
-            <button class="sidebar-item" data-click="sidebarGo" data-target="incometax">
-                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span> Income after Tax
-            </button>
-            <button class="sidebar-item" data-click="sidebarGo" data-target="currency-report">
-                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span> Net Worth by Currency
             </button>
             <!-- v257: "Spending by Tag" — pick a trip/claim tag, see its Income/Expense/Net total,
                  date range covered, a category breakdown, and the itemized list of every
@@ -3226,9 +3223,25 @@
             <button class="sidebar-item" data-click="sidebarGo" data-target="tag-report">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></span> Spending by Tag
             </button>
-            <button class="sidebar-item" data-click="sidebarGo" data-target="budget">
-                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span> Budget
+            </div>
+            <button type="button" class="sidebar-group-head" data-click="toggleSidebarGroup" data-group="networth" aria-expanded="true"><span>Net worth &amp; assets</span><svg class="chevron-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <div class="sidebar-group-body" data-group-body="networth">
+            <!-- v463: Net Worth Statement (What I Have / What I Owe / What's Left) as a Reports entry
+                 too — before this it was reachable only by tapping the Dashboard's Net Worth figure.
+                 See renderNetWorthStatementPage(). -->
+            <button class="sidebar-item" data-click="sidebarGo" data-target="networth-statement">
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span> Net Worth Statement
             </button>
+            <button class="sidebar-item" data-click="sidebarGo" data-target="currency-report">
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span> Net Worth by Currency
+            </button>
+            <button class="sidebar-item" data-click="sidebarGo" data-target="owner-networth-report">
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></span> Financial Assets vs Real Estate
+            </button>
+            <button class="sidebar-item" data-click="sidebarGo" data-target="portfolio-report">
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg></span> Unit Trust Portfolio
+            </button>
+            </div>
 
             <div class="sidebar-divider"></div>
             <div class="sidebar-section-label">Members</div>

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v493";
+        const APP_VERSION = "v494";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -5435,6 +5435,36 @@
         // called on open and after every sidebar-triggered navigation so the drawer stays
         // in sync even though page switches also happen from outside the sidebar (e.g. the
         // dashboard's own "Total Income" stat box also opens the ledger page).
+        // v494: collapsible Reports sub-groups. Open/closed choice is a per-device preference (localStorage,
+        // default all open). The group holding the page you are on is always shown while the drawer is open,
+        // without changing the saved choice.
+        const SIDEBAR_GROUPS_KEY = "sidebarGroupsOpen";
+        function sidebarGroupsOpenSet() {
+            try { const v = JSON.parse(localStorage.getItem(SIDEBAR_GROUPS_KEY)); if (Array.isArray(v)) return new Set(v); } catch (e) {}
+            return new Set(["cashflow", "spending", "networth"]);
+        }
+        function applySidebarGroups() {
+            const open = sidebarGroupsOpenSet();
+            const activeBody = document.querySelector(".sidebar-item.active")?.closest("[data-group-body]");
+            if (activeBody) open.add(activeBody.dataset.groupBody);
+            document.querySelectorAll(".sidebar-group-head").forEach(head => {
+                const isOpen = open.has(head.dataset.group);
+                head.classList.toggle("collapsed", !isOpen);
+                head.setAttribute("aria-expanded", isOpen ? "true" : "false");
+                const body = document.querySelector(`[data-group-body="${head.dataset.group}"]`);
+                if (body) body.classList.toggle("collapsed", !isOpen);
+            });
+        }
+        function toggleSidebarGroup(el) {
+            const s = sidebarGroupsOpenSet();
+            const g = el.dataset.group;
+            const body = document.querySelector(`[data-group-body="${g}"]`);
+            // tapping a header whose group is only open because it holds the active page closes it for real
+            if (s.has(g) && !(body && body.classList.contains("collapsed"))) s.delete(g); else s.add(g);
+            try { localStorage.setItem(SIDEBAR_GROUPS_KEY, JSON.stringify([...s])); } catch (e) {}
+            applySidebarGroups();
+        }
+
         function updateSidebarActiveState() {
             document.querySelectorAll(".sidebar-item").forEach(i => i.classList.remove("active"));
             const workspaceHidden = document.getElementById("page-workspace").classList.contains("hidden");
@@ -5480,6 +5510,7 @@
                 const el = document.querySelector(`.sidebar-item[data-target="${target}"]`);
                 if (el) el.classList.add("active");
             }
+            applySidebarGroups();
         }
 
         // Routes a sidebar tap to the matching page/modal. Accounts/Categories, App Local
@@ -24179,6 +24210,7 @@
             toggleInsParent,
             itCfgAll: (el) => itCfgAll(el),
             exportIncomeTaxCsv: () => exportIncomeTaxCsv(),
+            toggleSidebarGroup: (el) => toggleSidebarGroup(el),
             addInsSvRow: () => insAddSvRowForType(),
             addInsFundLine: (el) => addInsFundLine(el), // v471
             removeInsFundLine: (el) => removeInsFundLine(el),

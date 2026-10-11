@@ -3822,3 +3822,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - 📤 button in the page header. The file has Year / Income / Tax / After tax / Tax % per year plus Total, then the From date and the income and tax categories that were counted, and the export date, so the file records what it included. Re-renders first, so it always matches the page.
 - `APP_VERSION` / `CACHE_NAME` -> v493.
 
+## v494: Sidebar regrouped, Reports in collapsible groups
+- Overview now holds only Dashboard, Financial Accounts, Transactions. New **Manage** section: Inventory, Planned Payments, Reminders, Insurance, Daily NAV Update (moved out of Overview; same action).
+- Reports split into three collapsible groups: **Cash flow** (Total Bill Summary, Monthly Trend, Net Savings Statement, Income after Tax, Budget), **Spending & income** (Spending Breakdown, Income Breakdown, Spending by Tag), **Net worth & assets** (Net Worth Statement, Net Worth by Currency, Financial Assets vs Real Estate, Unit Trust Portfolio).
+- Open/closed choice is saved per device (`localStorage` key `sidebarGroupsOpen`, default all open; not in backups). The group containing the current page is shown while the drawer is open without changing the saved choice. New: `toggleSidebarGroup`, `applySidebarGroups` (called from `updateSidebarActiveState`).
+- Income after Tax icon changed from "$" to a percent mark.
+- `APP_VERSION` / `CACHE_NAME` -> v494.
+

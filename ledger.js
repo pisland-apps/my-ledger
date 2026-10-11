@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v476";
+        const APP_VERSION = "v477";
         const APP_VERSION_DATE = "2026-10-11";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15493,9 +15493,10 @@
                     <div style="font-family:'Kalam', cursive; font-size:1.05rem; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${value}</div>
                 </div>`;
             summary.style.display = filtered.length ? "flex" : "none";
+            // v477: Surrender value lives only in the Savings panel below (it was a duplicate here, and
+            // sat next to an all-policy paid figure it can't be compared with).
             summary.innerHTML = cell("Yearly premium", formatCurrency(annualBase, baseCurrency))
-                + cell("Premiums paid (all)", formatCurrency(paidBase, baseCurrency))
-                + cell("Surrender value", svCount ? formatCurrency(svBase, baseCurrency) : "—");
+                + cell("Premiums paid (all)", formatCurrency(paidBase, baseCurrency));
 
             // v475: Savings / investment policies — the like-for-like comparison. Pure protection (medical,
             // PA, fire, travel…) has no surrender value, so it drops out here by itself.
@@ -15507,7 +15508,10 @@
                     const net = savSvBase - savPaidBase;
                     const pct = savPaidBase > 0 ? (savSvBase / savPaidBase) * 100 : null;
                     const netColor = net >= 0 ? "var(--income-color)" : "var(--expense-color)";
-                    const asOf = savMinDate === savMaxDate ? savMinDate : `${savMinDate} → ${savMaxDate}`;
+                    const svDateLabel = savMinDate === savMaxDate
+                        ? `Surrender values as of ${savMinDate}`
+                        : `Surrender values dated ${savMinDate} to ${savMaxDate} (varies by policy)`;
+                    const oldestSvAge = Math.round((new Date(todayLocalStr() + "T00:00:00") - new Date(savMinDate + "T00:00:00")) / 86400000);
                     savEl.style.display = "block";
                     savEl.innerHTML = `
                         <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); text-align:center; margin-bottom:8px;">Savings / investment policies (${svCount})</div>
@@ -15516,7 +15520,9 @@
                             ${cell("Surrender value", formatCurrency(savSvBase, baseCurrency))}
                             ${cell("Net", `<span style="color:${netColor};">${net >= 0 ? "+" : "−"}${formatCurrency(Math.abs(net), baseCurrency)}</span>`)}
                         </div>
-                        <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-align:center; margin-top:8px;">${pct != null ? `SV is ${pct.toFixed(1)}% of premiums paid · ` : ""}SV as of ${escapeHtml(asOf)}${savMinDate < todayLocalStr() && Math.round((new Date(todayLocalStr() + "T00:00:00") - new Date(savMinDate + "T00:00:00")) / 86400000) > 365 ? " ⚠️" : ""}</div>
+                        <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-align:center; margin-top:8px;">${pct != null ? `SV is ${pct.toFixed(1)}% of premiums paid` : ""}</div>
+                        <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-align:center; margin-top:2px;">${escapeHtml(svDateLabel)}</div>
+                        ${oldestSvAge > 365 ? `<div style="font-size:0.7rem; font-weight:700; color:var(--expense-color); text-align:center; margin-top:2px;">⚠️ Oldest surrender value is over a year old — update it from the latest statement</div>` : ""}
                         <div style="font-size:0.66rem; font-weight:600; color:var(--text-muted); text-align:center; margin-top:4px;">Premiums counted only up to each policy's SV date. Net is a rough guide, not an investment return (riders, bonuses and fund prices move).</div>`;
                 }
             }

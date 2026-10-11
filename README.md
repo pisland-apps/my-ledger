@@ -3709,3 +3709,9 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Styling is scoped to new `.ins-tabs` / `.ins-pills` modifier classes; the shared `.nav-view-toggle` look on other pages (Budget, Inventory, Reminders, NAV update…) is unchanged. No logic change — the same buttons and handlers.
 - `APP_VERSION` / `CACHE_NAME` → v476.
 
+## v477: Insurance — summary de-duplicated, clearer SV date label
+
+- **Top summary row is now Yearly premium + Premiums paid (all) only.** The Surrender value cell was an exact duplicate of the one in the Savings / investment panel and sat beside an all-policy paid figure it can't be compared with; it now appears once, in the Savings panel.
+- **SV date label reworded:** "Surrender values as of <date>" when all policies share a date, otherwise "Surrender values dated <oldest> to <newest> (varies by policy)" (per-policy dates stay on each card). The ⚠️ is now its own red line — "Oldest surrender value is over a year old — update it from the latest statement" — shown when the oldest SV date is more than 365 days back.
+- `APP_VERSION` / `CACHE_NAME` → v477.
+

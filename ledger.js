@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v501";
+        const APP_VERSION = "v502";
         const APP_VERSION_DATE = "2026-10-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15525,6 +15525,24 @@
             </details>`;
         }
 
+        // v502: riders (the policy's own "Riders" list: name + optional until-date) were only visible in the
+        // detail sheet. This shows them on the policy card (a "Riders" block under Sum insured, max 2 then
+        // "+N more", a long name clamps to 2 lines) and, via insRiderItemsOf(), in the By person report.
+        function insRiderItemsOf(p) {
+            return (p.riders || []).filter(r => r && r.name);
+        }
+        function insRiderUntilHtml(r) {
+            if (!r.endDate) return "";
+            const ended = r.endDate < localDateStr(new Date());
+            return `<span style="flex:0 0 auto; white-space:nowrap; color:${ended ? "var(--expense-color)" : "var(--text-muted)"};">${ended ? "Ended " : "Until "}${escapeHtml(r.endDate)}</span>`;
+        }
+        function insCardRidersHtml(p) {
+            const riders = insRiderItemsOf(p);
+            if (!riders.length) return "";
+            const row = (r) => `<div style="display:flex; gap:8px; align-items:baseline; justify-content:space-between; font-size:0.72rem; line-height:1.4;"><span style="min-width:0; color:var(--text-main); font-weight:600; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">${escapeHtml(r.name)}</span>${insRiderUntilHtml(r)}</div>`;
+            return `<div style="margin-top:4px;"><div style="font-size:0.62rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Riders (${riders.length})</div>${riders.slice(0, 2).map(row).join("")}${riders.length > 2 ? `<div style="font-size:0.7rem; font-weight:700; color:var(--text-muted);">+${riders.length - 2} more</div>` : ""}</div>`;
+        }
+
         // v478: one line of cover for a policy card — "Sum insured  Life RM100,000 · Critical Illness RM50,000".
         // Coverage rows of the same type are merged (summed) so a rider doesn't repeat; each item shows in the
         // POLICY's own currency (no conversion — it is that policy's own figure, not a total). Health / Medical
@@ -15703,6 +15721,7 @@
                                 <strong>${escapeHtml(p.product || p.insurer || "Policy")}</strong>
                                 ${metaParts.length ? `<span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">${metaParts.join(" · ")}</span>` : ""}
                                 ${insCardCoverHtml(p, f.cur)}
+                                ${insCardRidersHtml(p)}
                                 ${dueLine}
                             </span>
                         </span>
@@ -15840,6 +15859,20 @@
             </div>`;
         }
 
+        // v502: By person — the policies' riders (no sum insured of their own, so they never appear in the
+        // coverage rows above) listed under that person: rider name, then the policy it belongs to + until-date.
+        function insPersonRidersHtml(policies) {
+            const items = [];
+            policies.forEach(p => insRiderItemsOf(p).forEach(r => items.push({ p, r })));
+            if (!items.length) return "";
+            const row = ({ p, r }) => `<div class="ins-item" style="flex-direction:column; gap:1px;"><span style="color:var(--text-main); font-weight:600; overflow-wrap:anywhere;">${escapeHtml(r.name)}</span><span style="display:flex; justify-content:space-between; gap:10px;"><span style="min-width:0; overflow-wrap:anywhere;">${escapeHtml(p.product || p.insurer || "Policy")}${p.insurer && p.product ? " (" + escapeHtml(p.insurer) + ")" : ""}</span>${insRiderUntilHtml(r)}</span></div>`;
+            return `<div class="ins-kind-row" style="padding:8px 0; border-bottom:1px solid var(--border-color);">
+                <div style="font-size:0.82rem; font-weight:700;">🧩 Riders <span style="font-weight:600; color:var(--text-muted);">· ${items.length}</span></div>
+                <div class="ins-item-list">${items.slice(0, 3).map(row).join("")}${items.length > 3
+                    ? `<details class="ins-more"><summary><span class="ins-more-show">Show ${items.length - 3} more ▾</span><span class="ins-more-hide">Show less ▴</span></summary>${items.slice(3).map(row).join("")}</details>` : ""}</div>
+            </div>`;
+        }
+
         function insReportPeopleHtml() {
             const live = insuranceCache.filter(p => insIsLive(p) && !INS_ASSET_TYPES.includes(p.type));
             if (!live.length) return `<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:40px 20px;">No in-force life, medical, critical illness or accident policies yet.</p>`;
@@ -15887,6 +15920,7 @@
                         <span style="font-size:0.72rem; font-weight:700; color:var(--text-muted); text-align:right; flex:0 0 auto;">${g.policies.length} ${g.policies.length === 1 ? "policy" : "policies"} · ${formatCurrency(g.yearly, baseCurrency)}/yr</span>
                     </div>
                     ${rowsFor(g.kinds, true)}
+                    ${insPersonRidersHtml(g.policies)}
                 </div>`;
             });
             if (noCoverage.length) {

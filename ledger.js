@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v502";
+        const APP_VERSION = "v503";
         const APP_VERSION_DATE = "2026-10-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15877,7 +15877,6 @@
             const live = insuranceCache.filter(p => insIsLive(p) && !INS_ASSET_TYPES.includes(p.type));
             if (!live.length) return `<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:40px 20px;">No in-force life, medical, critical illness or accident policies yet.</p>`;
             const groups = new Map();
-            const everyone = new Map();
             const noCoverage = [];
             let foreign = false, anyMedical = false;
             const kindOf = (map, k) => { if (!map.has(k)) map.set(k, insKindData()); return map.get(k); };
@@ -15894,20 +15893,13 @@
                     const kind = INS_COV_KINDS[c.kind] ? c.kind : "other";
                     if (kind === "medical") anyMedical = true;
                     insAddCoverage(kindOf(g.kinds, kind), p, c);
-                    insAddCoverage(kindOf(everyone, kind), p, c);
                 });
             });
             const order = [...membersCache.map(m => m.id).filter(id => groups.has(id)), ...(groups.has("") ? [""] : [])];
             const rowsFor = (kinds, withItems) => INS_COV_ORDER.filter(k => kinds.has(k)).map(k => insKindRowHtml(k, kinds.get(k), withItems)).join("")
                 || `<p style="font-size:0.75rem; color:var(--text-muted); padding:8px 0;">No coverage details recorded yet.</p>`;
             let html = "";
-            // v479: with only two people the card just repeats them; from three people it earns its place.
-            if (order.length > 2) {
-                html += `<div style="border:1px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:12px;">
-                    <div style="font-size:0.9rem; font-weight:800; margin-bottom:2px;">👪 Everyone</div>
-                    ${rowsFor(everyone, false)}
-                </div>`;
-            }
+            // v503: the "Everyone" household-total card was removed (summed sums insured are not what any one person is covered for).
             order.forEach(key => {
                 const g = groups.get(key);
                 const m = key ? getMemberById(key) : null;

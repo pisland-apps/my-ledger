@@ -3874,3 +3874,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - A policy's **Riders** (the name + "Until" date entered in the policy form, e.g. a waiver-of-premium rider) used to appear only in the policy's detail sheet. They now also show on the **policy card** (a "Riders (N)" block under Sum insured: max 2, then "+N more"; a long name clamps to 2 lines; the until-date turns red "Ended …" once past) and in **By person**, as a "🧩 Riders" row under each insured person (rider name, then the policy it belongs to + until-date; first 3, then "Show N more").
 - Riders have no sum insured of their own, so they are listed separately and do not change any coverage totals. The By person "Everyone" card is unchanged.
 - No DB change. `APP_VERSION` / `CACHE_NAME` -> v502.
+
+## v503: Insurance > By person - "Everyone" card removed
+- The "👪 Everyone" household-total card at the top of By person is gone, so the first person's card is now visible straight away. Its summed sums insured were not what any one person is covered for (medical limits overlap, "Other" mixes liability/property cover). Each person's own card is unchanged.
+- No DB change. `APP_VERSION` / `CACHE_NAME` -> v503.

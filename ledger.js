@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v505";
+        const APP_VERSION = "v506";
         const APP_VERSION_DATE = "2026-10-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15679,6 +15679,7 @@
 
             let annualBase = 0, paidBase = 0, svBase = 0, svCount = 0;
             let savPaidBase = 0, savSvBase = 0, savMinDate = null, savMaxDate = null;
+            const savByPerson = new Map(); // v506: insuredMemberId ("" = not set) -> { paid, sv, n }
             const rows = filtered.map(p => {
                 const f = computePolicyFigures(p, txs, planned);
                 // Yearly premium = cash outlay: a policy whose premium comes out of its accumulated bonus is left out.
@@ -15689,6 +15690,14 @@
                     // v475: Savings / investment comparison — only policies that have a surrender value.
                     savPaidBase += insConvert(f.paidToSv, f.cur, baseCurrency);
                     savSvBase += insConvert(f.netSv, f.cur, baseCurrency);
+                    {
+                        const pk = p.insuredMemberId && getMemberById(p.insuredMemberId) ? p.insuredMemberId : "";
+                        if (!savByPerson.has(pk)) savByPerson.set(pk, { paid: 0, sv: 0, n: 0 });
+                        const sp = savByPerson.get(pk);
+                        sp.paid += insConvert(f.paidToSv, f.cur, baseCurrency);
+                        sp.sv += insConvert(f.netSv, f.cur, baseCurrency);
+                        sp.n++;
+                    }
                     if (!savMinDate || f.latestSv.date < savMinDate) savMinDate = f.latestSv.date;
                     if (!savMaxDate || f.latestSv.date > savMaxDate) savMaxDate = f.latestSv.date;
                 }
@@ -15761,6 +15770,30 @@
                     const svDateLabel = savMinDate === savMaxDate
                         ? `Surrender values as of ${savMinDate}`
                         : `Surrender values dated ${savMinDate} to ${savMaxDate} (varies by policy)`;
+                    // v506: per-person breakdown (only when 2+ people have a surrender value), collapsed by default.
+                    let personBreak = "";
+                    if (savByPerson.size > 1) {
+                        const pOrder = [...membersCache.map(m => m.id).filter(id => savByPerson.has(id)), ...(savByPerson.has("") ? [""] : [])];
+                        const pRow = (key) => {
+                            const d = savByPerson.get(key), m = key ? getMemberById(key) : null;
+                            const pn = d.sv - d.paid, pp = d.paid > 0 ? (d.sv / d.paid) * 100 : null;
+                            const col = pn >= 0 ? "var(--income-color)" : "var(--expense-color)";
+                            const nm = m ? `<span class="member-color-dot" style="background:${m.color}; display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px;"></span>${escapeHtml(m.name)}` : "Insured person not set";
+                            return `<tr>
+                                <td style="padding:5px 4px 5px 0; font-weight:800;">${nm}<div style="font-weight:600; color:var(--text-muted); font-size:0.66rem;">${d.n} ${d.n === 1 ? "policy" : "policies"}</div></td>
+                                <td style="padding:5px 4px; text-align:right; font-variant-numeric:tabular-nums;">${formatCurrency(d.paid, baseCurrency)}</td>
+                                <td style="padding:5px 4px; text-align:right; font-variant-numeric:tabular-nums; font-weight:800;">${formatCurrency(d.sv, baseCurrency)}</td>
+                                <td style="padding:5px 0 5px 4px; text-align:right; font-variant-numeric:tabular-nums; font-weight:800; color:${col};">${pn >= 0 ? "+" : "−"}${formatCurrency(Math.abs(pn), baseCurrency)}${pp != null ? `<div style="font-weight:700; font-size:0.66rem;">${pp.toFixed(0)}%</div>` : ""}</td>
+                            </tr>`;
+                        };
+                        personBreak = `<details class="ins-more" style="margin-top:8px; border-top:1px solid var(--border-color);">
+                            <summary style="text-align:center;"><span class="ins-more-show">By person ▾</span><span class="ins-more-hide">By person ▴</span></summary>
+                            <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:0.74rem;">
+                                <thead><tr style="color:var(--text-muted); font-size:0.62rem; text-transform:uppercase; letter-spacing:0.03em;"><th style="text-align:left; padding:2px 4px 4px 0;">Person</th><th style="text-align:right; padding:2px 4px 4px;">Paid</th><th style="text-align:right; padding:2px 4px 4px;">SV</th><th style="text-align:right; padding:2px 0 4px 4px;">Net</th></tr></thead>
+                                <tbody>${pOrder.map(pRow).join("")}</tbody>
+                            </table></div>
+                        </details>`;
+                    }
                     const oldestSvAge = Math.round((new Date(todayLocalStr() + "T00:00:00") - new Date(savMinDate + "T00:00:00")) / 86400000);
                     savEl.style.display = "block";
                     savEl.innerHTML = `
@@ -15773,7 +15806,7 @@
                         <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-align:center; margin-top:8px;">${pct != null ? `SV is ${pct.toFixed(1)}% of premiums paid` : ""}</div>
                         <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-align:center; margin-top:2px;">${escapeHtml(svDateLabel)}</div>
                         ${oldestSvAge > 365 ? `<div style="font-size:0.7rem; font-weight:700; color:var(--expense-color); text-align:center; margin-top:2px;">⚠️ Oldest surrender value is over a year old — update it from the latest statement</div>` : ""}
-                        <div style="font-size:0.66rem; font-weight:600; color:var(--text-muted); text-align:center; margin-top:4px;">Premiums counted only up to each policy's SV date. Net is a rough guide, not an investment return (riders, bonuses and fund prices move).</div>`;
+                        <div style="font-size:0.66rem; font-weight:600; color:var(--text-muted); text-align:center; margin-top:4px;">Premiums counted only up to each policy's SV date. Net is a rough guide, not an investment return (riders, bonuses and fund prices move).</div>${personBreak}`;
                 }
             }
         }

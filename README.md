@@ -3887,3 +3887,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **Policy register:** each rider is listed as a small "Rider: name · until date" line under the policy's Sum insured.
 - **Policy details** (when included in the report): a "Riders (N)" table (name, From, Until, "(ended)" once past) sits under the Cover table.
 - Riders still have no sum insured of their own, so no totals change. No DB change. `APP_VERSION` / `CACHE_NAME` -> v505.
+
+## v506: Insurance > Policies - per-person breakdown under "Savings / investment policies"
+- Under the Savings / investment panel a collapsed **By person ▾** toggle opens a small table: per insured person, Paid to SV date, Surrender value, and Net (+ SV as a % of paid), in the base currency. Policies with no insured person go on an "Insured person not set" row.
+- Only shown when two or more people have a surrender value; follows the same status filter (In force / Ended / All) as the panel above it. The headline totals are unchanged.
+- No DB change. `APP_VERSION` / `CACHE_NAME` -> v506.

@@ -3896,3 +3896,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v507: Printable Insurance report - surrender values are summed
 - The policy register's **Subtotal** rows (per insured person) and the **Total** row now add up the Surrender value column (it was left blank). Each policy's latest SV, net of any policy loan (same figure as the Insurance page), converted to the base currency; policies with no SV count as nothing, and "net of policy loan" is noted when a loan is involved. Car · Home · Travel has no SV column, so it is unchanged.
 - No DB change. `APP_VERSION` / `CACHE_NAME` -> v507.
+
+## v508: Print insurance report - choose whose policies go in
+- The print sheet has a new **Whose policies** section: one tick per insured person who has a policy (with their colour dot and policy count, plus "Insured person not set" if any), all ticked by default. Untick people to print only some, e.g. one person's report to hand over. Hidden when everything belongs to a single person; at least one must stay ticked.
+- The whole report follows the choice (summary, needs attention, cover by person, register, car/home/travel, agents, detail blocks), and the report subtitle lists the people included.
+- No DB change. `APP_VERSION` / `CACHE_NAME` -> v508.

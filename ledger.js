@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v507";
+        const APP_VERSION = "v508";
         const APP_VERSION_DATE = "2026-10-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -16024,22 +16024,53 @@
         // data, not copied from the screen, so it does not depend on which tab is open. The HTML goes into
         // #insurancePrintReport, which is hidden on screen and the only thing shown while body has
         // .ins-printing (see the v496 print CSS in index.html). Landscape A4 via the named @page "insr".
-        let insPrintOpts = { scope: "active", details: false, contacts: true };
+        let insPrintOpts = { scope: "active", details: false, contacts: true, members: null }; // v508: members = array of insured-person keys ("" = not set), null = everyone
 
         function openInsurancePrintSheet() {
             const sc = document.querySelector(`input[name="insPrintScope"][value="${insPrintOpts.scope}"]`);
             if (sc) sc.checked = true;
             const d = document.getElementById("insPrintDetails"); if (d) d.checked = insPrintOpts.details;
             const c = document.getElementById("insPrintContacts"); if (c) c.checked = insPrintOpts.contacts;
+            // v508: "Whose policies" — one tick per insured person who has a policy (hidden when there is only one group).
+            const box = document.getElementById("insPrintMembers");
+            if (box) {
+                const counts = new Map();
+                insuranceCache.forEach(p => {
+                    const k = p.insuredMemberId && getMemberById(p.insuredMemberId) ? p.insuredMemberId : "";
+                    counts.set(k, (counts.get(k) || 0) + 1);
+                });
+                const keys = [...membersCache.map(m => m.id).filter(id => counts.has(id)), ...(counts.has("") ? [""] : [])];
+                if (keys.length < 2) { box.style.display = "none"; box.innerHTML = ""; }
+                else {
+                    box.style.display = "block";
+                    const sel = insPrintOpts.members;
+                    box.innerHTML = `<div style="font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin:14px 0 6px;">Whose policies</div>`
+                        + keys.map(k => {
+                            const m = k ? getMemberById(k) : null;
+                            const on = !sel || sel.includes(k);
+                            const nm = m ? `<span class="member-color-dot" style="background:${m.color}; display:inline-block; width:10px; height:10px; border-radius:50%;"></span> ${escapeHtml(m.name)}` : "Insured person not set";
+                            return `<label style="display:flex; align-items:center; gap:10px; padding:8px 0; font-size:0.9rem; font-weight:600;"><input type="checkbox" class="ins-print-member" value="${escapeHtml(k)}"${on ? " checked" : ""} style="width:18px; height:18px; padding:0; flex:0 0 auto;"> <span>${nm} <span style="font-weight:600; color:var(--text-muted); font-size:0.78rem;">· ${counts.get(k)} ${counts.get(k) === 1 ? "policy" : "policies"}</span></span></label>`;
+                        }).join("");
+                }
+            }
             openModal("insurancePrintModal");
         }
 
         async function insurancePrintRun() {
             const scopeEl = document.querySelector('input[name="insPrintScope"]:checked');
+            // v508: ticked insured people (null = everyone: no choice shown, or all ticked).
+            const mBoxes = [...document.querySelectorAll("#insPrintMembers .ins-print-member")];
+            let members = null;
+            if (mBoxes.length) {
+                const ticked = mBoxes.filter(b => b.checked).map(b => b.value);
+                if (!ticked.length) { showToast("Tick at least one person"); return; }
+                if (ticked.length < mBoxes.length) members = ticked;
+            }
             insPrintOpts = {
                 scope: scopeEl ? scopeEl.value : "active",
                 details: !!(document.getElementById("insPrintDetails") || {}).checked,
-                contacts: !!(document.getElementById("insPrintContacts") || {}).checked
+                contacts: !!(document.getElementById("insPrintContacts") || {}).checked,
+                members
             };
             // closeModal() goes through history.back(); wait for its popstate before the print dialog opens.
             closeModalAndThen("insurancePrintModal", () => { printInsuranceReport(insPrintOpts); });
@@ -16115,7 +16146,9 @@
             const daysTo = (d) => Math.round((new Date(d + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000);
             const scopeAll = opts.scope === "all";
             const typeOrder = Object.keys(INS_TYPES);
-            const included = insuranceCache.filter(p => scopeAll || insIsLive(p)).slice().sort((a, b) => {
+            const memberKeyOf = (p) => (p.insuredMemberId && getMemberById(p.insuredMemberId)) ? p.insuredMemberId : "";
+            const picked = Array.isArray(opts.members) ? opts.members : null; // v508
+            const included = insuranceCache.filter(p => (scopeAll || insIsLive(p)) && (!picked || picked.includes(memberKeyOf(p)))).slice().sort((a, b) => {
                 const ia = (a.insurer || "").trim().toLowerCase(), ib = (b.insurer || "").trim().toLowerCase();
                 if (ia !== ib) return !ia ? 1 : (!ib ? -1 : ia.localeCompare(ib));
                 const ta = typeOrder.indexOf(a.type || "other"), tb = typeOrder.indexOf(b.type || "other");
@@ -16371,7 +16404,7 @@
             }
 
             return `<div class="insr-head"><h1>🛡️ Insurance report</h1>
-                    <div class="insr-sub">${scopeAll ? "All policies, including ended" : "In-force policies"} · amounts in ${esc(baseCurrency)} unless a policy's own currency is shown · printed ${esc(new Date().toLocaleString())}</div></div>
+                    <div class="insr-sub">${scopeAll ? "All policies, including ended" : "In-force policies"}${picked ? " · " + esc(picked.map(k => k ? ((getMemberById(k) || {}).name || "") : "Insured person not set").filter(Boolean).join(", ")) : ""} · amounts in ${esc(baseCurrency)} unless a policy's own currency is shown · printed ${esc(new Date().toLocaleString())}</div></div>
                 ${section("Summary", summary, summaryNote)}
                 ${section("Needs attention", attention)}
                 ${personHtml}${personalHtml}${assetHtml}${agentHtml}${detailHtml}

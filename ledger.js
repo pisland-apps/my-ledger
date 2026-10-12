@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v499";
+        const APP_VERSION = "v500";
         const APP_VERSION_DATE = "2026-10-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15325,6 +15325,7 @@
             if (!includeInsuranceSvInNetWorth && !ignoreToggle) return out;
             (insuranceCache || []).forEach(p => {
                 if (!insIsLive(p)) return;
+                if (p.excludeFromNetWorth) return; // v500: someone else's policy (e.g. a child's) - never counted here
                 const latest = (p.surrenderHistory || []).filter(r => r && r.date)
                     .slice().sort((a, b) => b.date.localeCompare(a.date))[0];
                 const sv = insSvValue(latest);
@@ -15678,6 +15679,7 @@
                 if (p.product && p.insurer) metaParts.push(escapeHtml(p.insurer));
                 // Same coloured "● Name" tag as the account rows on the Accounts page (member's own colour).
                 if (p.insuredMemberId && getMemberById(p.insuredMemberId)) metaParts.push(accountOwnerTagHTML({ memberIds: [p.insuredMemberId] }));
+                if (p.excludeFromNetWorth) metaParts.push("🚫 not in Net Worth"); // v500
                 if (!insIsLive(p)) metaParts.push(escapeHtml(INS_STATUSES[p.status] || p.status));
                 let dueLine = "";
                 if (f.plan && !f.plan.paused) {
@@ -17337,6 +17339,7 @@
             document.getElementById("insMaturityDate").value = p ? (p.maturityDate || "") : "";
             document.getElementById("insPremium").value = (p && p.premium != null) ? p.premium : "";
             document.getElementById("insLoan").value = (p && p.loanOutstanding) ? p.loanOutstanding : "";
+            document.getElementById("insExcludeNw").checked = !!(p && p.excludeFromNetWorth); // v500
             document.getElementById("insNotes").value = p ? (p.notes || "") : "";
             insAgentMoveRefresh(); // v485
             document.getElementById("insPaidByBonus").checked = !!(p && p.paidByBonus);
@@ -17398,6 +17401,7 @@
             record.startDate = document.getElementById("insStartDate").value || "";
             record.maturityDate = document.getElementById("insMaturityDate").value || "";
             record.loanOutstanding = insNumOrNull(document.getElementById("insLoan").value) || 0;
+            if (document.getElementById("insExcludeNw").checked) record.excludeFromNetWorth = true; else delete record.excludeFromNetWorth; // v500
             record.historyCutoff = document.getElementById("insCutoff").value || "";
             record.statementTotal = insNumOrNull(document.getElementById("insStatementTotal").value);
             record.notes = document.getElementById("insNotes").value.trim();
@@ -23216,24 +23220,100 @@
         let insMergeState = null;
 
 
-        // v499: "Export insurance only" - the file the second (insurance-only) ledger hands over.
-        // Holds just the policies, the members they point at (name + colour, for the name match on
-        // merge) and the policies' own attachment blobs. Same encrypt / plain-text choice as
-        // exportBackup() (the Backup & Restore page toggle; encrypted by default). It has no
-        // accounts/transactions, so Import JSON refuses it before touching anything - it is only
+        // v499/v500: "Export insurance only" - the file the second (insurance-only) ledger hands over.
+        // Holds just the chosen people's policies, the members they point at (name + colour, for the
+        // name match on merge) and those policies' own attachment blobs. Same encrypt / plain-text
+        // choice as exportBackup() (the Backup & Restore page toggle; encrypted by default). It has
+        // no accounts/transactions, so Import JSON refuses it before touching anything - it is only
         // read by "Merge insurance only".
-        async function exportInsuranceOnly() {
+        // v500: opens an options sheet first: pick whose policies go in, and (default on) turn the
+        // premiums recorded here as payments into "paid by parent" history rows inside the file, so
+        // payments / planned payments kept in THIS ledger still reach the other ledger. Nothing in
+        // this ledger is changed - only the exported copy gets the extra rows.
+        function insExportHistoryRows(p, txs) {
+            const cur = p.currency || baseCurrency;
+            const expIds = new Set(txs.filter(t => t.policyId === p.id && t.type === "expense").map(t => t.id));
+            const isRefund = (t) => t.type === "income" && t.isRefund
+                && [t.refundOf, ...(Array.isArray(t.refundOfIds) ? t.refundOfIds : [])].some(id => id != null && expIds.has(id));
+            return txs.filter(t => expIds.has(t.id) || isRefund(t)).map(t => {
+                const sign = t.type === "income" ? -1 : 1;
+                const amt = Math.round(sign * insConvert(t.amount, t.currency || cur, cur) * 100) / 100;
+                const fx = (t.currency && t.currency !== cur) ? " (" + t.currency + " " + (parseFloat(t.amount) || 0).toFixed(2) + ")" : "";
+                return { id: makeInsuranceId(), date: t.date || "", amount: amt, note: (sign < 0 ? "Refund" : "Payment") + fx + " (from ledger)", paidBy: "parent" };
+            }).filter(r => r.date);
+        }
+
+        async function openInsExportSheet() {
             await loadInsuranceCache();
             await loadMembersCache();
             if (!insuranceCache.length) { alert("There are no insurance policies to export."); return; }
-            const memberIds = new Set(insuranceCache.map(p => p.insuredMemberId).filter(Boolean));
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const groups = new Map(); // key -> { name, count }
+            insuranceCache.forEach(p => {
+                const m = p.insuredMemberId ? getMemberById(p.insuredMemberId) : null;
+                const key = m ? m.id : "__none__";
+                if (!groups.has(key)) groups.set(key, { name: m ? m.name : "Not set", count: 0 });
+                groups.get(key).count++;
+            });
+            let payN = 0, payPol = 0;
+            insuranceCache.forEach(p => { const n = insExportHistoryRows(p, txs).length; if (n) { payN += n; payPol++; } });
+            let html = '<p style="font-size:0.75rem; font-weight:800; color:var(--text-muted); margin:0 0 6px;">WHOSE POLICIES</p>';
+            groups.forEach((g, key) => {
+                html += '<label style="display:flex; align-items:center; gap:10px; padding:6px 0; font-size:0.9rem; font-weight:600;"><input type="checkbox" data-ins-export-member="' + escapeHtml(key) + '" checked style="width:18px; height:18px; padding:0; flex:0 0 auto;"> ' + escapeHtml(g.name) + ' (' + g.count + ')</label>';
+            });
+            html += '<p style="font-size:0.72rem; color:var(--text-muted); font-weight:600; margin:2px 0 14px;">Untick anyone whose policies should stay in this ledger (e.g. your own).</p>';
+            html += '<label style="display:flex; align-items:flex-start; gap:10px; padding:6px 0; font-size:0.9rem; font-weight:600;"><input type="checkbox" id="insExportConvert"' + (payN ? " checked" : " disabled") + ' style="width:18px; height:18px; padding:0; flex:0 0 auto; margin-top:2px;"> <span>Add payments recorded in this ledger as “paid by parent” history<br><span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">'
+                + (payN ? payN + ' payment' + (payN === 1 ? '' : 's') + ' on ' + payPol + ' polic' + (payPol === 1 ? 'y' : 'ies') + ' (refunds count as minus). Only the file gets these rows; this ledger is not changed. Planned payments are not exported - once paid they are payments.' : 'No premium payments are linked to a policy in this ledger.')
+                + '</span></span></label>';
+            document.getElementById("insExportBody").innerHTML = html;
+            openModal("insExportModal");
+        }
+
+        async function insExportRun() {
+            const modal = document.getElementById("insExportModal");
+            const keys = [...modal.querySelectorAll("input[data-ins-export-member]:checked")].map(el => el.dataset.insExportMember);
+            if (!keys.length) { alert("Tick at least one person."); return; }
+            const conv = document.getElementById("insExportConvert");
+            const convert = !!(conv && conv.checked && !conv.disabled);
+            closeModalAndThen("insExportModal", () => exportInsuranceOnly({ keys, convert }));
+        }
+
+        async function exportInsuranceOnly(opts) {
+            opts = opts || {};
+            await loadInsuranceCache();
+            await loadMembersCache();
+            const keySet = opts.keys ? new Set(opts.keys) : null;
+            const chosen = insuranceCache.filter(p => {
+                if (!keySet) return true;
+                const m = p.insuredMemberId ? getMemberById(p.insuredMemberId) : null;
+                return keySet.has(m ? m.id : "__none__");
+            });
+            if (!chosen.length) { alert("There are no insurance policies to export."); return; }
+            const txs = opts.convert ? await readAllDB(STORES.TRANSACTIONS) : [];
+            let converted = 0;
+            const policies = chosen.map(p => {
+                const rec = JSON.parse(JSON.stringify(p));
+                if (opts.convert) {
+                    const add = insExportHistoryRows(p, txs);
+                    if (add.length) {
+                        converted += add.length;
+                        rec.premiumHistory = [...(rec.premiumHistory || []), ...add].sort((x, y) => String(x.date).localeCompare(String(y.date)));
+                        // "Ledger tracking starts" = where typed-in history ends. The rows just added run up to the
+                        // latest payment, so later payments recorded in the receiving ledger are not flagged as duplicates.
+                        const latest = add.reduce((m, r) => r.date > m ? r.date : m, "");
+                        if (latest > (rec.historyCutoff || "")) rec.historyCutoff = latest;
+                    }
+                }
+                return rec;
+            });
+            const memberIds = new Set(policies.map(p => p.insuredMemberId).filter(Boolean));
             const attIds = new Set();
-            insuranceCache.forEach(p => (Array.isArray(p.attachments) ? p.attachments : []).forEach(a => { if (a && a.id != null) attIds.add(a.id); }));
+            policies.forEach(p => (Array.isArray(p.attachments) ? p.attachments : []).forEach(a => { if (a && a.id != null) attIds.add(a.id); }));
             const allAtts = await readAllDB(STORES.ATTACHMENTS);
             const bundle = {
                 insuranceOnly: true,
                 exportedAt: todayLocalStr(),
-                insurance: insuranceCache,
+                insurance: policies,
                 members: membersCache.filter(m => memberIds.has(m.id)),
                 attachments: allAtts.filter(a => a && attIds.has(a.id))
             };
@@ -23259,7 +23339,7 @@
             const a = document.createElement("a");
             a.href = url; a.download = `ledger_insurance_${todayLocalStr()}${suffix}.json`;
             a.click(); URL.revokeObjectURL(url);
-            showToast("🛡️ " + insuranceCache.length + " polic" + (insuranceCache.length === 1 ? "y" : "ies") + " exported" + (wantsEncryption ? " (encrypted)" : ""));
+            showToast("🛡️ " + policies.length + " polic" + (policies.length === 1 ? "y" : "ies") + " exported" + (converted ? ", " + converted + " payment" + (converted === 1 ? "" : "s") + " added as history" : "") + (wantsEncryption ? " (encrypted)" : ""));
         }
 
         function openInsMergePicker() {
@@ -23358,7 +23438,7 @@
                 "dup": ["Same policy number already here, possible duplicate", "#f59e0b"]
             };
             const visible = st.rows.map((r, i) => ({ r, i })).filter(x => insMergeRowVisible(st, x.r));
-            let html = '<p style="font-size:0.8rem; color:var(--text-muted); font-weight:600; margin:0 0 12px;">Only insurance policies are added. Nothing else in this ledger is changed or removed.</p>';
+            let html = '<p style="font-size:0.8rem; color:var(--text-muted); font-weight:600; margin:0 0 12px;">Only insurance policies are added. Nothing else in this ledger is changed or removed. A policy marked "leave out of Net Worth" in the other ledger is counted normally here.</p>';
 
             // Filter by insured person - only worth showing when the file covers more than one group.
             const noneCount = st.rows.filter(r => !(r.policy.insuredMemberId && st.srcMemberById.has(r.policy.insuredMemberId))).length;
@@ -23439,6 +23519,7 @@
                 // 2) Policies (+ their attachment blobs, written first so no ref points at nothing).
                 for (const r of picked) {
                     const rec = JSON.parse(JSON.stringify(r.policy));
+                    delete rec.excludeFromNetWorth; // v500: once it is in MY ledger it is my policy - counted in Net Worth as usual
                     rec.insuredMemberId = rec.insuredMemberId && resolved[rec.insuredMemberId] ? resolved[rec.insuredMemberId] : null;
                     if (Array.isArray(rec.attachments)) {
                         const kept = [];
@@ -24671,7 +24752,8 @@
             exportBackupQuick: () => exportBackupQuick(),
             openImportInput: () => document.getElementById("importInput").click(),
             openInsMergePicker: () => openInsMergePicker(),
-            exportInsuranceOnly: () => exportInsuranceOnly(),
+            exportInsuranceOnly: () => openInsExportSheet(),
+            insExportRun: () => insExportRun(),
             insMergeConfirm: () => insMergeConfirm(),
             connectGoogleDrive: () => connectGoogleDrive(),
             disconnectGoogleDrive: () => disconnectGoogleDrive(),

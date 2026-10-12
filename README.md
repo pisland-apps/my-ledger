@@ -3848,3 +3848,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - The Policy register (and the Car, home & travel table) is grouped by insured person: a heading row per person, that person's policies, a Subtotal row (yearly premium in force, paid to date), then the grand Total. People appear in the usual member order, "Insured person not set" last. The Insured column is gone (the heading says it). With only one group and no person set, no headings are drawn.
 - The optional per-policy detail blocks follow the same person order.
 - Print layout only; no data change. `APP_VERSION` / `CACHE_NAME` -> v497.
+
+## v498: Insurance - merge policies from another ledger's backup
+- For the two-ledger setup (a second ledger that holds only insurance policies, e.g. ones the parents pay for): **📥** in the Insurance header, or **🛡️ Merge insurance only** on Backup & Restore. Pick the other ledger's backup file (encrypted files ask for their passcode as usual).
+- It **only adds policies**. Nothing is cleared or replaced (unlike Import JSON); accounts, transactions, categories, planned payments and settings in the file are ignored. Policy attachments travel with their policy. The premium history rows keep their "paid by parent" tags.
+- Preview sheet: each policy is marked **New** (ticked), **Already in this ledger** (same id; locked), **newer version in the file** (unticked; ticking overwrites that policy) or **same policy number under another id** (unticked, possible duplicate). The insured person is mapped per name: an existing member, create it here, or Not set (defaults to a same-name match, else create).
+- Not carried over: ledger transactions and planned payments linked to the policy (they belong to the other ledger), so "Next premium" is blank until a planned payment is linked here.
+- Drive auto-sync is not paused during the merge, so the merged policies sync like any other edit. No DB change (`DB_VERSION` unchanged). `APP_VERSION` / `CACHE_NAME` -> v498.

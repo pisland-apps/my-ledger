@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v497";
-        const APP_VERSION_DATE = "2026-10-11";
+        const APP_VERSION = "v498";
+        const APP_VERSION_DATE = "2026-10-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -23197,6 +23197,181 @@
             }
         }
 
+
+        // ===================================================================================
+        // --- MERGE INSURANCE POLICIES FROM ANOTHER LEDGER'S BACKUP (v498) ---
+        // For the two-ledger setup: a second ledger holds only insurance policies (e.g. policies
+        // the parents pay for, with the "paid by parent" premium history). When the family takes
+        // the premiums over, the policies are brought into the main ledger WITHOUT touching
+        // anything else there. Unlike importBackup() this never clears a store: it reads only
+        // `insurance` (+ `members` for the insured-person link, + the policies' own attachment
+        // blobs) from a backup file and ADDS records. Accounts, transactions, categories,
+        // planned payments and settings in the file are ignored.
+        // Rules: a policy whose id is already here is skipped (re-importing the same file is
+        // harmless); the same policy number under a different id is flagged as a possible
+        // duplicate and left unticked; a newer copy of an existing policy only overwrites if
+        // ticked. The insured person is matched by name, created, or left unset - chosen per
+        // person in the preview. Drive auto-sync is NOT suppressed, so the merged data syncs.
+        // ===================================================================================
+        let insMergeState = null;
+
+        function openInsMergePicker() {
+            const inp = document.getElementById("insMergeInput");
+            if (inp) { inp.value = ""; inp.click(); }
+        }
+
+        function insMergeKey(s) { return String(s || "").trim().toLowerCase(); }
+
+        async function insMergeFileChosen(e) {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async function (evt) {
+                try {
+                    const parsed = JSON.parse(evt.target.result);
+                    let bundle = parsed;
+                    if (parsed && parsed.encrypted) {
+                        bundle = await decryptBackupBundle(parsed);
+                        if (!bundle) return; // passcode prompt cancelled
+                    }
+                    if (!bundle || !Array.isArray(bundle.insurance) || !bundle.insurance.length) {
+                        alert("No insurance policies were found in this file.");
+                        return;
+                    }
+                    await insMergePrepare(bundle);
+                } catch (err) {
+                    alert("Could not read this file: " + (err && err.message ? err.message : "not a valid backup."));
+                } finally {
+                    e.target.value = "";
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        async function insMergePrepare(bundle) {
+            await loadInsuranceCache();
+            await loadMembersCache();
+            const srcMembers = Array.isArray(bundle.members) ? bundle.members.filter(m => m && m.id) : [];
+            const srcMemberById = new Map(srcMembers.map(m => [m.id, m]));
+            const attBlobs = new Map();
+            (Array.isArray(bundle.attachments) ? bundle.attachments : []).forEach(a => { if (a && a.id != null) attBlobs.set(a.id, a); });
+            const existingById = new Map(insuranceCache.map(p => [p.id, p]));
+            const existingByNo = new Map();
+            insuranceCache.forEach(p => { const k = insMergeKey(p.policyNo); if (k) existingByNo.set(k, p); });
+
+            const rows = bundle.insurance.filter(p => p && p.id).map(p => {
+                let kind = "new";
+                const same = existingById.get(p.id);
+                if (same) kind = String(p.updated || "") > String(same.updated || "") ? "newer" : "same";
+                else { const k = insMergeKey(p.policyNo); if (k && existingByNo.has(k)) kind = "dup"; }
+                return { policy: p, kind, checked: kind === "new" };
+            });
+            if (!rows.length) { alert("No insurance policies were found in this file."); return; }
+
+            const usedIds = [];
+            rows.forEach(r => { const id = r.policy.insuredMemberId; if (id && srcMemberById.has(id) && !usedIds.includes(id)) usedIds.push(id); });
+            insMergeState = { rows, srcMemberById, usedIds, attBlobs };
+            insMergeRender();
+            openModal("insMergeModal");
+        }
+
+        function insMergeRender() {
+            const st = insMergeState; if (!st) return;
+            const kindLabel = {
+                "new": ["New", "#10b981"],
+                "same": ["Already in this ledger", "#64748b"],
+                "newer": ["Already here, file has a newer version (ticking overwrites it)", "#f59e0b"],
+                "dup": ["Same policy number already here, possible duplicate", "#f59e0b"]
+            };
+            let html = '<p style="font-size:0.8rem; color:var(--text-muted); font-weight:600; margin:0 0 12px;">Only insurance policies are added. Nothing else in this ledger is changed or removed.</p>';
+
+            if (st.usedIds.length) {
+                html += '<p style="font-size:0.75rem; font-weight:800; color:var(--text-muted); margin:0 0 6px;">INSURED PERSON</p>';
+                st.usedIds.forEach(sid => {
+                    const sm = st.srcMemberById.get(sid);
+                    const match = membersCache.find(m => insMergeKey(m.name) === insMergeKey(sm.name));
+                    let opts = membersCache.map(m => '<option value="' + escapeHtml(m.id) + '"' + (match && match.id === m.id ? " selected" : "") + '>' + escapeHtml(m.name) + '</option>').join("");
+                    opts += '<option value="__new__"' + (match ? "" : " selected") + '>＋ Create "' + escapeHtml(sm.name) + '" here</option>';
+                    opts += '<option value="__none__">Not set</option>';
+                    html += '<div style="display:flex; align-items:center; gap:8px; margin:0 0 8px;"><span style="flex:0 0 38%; font-size:0.85rem; font-weight:700; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(sm.name) + '</span><span aria-hidden="true">→</span><select class="form-input" data-ins-merge-member="' + escapeHtml(sid) + '" style="flex:1; min-width:0;">' + opts + '</select></div>';
+                });
+            }
+
+            html += '<p style="font-size:0.75rem; font-weight:800; color:var(--text-muted); margin:14px 0 6px;">POLICIES (' + st.rows.length + ')</p>';
+            st.rows.forEach((r, i) => {
+                const p = r.policy;
+                const lab = kindLabel[r.kind];
+                const icon = INS_TYPE_ICONS[p.type] || "📄";
+                const title = [p.product, p.insurer].filter(Boolean).join(" · ") || "(unnamed policy)";
+                const who = p.insuredMemberId && st.srcMemberById.has(p.insuredMemberId) ? st.srcMemberById.get(p.insuredMemberId).name : "";
+                const freq = INS_FREQ[p.frequency] ? INS_FREQ[p.frequency][0] : "";
+                const prem = (p.premium != null && p.premium !== "") ? ((p.currency || "") + " " + Number(p.premium).toLocaleString(undefined, { maximumFractionDigits: 2 }) + (freq ? " " + freq.toLowerCase() : "")).trim() : "";
+                const hist = Array.isArray(p.premiumHistory) ? p.premiumHistory : [];
+                const parentN = hist.filter(h => h && h.paidBy === "parent").length;
+                const meta = [who, prem, hist.length ? (hist.length + " earlier premium row" + (hist.length === 1 ? "" : "s") + (parentN ? ", " + parentN + " paid by parent" : "")) : ""].filter(Boolean).join(" · ");
+                html += '<label style="display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-top:1px solid var(--border-color);' + (r.kind === "same" ? " opacity:0.6;" : "") + '">'
+                    + '<input type="checkbox" data-ins-merge-row="' + i + '"' + (r.checked ? " checked" : "") + (r.kind === "same" ? " disabled" : "") + ' style="width:18px; height:18px; padding:0; flex:0 0 auto; margin-top:2px;">'
+                    + '<span style="min-width:0;"><span style="font-size:0.9rem; font-weight:800;">' + icon + " " + escapeHtml(title) + '</span>'
+                    + (meta ? '<br><span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">' + escapeHtml(meta) + '</span>' : "")
+                    + '<br><span style="font-size:0.72rem; font-weight:700; color:' + lab[1] + ';">' + lab[0] + '</span></span></label>';
+            });
+            document.getElementById("insMergeBody").innerHTML = html;
+        }
+
+        async function insMergeConfirm() {
+            const st = insMergeState; if (!st) return;
+            const modal = document.getElementById("insMergeModal");
+            const picked = [...modal.querySelectorAll("input[data-ins-merge-row]:checked")]
+                .map(el => st.rows[Number(el.dataset.insMergeRow)]).filter(Boolean);
+            if (!picked.length) { alert("Tick at least one policy to import."); return; }
+            const choice = {};
+            modal.querySelectorAll("select[data-ins-merge-member]").forEach(s => { choice[s.dataset.insMergeMember] = s.value; });
+
+            let created = 0, written = 0, missingAtt = 0;
+            try {
+                // 1) Members: only create the ones a ticked policy actually needs.
+                const resolved = {};
+                const needed = new Set(picked.map(r => r.policy.insuredMemberId).filter(Boolean));
+                for (const sid of needed) {
+                    const sel = choice[sid];
+                    if (sel === undefined || sel === "__none__") { resolved[sid] = null; continue; }
+                    if (sel === "__new__") {
+                        const sm = st.srcMemberById.get(sid);
+                        const newId = "mem_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6);
+                        await writeDB(STORES.MEMBERS, { id: newId, name: sm.name, color: sm.color || MEMBER_COLORS[(membersCache.length + created) % MEMBER_COLORS.length] });
+                        resolved[sid] = newId; created++;
+                    } else {
+                        resolved[sid] = sel;
+                    }
+                }
+                // 2) Policies (+ their attachment blobs, written first so no ref points at nothing).
+                for (const r of picked) {
+                    const rec = JSON.parse(JSON.stringify(r.policy));
+                    rec.insuredMemberId = rec.insuredMemberId && resolved[rec.insuredMemberId] ? resolved[rec.insuredMemberId] : null;
+                    if (Array.isArray(rec.attachments)) {
+                        const kept = [];
+                        for (const a of rec.attachments) {
+                            const blob = a && st.attBlobs.get(a.id);
+                            if (blob) { await writeDB(STORES.ATTACHMENTS, blob); kept.push(a); } else { missingAtt++; }
+                        }
+                        rec.attachments = kept;
+                    }
+                    await writeDB(STORES.INSURANCE, rec);
+                    written++;
+                }
+            } catch (err) {
+                alert("Merge stopped after " + written + " policy(ies): " + (err && err.message ? err.message : err));
+            }
+
+            insMergeState = null;
+            closeModal("insMergeModal");
+            await loadInsuranceCache();
+            if (created) { await afterMembersChanged(); } else { await loadMembersCache(); }
+            const insPage = document.getElementById("page-insurance");
+            if (insPage && !insPage.classList.contains("hidden")) { await renderInsurancePage(); }
+            showToast("🛡️ " + written + " polic" + (written === 1 ? "y" : "ies") + " merged" + (created ? ", " + created + " member" + (created === 1 ? "" : "s") + " added" : "") + (missingAtt ? " (" + missingAtt + " attachment" + (missingAtt === 1 ? "" : "s") + " missing in file)" : ""));
+        }
+
         async function importBackup(e) {
             const file = e.target.files[0]; if (!file) return;
 
@@ -24403,6 +24578,8 @@
             exportBackup: () => exportBackup(),
             exportBackupQuick: () => exportBackupQuick(),
             openImportInput: () => document.getElementById("importInput").click(),
+            openInsMergePicker: () => openInsMergePicker(),
+            insMergeConfirm: () => insMergeConfirm(),
             connectGoogleDrive: () => connectGoogleDrive(),
             disconnectGoogleDrive: () => disconnectGoogleDrive(),
             manualSyncGoogleDrive: (el) => manualSyncGoogleDrive(el),
@@ -24603,6 +24780,7 @@
             renderAttachmentReviewPage: () => renderAttachmentReviewPage(),
             toggleBudgetCarryover: (el) => toggleBudgetCarryover(el),
             importBackup: (el, e) => importBackup(e),
+            insMergeFileChosen: (el, e) => insMergeFileChosen(e),
             handleExportEncryptToggleChange: () => handleExportEncryptToggleChange(),
             handleDriveAutoSyncToggleChange: () => handleDriveAutoSyncToggleChange(),
             handleBiometricToggleChange: () => handleBiometricToggleChange(),

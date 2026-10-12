@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v509";
+        const APP_VERSION = "v510";
         const APP_VERSION_DATE = "2026-10-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -13986,7 +13986,7 @@
                 // read while the "Policy" row is actually showing (see refreshTxPolicyRow()). Listed
                 // here explicitly for the same reason as splitGroupId/isRefund below: this record is
                 // built field-by-field, so a field left out is silently wiped on every edit.
-                policyId: (document.getElementById("txType").value === "expense" && document.getElementById("txPolicyRow").style.display !== "none")
+                policyId: ((document.getElementById("txType").value === "expense" || (document.getElementById("txType").value === "income" && pendingRefundOf === null)) && document.getElementById("txPolicyRow").style.display !== "none") // v510: an Income entry can be linked too (policy cashback)
                     ? (document.getElementById("txPolicyId").value || null)
                     : undefined,
                 // v92 fix: writeDB() does a full put() that replaces the entire stored record, so
@@ -14845,7 +14845,7 @@
                 payment.notes = document.getElementById("txNotes").value.trim();
                 // v468: keep the Insurance link in step with what was just confirmed on the form.
                 const polRowEl = document.getElementById("txPolicyRow");
-                if (polRowEl && polRowEl.style.display !== "none") payment.policyId = document.getElementById("txPolicyId").value || null;
+                if (polRowEl && polRowEl.style.display !== "none" && document.getElementById("txType").value === "expense") payment.policyId = document.getElementById("txPolicyId").value || null; // v510: a planned payment is only ever a premium
                 payment.attachments = [];
                 // v359: backfill anchorDay for a record created before it existed (v357/v358) —
                 // one-time, using its current dueDate's day as the best available reconstruction
@@ -15265,7 +15265,7 @@
         // policyNo, type, status, insuredMemberId, startDate, maturityDate, currency, premium,
         // frequency, historyCutoff, statementTotal, premiumHistory: [{id,date,amount,note}],
         // coverages: [{id,label,sumAssured}], surrenderHistory: [{id,date,guaranteed,dividend,terminal,total}],
-        // loanOutstanding, notes, createdAt, updated }.
+        // loanOutstanding, notes, createdAt, updated, [v510: cashbackPct, cashbackBase, cashbackFirstYear, cashbackHistory: [{id,date,amount,note}]] }.
         // A Planned Payment is linked to a policy through ITS OWN optional `policyId` field (one
         // planned payment per policy), so the policy's "next due" is read from that single record
         // rather than being stored a second time here. A recurring planned payment keeps its
@@ -15286,6 +15286,8 @@
         // [label, payments per year] — a single-premium policy has no yearly premium to project.
         const INS_FREQ = { monthly: ["Monthly", 12], quarterly: ["Quarterly", 4], halfyearly: ["Half-yearly", 2], yearly: ["Yearly", 1], single: ["Single payment", 0] };
         const INS_INSURANCE_CAT_RE = /insur|takaful|保险|保險/i;
+        // v510: income categories that offer the "Policy cashback" link (the row also shows for any insurance-looking category)
+        const INS_CASHBACK_CAT_RE = /cash ?back|payout|rebate|返现|返還|回赠|回馈|派息/i;
 
         let insuranceCache = [];
         let activeInsuranceId = null;
@@ -15462,17 +15464,33 @@
                 ? history.filter(r => r.date <= latestSv.date).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
                     + ledgerRows.filter(r => (r.date || "") <= latestSv.date).reduce((s, r) => s + r.amount, 0)
                 : null;
+            // v510: cashback received — earlier years typed into the policy (cashbackHistory) + Income entries linked to the
+            // policy (policyId on an Income). A refund is never cashback (it is subtracted from the premium instead).
+            const cbHistory = (policy.cashbackHistory || []).filter(r => r && r.date)
+                .slice().sort((a, b) => b.date.localeCompare(a.date));
+            const cbHistoryTotal = cbHistory.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+            const cbLedgerRows = (txs || []).filter(t => t.policyId === policy.id && t.type === "income" && !t.isRefund)
+                .map(t => ({ date: t.date || "", amount: insConvert(t.amount, t.currency || cur, cur), tx: t }))
+                .sort((a, b) => b.date.localeCompare(a.date));
+            const cbLedgerTotal = cbLedgerRows.reduce((s, r) => s + r.amount, 0);
+            const cbTotal = cbHistoryTotal + cbLedgerTotal;
+            const cbCount = cbHistory.length + cbLedgerRows.length;
+            const cbToSv = latestSv
+                ? cbHistory.filter(r => r.date <= latestSv.date).reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
+                    + cbLedgerRows.filter(r => (r.date || "") <= latestSv.date).reduce((s, r) => s + r.amount, 0)
+                : 0;
             const loan = parseFloat(policy.loanOutstanding) || 0;
             const freq = INS_FREQ[policy.frequency];
             const premium = parseFloat(policy.premium) || 0;
             return {
-                cur, history, historyTotal, parentTotal, hasParentSplit, selfTotal: paid - parentTotal, ledgerRows, ledgerTotal, paid, paidToSv, svs, latestSv, svValue, svGuaranteed, svParts, svAgeDays,
+                cur, history, historyTotal, cbHistory, cbHistoryTotal, cbLedgerRows, cbLedgerTotal, cbTotal, cbCount, cbToSv, parentTotal, hasParentSplit, selfTotal: paid - parentTotal, ledgerRows, ledgerTotal, paid, paidToSv, svs, latestSv, svValue, svGuaranteed, svParts, svAgeDays,
                 // A surrender value older than a year is probably out of date — insurers send a
                 // fresh statement every year — so the card flags it instead of presenting it as current.
                 svStale: svAgeDays != null && svAgeDays > 365,
                 loan,
                 netSv: svValue == null ? null : svValue - loan,
-                paybackPct: (svValue != null && paid > 0) ? (svValue / paid) * 100 : null,
+                paybackPct: (svValue != null && paid > 0) ? ((svValue + cbTotal) / paid) * 100 : null, // v510: cashback already received counts as money back
+                paybackPctSvOnly: (svValue != null && paid > 0) ? (svValue / paid) * 100 : null,
                 annual: (freq && freq[1] > 0 && premium > 0) ? premium * freq[1] : 0,
                 plan: (planned || []).find(p => p.policyId === policy.id) || null
             };
@@ -15590,14 +15608,17 @@
             const catEl = document.getElementById("txCategory");
             const catText = (catEl && catEl.selectedIndex >= 0)
                 ? (catEl.options[catEl.selectedIndex].textContent + " " + catEl.value) : "";
+            const type = document.getElementById("txType").value;
             const policies = insuranceCache
                 .filter(p => insIsLive(p) || p.id === current)
                 .slice().sort((a, b) => policyLabel(a).localeCompare(policyLabel(b)));
-            sel.innerHTML = `<option value="">🛡️ Policy (Optional) — none</option>`
+            // v510: on an Income entry the same row links the money to a policy as cashback received.
+            sel.innerHTML = `<option value="">${type === "income" ? "🛡️ Policy cashback (Optional) — none" : "🛡️ Policy (Optional) — none"}</option>`
                 + policies.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(policyLabel(p))}</option>`).join("");
             sel.value = policies.some(p => p.id === current) ? current : "";
-            const type = document.getElementById("txType").value;
-            const show = type === "expense" && policies.length > 0 && (INS_INSURANCE_CAT_RE.test(catText) || !!sel.value);
+            const show = policies.length > 0 && (
+                (type === "expense" && (INS_INSURANCE_CAT_RE.test(catText) || !!sel.value))
+                || (type === "income" && pendingRefundOf === null && (INS_INSURANCE_CAT_RE.test(catText) || INS_CASHBACK_CAT_RE.test(catText) || !!sel.value)));
             row.style.display = show ? "flex" : "none";
         }
 
@@ -15678,7 +15699,7 @@
                     : (insuranceStatusFilter === "ended" ? "No ended policies." : "No policies match this filter."));
 
             let annualBase = 0, paidBase = 0, svBase = 0, svCount = 0;
-            let savPaidBase = 0, savSvBase = 0, savMinDate = null, savMaxDate = null;
+            let savPaidBase = 0, savSvBase = 0, savCbBase = 0, savMinDate = null, savMaxDate = null;
             const savByPerson = new Map(); // v506: insuredMemberId ("" = not set) -> { paid, sv, n }
             const rows = filtered.map(p => {
                 const f = computePolicyFigures(p, txs, planned);
@@ -15690,6 +15711,7 @@
                     // v475: Savings / investment comparison — only policies that have a surrender value.
                     savPaidBase += insConvert(f.paidToSv, f.cur, baseCurrency);
                     savSvBase += insConvert(f.netSv, f.cur, baseCurrency);
+                    savCbBase += insConvert(f.cbToSv || 0, f.cur, baseCurrency); // v510
                     {
                         const pk = p.insuredMemberId && getMemberById(p.insuredMemberId) ? p.insuredMemberId : "";
                         if (!savByPerson.has(pk)) savByPerson.set(pk, { paid: 0, sv: 0, n: 0 });
@@ -15739,7 +15761,7 @@
                             ${f.svValue != null ? `<span class="ins-pol-sv" style="display:block;">${svText}</span>` : ""}
                         </span>
                         </div>
-                        ${(p.paidByBonus || p.notes || insAgentLine(p) || insAttCount(p)) ? `<div>${insBonusBannerHtml(p, true)}${insAgentLine(p) ? `<div style="${p.paidByBonus ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; overflow-wrap:anywhere;">🧑‍💼 ${escapeHtml(insAgentLine(p))}</div>` : ""}${p.notes ? `<div style="${(p.paidByBonus || insAgentLine(p)) ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; white-space:pre-line; overflow-wrap:anywhere; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${escapeHtml(p.notes)}</div>` : ""}${insAttCount(p) ? `<div style="${(p.paidByBonus || p.notes || insAgentLine(p)) ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:700;">📎 ${insAttCount(p)} attachment${insAttCount(p) === 1 ? "" : "s"}</div>` : ""}</div>` : ""}
+                        ${insCashbackBannerHtml(p, f, true)}${(p.paidByBonus || p.notes || insAgentLine(p) || insAttCount(p)) ? `<div>${insBonusBannerHtml(p, true)}${insAgentLine(p) ? `<div style="${p.paidByBonus ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; overflow-wrap:anywhere;">🧑‍💼 ${escapeHtml(insAgentLine(p))}</div>` : ""}${p.notes ? `<div style="${(p.paidByBonus || insAgentLine(p)) ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; white-space:pre-line; overflow-wrap:anywhere; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${escapeHtml(p.notes)}</div>` : ""}${insAttCount(p) ? `<div style="${(p.paidByBonus || p.notes || insAgentLine(p)) ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:700;">📎 ${insAttCount(p)} attachment${insAttCount(p) === 1 ? "" : "s"}</div>` : ""}</div>` : ""}
                     </div>`;
             });
             list.innerHTML = rows.join("");
@@ -15804,6 +15826,7 @@
                             ${cell("Net", `<span style="color:${netColor};">${net >= 0 ? "+" : "−"}${formatCurrency(Math.abs(net), baseCurrency)}</span>`)}
                         </div>
                         <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-align:center; margin-top:8px;">${pct != null ? `SV is ${pct.toFixed(1)}% of premiums paid` : ""}</div>
+                        ${(savCbBase > 0 && savPaidBase > 0) ? `<div style="font-size:0.7rem; font-weight:700; color:var(--income-color); text-align:center; margin-top:2px;">🎁 + ${formatCurrency(savCbBase, baseCurrency)} cashback received → SV + cashback is ${(((savSvBase + savCbBase) / savPaidBase) * 100).toFixed(1)}% of premiums paid</div>` : ""}
                         <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-align:center; margin-top:2px;">${escapeHtml(svDateLabel)}</div>
                         ${oldestSvAge > 365 ? `<div style="font-size:0.7rem; font-weight:700; color:var(--expense-color); text-align:center; margin-top:2px;">⚠️ Oldest surrender value is over a year old — update it from the latest statement</div>` : ""}
                         <div style="font-size:0.66rem; font-weight:600; color:var(--text-muted); text-align:center; margin-top:4px;">Premiums counted only up to each policy's SV date. Net is a rough guide, not an investment return (riders, bonuses and fund prices move).</div>${personBreak}`;
@@ -16372,6 +16395,7 @@
                     const freq = INS_FREQ[p.frequency], prem = parseFloat(p.premium) || 0;
                     fact("Premium", p.paidByBonus ? "Paid from accumulated bonus" : (prem > 0 ? `${cm(prem)}${freq ? " · " + esc(freq[0]) : ""}` : ""));
                     if (f.loan > 0) fact("Policy loan", cm(f.loan));
+                    if (parseFloat(p.cashbackPct) > 0) fact("Cashback", `${p.cashbackPct}% of ${esc((INS_COV_KINDS[p.cashbackBase || "life"] || ["", "Life"])[1])} sum insured · yearly`); // v510
                     if (showNo && (p.agentName || p.agentContact)) fact("Agent", esc(insAgentLine(p)));
                     const covs = (p.coverages || []).filter(c => c && (c.kind || c.label));
                     const covRows = covs.map(c => {
@@ -16390,6 +16414,12 @@
                     const shown = pays.slice(0, 12), older = pays.slice(12);
                     const payRows = shown.map(r => `<tr><td>${esc(r.date)}</td><td class="r">${cm(r.amount)}</td><td>${esc(r.note)}</td></tr>`).join("")
                         + (older.length ? `<tr class="insr-muted"><td colspan="3">${older.length} earlier payment${older.length === 1 ? "" : "s"} not listed — together ${cm(older.reduce((s, r) => s + r.amount, 0))}</td></tr>` : "");
+                    const cbPays = f.cbHistory.map(r => ({ date: r.date, amount: parseFloat(r.amount) || 0, note: r.note || "" }))
+                        .concat(f.cbLedgerRows.map(r => ({ date: r.date || "", amount: r.amount, note: "Ledger" })))
+                        .sort((a, b) => b.date.localeCompare(a.date));
+                    const cbShown = cbPays.slice(0, 12), cbOlder = cbPays.slice(12);
+                    const cbRowsHtml = cbShown.map(r => `<tr><td>${esc(r.date)}</td><td class="r">${cm(r.amount)}</td><td>${esc(r.note)}</td></tr>`).join("")
+                        + (cbOlder.length ? `<tr class="insr-muted"><td colspan="3">${cbOlder.length} earlier payout${cbOlder.length === 1 ? "" : "s"} not listed — together ${cm(cbOlder.reduce((s, r) => s + r.amount, 0))}</td></tr>` : "");
                     const svRows = f.svs.map(r => {
                         const pr = insSvParts(r), tot = insSvValue(r);
                         const part = (n) => n == null ? "—" : cm(n);
@@ -16401,6 +16431,7 @@
                         ${covRows ? `<table class="insr-t"><thead><tr><th>Cover</th><th class="r">Sum insured</th><th>Details</th></tr></thead><tbody>${covRows}</tbody></table>` : ""}
                         ${insPrintRiderTable(p)}
                         ${payRows ? `<table class="insr-t"><thead><tr><th>Premium payments</th><th class="r">Amount</th><th>Note</th></tr></thead><tbody>${payRows}</tbody><tfoot><tr><td>Total paid</td><td class="r">${cm(f.paid)}</td><td></td></tr></tfoot></table>` : ""}
+                        ${cbRowsHtml ? `<table class="insr-t"><thead><tr><th>Cashback received</th><th class="r">Amount</th><th>Note</th></tr></thead><tbody>${cbRowsHtml}</tbody><tfoot><tr><td>Total received</td><td class="r">${cm(f.cbTotal)}</td><td></td></tr></tfoot></table>` : ""}
                         ${svRows ? `<table class="insr-t"><thead><tr><th>Surrender value</th><th class="r">Guaranteed</th><th class="r">Dividend</th><th class="r">Terminal</th><th class="r">Total</th></tr></thead><tbody>${svRows}</tbody></table>` : ""}
                         ${p.notes ? `<div class="insr-pol-notes"><span>Notes</span> ${esc(p.notes)}</div>` : ""}
                     </div>`;
@@ -16457,6 +16488,7 @@
                 </div>
                 ${(p.agentName || p.agentContact) ? `<div style="display:flex; align-items:flex-start; gap:10px; padding:10px 12px; margin:0 0 12px; border:1px solid var(--border-color); border-radius:12px;"><span style="font-size:1.1rem; line-height:1.3;">🧑‍💼</span><div style="min-width:0;"><div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Agent</div>${p.agentName ? `<div style="font-size:0.88rem; font-weight:800; overflow-wrap:anywhere;">${escapeHtml(p.agentName)}</div>` : ""}${p.agentContact ? `<div style="font-size:0.82rem; font-weight:600; color:var(--text-muted); overflow-wrap:anywhere;">${insLinkifyPhones(p.agentContact)}</div>` : ""}</div></div>` : ""}
                 ${insBonusBannerHtml(p, false)}
+                ${insCashbackBannerHtml(p, f, false)}
                 ${p.notes ? `<p style="font-size:0.78rem; color:var(--text-muted); font-weight:600; white-space:pre-wrap; overflow-wrap:anywhere; margin:0 0 12px;">${escapeHtml(p.notes)}</p>` : ""}
                 ${insAttachmentsHtml(p)}
 
@@ -16477,6 +16509,7 @@
                     ${insSvBreakdownHtml(f, cur)}
                     ${(f.latestSv && Array.isArray(f.latestSv.funds) && typeof f.latestSv.fundValue === "number") ? `<div style="font-size:0.75rem; font-weight:700; margin-top:6px; color:var(--text-muted);">Fund value ${formatCurrency(f.latestSv.fundValue, cur)}${f.latestSv.deduction > 0 ? ` − deduction ${formatCurrency(f.latestSv.deduction, cur)}` : ""} · ${f.latestSv.funds.length} fund${f.latestSv.funds.length === 1 ? "" : "s"} · price date ${escapeHtml(f.latestSv.date)}</div>` : ""}
                     ${insPayoutLineHtml(p, f)}
+                    ${insCashbackBoxHtml(p, f)}
                 </div>`;
 
             // Coverage
@@ -16557,6 +16590,24 @@
                 html += `<p style="font-size:0.78rem; color:var(--text-muted);">No payments recorded yet.</p>`;
             }
 
+            // v510: Cashback received — earlier (typed-in) payouts and Income entries linked to the policy, in one list
+            const cbTimeline = [
+                ...f.cbLedgerRows.map(r => ({ date: r.date, amount: r.amount, source: "Ledger", note: (r.tx && r.tx.desc) || "", dup: !!(p.historyCutoff && r.date && r.date <= p.historyCutoff) })),
+                ...f.cbHistory.map(r => ({ date: r.date, amount: parseFloat(r.amount) || 0, source: "History", note: r.note || "", dup: false }))
+            ].sort((a, b) => b.date.localeCompare(a.date));
+            if (cbTimeline.length || parseFloat(p.cashbackPct) > 0) {
+                html += section(`Cashback received (${cbTimeline.length})`);
+                if (cbTimeline.length) {
+                    html += `<div>` + cbTimeline.map(r => line(
+                        `${escapeHtml(r.date)}${r.source === "Ledger" ? " 🧾" : ""}`,
+                        `<span style="color:var(--income-color);">+${formatCurrency(r.amount, cur)}</span>`,
+                        [r.note ? escapeHtml(r.note) : "", r.dup ? "⚠️ dated before the ledger-tracking date — may duplicate an earlier entry" : ""].filter(Boolean).join(" · ")
+                    )).join("") + `</div>`;
+                } else {
+                    html += `<p style="font-size:0.78rem; color:var(--text-muted);">No cashback recorded yet. Tap 🎁 Record cashback when a payout reaches your bank account, or type earlier years in Edit.</p>`;
+                }
+            }
+
             // Surrender value history
             // Nothing is shown for a policy with no surrender value (term, medical, motor… never have one).
             if (f.svs.length) {
@@ -16579,6 +16630,7 @@
             }
 
             document.getElementById("insuranceDetailBody").innerHTML = html;
+            { const cbBtn = document.getElementById("insDetailCashbackBtn"); if (cbBtn) cbBtn.style.display = (parseFloat(p.cashbackPct) > 0 || f.cbCount > 0) ? "" : "none"; } // v510
             // Already open when re-rendered after linking/unlinking a planned payment.
             if (!document.getElementById("insuranceDetailModal").classList.contains("active")) openModal("insuranceDetailModal");
         }
@@ -16628,6 +16680,29 @@
                     if (repeatWrap) repeatWrap.style.display = "none";
                     currentPlannedPaymentIdBeingConfirmed = planned.id;
                 }
+                refreshTxPolicyRow(p.id);
+            });
+        }
+
+        // v510: "🎁 Record cashback" — opens the ordinary Income form pre-filled for this policy: amount = the
+        // estimate (editable — the insurer's real figure is what counts), date = the expected payout day when it has
+        // already passed, otherwise today; the Policy row is set so the entry counts as cashback received.
+        async function insuranceRecordCashback() {
+            const p = getPolicyById(activeInsuranceId);
+            if (!p) return;
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const nx = insCashbackNext(p, computePolicyFigures(p, txs, []));
+            closeModalAndThen("insuranceDetailModal", async () => {
+                await openTransactionForm("income", null, null);
+                document.getElementById("txDesc").value = policyLabel(p) + " cashback";
+                document.getElementById("txAmount").value = (nx && nx.amount != null) ? nx.amount : "";
+                const cur = p.currency;
+                if (cur && [...document.getElementById("txCurrency").options].some(o => o.value === cur)) document.getElementById("txCurrency").value = cur;
+                const catSel = document.getElementById("txCategory");
+                const opt = [...catSel.options].find(o => INS_CASHBACK_CAT_RE.test(o.textContent + " " + o.value))
+                    || [...catSel.options].find(o => INS_INSURANCE_CAT_RE.test(o.textContent + " " + o.value));
+                if (opt) { catSel.value = opt.value; syncAccountPickerButtonText("txCategory"); }
+                document.getElementById("txDate").value = (nx && nx.overdue) ? nx.date : todayLocalStr();
                 refreshTxPolicyRow(p.id);
             });
         }
@@ -16879,6 +16954,55 @@
 
         // v491: a premium-history row can be tagged "paid by parent" (P button). Untagged rows count as
         // paid by the ledger owner. New rows copy the previous row's tag.
+        // v510: "Cashback received (earlier years)" rows — same shape as the premium rows: {id, date, amount, note}.
+        function addInsCashbackRow(data, continueFromLast) {
+            const container = document.getElementById("insCbRows");
+            let d = data || {};
+            if (!data && continueFromLast) {
+                const rows = [...container.querySelectorAll(".ins-row")];
+                const last = rows[rows.length - 1];
+                if (last) {
+                    const ld = last.querySelector(".ins-cb-date").value;
+                    d = { date: ld ? insAddYear(ld) : "", amount: last.querySelector(".ins-cb-amount").value };
+                } else {
+                    const start = document.getElementById("insStartDate").value;
+                    const fy = parseInt(document.getElementById("insCbFirstYear").value, 10);
+                    d = { date: start ? (fy > 0 ? insAnnivDate(start, fy) : insAddYear(start)) : "", amount: "" };
+                }
+            }
+            insRowCounter++;
+            const rowId = "insCb_" + insRowCounter;
+            const row = document.createElement("div");
+            row.className = "ins-row ins-row-line";
+            row.id = rowId;
+            row.innerHTML = `
+                <input type="date" class="ins-c-date ins-cb-date" value="${escapeHtml(d.date || "")}">
+                <input type="number" class="ins-c-num ins-cb-amount" step="0.01" min="0" placeholder="Amount" value="${escapeHtml(d.amount === undefined || d.amount === null ? "" : String(d.amount))}" data-input="insRecalcCashbackTotal">
+                <input type="text" class="ins-c-grow ins-cb-note" placeholder="Note" value="${escapeHtml(d.note || "")}">
+                <button type="button" class="ins-row-x" data-click="removeInsRow" data-row-id="${rowId}" aria-label="Remove">×</button>`;
+            container.appendChild(row);
+            insRecalcCashbackTotal();
+            if (!data && continueFromLast) container.scrollTop = container.scrollHeight;
+        }
+
+        function collectInsCashbackRows() {
+            const out = [];
+            document.querySelectorAll("#insCbRows .ins-row").forEach(row => {
+                const date = row.querySelector(".ins-cb-date").value;
+                const amount = insNumOrNull(row.querySelector(".ins-cb-amount").value);
+                if (date && amount != null && amount > 0) out.push({ id: makeInsuranceId(), date, amount, note: row.querySelector(".ins-cb-note").value.trim() });
+            });
+            return out.sort((a, b) => a.date.localeCompare(b.date));
+        }
+
+        function insRecalcCashbackTotal() {
+            const out = document.getElementById("insCbTotal");
+            if (!out) return;
+            const rows = collectInsCashbackRows();
+            const cur = document.getElementById("insCurrency").value || baseCurrency;
+            out.textContent = `${rows.length} payout${rows.length === 1 ? "" : "s"} · total ${formatCurrency(rows.reduce((s, r) => s + r.amount, 0), cur)}`;
+        }
+
         function toggleInsParent(el) {
             const on = el.classList.toggle("on");
             el.setAttribute("aria-pressed", on ? "true" : "false");
@@ -17132,6 +17256,7 @@
             const row = document.getElementById(el.dataset.rowId);
             if (row) row.remove();
             insRecalcPaymentTotal();
+            insRecalcCashbackTotal(); // v510
         }
 
         function collectInsCoverageRows() {
@@ -17229,6 +17354,7 @@
             }
             out.textContent = text;
             out.style.color = color;
+            insRecalcCashbackTotal(); // v510: the policy currency may have changed too
         }
 
         // --- v487: Premiums-paid box on the policy detail sheet ---
@@ -17277,6 +17403,10 @@
             const spanDays = day(end) - t0;
             if (!(spanDays >= 365)) return null;
             const flows = rows.map(r => ({ t: (day(r.date) - t0) / 365, amt: -r.amount }));
+            // v510: cashback received up to the surrender-value date is money back on the day it arrived
+            [...f.cbHistory.map(r => ({ date: r.date, amount: parseFloat(r.amount) || 0 })), ...f.cbLedgerRows.map(r => ({ date: r.date || "", amount: r.amount }))]
+                .filter(r => r.date && r.date <= end && r.amount > 0)
+                .forEach(r => flows.push({ t: Math.max(0, (day(r.date) - t0) / 365), amt: r.amount }));
             flows.push({ t: spanDays / 365, amt: f.svValue - (f.loan || 0) });
             const r = insXirr(flows);
             return (r == null || !isFinite(r)) ? null : r;
@@ -17303,17 +17433,108 @@
             </div>`;
         }
 
+        // ---- v510: cashback (annual payout of an endowment-type policy) ----
+        // A policy may carry cashbackPct (% of the sum insured of the coverage kind cashbackBase, default "life"), an
+        // optional cashbackFirstYear, and cashbackHistory [{id,date,amount,note}] = payouts received before this ledger
+        // tracked them. Payouts from now on are ordinary Income entries linked to the policy (policyId). The payout day is
+        // the policy anniversary (month-day of the start date). The "next payout" is only an ESTIMATE — what the insurer
+        // really paid is in the received rows, and those drive every total and return figure.
+        function insAnnivDate(startStr, year) {
+            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(startStr || "");
+            if (!m) return "";
+            let mm = m[2], dd = m[3];
+            if (mm === "02" && dd === "29") { const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0; if (!leap) dd = "28"; }
+            return String(year).padStart(4, "0") + "-" + mm + "-" + dd;
+        }
+        function insCovAmountOn(c, dateStr) {
+            let cur = null;
+            insCovSchedule(c).forEach(st => { if (st.date <= dateStr) cur = st; });
+            if (cur) return cur.amount;
+            return (c && typeof c.sumAssured === "number") ? c.sumAssured : null;
+        }
+        function insCashbackBaseSum(p, dateStr) {
+            const kind = p.cashbackBase || "life";
+            let sum = 0, any = false;
+            (p.coverages || []).forEach(c => {
+                if (c && c.kind === kind) { const a = insCovAmountOn(c, dateStr); if (typeof a === "number") { sum += a; any = true; } }
+            });
+            return any ? sum : null;
+        }
+        function insCashbackNext(p, f) {
+            const pct = parseFloat(p.cashbackPct);
+            if (!(pct > 0) || !insIsLive(p)) return null;
+            const today = todayLocalStr();
+            const kind = p.cashbackBase || "life";
+            const day = (d) => Date.parse(d + "T00:00:00Z") / 86400000;
+            let date = "";
+            if (p.startDate) {
+                const received = [...f.cbHistory.map(r => r.date), ...f.cbLedgerRows.map(r => r.date)].filter(Boolean).sort();
+                let y;
+                if (received.length) {
+                    const last = received[received.length - 1], ly = parseInt(last.slice(0, 4), 10);
+                    let best = ly, bestD = Infinity;
+                    [ly - 1, ly, ly + 1].forEach(c => { const dd = Math.abs(day(last) - day(insAnnivDate(p.startDate, c))); if (dd < bestD) { bestD = dd; best = c; } });
+                    y = best + 1;
+                } else {
+                    y = parseInt(today.slice(0, 4), 10);
+                    if (insAnnivDate(p.startDate, y) < today) y++;
+                }
+                const fy = parseInt(p.cashbackFirstYear, 10);
+                if (fy > 0 && y < fy) y = fy;
+                date = insAnnivDate(p.startDate, y);
+                if (date && p.maturityDate && date > p.maturityDate) return null;
+            }
+            const base = insCashbackBaseSum(p, date || today);
+            const amount = base == null ? null : Math.round(base * pct) / 100;
+            return { pct, kind, base, amount, date, overdue: !!(date && date < today) };
+        }
+        function insCashbackBannerHtml(p, f, compact) {
+            const nx = insCashbackNext(p, f);
+            if (!nx && !(f.cbCount > 0)) return "";
+            const cur = f.cur, kName = (INS_COV_KINDS[(nx && nx.kind) || p.cashbackBase || "life"] || ["", "Life"])[1];
+            const box = (inner, warn) => `<div style="background:${warn ? "rgba(245,158,11,0.14)" : "rgba(16,185,129,0.12)"}; border:1px solid ${warn ? "rgba(245,158,11,0.35)" : "rgba(16,185,129,0.35)"}; border-radius:10px; padding:7px 10px; font-size:0.74rem; font-weight:700; margin:${compact ? "0" : "0 0 10px"};">${inner}</div>`;
+            let out = "";
+            if (nx) {
+                if (nx.base == null) {
+                    out += box(`🎉 Cashback ${nx.pct}% of ${escapeHtml(kName)} sum insured · set the ${escapeHtml(kName)} sum insured to see the payout`, false);
+                } else if (nx.overdue) {
+                    out += box(`⚠️ Cashback ${nx.pct}% of ${formatCurrency(nx.base, cur)} · payout due ${escapeHtml(nx.date)} (~${formatCurrency(nx.amount, cur)}) · not recorded yet`, true);
+                } else {
+                    out += box(`🎉 Cashback benefit: ${nx.pct}% of ${formatCurrency(nx.base, cur)} · next payout ~${formatCurrency(nx.amount, cur)}${nx.date ? " on " + escapeHtml(nx.date) : ""}`, false);
+                }
+            }
+            if (f.cbCount > 0) {
+                out += `<div style="font-size:0.72rem; font-weight:700; color:var(--text-muted); margin-top:${out ? "5px" : "0"};">🎁 Cashback received ${formatCurrency(f.cbTotal, cur)} · ${f.cbCount} payout${f.cbCount === 1 ? "" : "s"}</div>`;
+            }
+            return compact ? `<div>${out}</div>` : out;
+        }
+        function insCashbackBoxHtml(p, f) {
+            const hasPlan = parseFloat(p.cashbackPct) > 0;
+            if (!hasPlan && !(f.cbCount > 0)) return "";
+            const cur = f.cur;
+            const parts = [];
+            if (f.cbHistory.length) parts.push(`${formatCurrency(f.cbHistoryTotal, cur)} entered manually (earlier years)`);
+            if (f.cbLedgerRows.length) parts.push(`${formatCurrency(f.cbLedgerTotal, cur)} recorded in the ledger`);
+            return `<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border-color);">
+                <div style="display:flex; justify-content:space-between; gap:12px; align-items:baseline;">
+                    <span style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Cashback received</span>
+                    <span style="font-family:'Kalam', cursive; font-size:1.1rem; font-weight:800; color:var(--income-color);">${formatCurrency(f.cbTotal, cur)}</span>
+                </div>
+                <div style="font-size:0.68rem; color:var(--text-muted); font-weight:600;">${f.cbCount} payout${f.cbCount === 1 ? "" : "s"}${parts.length ? " · " + parts.join(" · ") : ""}</div>
+            </div>`;
+        }
         function insPayoutLineHtml(p, f) {
             if (f.paybackPct == null) return "";
             const good = f.paybackPct >= 100;
             const ret = insAnnualisedReturn(p, f);
             const retHtml = ret == null ? "" : `<span style="font-size:0.74rem; font-weight:700; color:var(--text-muted);">annualised return ≈ ${ret < 0 ? "−" : ""}${(Math.abs(ret) * 100).toFixed(1)}%<button type="button" class="ins-info-btn" data-click="insToggleReturnNote" aria-label="About the annualised return">i</button></span>`;
-            const note = ret == null ? "" : `<div class="ins-med-note">Worked out from the dates and amounts of every premium paid up to the surrender-value date, against the surrender value${f.loan > 0 ? " after the policy loan" : ""}. It is not a pure investment return: part of each premium pays for the protection (life cover, riders), so it reads lower than a fund's return, and the early years are always weak. It moves each year with the insurer's bonus.</div>`;
+            const note = ret == null ? "" : `<div class="ins-med-note">Worked out from the dates and amounts of every premium paid up to the surrender-value date, against the surrender value${f.loan > 0 ? " after the policy loan" : ""}${f.cbTotal > 0 ? ", with the cashback received up to that date counted as money back on the day it arrived" : ""}. It is not a pure investment return: part of each premium pays for the protection (life cover, riders), so it reads lower than a fund's return, and the early years are always weak. It moves each year with the insurer's bonus.</div>`;
+            const cbSub = f.cbTotal > 0 ? `<div style="font-size:0.68rem; font-weight:600; color:var(--text-muted);">surrender value + ${formatCurrency(f.cbTotal, f.cur)} cashback received</div>` : "";
             return `<div class="ins-ret-wrap" style="margin-top:10px;">
                 <div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 12px;">
                     <span style="font-size:0.95rem; font-weight:800; color:${good ? "var(--income-color)" : "var(--primary)"};">${f.paybackPct.toFixed(1)}% of premiums paid</span>
                     ${retHtml}
-                </div>${note}
+                </div>${cbSub}${note}
             </div>`;
         }
 
@@ -17466,6 +17687,10 @@
             document.getElementById("insPaidByBonusSince").value = (p && p.paidByBonusSince) || "";
             insBonusToggle();
             document.getElementById("insStatementTotal").value = (p && p.statementTotal != null) ? p.statementTotal : "";
+            // v510: cashback
+            document.getElementById("insCbPct").value = (p && p.cashbackPct != null) ? p.cashbackPct : "";
+            insFillSelect("insCbBase", Object.entries(INS_COV_KINDS).map(([k, v]) => [k, v[0]]), p ? (p.cashbackBase || "life") : "life");
+            document.getElementById("insCbFirstYear").value = (p && p.cashbackFirstYear) ? p.cashbackFirstYear : "";
 
             // Ledger-tracking date — a new policy defaults to the day before the earliest
             // transaction in the ledger, i.e. "everything before this is typed in below".
@@ -17486,10 +17711,12 @@
             document.getElementById("insRiderRows").innerHTML = "";
             document.getElementById("insPaymentRows").innerHTML = "";
             document.getElementById("insSvRows").innerHTML = "";
+            document.getElementById("insCbRows").innerHTML = ""; // v510
             ((p && p.coverages) || []).forEach(c => addInsCoverageRow(c));
             ((p && p.riders) || []).forEach(r => addInsRiderRow(r));
             ((p && p.premiumHistory) || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(r => addInsPaymentRow(r));
             ((p && p.surrenderHistory) || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(r => (Array.isArray(r.funds) ? addInsFundSvRow(r) : addInsSvRow(r)));
+            ((p && p.cashbackHistory) || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(r => addInsCashbackRow(r)); // v510
             insRecalcPaymentTotal();
             updateInsSvAddUi();
             insExistingAttachments = (p && Array.isArray(p.attachments)) ? p.attachments.map(a => ({ ...a })) : []; // v486
@@ -17530,6 +17757,15 @@
             record.coverages = collectInsCoverageRows();
             record.riders = collectInsRiderRows();
             record.premiumHistory = collectInsPaymentRows();
+            // v510: cashback — the percentage is only kept when it is > 0; received rows are kept either way
+            const cbPct = insNumOrNull(document.getElementById("insCbPct").value);
+            if (cbPct != null && cbPct > 0) {
+                record.cashbackPct = cbPct;
+                record.cashbackBase = document.getElementById("insCbBase").value || "life";
+                const fy = parseInt(document.getElementById("insCbFirstYear").value, 10);
+                if (fy >= 1900 && fy <= 2200) record.cashbackFirstYear = fy; else delete record.cashbackFirstYear;
+            } else { delete record.cashbackPct; delete record.cashbackBase; delete record.cashbackFirstYear; }
+            record.cashbackHistory = collectInsCashbackRows();
             record.surrenderHistory = collectInsSvRows();
             record.updated = todayLocalStr();
             // v486: attachments — refs on the policy, bytes in STORES.ATTACHMENTS. New files are written first;
@@ -23363,6 +23599,16 @@
             }).filter(r => r.date);
         }
 
+        // v510: Income entries linked to the policy (cashback received) -> history rows in the exported copy.
+        function insExportCashbackRows(p, txs) {
+            const cur = p.currency || baseCurrency;
+            return txs.filter(t => t.policyId === p.id && t.type === "income" && !t.isRefund && t.date).map(t => {
+                const amt = Math.round(insConvert(t.amount, t.currency || cur, cur) * 100) / 100;
+                const fx = (t.currency && t.currency !== cur) ? " (" + t.currency + " " + (parseFloat(t.amount) || 0).toFixed(2) + ")" : "";
+                return { id: makeInsuranceId(), date: t.date, amount: amt, note: "Cashback" + fx + " (from ledger)" };
+            });
+        }
+
         async function openInsExportSheet() {
             await loadInsuranceCache();
             await loadMembersCache();
@@ -23378,6 +23624,8 @@
             let payN = 0, payPol = 0, untagged = 0;
             insuranceCache.forEach(p => (Array.isArray(p.premiumHistory) ? p.premiumHistory : []).forEach(r => { if (r && r.paidBy !== "parent") untagged++; }));
             insuranceCache.forEach(p => { const n = insExportHistoryRows(p, txs).length; if (n) { payN += n; payPol++; } });
+            let cbN = 0, cbPol = 0;
+            insuranceCache.forEach(p => { const n = insExportCashbackRows(p, txs).length; if (n) { cbN += n; cbPol++; } });
             let html = '<p style="font-size:0.75rem; font-weight:800; color:var(--text-muted); margin:0 0 6px;">WHOSE POLICIES</p>';
             groups.forEach((g, key) => {
                 html += '<label style="display:flex; align-items:center; gap:10px; padding:6px 0; font-size:0.9rem; font-weight:600;"><input type="checkbox" data-ins-export-member="' + escapeHtml(key) + '" checked style="width:18px; height:18px; padding:0; flex:0 0 auto;"> ' + escapeHtml(g.name) + ' (' + g.count + ')</label>';
@@ -23385,6 +23633,9 @@
             html += '<p style="font-size:0.72rem; color:var(--text-muted); font-weight:600; margin:2px 0 14px;">Untick anyone whose policies should stay in this ledger (e.g. your own).</p>';
             html += '<label style="display:flex; align-items:flex-start; gap:10px; padding:6px 0; font-size:0.9rem; font-weight:600;"><input type="checkbox" id="insExportConvert"' + (payN ? " checked" : " disabled") + ' style="width:18px; height:18px; padding:0; flex:0 0 auto; margin-top:2px;"> <span>Add payments recorded in this ledger as “paid by parent” history<br><span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">'
                 + (payN ? payN + ' payment' + (payN === 1 ? '' : 's') + ' on ' + payPol + ' polic' + (payPol === 1 ? 'y' : 'ies') + ' (refunds count as minus). Only the file gets these rows; this ledger is not changed. Planned payments are not exported - once paid they are payments.' : 'No premium payments are linked to a policy in this ledger.')
+                + '</span></span></label>';
+            html += '<label style="display:flex; align-items:flex-start; gap:10px; padding:10px 0 6px; font-size:0.9rem; font-weight:600;"><input type="checkbox" id="insExportCashback"' + (cbN ? " checked" : " disabled") + ' style="width:18px; height:18px; padding:0; flex:0 0 auto; margin-top:2px;"> <span>Add cashback received (recorded in this ledger) as history<br><span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">'
+                + (cbN ? cbN + ' payout' + (cbN === 1 ? '' : 's') + ' on ' + cbPol + ' polic' + (cbPol === 1 ? 'y' : 'ies') + '. They show on the policy in the other ledger as earlier cashback and count in its totals, but are not income there. Only the file gets these rows; this ledger is not changed.' : 'No cashback is linked to a policy in this ledger.')
                 + '</span></span></label>';
             html += '<label style="display:flex; align-items:flex-start; gap:10px; padding:10px 0 6px; font-size:0.9rem; font-weight:600;"><input type="checkbox" id="insExportMarkAll"' + (untagged ? " checked" : " disabled") + ' style="width:18px; height:18px; padding:0; flex:0 0 auto; margin-top:2px;"> <span>Mark all earlier premium rows as “paid by parent”<br><span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">'
                 + (untagged ? untagged + ' typed-in premium row' + (untagged === 1 ? '' : 's') + ' not yet tagged P. Only the file is tagged; this ledger is not changed. Untick if some of these were paid by the child.' : 'Every earlier premium row is already tagged P (or there are none).')
@@ -23401,7 +23652,9 @@
             const convert = !!(conv && conv.checked && !conv.disabled);
             const markEl = document.getElementById("insExportMarkAll");
             const markAll = !!(markEl && markEl.checked && !markEl.disabled);
-            closeModalAndThen("insExportModal", () => exportInsuranceOnly({ keys, convert, markAll }));
+            const cbEl = document.getElementById("insExportCashback");
+            const cashback = !!(cbEl && cbEl.checked && !cbEl.disabled); // v510
+            closeModalAndThen("insExportModal", () => exportInsuranceOnly({ keys, convert, markAll, cashback }));
         }
 
         async function exportInsuranceOnly(opts) {
@@ -23415,8 +23668,8 @@
                 return keySet.has(m ? m.id : "__none__");
             });
             if (!chosen.length) { alert("There are no insurance policies to export."); return; }
-            const txs = opts.convert ? await readAllDB(STORES.TRANSACTIONS) : [];
-            let converted = 0, tagged = 0;
+            const txs = (opts.convert || opts.cashback) ? await readAllDB(STORES.TRANSACTIONS) : [];
+            let converted = 0, tagged = 0, cbAdded = 0;
             const policies = chosen.map(p => {
                 const rec = JSON.parse(JSON.stringify(p));
                 if (opts.convert) {
@@ -23429,6 +23682,10 @@
                         const latest = add.reduce((m, r) => r.date > m ? r.date : m, "");
                         if (latest > (rec.historyCutoff || "")) rec.historyCutoff = latest;
                     }
+                }
+                if (opts.cashback) { // v510
+                    const addCb = insExportCashbackRows(p, txs);
+                    if (addCb.length) { cbAdded += addCb.length; rec.cashbackHistory = [...(rec.cashbackHistory || []), ...addCb].sort((x, y) => String(x.date).localeCompare(String(y.date))); }
                 }
                 if (opts.markAll && Array.isArray(rec.premiumHistory)) {
                     rec.premiumHistory.forEach(r => { if (r && r.paidBy !== "parent") { r.paidBy = "parent"; tagged++; } });
@@ -23468,7 +23725,7 @@
             const a = document.createElement("a");
             a.href = url; a.download = `ledger_insurance_${todayLocalStr()}${suffix}.json`;
             a.click(); URL.revokeObjectURL(url);
-            showToast("🛡️ " + policies.length + " polic" + (policies.length === 1 ? "y" : "ies") + " exported" + (converted ? ", " + converted + " payment" + (converted === 1 ? "" : "s") + " added as history" : "") + (tagged ? ", " + tagged + " row" + (tagged === 1 ? "" : "s") + " tagged P" : "") + (wantsEncryption ? " (encrypted)" : ""));
+            showToast("🛡️ " + policies.length + " polic" + (policies.length === 1 ? "y" : "ies") + " exported" + (converted ? ", " + converted + " payment" + (converted === 1 ? "" : "s") + " added as history" : "") + (cbAdded ? ", " + cbAdded + " cashback payout" + (cbAdded === 1 ? "" : "s") + " added" : "") + (tagged ? ", " + tagged + " row" + (tagged === 1 ? "" : "s") + " tagged P" : "") + (wantsEncryption ? " (encrypted)" : ""));
         }
 
         function openInsMergePicker() {
@@ -23609,7 +23866,8 @@
                 const prem = (p.premium != null && p.premium !== "") ? ((p.currency || "") + " " + Number(p.premium).toLocaleString(undefined, { maximumFractionDigits: 2 }) + (freq ? " " + freq.toLowerCase() : "")).trim() : "";
                 const hist = Array.isArray(p.premiumHistory) ? p.premiumHistory : [];
                 const parentN = hist.filter(h => h && h.paidBy === "parent").length;
-                const meta = [who, prem, hist.length ? (hist.length + " earlier premium row" + (hist.length === 1 ? "" : "s") + (parentN ? ", " + parentN + " paid by parent" : "")) : ""].filter(Boolean).join(" · ");
+                const cbRowsN = Array.isArray(p.cashbackHistory) ? p.cashbackHistory.length : 0;
+                const meta = [who, prem, hist.length ? (hist.length + " earlier premium row" + (hist.length === 1 ? "" : "s") + (parentN ? ", " + parentN + " paid by parent" : "")) : "", parseFloat(p.cashbackPct) > 0 ? ("cashback " + p.cashbackPct + "%" + (cbRowsN ? ", " + cbRowsN + " payout" + (cbRowsN === 1 ? "" : "s") + " received" : "")) : (cbRowsN ? cbRowsN + " cashback row" + (cbRowsN === 1 ? "" : "s") : "")].filter(Boolean).join(" · "); // v510
                 html += '<label style="display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-top:1px solid var(--border-color);' + (r.kind === "same" ? " opacity:0.6;" : "") + '">'
                     + '<input type="checkbox" data-ins-merge-row="' + i + '"' + (r.checked ? " checked" : "") + (r.kind === "same" ? " disabled" : "") + ' style="width:18px; height:18px; padding:0; flex:0 0 auto; margin-top:2px;">'
                     + '<span style="min-width:0;"><span style="font-size:0.9rem; font-weight:800;">' + icon + " " + escapeHtml(title) + '</span>'
@@ -25049,6 +25307,8 @@
             addInsRiderRow: () => addInsRiderRow(null), // v472
             toggleInsRefund: (el) => toggleInsRefund(el), // v473
             addInsPaymentRow: () => addInsPaymentRow(null, true),
+            addInsCashbackRow: () => addInsCashbackRow(null, true), // v510
+            insuranceRecordCashback: () => insuranceRecordCashback(), // v510
             toggleInsParent,
             itCfgAll: (el) => itCfgAll(el),
             exportIncomeTaxCsv: () => exportIncomeTaxCsv(),
@@ -25161,6 +25421,7 @@
             recalcClaimSettlePreview: () => recalcClaimSettlePreview(),
             recalcTxFdMaturity: () => { recalcTxFdMaturity(); syncTransferFxOnAmountChange(); recalcTxSplitTotal(); },
             insRecalcPaymentTotal: () => insRecalcPaymentTotal(), // v468
+            insRecalcCashbackTotal: () => insRecalcCashbackTotal(), // v510
             insAgentMoveRefresh: () => insAgentMoveRefresh(), // v485
             insSvRowInput: (el) => insSvRowInput(el), // v469
             insSvTotalInput: (el) => insSvTotalInput(el),

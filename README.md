@@ -3892,3 +3892,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Under the Savings / investment panel a collapsed **By person ▾** toggle opens a small table: per insured person, Paid to SV date, Surrender value, and Net (+ SV as a % of paid), in the base currency. Policies with no insured person go on an "Insured person not set" row.
 - Only shown when two or more people have a surrender value; follows the same status filter (In force / Ended / All) as the panel above it. The headline totals are unchanged.
 - No DB change. `APP_VERSION` / `CACHE_NAME` -> v506.
+
+## v507: Printable Insurance report - surrender values are summed
+- The policy register's **Subtotal** rows (per insured person) and the **Total** row now add up the Surrender value column (it was left blank). Each policy's latest SV, net of any policy loan (same figure as the Insurance page), converted to the base currency; policies with no SV count as nothing, and "net of policy loan" is noted when a loan is involved. Car · Home · Travel has no SV column, so it is unchanged.
+- No DB change. `APP_VERSION` / `CACHE_NAME` -> v507.

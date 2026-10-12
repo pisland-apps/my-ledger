@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v500";
+        const APP_VERSION = "v501";
         const APP_VERSION_DATE = "2026-10-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -23255,7 +23255,8 @@
                 if (!groups.has(key)) groups.set(key, { name: m ? m.name : "Not set", count: 0 });
                 groups.get(key).count++;
             });
-            let payN = 0, payPol = 0;
+            let payN = 0, payPol = 0, untagged = 0;
+            insuranceCache.forEach(p => (Array.isArray(p.premiumHistory) ? p.premiumHistory : []).forEach(r => { if (r && r.paidBy !== "parent") untagged++; }));
             insuranceCache.forEach(p => { const n = insExportHistoryRows(p, txs).length; if (n) { payN += n; payPol++; } });
             let html = '<p style="font-size:0.75rem; font-weight:800; color:var(--text-muted); margin:0 0 6px;">WHOSE POLICIES</p>';
             groups.forEach((g, key) => {
@@ -23264,6 +23265,9 @@
             html += '<p style="font-size:0.72rem; color:var(--text-muted); font-weight:600; margin:2px 0 14px;">Untick anyone whose policies should stay in this ledger (e.g. your own).</p>';
             html += '<label style="display:flex; align-items:flex-start; gap:10px; padding:6px 0; font-size:0.9rem; font-weight:600;"><input type="checkbox" id="insExportConvert"' + (payN ? " checked" : " disabled") + ' style="width:18px; height:18px; padding:0; flex:0 0 auto; margin-top:2px;"> <span>Add payments recorded in this ledger as “paid by parent” history<br><span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">'
                 + (payN ? payN + ' payment' + (payN === 1 ? '' : 's') + ' on ' + payPol + ' polic' + (payPol === 1 ? 'y' : 'ies') + ' (refunds count as minus). Only the file gets these rows; this ledger is not changed. Planned payments are not exported - once paid they are payments.' : 'No premium payments are linked to a policy in this ledger.')
+                + '</span></span></label>';
+            html += '<label style="display:flex; align-items:flex-start; gap:10px; padding:10px 0 6px; font-size:0.9rem; font-weight:600;"><input type="checkbox" id="insExportMarkAll"' + (untagged ? " checked" : " disabled") + ' style="width:18px; height:18px; padding:0; flex:0 0 auto; margin-top:2px;"> <span>Mark all earlier premium rows as “paid by parent”<br><span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">'
+                + (untagged ? untagged + ' typed-in premium row' + (untagged === 1 ? '' : 's') + ' not yet tagged P. Only the file is tagged; this ledger is not changed. Untick if some of these were paid by the child.' : 'Every earlier premium row is already tagged P (or there are none).')
                 + '</span></span></label>';
             document.getElementById("insExportBody").innerHTML = html;
             openModal("insExportModal");
@@ -23275,7 +23279,9 @@
             if (!keys.length) { alert("Tick at least one person."); return; }
             const conv = document.getElementById("insExportConvert");
             const convert = !!(conv && conv.checked && !conv.disabled);
-            closeModalAndThen("insExportModal", () => exportInsuranceOnly({ keys, convert }));
+            const markEl = document.getElementById("insExportMarkAll");
+            const markAll = !!(markEl && markEl.checked && !markEl.disabled);
+            closeModalAndThen("insExportModal", () => exportInsuranceOnly({ keys, convert, markAll }));
         }
 
         async function exportInsuranceOnly(opts) {
@@ -23290,7 +23296,7 @@
             });
             if (!chosen.length) { alert("There are no insurance policies to export."); return; }
             const txs = opts.convert ? await readAllDB(STORES.TRANSACTIONS) : [];
-            let converted = 0;
+            let converted = 0, tagged = 0;
             const policies = chosen.map(p => {
                 const rec = JSON.parse(JSON.stringify(p));
                 if (opts.convert) {
@@ -23303,6 +23309,9 @@
                         const latest = add.reduce((m, r) => r.date > m ? r.date : m, "");
                         if (latest > (rec.historyCutoff || "")) rec.historyCutoff = latest;
                     }
+                }
+                if (opts.markAll && Array.isArray(rec.premiumHistory)) {
+                    rec.premiumHistory.forEach(r => { if (r && r.paidBy !== "parent") { r.paidBy = "parent"; tagged++; } });
                 }
                 return rec;
             });
@@ -23339,7 +23348,7 @@
             const a = document.createElement("a");
             a.href = url; a.download = `ledger_insurance_${todayLocalStr()}${suffix}.json`;
             a.click(); URL.revokeObjectURL(url);
-            showToast("🛡️ " + policies.length + " polic" + (policies.length === 1 ? "y" : "ies") + " exported" + (converted ? ", " + converted + " payment" + (converted === 1 ? "" : "s") + " added as history" : "") + (wantsEncryption ? " (encrypted)" : ""));
+            showToast("🛡️ " + policies.length + " polic" + (policies.length === 1 ? "y" : "ies") + " exported" + (converted ? ", " + converted + " payment" + (converted === 1 ? "" : "s") + " added as history" : "") + (tagged ? ", " + tagged + " row" + (tagged === 1 ? "" : "s") + " tagged P" : "") + (wantsEncryption ? " (encrypted)" : ""));
         }
 
         function openInsMergePicker() {

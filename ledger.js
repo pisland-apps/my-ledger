@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v510";
+        const APP_VERSION = "v511";
         const APP_VERSION_DATE = "2026-10-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -14845,7 +14845,7 @@
                 payment.notes = document.getElementById("txNotes").value.trim();
                 // v468: keep the Insurance link in step with what was just confirmed on the form.
                 const polRowEl = document.getElementById("txPolicyRow");
-                if (polRowEl && polRowEl.style.display !== "none" && document.getElementById("txType").value === "expense") payment.policyId = document.getElementById("txPolicyId").value || null; // v510: a planned payment is only ever a premium
+                if (polRowEl && polRowEl.style.display !== "none") payment.policyId = document.getElementById("txPolicyId").value || null; // v468 (premium) / v511 (cashback income)
                 payment.attachments = [];
                 // v359: backfill anchorDay for a record created before it existed (v357/v358) —
                 // one-time, using its current dueDate's day as the best available reconstruction
@@ -14955,8 +14955,18 @@
                 recur,
                 createdAt: todayLocalStr()
             };
+            // v511: the Policy row on the form was ignored here before. A premium plan (expense) and a cashback plan (income)
+            // can each be linked to a policy; a plan of the same kind already linked to it is released, as in the picker.
+            const polRowEl = document.getElementById("txPolicyRow");
+            const polId = (polRowEl && polRowEl.style.display !== "none") ? (document.getElementById("txPolicyId").value || null) : null;
+            if (polId) record.policyId = polId;
             try {
                 await writeDB(STORES.PLANNED_PAYMENTS, record);
+                if (polId) {
+                    for (const other of await readAllDB(STORES.PLANNED_PAYMENTS)) {
+                        if (other.id !== record.id && other.policyId === polId && (other.type || "expense") === type) { other.policyId = null; await writeDB(STORES.PLANNED_PAYMENTS, other); }
+                    }
+                }
             } catch (err) {
                 const msg = (err && err.name === "QuotaExceededError")
                     ? "Not enough storage space to save this planned payment. Try removing an attachment or freeing up space."
@@ -15270,6 +15280,8 @@
         // planned payment per policy), so the policy's "next due" is read from that single record
         // rather than being stored a second time here. A recurring planned payment keeps its
         // policyId across "Mark as Paid" (see advanceOrDeletePlannedPaymentAfterConfirm()).
+        // v511: one planned payment per policy AND kind — an expense plan is the premium ("Next premium"), an income plan is
+        // the cashback ("Next cashback"); Save as Planned stores the Policy row's choice too.
         const INS_TYPES = { life: "Life / Whole Life", savings: "Savings / Endowment", term: "Term", medical: "Medical", critical: "Critical Illness", accident: "Personal Accident", investment: "Investment-linked", car: "Car", home: "Home / Fire", travel: "Travel", other: "Other" };
         const INS_TYPE_ICONS = { life: "🛡️", savings: "🏦", term: "⏳", medical: "🏥", critical: "🎗️", accident: "🩹", investment: "📈", car: "🚗", home: "🏠", travel: "✈️", other: "📄" };
         // Preset coverage types for the rows of "Coverage(s) in this policy" (a bundled plan can carry several):
@@ -15492,7 +15504,8 @@
                 paybackPct: (svValue != null && paid > 0) ? ((svValue + cbTotal) / paid) * 100 : null, // v510: cashback already received counts as money back
                 paybackPctSvOnly: (svValue != null && paid > 0) ? (svValue / paid) * 100 : null,
                 annual: (freq && freq[1] > 0 && premium > 0) ? premium * freq[1] : 0,
-                plan: (planned || []).find(p => p.policyId === policy.id) || null
+                plan: (planned || []).find(x => x.policyId === policy.id && x.type !== "income") || null, // the premium plan (an expense)
+                cbPlan: (planned || []).find(x => x.policyId === policy.id && x.type === "income") || null // v511: the cashback plan (an income)
             };
         }
 
@@ -16561,10 +16574,27 @@
                 html += line(escapeHtml(f.plan.desc || "Planned payment"),
                     `${formatCurrency(f.plan.amount, f.plan.currency || cur)}`,
                     `${escapeHtml(f.plan.dueDate)} · ${when}${f.plan.recur ? " · " + escapeHtml(recurLabel(f.plan.recur)) : ""}`);
-                html += `<button type="button" class="submit-btn" data-click="insuranceUnlinkPlan" style="margin-top:8px; background:var(--chip-bg); color:var(--text-main);">Unlink planned payment</button>`;
+                html += `<button type="button" class="submit-btn" data-click="insuranceUnlinkPlan" data-kind="premium" style="margin-top:8px; background:var(--chip-bg); color:var(--text-main);">Unlink planned payment</button>`;
             } else {
                 html += `<p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:8px;">No planned payment linked to this policy.</p>
-                    <button type="button" class="submit-btn" data-click="insuranceOpenPlanPicker" style="margin-top:0; background:var(--chip-bg); color:var(--text-main);">🔗 Link a planned payment</button>`;
+                    <button type="button" class="submit-btn" data-click="insuranceOpenPlanPicker" data-kind="premium" style="margin-top:0; background:var(--chip-bg); color:var(--text-main);">🔗 Link a planned payment</button>`;
+            }
+
+            // v511: Next cashback — the linked income Planned Payment (if any), linked / unlinked like the premium plan
+            if (parseFloat(p.cashbackPct) > 0 || f.cbCount > 0 || f.cbPlan) {
+                html += section("Next cashback");
+                if (f.cbPlan) {
+                    const cp = f.cbPlan;
+                    const dd2 = Math.round((new Date(cp.dueDate + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000);
+                    const when2 = cp.paused ? "⏸ Paused" : (dd2 < 0 ? `Overdue ${Math.abs(dd2)}d` : (dd2 === 0 ? "Due today" : `${dd2}d left`));
+                    html += line(escapeHtml(cp.desc || "Planned payment"),
+                        `<span style="color:var(--income-color);">+${formatCurrency(cp.amount, cp.currency || cur)}</span>`,
+                        `${escapeHtml(cp.dueDate)} · ${when2}${cp.recur ? " · " + escapeHtml(recurLabel(cp.recur)) : ""}`);
+                    html += `<button type="button" class="submit-btn" data-click="insuranceUnlinkPlan" data-kind="cashback" style="margin-top:8px; background:var(--chip-bg); color:var(--text-main);">Unlink planned payment</button>`;
+                } else {
+                    html += `<p style="font-size:0.78rem; color:var(--text-muted); margin-bottom:8px;">No cashback planned payment linked to this policy. Link an income plan (e.g. the yearly payout) to track the next payout and have Mark as Paid count it as cashback.</p>
+                        <button type="button" class="submit-btn" data-click="insuranceOpenPlanPicker" data-kind="cashback" style="margin-top:0; background:var(--chip-bg); color:var(--text-main);">🔗 Link a planned payment</button>`;
+                }
             }
 
             // Premium timeline — earlier (typed-in) payments and ledger payments in one list
@@ -16630,7 +16660,7 @@
             }
 
             document.getElementById("insuranceDetailBody").innerHTML = html;
-            { const cbBtn = document.getElementById("insDetailCashbackBtn"); if (cbBtn) cbBtn.style.display = (parseFloat(p.cashbackPct) > 0 || f.cbCount > 0) ? "" : "none"; } // v510
+            { const cbBtn = document.getElementById("insDetailCashbackBtn"); if (cbBtn) cbBtn.style.display = (parseFloat(p.cashbackPct) > 0 || f.cbCount > 0 || f.cbPlan) ? "" : "none"; } // v510/v511
             // Already open when re-rendered after linking/unlinking a planned payment.
             if (!document.getElementById("insuranceDetailModal").classList.contains("active")) openModal("insuranceDetailModal");
         }
@@ -16648,7 +16678,7 @@
         async function insuranceRecordPremium() {
             const p = getPolicyById(activeInsuranceId);
             if (!p) return;
-            const planned = (await readAllDB(STORES.PLANNED_PAYMENTS)).find(x => x.policyId === p.id && !x.paused) || null;
+            const planned = (await readAllDB(STORES.PLANNED_PAYMENTS)).find(x => x.policyId === p.id && !x.paused && x.type !== "income") || null;
             closeModalAndThen("insuranceDetailModal", async () => {
                 await openTransactionForm("expense", null, planned && planned.accountId ? planned.accountId : null);
                 document.getElementById("txDesc").value = planned ? planned.desc : policyLabel(p);
@@ -16684,38 +16714,59 @@
             });
         }
 
-        // v510: "🎁 Record cashback" — opens the ordinary Income form pre-filled for this policy: amount = the
-        // estimate (editable — the insurer's real figure is what counts), date = the expected payout day when it has
-        // already passed, otherwise today; the Policy row is set so the entry counts as cashback received.
+        // v510/v511: "🎁 Record cashback" — opens the ordinary Income form pre-filled for this policy. With a cashback plan
+        // linked (v511) it goes through the SAME confirm path as "Mark as Paid" (like Record premium), so the plan moves
+        // to its next date and the payout cannot be recorded twice; otherwise amount = the estimate and date = the expected
+        // payout day when it has already passed, else today. The Policy row is set so the entry counts as cashback received.
         async function insuranceRecordCashback() {
             const p = getPolicyById(activeInsuranceId);
             if (!p) return;
-            const txs = await readAllDB(STORES.TRANSACTIONS);
-            const nx = insCashbackNext(p, computePolicyFigures(p, txs, []));
+            const [txs, planned] = await Promise.all([readAllDB(STORES.TRANSACTIONS), readAllDB(STORES.PLANNED_PAYMENTS)]);
+            const f = computePolicyFigures(p, txs, planned);
+            const plan = (f.cbPlan && !f.cbPlan.paused) ? f.cbPlan : null;
+            const nx = insCashbackNext(p, f);
             closeModalAndThen("insuranceDetailModal", async () => {
-                await openTransactionForm("income", null, null);
-                document.getElementById("txDesc").value = policyLabel(p) + " cashback";
-                document.getElementById("txAmount").value = (nx && nx.amount != null) ? nx.amount : "";
-                const cur = p.currency;
+                await openTransactionForm("income", null, plan && plan.accountId ? plan.accountId : null);
+                document.getElementById("txDesc").value = plan ? plan.desc : (policyLabel(p) + " cashback");
+                document.getElementById("txAmount").value = plan ? plan.amount : ((nx && nx.amount != null) ? nx.amount : "");
+                const cur = (plan && plan.currency) || p.currency;
                 if (cur && [...document.getElementById("txCurrency").options].some(o => o.value === cur)) document.getElementById("txCurrency").value = cur;
+                if (plan && plan.accountId && [...document.getElementById("srcAccount").options].some(o => o.value === plan.accountId)) {
+                    document.getElementById("srcAccount").value = plan.accountId;
+                    syncAccountPickerButtonText("srcAccount");
+                }
                 const catSel = document.getElementById("txCategory");
-                const opt = [...catSel.options].find(o => INS_CASHBACK_CAT_RE.test(o.textContent + " " + o.value))
-                    || [...catSel.options].find(o => INS_INSURANCE_CAT_RE.test(o.textContent + " " + o.value));
-                if (opt) { catSel.value = opt.value; syncAccountPickerButtonText("txCategory"); }
-                document.getElementById("txDate").value = (nx && nx.overdue) ? nx.date : todayLocalStr();
+                let cat = plan && plan.cat ? plan.cat : null;
+                if (!cat) {
+                    const opt = [...catSel.options].find(o => INS_CASHBACK_CAT_RE.test(o.textContent + " " + o.value))
+                        || [...catSel.options].find(o => INS_INSURANCE_CAT_RE.test(o.textContent + " " + o.value));
+                    if (opt) cat = opt.value;
+                }
+                if (cat && [...catSel.options].some(o => o.value === cat)) { catSel.value = cat; syncAccountPickerButtonText("txCategory"); }
+                document.getElementById("txNotes").value = plan ? (plan.notes || "") : "";
+                document.getElementById("txDate").value = (!plan && nx && nx.overdue && nx.date) ? nx.date : todayLocalStr();
+                if (plan) {
+                    const savePlannedBtn = document.getElementById("txSavePlannedBtn");
+                    if (savePlannedBtn) savePlannedBtn.style.display = "none";
+                    const repeatWrap = document.getElementById("txPlannedRepeatWrap");
+                    if (repeatWrap) repeatWrap.style.display = "none";
+                    currentPlannedPaymentIdBeingConfirmed = plan.id;
+                }
                 refreshTxPolicyRow(p.id);
             });
         }
 
         // --- Link / unlink a Planned Payment ---
 
-        async function insuranceOpenPlanPicker() {
+        async function insuranceOpenPlanPicker(el) {
             const p = getPolicyById(activeInsuranceId);
             if (!p) return;
+            const cashback = !!(el && el.dataset && el.dataset.kind === "cashback"); // v511: premium plan (expense) or cashback plan (income)
             const all = await readAllDB(STORES.PLANNED_PAYMENTS);
-            const candidates = all.filter(x => x.type === "expense" && !x.policyId)
+            const candidates = all.filter(x => (cashback ? x.type === "income" : x.type === "expense") && !x.policyId)
                 .sort((a, b) => {
-                    const ai = INS_INSURANCE_CAT_RE.test(a.cat || "") ? 0 : 1, bi = INS_INSURANCE_CAT_RE.test(b.cat || "") ? 0 : 1;
+                    const re = cashback ? new RegExp(INS_CASHBACK_CAT_RE.source + "|" + INS_INSURANCE_CAT_RE.source, "i") : INS_INSURANCE_CAT_RE;
+                    const ai = re.test(a.cat || "") ? 0 : 1, bi = re.test(b.cat || "") ? 0 : 1;
                     return ai - bi || (a.dueDate || "").localeCompare(b.dueDate || "");
                 });
             const listEl = document.getElementById("insurancePlanList");
@@ -16729,11 +16780,11 @@
                         </span>
                     </span>
                     <span style="text-align:right;">
-                        <span style="display:block; font-size:0.85rem; font-weight:700;">${formatCurrency(x.amount, x.currency)}</span>
+                        <span style="display:block; font-size:0.85rem; font-weight:700;${cashback ? " color:var(--income-color);" : ""}">${cashback ? "+" : ""}${formatCurrency(x.amount, x.currency)}</span>
                         <span style="font-size:0.72rem; font-weight:700; color:var(--text-muted);">${escapeHtml(x.dueDate || "")}</span>
                     </span>
                 </div>`).join("")
-                : `<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:30px 10px;">No unlinked planned payments. Save one from the Add Expense form with "🕒 Save as Planned", then link it here.</p>`;
+                : `<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:30px 10px;">${cashback ? 'No unlinked income plans. Save one from the Add Income form with "🕒 Save as Planned" (choose this policy in the Policy row and it links by itself), then link it here if needed.' : 'No unlinked planned payments. Save one from the Add Expense form with "🕒 Save as Planned", then link it here.'}</p>`;
             closeModalAndThen("insuranceDetailModal", () => openModal("insurancePlanModal"));
         }
 
@@ -16744,14 +16795,14 @@
                 const all = await readAllDB(STORES.PLANNED_PAYMENTS);
                 const plan = all.find(x => x.id === planId);
                 if (plan) {
-                    // One planned payment per policy: anything already linked to THIS policy is
-                    // released first, so the policy's "Next premium" can never be ambiguous.
+                    // One planned payment per policy AND kind (premium = expense, cashback = income): anything of the same
+                    // kind already linked to THIS policy is released first, so "Next premium" / "Next cashback" can never be ambiguous.
                     for (const other of all) {
-                        if (other.policyId === policyId && other.id !== planId) { other.policyId = null; await writeDB(STORES.PLANNED_PAYMENTS, other); }
+                        if (other.policyId === policyId && other.id !== planId && (other.type || "expense") === (plan.type || "expense")) { other.policyId = null; await writeDB(STORES.PLANNED_PAYMENTS, other); }
                     }
                     plan.policyId = policyId;
                     await writeDB(STORES.PLANNED_PAYMENTS, plan);
-                    showToast("Planned payment linked");
+                    showToast(plan.type === "income" ? "Cashback plan linked" : "Planned payment linked");
                 }
                 await refreshPlannedPaymentsViews();
                 await renderInsurancePage();
@@ -16759,11 +16810,12 @@
             });
         }
 
-        async function insuranceUnlinkPlan() {
+        async function insuranceUnlinkPlan(el) {
             const policyId = activeInsuranceId;
+            const cashback = !!(el && el.dataset && el.dataset.kind === "cashback"); // v511: only the plan of that kind
             const all = await readAllDB(STORES.PLANNED_PAYMENTS);
             for (const x of all) {
-                if (x.policyId === policyId) { x.policyId = null; await writeDB(STORES.PLANNED_PAYMENTS, x); }
+                if (x.policyId === policyId && ((x.type === "income") === cashback)) { x.policyId = null; await writeDB(STORES.PLANNED_PAYMENTS, x); }
             }
             await refreshPlannedPaymentsViews();
             await renderInsurancePage();
@@ -17460,33 +17512,46 @@
             });
             return any ? sum : null;
         }
+        // v511: a linked, un-paused cashback PLAN (an income planned payment) wins: its due date and amount are what the
+        // person set up. Without one, the estimate (anniversary x sum insured %) is used as in v510.
         function insCashbackNext(p, f) {
-            const pct = parseFloat(p.cashbackPct);
-            if (!(pct > 0) || !insIsLive(p)) return null;
+            const pct = parseFloat(p.cashbackPct), hasPct = pct > 0;
+            const plan = (f.cbPlan && !f.cbPlan.paused && f.cbPlan.dueDate) ? f.cbPlan : null;
+            if (!insIsLive(p) || (!hasPct && !plan)) return null;
             const today = todayLocalStr();
             const kind = p.cashbackBase || "life";
             const day = (d) => Date.parse(d + "T00:00:00Z") / 86400000;
-            let date = "";
-            if (p.startDate) {
-                const received = [...f.cbHistory.map(r => r.date), ...f.cbLedgerRows.map(r => r.date)].filter(Boolean).sort();
-                let y;
-                if (received.length) {
-                    const last = received[received.length - 1], ly = parseInt(last.slice(0, 4), 10);
-                    let best = ly, bestD = Infinity;
-                    [ly - 1, ly, ly + 1].forEach(c => { const dd = Math.abs(day(last) - day(insAnnivDate(p.startDate, c))); if (dd < bestD) { bestD = dd; best = c; } });
-                    y = best + 1;
-                } else {
-                    y = parseInt(today.slice(0, 4), 10);
-                    if (insAnnivDate(p.startDate, y) < today) y++;
+            let est = null;
+            if (hasPct) {
+                let date = "", ended = false;
+                if (p.startDate) {
+                    const received = [...f.cbHistory.map(r => r.date), ...f.cbLedgerRows.map(r => r.date)].filter(Boolean).sort();
+                    let y;
+                    if (received.length) {
+                        const last = received[received.length - 1], ly = parseInt(last.slice(0, 4), 10);
+                        let best = ly, bestD = Infinity;
+                        [ly - 1, ly, ly + 1].forEach(c => { const dd = Math.abs(day(last) - day(insAnnivDate(p.startDate, c))); if (dd < bestD) { bestD = dd; best = c; } });
+                        y = best + 1;
+                    } else {
+                        y = parseInt(today.slice(0, 4), 10);
+                        if (insAnnivDate(p.startDate, y) < today) y++;
+                    }
+                    const fy = parseInt(p.cashbackFirstYear, 10);
+                    if (fy > 0 && y < fy) y = fy;
+                    date = insAnnivDate(p.startDate, y);
+                    if (date && p.maturityDate && date > p.maturityDate) ended = true;
                 }
-                const fy = parseInt(p.cashbackFirstYear, 10);
-                if (fy > 0 && y < fy) y = fy;
-                date = insAnnivDate(p.startDate, y);
-                if (date && p.maturityDate && date > p.maturityDate) return null;
+                if (!ended) {
+                    const base = insCashbackBaseSum(p, date || today);
+                    est = { base, amount: base == null ? null : Math.round(base * pct) / 100, date };
+                }
             }
-            const base = insCashbackBaseSum(p, date || today);
-            const amount = base == null ? null : Math.round(base * pct) / 100;
-            return { pct, kind, base, amount, date, overdue: !!(date && date < today) };
+            if (plan) {
+                const amount = Math.round(insConvert(plan.amount, plan.currency || f.cur, f.cur) * 100) / 100;
+                return { pct: hasPct ? pct : null, kind, base: est ? est.base : null, amount, date: plan.dueDate, overdue: plan.dueDate < today, fromPlan: true, estimate: est ? est.amount : null };
+            }
+            if (!est) return null;
+            return { pct, kind, base: est.base, amount: est.amount, date: est.date, overdue: !!(est.date && est.date < today), fromPlan: false, estimate: est.amount };
         }
         function insCashbackBannerHtml(p, f, compact) {
             const nx = insCashbackNext(p, f);
@@ -17495,7 +17560,14 @@
             const box = (inner, warn) => `<div style="background:${warn ? "rgba(245,158,11,0.14)" : "rgba(16,185,129,0.12)"}; border:1px solid ${warn ? "rgba(245,158,11,0.35)" : "rgba(16,185,129,0.35)"}; border-radius:10px; padding:7px 10px; font-size:0.74rem; font-weight:700; margin:${compact ? "0" : "0 0 10px"};">${inner}</div>`;
             let out = "";
             if (nx) {
-                if (nx.base == null) {
+                const same = nx.estimate != null && Math.abs(nx.estimate - nx.amount) < 0.005;
+                if (nx.fromPlan && nx.overdue) {
+                    out += box(`⚠️ Cashback payout due ${escapeHtml(nx.date)} (${formatCurrency(nx.amount, cur)}) · the planned payment is not marked as paid yet`, true);
+                } else if (nx.fromPlan) {
+                    const head = (nx.pct && nx.base != null && same) ? `🎉 Cashback benefit: ${nx.pct}% of ${formatCurrency(nx.base, cur)}` : "🎉 Cashback";
+                    const diff = (nx.pct && nx.base != null && nx.estimate != null && !same) ? ` · ${nx.pct}% of ${formatCurrency(nx.base, cur)} would be ${formatCurrency(nx.estimate, cur)}` : "";
+                    out += box(`${head} · next payout ${formatCurrency(nx.amount, cur)} on ${escapeHtml(nx.date)} · planned${diff}`, false);
+                } else if (nx.base == null) {
                     out += box(`🎉 Cashback ${nx.pct}% of ${escapeHtml(kName)} sum insured · set the ${escapeHtml(kName)} sum insured to see the payout`, false);
                 } else if (nx.overdue) {
                     out += box(`⚠️ Cashback ${nx.pct}% of ${formatCurrency(nx.base, cur)} · payout due ${escapeHtml(nx.date)} (~${formatCurrency(nx.amount, cur)}) · not recorded yet`, true);
@@ -17509,7 +17581,7 @@
             return compact ? `<div>${out}</div>` : out;
         }
         function insCashbackBoxHtml(p, f) {
-            const hasPlan = parseFloat(p.cashbackPct) > 0;
+            const hasPlan = parseFloat(p.cashbackPct) > 0 || !!f.cbPlan;
             if (!hasPlan && !(f.cbCount > 0)) return "";
             const cur = f.cur;
             const parts = [];
@@ -25325,9 +25397,9 @@
             insSchedPasteFromNote: (el) => insSchedPasteFromNote(el), // v482 (v483: same fix)
             insuranceDetailEdit: () => insuranceDetailEdit(),
             insuranceRecordPremium: () => insuranceRecordPremium(),
-            insuranceOpenPlanPicker: () => insuranceOpenPlanPicker(),
+            insuranceOpenPlanPicker: (el) => insuranceOpenPlanPicker(el), // v511: el.dataset.kind
             insurancePickPlan: (el) => insurancePickPlan(el),
-            insuranceUnlinkPlan: () => insuranceUnlinkPlan(),
+            insuranceUnlinkPlan: (el) => insuranceUnlinkPlan(el), // v511
             closeReminderActionsModal: () => closeReminderActionsModal(),
             editReminderFromActionsModal: () => editReminderFromActionsModal(),
             archiveReminderFromActionsModal: () => archiveReminderFromActionsModal(),

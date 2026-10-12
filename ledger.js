@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v498";
+        const APP_VERSION = "v499";
         const APP_VERSION_DATE = "2026-10-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -23215,6 +23215,53 @@
         // ===================================================================================
         let insMergeState = null;
 
+
+        // v499: "Export insurance only" - the file the second (insurance-only) ledger hands over.
+        // Holds just the policies, the members they point at (name + colour, for the name match on
+        // merge) and the policies' own attachment blobs. Same encrypt / plain-text choice as
+        // exportBackup() (the Backup & Restore page toggle; encrypted by default). It has no
+        // accounts/transactions, so Import JSON refuses it before touching anything - it is only
+        // read by "Merge insurance only".
+        async function exportInsuranceOnly() {
+            await loadInsuranceCache();
+            await loadMembersCache();
+            if (!insuranceCache.length) { alert("There are no insurance policies to export."); return; }
+            const memberIds = new Set(insuranceCache.map(p => p.insuredMemberId).filter(Boolean));
+            const attIds = new Set();
+            insuranceCache.forEach(p => (Array.isArray(p.attachments) ? p.attachments : []).forEach(a => { if (a && a.id != null) attIds.add(a.id); }));
+            const allAtts = await readAllDB(STORES.ATTACHMENTS);
+            const bundle = {
+                insuranceOnly: true,
+                exportedAt: todayLocalStr(),
+                insurance: insuranceCache,
+                members: membersCache.filter(m => memberIds.has(m.id)),
+                attachments: allAtts.filter(a => a && attIds.has(a.id))
+            };
+
+            const toggle = document.getElementById("exportEncryptToggle");
+            const wantsEncryption = toggle ? toggle.checked : true;
+            let outputPayload = bundle;
+            let suffix = "";
+            if (wantsEncryption) {
+                if (!currentPasscode) { alert("The app must be unlocked to create an encrypted file."); return; }
+                const salt = crypto.getRandomValues(new Uint8Array(16));
+                const saltB64 = bufToB64(salt);
+                const key = await deriveKeyFromPasscode(currentPasscode, saltB64, PBKDF2_ITERATIONS);
+                const { iv, data } = await aesEncryptString(key, JSON.stringify(bundle));
+                outputPayload = { encrypted: true, salt: saltB64, iterations: PBKDF2_ITERATIONS, iv, data };
+                suffix = "_encrypted";
+            } else {
+                const proceed = await customConfirm("This file will be saved as plain, unencrypted text. Anyone with the file can read it. Continue?");
+                if (!proceed) return;
+            }
+            const blob = new Blob([JSON.stringify(outputPayload)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = `ledger_insurance_${todayLocalStr()}${suffix}.json`;
+            a.click(); URL.revokeObjectURL(url);
+            showToast("🛡️ " + insuranceCache.length + " polic" + (insuranceCache.length === 1 ? "y" : "ies") + " exported" + (wantsEncryption ? " (encrypted)" : ""));
+        }
+
         function openInsMergePicker() {
             const inp = document.getElementById("insMergeInput");
             if (inp) { inp.value = ""; inp.click(); }
@@ -23270,9 +23317,36 @@
 
             const usedIds = [];
             rows.forEach(r => { const id = r.policy.insuredMemberId; if (id && srcMemberById.has(id) && !usedIds.includes(id)) usedIds.push(id); });
-            insMergeState = { rows, srcMemberById, usedIds, attBlobs };
+            insMergeState = { rows, srcMemberById, usedIds, attBlobs, filter: "all", choice: {} };
             insMergeRender();
             openModal("insMergeModal");
+        }
+
+        // Does a row belong to the current "Insured person" filter? ("all" | source member id | "__none__")
+        function insMergeRowVisible(st, r) {
+            if (st.filter === "all") return true;
+            const id = r.policy.insuredMemberId;
+            const known = !!(id && st.srcMemberById.has(id));
+            return st.filter === "__none__" ? !known : id === st.filter;
+        }
+
+        // Copies what is on screen (ticks + member choices) back into the state, so changing the
+        // filter and re-drawing never loses a tick or a choice the person already made.
+        function insMergeSync() {
+            const st = insMergeState; if (!st) return;
+            const modal = document.getElementById("insMergeModal");
+            modal.querySelectorAll("input[data-ins-merge-row]").forEach(el => {
+                const r = st.rows[Number(el.dataset.insMergeRow)];
+                if (r && !el.disabled) r.checked = el.checked;
+            });
+            modal.querySelectorAll("select[data-ins-merge-member]").forEach(s => { st.choice[s.dataset.insMergeMember] = s.value; });
+        }
+
+        function insMergeFilterChanged(el) {
+            const st = insMergeState; if (!st) return;
+            insMergeSync();
+            st.filter = el.value || "all";
+            insMergeRender();
         }
 
         function insMergeRender() {
@@ -23283,22 +23357,40 @@
                 "newer": ["Already here, file has a newer version (ticking overwrites it)", "#f59e0b"],
                 "dup": ["Same policy number already here, possible duplicate", "#f59e0b"]
             };
+            const visible = st.rows.map((r, i) => ({ r, i })).filter(x => insMergeRowVisible(st, x.r));
             let html = '<p style="font-size:0.8rem; color:var(--text-muted); font-weight:600; margin:0 0 12px;">Only insurance policies are added. Nothing else in this ledger is changed or removed.</p>';
 
-            if (st.usedIds.length) {
-                html += '<p style="font-size:0.75rem; font-weight:800; color:var(--text-muted); margin:0 0 6px;">INSURED PERSON</p>';
+            // Filter by insured person - only worth showing when the file covers more than one group.
+            const noneCount = st.rows.filter(r => !(r.policy.insuredMemberId && st.srcMemberById.has(r.policy.insuredMemberId))).length;
+            if (st.usedIds.length > 1 || (st.usedIds.length === 1 && noneCount > 0)) {
+                let fopts = '<option value="all"' + (st.filter === "all" ? " selected" : "") + '>All people (' + st.rows.length + ')</option>';
                 st.usedIds.forEach(sid => {
+                    const n = st.rows.filter(r => r.policy.insuredMemberId === sid).length;
+                    fopts += '<option value="' + escapeHtml(sid) + '"' + (st.filter === sid ? " selected" : "") + '>' + escapeHtml(st.srcMemberById.get(sid).name) + ' (' + n + ')</option>';
+                });
+                if (noneCount) fopts += '<option value="__none__"' + (st.filter === "__none__" ? " selected" : "") + '>Not set (' + noneCount + ')</option>';
+                html += '<p style="font-size:0.75rem; font-weight:800; color:var(--text-muted); margin:0 0 6px;">SHOW POLICIES OF</p>'
+                    + '<select class="form-input" data-change="insMergeFilterChanged" style="width:100%; margin:0 0 4px;">' + fopts + '</select>'
+                    + '<p style="font-size:0.72rem; color:var(--text-muted); font-weight:600; margin:0 0 12px;">Only the policies shown below are imported; the others in the file are left out.</p>';
+            }
+
+            // Insured-person mapping: only for people who appear in the policies currently shown.
+            const shownIds = st.usedIds.filter(sid => visible.some(x => x.r.policy.insuredMemberId === sid));
+            if (shownIds.length) {
+                html += '<p style="font-size:0.75rem; font-weight:800; color:var(--text-muted); margin:0 0 6px;">INSURED PERSON</p>';
+                shownIds.forEach(sid => {
                     const sm = st.srcMemberById.get(sid);
                     const match = membersCache.find(m => insMergeKey(m.name) === insMergeKey(sm.name));
-                    let opts = membersCache.map(m => '<option value="' + escapeHtml(m.id) + '"' + (match && match.id === m.id ? " selected" : "") + '>' + escapeHtml(m.name) + '</option>').join("");
-                    opts += '<option value="__new__"' + (match ? "" : " selected") + '>＋ Create "' + escapeHtml(sm.name) + '" here</option>';
-                    opts += '<option value="__none__">Not set</option>';
+                    const cur = st.choice[sid] !== undefined ? st.choice[sid] : (match ? match.id : "__new__");
+                    let opts = membersCache.map(m => '<option value="' + escapeHtml(m.id) + '"' + (cur === m.id ? " selected" : "") + '>' + escapeHtml(m.name) + '</option>').join("");
+                    opts += '<option value="__new__"' + (cur === "__new__" ? " selected" : "") + '>＋ Create "' + escapeHtml(sm.name) + '" here</option>';
+                    opts += '<option value="__none__"' + (cur === "__none__" ? " selected" : "") + '>Not set</option>';
                     html += '<div style="display:flex; align-items:center; gap:8px; margin:0 0 8px;"><span style="flex:0 0 38%; font-size:0.85rem; font-weight:700; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(sm.name) + '</span><span aria-hidden="true">→</span><select class="form-input" data-ins-merge-member="' + escapeHtml(sid) + '" style="flex:1; min-width:0;">' + opts + '</select></div>';
                 });
             }
 
-            html += '<p style="font-size:0.75rem; font-weight:800; color:var(--text-muted); margin:14px 0 6px;">POLICIES (' + st.rows.length + ')</p>';
-            st.rows.forEach((r, i) => {
+            html += '<p style="font-size:0.75rem; font-weight:800; color:var(--text-muted); margin:14px 0 6px;">POLICIES (' + visible.length + (visible.length !== st.rows.length ? ' of ' + st.rows.length : '') + ')</p>';
+            visible.forEach(({ r, i }) => {
                 const p = r.policy;
                 const lab = kindLabel[r.kind];
                 const icon = INS_TYPE_ICONS[p.type] || "📄";
@@ -24579,6 +24671,7 @@
             exportBackupQuick: () => exportBackupQuick(),
             openImportInput: () => document.getElementById("importInput").click(),
             openInsMergePicker: () => openInsMergePicker(),
+            exportInsuranceOnly: () => exportInsuranceOnly(),
             insMergeConfirm: () => insMergeConfirm(),
             connectGoogleDrive: () => connectGoogleDrive(),
             disconnectGoogleDrive: () => disconnectGoogleDrive(),
@@ -24781,6 +24874,7 @@
             toggleBudgetCarryover: (el) => toggleBudgetCarryover(el),
             importBackup: (el, e) => importBackup(e),
             insMergeFileChosen: (el, e) => insMergeFileChosen(e),
+            insMergeFilterChanged: (el) => insMergeFilterChanged(el),
             handleExportEncryptToggleChange: () => handleExportEncryptToggleChange(),
             handleDriveAutoSyncToggleChange: () => handleDriveAutoSyncToggleChange(),
             handleBiometricToggleChange: () => handleBiometricToggleChange(),

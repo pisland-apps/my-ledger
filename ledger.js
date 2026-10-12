@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v511";
-        const APP_VERSION_DATE = "2026-10-12";
+        const APP_VERSION = "v512";
+        const APP_VERSION_DATE = "2026-10-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -9336,6 +9336,7 @@
         function openMemberFormModal() {
             document.getElementById("editMemberId").value = "";
             document.getElementById("newMemberName").value = "";
+            document.getElementById("newMemberIsPrimary").checked = false;
             document.getElementById("memberFormHeaderTitle").textContent = "Add Member";
             document.getElementById("memberFormSubmitBtn").textContent = "Add Member";
             document.getElementById("memberFormDeleteBtn").style.display = "none";
@@ -9349,6 +9350,7 @@
             if (!member) return;
             document.getElementById("editMemberId").value = member.id;
             document.getElementById("newMemberName").value = member.name;
+            document.getElementById("newMemberIsPrimary").checked = !!member.isPrimary;
             document.getElementById("memberFormHeaderTitle").textContent = "Edit Member";
             document.getElementById("memberFormSubmitBtn").textContent = "Save Changes";
             document.getElementById("memberFormDeleteBtn").style.display = "block";
@@ -9362,8 +9364,21 @@
             const color = document.getElementById("newMemberColor").value || MEMBER_COLORS[0];
             const id = document.getElementById("editMemberId").value || "mem_" + Date.now();
 
+            // v512: isPrimary marks the ONE member whose name is used in backup file names
+            // (see backupFileOwnerPart). Independent of list order. Ticking it here clears the
+            // flag on every other member, so at most one member is ever primary.
+            const isPrimary = !!document.getElementById("newMemberIsPrimary").checked;
+
             try {
-                await writeDB(STORES.MEMBERS, { id, name, color });
+                const existing = getMemberById(id) || {};
+                if (isPrimary) {
+                    for (const other of membersCache) {
+                        if (other.id !== id && other.isPrimary) {
+                            await writeDB(STORES.MEMBERS, { ...other, isPrimary: false });
+                        }
+                    }
+                }
+                await writeDB(STORES.MEMBERS, { ...existing, id, name, color, isPrimary });
             } catch (err) {
                 alert("Could not save member: " + (err && err.message ? err.message : err));
                 return;
@@ -23322,6 +23337,17 @@
             };
         }
 
+        // v512: filename-safe owner part for backup files. Keeps letters/digits of any language
+        // (so Chinese names survive), turns everything else into "-", lowercases Latin letters.
+        function backupFileOwnerPart(members) {
+            const list = Array.isArray(members) ? members : [];
+            const chosen = list.find(m => m && m.isPrimary && m.name) || list.find(m => m && m.name);
+            const clean = chosen
+                ? String(chosen.name).normalize("NFC").replace(/[^\p{L}\p{N}]+/gu, "-").toLowerCase().replace(/^-+|-+$/g, "")
+                : "";
+            return clean || "backup";
+        }
+
         async function exportBackup(forceEncrypted = false) {
             const bundle = await buildBackupBundle();
 
@@ -23347,16 +23373,10 @@
                 if (!proceed) return;
             }
 
-            // Filename uses the first owner's (member's) name in place of "backup" — bundle.members
-            // is already in the same order as everywhere else in the app (Manage Members list,
-            // sidebar, etc.), since it comes straight from readAllDB(STORES.MEMBERS) above, so
-            // bundle.members[0] IS "the 1st owner". Sanitized the same way as the other CSV
-            // exports' scopeLabel (accounts_export, ledger_export, etc.) for filename safety.
-            // Falls back to "backup" if there are no members yet, or the name sanitizes to nothing.
-            const ownerLabel = (bundle.members[0] && bundle.members[0].name)
-                ? bundle.members[0].name.replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-+|-+$/g, "")
-                : "";
-            const filenameOwnerPart = ownerLabel || "backup";
+            // v512: the name comes from the member marked "Use this name for backup file names"
+            // (isPrimary), NOT from list order, so re-ordering or adding members never changes
+            // it. Falls back to the first member in the list if none is marked, then to "backup".
+            const filenameOwnerPart = backupFileOwnerPart(bundle.members);
 
             const blob = new Blob([JSON.stringify(outputPayload)], { type: "application/json" });
             const url = URL.createObjectURL(blob);

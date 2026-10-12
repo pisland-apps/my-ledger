@@ -5909,6 +5909,9 @@
                 <div class="color-swatch-grid" id="memberColorSwatchGrid"></div>
                 <input type="hidden" id="newMemberColor">
             </div>
+            <div class="form-row">
+                <label style="display:flex; align-items:flex-start; gap:10px; font-size:0.9rem; font-weight:600;"><input type="checkbox" id="newMemberIsPrimary" style="width:18px; height:18px; padding:0; margin-top:2px;"><span>Use this name for backup file names<br><span style="font-size:0.72rem; font-weight:500; color:var(--text-muted);">Only one member can be marked. Ledger_<em>name</em>_date.json</span></span></label>
+            </div>
             <button type="button" id="memberFormSubmitBtn" data-click="handleCreateMemberMobile" class="submit-btn" style="background: var(--transfer-color);">Add Member</button>
             <button type="button" id="memberFormDeleteBtn" data-click="deleteMemberFromForm" class="submit-btn" style="background:var(--expense-chip-bg); color:var(--expense-color); margin-top:6px; display:none;">🗑 Delete Member</button>
         </div>

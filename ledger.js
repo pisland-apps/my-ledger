@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v504";
+        const APP_VERSION = "v505";
         const APP_VERSION_DATE = "2026-10-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -16041,6 +16041,23 @@
 
         // Plain-text cover lines for a policy ("Life RM50,000"): same grouping as the list card, each in the
         // policy's own currency; Medical shows its annual limit (else lifetime limit / sum).
+        // v505: riders on the printable report — a "Rider: name · until date" line under the sum insured in the
+        // policy register, and a Riders table in each policy's detail block.
+        function insPrintRiderLines(p) {
+            const rs = (p.riders || []).filter(r => r && r.name);
+            if (!rs.length) return "";
+            const esc2 = (t) => escapeHtml(String(t == null ? "" : t));
+            return rs.map(r => `<small>Rider: ${esc2(r.name)}${r.endDate ? " · until " + esc2(r.endDate) : ""}</small>`).join("");
+        }
+        function insPrintRiderTable(p) {
+            const rs = (p.riders || []).filter(r => r && r.name);
+            if (!rs.length) return "";
+            const esc2 = (t) => escapeHtml(String(t == null ? "" : t));
+            const today = localDateStr(new Date());
+            const rows = rs.map(r => `<tr><td>${esc2(r.name)}</td><td>${r.startDate ? esc2(r.startDate) : "—"}</td><td>${r.endDate ? esc2(r.endDate) + (r.endDate < today ? " (ended)" : "") : "—"}</td></tr>`).join("");
+            return `<table class="insr-t"><thead><tr><th>Riders (${rs.length})</th><th>From</th><th>Until</th></tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
         function insPrintCoverLines(p) {
             const cur = p.currency || baseCurrency;
             const groups = new Map();
@@ -16212,7 +16229,7 @@
                         if (f.svValue == null) svCell = `<td class="r">—</td>`;
                         else svCell = `<td class="r"><b>${formatCurrency(f.svValue, f.cur)}</b><small class="${f.svStale ? "insr-bad" : ""}">as of ${esc(f.latestSv.date)}${f.svStale ? " ⚠" : ""}</small>${f.loan > 0 ? `<small>less loan ${formatCurrency(f.loan, f.cur)}</small>` : ""}</td>`;
                     }
-                    return `<tr class="${live ? "" : "insr-ended"}"><td>${planCell(p)}</td><td>${cov.length ? cov.join("<br>") : `<span class="insr-muted">not set</span>`}</td><td class="r">${premCell(p, f)}</td><td>${dueCell(p, f)}</td>${endCell}<td class="r">${formatCurrency(f.paid, f.cur)}</td>${svCell}</tr>`;
+                    return `<tr class="${live ? "" : "insr-ended"}"><td>${planCell(p)}</td><td>${cov.length ? cov.join("<br>") : `<span class="insr-muted">not set</span>`}${insPrintRiderLines(p)}</td><td class="r">${premCell(p, f)}</td><td>${dueCell(p, f)}</td>${endCell}<td class="r">${formatCurrency(f.paid, f.cur)}</td>${svCell}</tr>`;
                 };
                 const yearlyOf = (arr) => arr.filter(insIsLive).reduce((s, p) => s + insAnnualCashBase(p), 0);
                 const paidOf = (arr) => arr.reduce((s, p) => s + insConvert(fig.get(p.id).paid, fig.get(p.id).cur, baseCurrency), 0);
@@ -16304,6 +16321,7 @@
                         <div class="insr-pol-h">${INS_TYPE_ICONS[p.type] || INS_TYPE_ICONS.other} ${titleName(p)}${p.insurer && p.product ? ` <span>${esc(p.insurer)}</span>` : ""}${live ? "" : ` <span>· ${esc(INS_STATUSES[p.status] || p.status)}</span>`}</div>
                         <div class="insr-facts">${facts.join("")}</div>
                         ${covRows ? `<table class="insr-t"><thead><tr><th>Cover</th><th class="r">Sum insured</th><th>Details</th></tr></thead><tbody>${covRows}</tbody></table>` : ""}
+                        ${insPrintRiderTable(p)}
                         ${payRows ? `<table class="insr-t"><thead><tr><th>Premium payments</th><th class="r">Amount</th><th>Note</th></tr></thead><tbody>${payRows}</tbody><tfoot><tr><td>Total paid</td><td class="r">${cm(f.paid)}</td><td></td></tr></tfoot></table>` : ""}
                         ${svRows ? `<table class="insr-t"><thead><tr><th>Surrender value</th><th class="r">Guaranteed</th><th class="r">Dividend</th><th class="r">Terminal</th><th class="r">Total</th></tr></thead><tbody>${svRows}</tbody></table>` : ""}
                         ${p.notes ? `<div class="insr-pol-notes"><span>Notes</span> ${esc(p.notes)}</div>` : ""}

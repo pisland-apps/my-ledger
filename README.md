@@ -3882,3 +3882,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v504: Insurance printable report - "Everyone" block removed
 - The "👪 Everyone" household-total table is also gone from the printable Insurance report's "Cover by person" section (it was already removed from the By person tab in v503). Each person's own table is unchanged.
 - No DB change. `APP_VERSION` / `CACHE_NAME` -> v504.
+
+## v505: Riders on the printable Insurance report
+- **Policy register:** each rider is listed as a small "Rider: name · until date" line under the policy's Sum insured.
+- **Policy details** (when included in the report): a "Riders (N)" table (name, From, Until, "(ended)" once past) sits under the Cover table.
+- Riders still have no sum insured of their own, so no totals change. No DB change. `APP_VERSION` / `CACHE_NAME` -> v505.

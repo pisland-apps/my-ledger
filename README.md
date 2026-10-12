@@ -3901,3 +3901,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - The print sheet has a new **Whose policies** section: one tick per insured person who has a policy (with their colour dot and policy count, plus "Insured person not set" if any), all ticked by default. Untick people to print only some, e.g. one person's report to hand over. Hidden when everything belongs to a single person; at least one must stay ticked.
 - The whole report follows the choice (summary, needs attention, cover by person, register, car/home/travel, agents, detail blocks), and the report subtitle lists the people included.
 - No DB change. `APP_VERSION` / `CACHE_NAME` -> v508.
+
+## v509: Printable Insurance report - ended riders marked like the policy card
+- In the policy register a rider reads "Rider: name · Until <date>" while active and a red "Rider: name · Ended <date>" once its date has passed, the same wording as the policy card. The Riders table in the detail blocks shows "Ended <date>" in the Until column. Nothing is hidden.
+- No DB change. `APP_VERSION` / `CACHE_NAME` -> v509.

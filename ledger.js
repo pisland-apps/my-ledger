@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v508";
+        const APP_VERSION = "v509";
         const APP_VERSION_DATE = "2026-10-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -16111,14 +16111,19 @@
             const rs = (p.riders || []).filter(r => r && r.name);
             if (!rs.length) return "";
             const esc2 = (t) => escapeHtml(String(t == null ? "" : t));
-            return rs.map(r => `<small>Rider: ${esc2(r.name)}${r.endDate ? " · until " + esc2(r.endDate) : ""}</small>`).join("");
+            // v509: same wording as the policy card — "Until <date>" while active, red "Ended <date>" once past.
+            const today = localDateStr(new Date());
+            return rs.map(r => {
+                const ended = r.endDate && r.endDate < today;
+                return `<small${ended ? ' class="insr-bad"' : ""}>Rider: ${esc2(r.name)}${r.endDate ? ` · ${ended ? "Ended" : "Until"} ${esc2(r.endDate)}` : ""}</small>`;
+            }).join("");
         }
         function insPrintRiderTable(p) {
             const rs = (p.riders || []).filter(r => r && r.name);
             if (!rs.length) return "";
             const esc2 = (t) => escapeHtml(String(t == null ? "" : t));
             const today = localDateStr(new Date());
-            const rows = rs.map(r => `<tr><td>${esc2(r.name)}</td><td>${r.startDate ? esc2(r.startDate) : "—"}</td><td>${r.endDate ? esc2(r.endDate) + (r.endDate < today ? " (ended)" : "") : "—"}</td></tr>`).join("");
+            const rows = rs.map(r => `<tr><td>${esc2(r.name)}</td><td>${r.startDate ? esc2(r.startDate) : "—"}</td><td>${r.endDate ? (r.endDate < today ? `<span class="insr-bad">Ended ${esc2(r.endDate)}</span>` : esc2(r.endDate)) : "—"}</td></tr>`).join("");
             return `<table class="insr-t"><thead><tr><th>Riders (${rs.length})</th><th>From</th><th>Until</th></tr></thead><tbody>${rows}</tbody></table>`;
         }
 

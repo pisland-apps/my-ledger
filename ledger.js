@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v503";
+        const APP_VERSION = "v504";
         const APP_VERSION_DATE = "2026-10-12";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -16145,7 +16145,7 @@
             // ---- Cover by person (in-force life / medical / other only, as on the By person tab) ----
             let personHtml = "";
             if (livePersonal.length) {
-                const groups = new Map(), everyone = new Map();
+                const groups = new Map();
                 const kindOf = (map, k) => { if (!map.has(k)) map.set(k, insKindData()); return map.get(k); };
                 livePersonal.forEach(p => {
                     const key = p.insuredMemberId && getMemberById(p.insuredMemberId) ? p.insuredMemberId : "";
@@ -16156,7 +16156,6 @@
                     (p.coverages || []).filter(c => c && (c.kind || c.label)).forEach(c => {
                         const kind = INS_COV_KINDS[c.kind] ? c.kind : "other";
                         insAddCoverage(kindOf(g.kinds, kind), p, c);
-                        insAddCoverage(kindOf(everyone, kind), p, c);
                     });
                 });
                 const order = [...membersCache.map(m => m.id).filter(id => groups.has(id)), ...(groups.has("") ? [""] : [])];
@@ -16173,7 +16172,6 @@
                 }).join("") || `<tr><td colspan="4" class="insr-muted">No coverage details recorded.</td></tr>`;
                 const tbl = (rows) => `<table class="insr-t"><thead><tr><th>Cover</th><th class="r">Policies</th><th class="r">Sum insured</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
                 const blocks = [];
-                if (order.length > 2) blocks.push(`<div class="insr-person"><div class="insr-person-h">👪 Everyone</div>${tbl(kindRows(everyone))}</div>`);
                 order.forEach(key => {
                     const g = groups.get(key), m = key ? getMemberById(key) : null;
                     blocks.push(`<div class="insr-person"><div class="insr-person-h">${m ? esc(m.name) : "Insured person not set"}<span>${g.policies.length} ${g.policies.length === 1 ? "policy" : "policies"} · ${money(g.yearly)}/yr</span></div>${tbl(kindRows(g.kinds))}</div>`);

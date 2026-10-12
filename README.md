@@ -3878,3 +3878,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v503: Insurance > By person - "Everyone" card removed
 - The "👪 Everyone" household-total card at the top of By person is gone, so the first person's card is now visible straight away. Its summed sums insured were not what any one person is covered for (medical limits overlap, "Other" mixes liability/property cover). Each person's own card is unchanged.
 - No DB change. `APP_VERSION` / `CACHE_NAME` -> v503.
+
+## v504: Insurance printable report - "Everyone" block removed
+- The "👪 Everyone" household-total table is also gone from the printable Insurance report's "Cover by person" section (it was already removed from the By person tab in v503). Each person's own table is unchanged.
+- No DB change. `APP_VERSION` / `CACHE_NAME` -> v504.

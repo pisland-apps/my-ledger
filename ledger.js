@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v526";
+        const APP_VERSION = "v527";
         const APP_VERSION_DATE = "2026-10-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7920,17 +7920,17 @@
                 const closed = isClosedFund(f, invested);
                 if (closed) closedPl += pl;
                 const stat = (l, v) => `<div><div class="fh-stat-l">${l}</div><div class="fh-stat-v">${v}</div></div>`;
-                const metaBits = [f.code, f.category].filter(Boolean).map(escapeHtml).join(" · ");
                 (closed ? closedRows : rowsHtml).push(`
-                    <div class="fh-card" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}">
+                    <div class="fh-card ${pl >= 0 ? "pos" : "neg"}" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}">
                         <div class="fh-head">
                             <div style="min-width:0;">
                                 <div class="fh-name">${escapeHtml(f.name)}</div>
-                                <div class="fh-sub">${metaBits}${metaBits && ownerLabel ? "<br>" : ""}<span class="fh-owner">${escapeHtml(ownerLabel)}</span></div>
+                                ${f.code ? `<div class="fh-sub">${escapeHtml(f.code)}</div>` : ""}
+                                <div class="fh-chips">${f.category ? `<span class="fh-chip">${escapeHtml(f.category)}</span>` : ""}${ownerLabel ? `<span class="fh-chip owner">${escapeHtml(ownerLabel)}</span>` : ""}</div>
                             </div>
                             <div class="fh-val">
                                 <div class="fh-val-main">${formatCurrency(value, f.currency)}</div>
-                                <div class="fh-pl" style="color:${plColor};">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)} (${returnPct.toFixed(2)}%)</div>
+                                <div class="fh-pl">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)} (${returnPct.toFixed(2)}%)</div>
                             </div>
                         </div>
                         <div class="fh-stats">
@@ -8009,7 +8009,7 @@
             const cur = commonCurrency || baseCurrency;
             const tstat = (l, v, c) => `<div><div class="fh-stat-l">${l}</div><div class="fh-stat-v"${c ? ` style="color:${c};"` : ""}>${v}</div></div>`;
             const totalsRow = `
-                <div class="fh-card total">
+                <div class="fh-card total ${totalPl >= 0 ? "pos" : "neg"}">
                     <div class="fh-head">
                         <div>
                             <div class="fh-name">Total</div>
@@ -8017,10 +8017,10 @@
                         </div>
                         <div class="fh-val">
                             <div class="fh-val-main">${formatCurrency(totalValue, cur)}</div>
-                            <div class="fh-pl" style="color:${totalPlColor};">${totalPl >= 0 ? "+" : ""}${formatCurrency(totalPl, cur)} (${totalReturnPct.toFixed(2)}%)</div>
+                            <div class="fh-pl">${totalPl >= 0 ? "+" : ""}${formatCurrency(totalPl, cur)} (${totalReturnPct.toFixed(2)}%)</div>
                         </div>
                     </div>
-                    <div class="fh-stats">
+                    <div class="fh-stats two">
                         ${tstat("Invested", formatCurrency(totalInvested, cur))}
                         ${tstat("Current Inv.", formatCurrency(totalInvested - totalRecovered, cur))}
                     </div>
@@ -22282,18 +22282,19 @@
                     targetRows = (rowsByAccount[accName] = rowsByAccount[accName] || []);
                 }
                 targetRows.push(`
-                    <div class="fh-card" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}">
+                    <div class="fh-card ${pl >= 0 ? "pos" : "neg"}" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}">
                         <div class="fh-head">
                             <div style="min-width:0;">
                                 <div class="fh-name">${escapeHtml(f.name)}</div>
-                                <div class="fh-sub">${escapeHtml(f.code || "")}${f.code && ownerLabel ? "<br>" : ""}<span class="fh-owner">${escapeHtml(ownerLabel)}</span></div>
+                                ${f.code ? `<div class="fh-sub">${escapeHtml(f.code)}</div>` : ""}
+                                <div class="fh-chips">${ownerLabel ? `<span class="fh-chip owner">${escapeHtml(ownerLabel)}</span>` : ""}</div>
                             </div>
                             <div class="fh-val">
                                 <div class="fh-val-main">${formatCurrency(value, f.currency)}</div>
-                                <div class="fh-pl" style="color:${plColor};">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)} (${returnPct.toFixed(2)}%)</div>
+                                <div class="fh-pl">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)} (${returnPct.toFixed(2)}%)</div>
                             </div>
                         </div>
-                        <div class="fh-stats">
+                        <div class="fh-stats two">
                             <div><div class="fh-stat-l">Invested</div><div class="fh-stat-v">${formatCurrency(invested, f.currency)}</div></div>
                             <div><div class="fh-stat-l" title="Invested minus Recovered (cash already taken out via sells / payouts). Current Inv. + P/L = Value.">Current Inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, f.currency)}</div></div>
                         </div>

@@ -4010,3 +4010,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v526: Portfolio Fund Detail - one card per fund (same look as the Unit Trust Fund Holdings cards)
 - The per-account table (min-width 680px, sideways scroll on phone) is now cards grouped under each account name: fund name, code / owner, Value with P/L and Return % on the right, Invested and Current Inv. below. Tap a card to open the fund. The closed-fund summary line still works.
 - Display layer only: no data, calculation or print changes. Reuses the v525 `.fh-*` CSS. `APP_VERSION` / `CACHE_NAME` -> v526.
+
+## v527: Fund cards polish
+- Cards get a left accent bar (green / red by P/L), Value in larger type, P/L + Return % as a coloured pill, category and owner as small chips, and the stats in a soft panel. Phone: Units / NAV / Invested then Current Inv. / Annualised / Holding (3 x 2, no lone wrapped item); wide card (>=560px, container query): all 6 on one row. Total card has a primary-tinted background; the closed-funds line is a dashed pill.
+- Display layer only (`.fh-*` CSS in index.html). `APP_VERSION` / `CACHE_NAME` -> v527.

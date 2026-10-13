@@ -3262,22 +3262,32 @@
         }
         .dfmt-wrap > .dfmt-label.empty { color: var(--text-muted); }
 
-        /* v525: Unit Trust > Fund Holdings — card per fund instead of an 11-column table. PC: all stats on one row;
-           phone: they wrap to 3 per row. No horizontal scrolling. Colours come from the theme variables. */
-        .fh-card { border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; background: var(--card-bg); cursor: pointer; }
-        .fh-card.orphan { opacity: 0.7; cursor: default; }
-        .fh-card.total { cursor: default; border: 2px solid var(--border-color); background: var(--bg-color); }
-        .fh-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-        .fh-name { font-weight: 800; font-size: 0.92rem; line-height: 1.3; word-break: break-word; }
-        .fh-sub { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
-        .fh-owner { color: var(--primary); font-weight: 700; }
+        /* v525/v527: Fund Holdings + Portfolio Fund Detail cards. Left accent bar + P/L pill follow the sign of P/L
+           (--pl). Stats sit in a soft panel: 3 per row on phone, 6 per row once the card is wide (container query). */
+        .fh-card { --pl: var(--income-color); container-type: inline-size; position: relative; overflow: hidden; border: 1px solid var(--border-color); border-radius: 14px; padding: 14px 16px 14px 20px; margin-bottom: 12px; background: var(--card-bg); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05); cursor: pointer; transition: box-shadow .15s ease, transform .15s ease; }
+        .fh-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--pl); }
+        .fh-card.neg { --pl: var(--expense-color); }
+        .fh-card:hover { box-shadow: 0 6px 18px rgba(15, 23, 42, 0.10); transform: translateY(-1px); }
+        .fh-card:active { transform: none; }
+        .fh-card.orphan { --pl: var(--text-muted); opacity: 0.75; cursor: default; }
+        .fh-card.orphan:hover, .fh-card.total:hover { transform: none; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05); }
+        .fh-card.total { cursor: default; background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 10%, var(--card-bg)), var(--card-bg)); border-color: color-mix(in srgb, var(--primary) 28%, var(--border-color)); }
+        .fh-card.total::before { background: var(--primary); }
+        .fh-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+        .fh-name { font-weight: 800; font-size: 0.98rem; line-height: 1.3; word-break: break-word; }
+        .fh-sub { font-size: 0.7rem; color: var(--text-muted); margin-top: 3px; letter-spacing: 0.01em; }
+        .fh-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+        .fh-chip { font-size: 0.66rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--text-muted) 14%, transparent); color: var(--text-muted); }
+        .fh-chip.owner { background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); }
         .fh-val { text-align: right; flex: 0 0 auto; }
-        .fh-val-main { font-weight: 800; font-size: 1.05rem; white-space: nowrap; }
-        .fh-pl { font-size: 0.76rem; font-weight: 700; white-space: nowrap; margin-top: 2px; }
-        .fh-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px 12px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-color); }
-        .fh-stat-l { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); font-weight: 700; }
-        .fh-stat-v { font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
-        .fh-closed { padding: 8px 4px; font-size: 0.74rem; color: var(--text-muted); font-weight: 700; cursor: pointer; border-top: 1px dashed var(--border-color); margin: 2px 0 10px; }
+        .fh-val-main { font-weight: 800; font-size: 1.2rem; line-height: 1.2; white-space: nowrap; letter-spacing: -0.01em; }
+        .fh-pl { display: inline-block; margin-top: 5px; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 800; white-space: nowrap; color: var(--pl); background: color-mix(in srgb, var(--pl) 14%, transparent); }
+        .fh-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--text-muted) 7%, transparent); }
+        .fh-stats.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        @container (min-width: 560px) { .fh-stats:not(.two) { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+        .fh-stat-l { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 700; margin-bottom: 2px; }
+        .fh-stat-v { font-size: 0.82rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .fh-closed { padding: 9px 12px; font-size: 0.74rem; color: var(--text-muted); font-weight: 700; cursor: pointer; border: 1px dashed var(--border-color); border-radius: 10px; margin: 0 0 12px; text-align: center; }
     </style>
     <!-- v179: apply any saved background-theme choice before first paint, so the page never
          flashes the default slate background and then jumps to the user's chosen tint.

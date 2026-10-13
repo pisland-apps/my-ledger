@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v527";
+        const APP_VERSION = "v528";
         const APP_VERSION_DATE = "2026-10-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7937,7 +7937,7 @@
                             ${stat("Units", (f.units || 0).toFixed(4) + (isGoldFund(f) ? " g" : ""))}
                             ${stat("NAV", formatCurrency(f.currentNav || 0, f.currency) + (isGoldFund(f) ? "/g" : "") + goldStalenessBadgeHTML(f))}
                             ${stat("Invested", formatCurrency(invested, f.currency))}
-                            ${stat("Current Inv.", formatCurrency(invested - recovered, f.currency))}
+                            ${stat("Current inv.", formatCurrency(invested - recovered, f.currency))}
                             ${stat("Annualised", holdingYears >= 0.08 ? annualised.toFixed(2) + "%" : "-")}
                             ${stat("Holding", holdingYears >= 0.08 ? holdingYears.toFixed(1) + " yrs" : "-")}
                         </div>
@@ -7991,7 +7991,7 @@
                         <div class="fh-stats">
                             <div><div class="fh-stat-l">Units</div><div class="fh-stat-v">${units.toFixed(4)}</div></div>
                             <div><div class="fh-stat-l">Invested</div><div class="fh-stat-v">${formatCurrency(invested, currency)}</div></div>
-                            <div><div class="fh-stat-l">Current Inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, currency)}</div></div>
+                            <div><div class="fh-stat-l">Current inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, currency)}</div></div>
                         </div>
                     </div>`);
             });
@@ -8007,26 +8007,18 @@
             // mixed basket, sum the figures at face value but flag it rather than implying a false
             // single-currency total.
             const cur = commonCurrency || baseCurrency;
-            const tstat = (l, v, c) => `<div><div class="fh-stat-l">${l}</div><div class="fh-stat-v"${c ? ` style="color:${c};"` : ""}>${v}</div></div>`;
-            const totalsRow = `
-                <div class="fh-card total ${totalPl >= 0 ? "pos" : "neg"}">
-                    <div class="fh-head">
-                        <div>
-                            <div class="fh-name">Total</div>
-                            ${mixedCurrency ? '<div class="fh-sub">mixed currencies — summed at face value</div>' : ""}
-                        </div>
-                        <div class="fh-val">
-                            <div class="fh-val-main">${formatCurrency(totalValue, cur)}</div>
-                            <div class="fh-pl">${totalPl >= 0 ? "+" : ""}${formatCurrency(totalPl, cur)} (${totalReturnPct.toFixed(2)}%)</div>
-                        </div>
-                    </div>
-                    <div class="fh-stats two">
-                        ${tstat("Invested", formatCurrency(totalInvested, cur))}
-                        ${tstat("Current Inv.", formatCurrency(totalInvested - totalRecovered, cur))}
-                    </div>
-                </div>`;
+            // v528: the old Total card now lives in the balance hero at the top of the page.
+            const heroSub = document.getElementById("ledgerBalanceHeroSub");
+            if (heroSub) {
+                heroSub.innerHTML = `
+                    <span class="fh-pl" style="--pl:${totalPlColor};">${totalPl >= 0 ? "+" : ""}${formatCurrency(totalPl, cur)} (${totalReturnPct.toFixed(2)}%)</span>
+                    <span>Invested<b>${formatCurrency(totalInvested, cur)}</b></span>
+                    <span>Current inv.<b>${formatCurrency(totalInvested - totalRecovered, cur)}</b></span>
+                    ${mixedCurrency ? '<span class="bal-hero-note">Mixed currencies — totals are summed at face value</span>' : ""}`;
+                heroSub.style.display = "flex";
+            }
 
-            wrap.innerHTML = rowsHtml.join("") + totalsRow;
+            wrap.innerHTML = rowsHtml.join("");
         }
 
         // --- DAILY NAV UPDATE PAGE ---
@@ -20466,11 +20458,17 @@
                         (viewingAcc.group || DEFAULT_ACCOUNT_GROUP) === "Real Estate" ? "Purchase Cost" : "Current Balance";
                     document.getElementById("ledgerCurrentBalanceValue").innerHTML = balSummary;
                     balanceBanner.style.display = "block";
+                    // v528: Unit Trust accounts get the big "hero" balance; its P/L + Invested line is filled in by renderFundHoldingsTable().
+                    balanceBanner.classList.toggle("bal-hero", viewingAcc.type === "unittrust");
+                    const heroSubReset = document.getElementById("ledgerBalanceHeroSub");
+                    heroSubReset.style.display = "none"; heroSubReset.innerHTML = "";
                 } else {
                     balanceBanner.style.display = "none";
+                    balanceBanner.classList.remove("bal-hero");
                 }
             } else {
                 balanceBanner.style.display = "none";
+                balanceBanner.classList.remove("bal-hero");
             }
 
             // Related Account banner (v50) — Bank Loan accounts only, shown just under Current
@@ -20542,6 +20540,15 @@
                 }
             } else {
                 fundSection.style.display = "none";
+            }
+
+            // v528: on a Unit Trust account the year switcher sits in the Fund Holdings header as a compact
+            // control (saves a whole row); everywhere else it stays in its original spot.
+            {
+                const yn = document.getElementById("ledgerYearNav");
+                const target = document.getElementById(isUnitTrustAccountView ? "fundHoldingsYearSlot" : "ledgerYearNavHome");
+                if (yn && target && yn.parentElement !== target) target.appendChild(yn);
+                if (yn) yn.classList.toggle("compact", isUnitTrustAccountView);
             }
 
             // Multi-Currency account's own Activity page (v55): rather than a jumbled list of
@@ -22296,7 +22303,7 @@
                         </div>
                         <div class="fh-stats two">
                             <div><div class="fh-stat-l">Invested</div><div class="fh-stat-v">${formatCurrency(invested, f.currency)}</div></div>
-                            <div><div class="fh-stat-l" title="Invested minus Recovered (cash already taken out via sells / payouts). Current Inv. + P/L = Value.">Current Inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, f.currency)}</div></div>
+                            <div><div class="fh-stat-l" title="Invested minus Recovered (cash already taken out via sells / payouts). Current inv. + P/L = Value.">Current inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, f.currency)}</div></div>
                         </div>
                     </div>`);
             });

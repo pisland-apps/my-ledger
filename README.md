@@ -4014,3 +4014,9 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v527: Fund cards polish
 - Cards get a left accent bar (green / red by P/L), Value in larger type, P/L + Return % as a coloured pill, category and owner as small chips, and the stats in a soft panel. Phone: Units / NAV / Invested then Current Inv. / Annualised / Holding (3 x 2, no lone wrapped item); wide card (>=560px, container query): all 6 on one row. Total card has a primary-tinted background; the closed-funds line is a dashed pill.
 - Display layer only (`.fh-*` CSS in index.html). `APP_VERSION` / `CACHE_NAME` -> v527.
+
+## v528: Unit Trust account page - balance hero, compact year switcher
+- Current Balance on a Unit Trust account is now a hero block: small grey label, 2.1rem figure, then a P/L + Return % pill with Invested and Current inv. beside it (this replaces the Total card at the bottom). Other account types keep the old banner.
+- The `< 2026 >` year switcher moves into the Fund Holdings header as one compact bordered control (same element and ids, re-parented by `renderLedger`; it returns to `#ledgerYearNavHome` on other pages). "+ Transaction" no longer wraps.
+- Card labels are sentence case (Units, NAV, Invested, Current inv.). The "Transaction Log History" hint under the page title is smaller and lighter (all account pages).
+- Display layer only. `APP_VERSION` / `CACHE_NAME` -> v528.

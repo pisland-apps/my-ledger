@@ -3996,3 +3996,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - PC (>640px): Show and Group now sit on one row (thin divider between them); they wrap to two rows only when the window is narrow. Phone layout (v522 Group chip) is unchanged.
 - Tabs (Policies / By person / Car · Home · Travel): keyboard focus no longer draws a box over the underline; it uses a soft tint instead, so every tab looks the same. Mouse/touch click shows only the underline.
 - `APP_VERSION` / `CACHE_NAME` -> v523. No data, calculation or print changes.
+
+## v524: Insurance > Car · Home · Travel - category colour on the group header, urgency bar on each policy row
+- Each group card (Car / Home / Fire / Travel) now has a coloured icon badge and a small colour chip in its header: Car = blue, Home = purple, Travel = teal. The colours avoid red / amber / green, so they never read as a warning. They are CSS variables (`--ins-cat-car/home/travel`, rgb triplets) on `:root`.
+- Each policy row has a thin left bar that only means urgency: red = overdue or ends within 7 days, amber = 8-30 days, faint grey-blue = normal, fainter grey = ended (row also stays dimmed). The "Ends ... days left" text uses the same two levels (it used amber up to 60 days before).
+- Display layer only: no data, calculation, filter or print changes. `APP_VERSION` / `CACHE_NAME` -> v524.

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v523";
+        const APP_VERSION = "v524";
         const APP_VERSION_DATE = "2026-10-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -16248,16 +16248,19 @@
                     const freq = INS_FREQ[p.frequency], prem = parseFloat(p.premium) || 0;
                     const yearlyNative = (freq && freq[1] > 0 && prem > 0 && !p.paidByBonus && insIsLive(p)) ? prem * freq[1] : 0;
                     let endLine = "";
+                    let urg = insIsLive(p) ? "ok" : "ended"; // v524: row bar state — "red" | "amber" | "ok" | "ended"
                     if (!insIsLive(p)) {
                         endLine = `<span style="font-size:0.72rem; font-weight:700; color:var(--text-muted);">${escapeHtml(INS_STATUSES[p.status] || p.status)}${p.maturityDate ? " · " + escapeHtml(p.maturityDate) : ""}</span>`;
                     } else if (p.maturityDate) {
                         const dd = Math.round((new Date(p.maturityDate + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000);
-                        const color = dd < 0 ? "var(--expense-color)" : (dd <= 60 ? "#d97706" : "var(--text-muted)");
+                        // v524: two urgency levels — red: overdue / within 7 days; amber: 8–30 days (same thresholds as the row's bar)
+                        urg = dd <= 7 ? "red" : (dd <= 30 ? "amber" : "ok");
+                        const color = urg === "red" ? "var(--expense-color)" : (urg === "amber" ? "#d97706" : "var(--text-muted)");
                         endLine = `<span style="font-size:0.72rem; font-weight:700; color:${color};">${dd < 0 ? `⚠️ Expired ${-dd} day${-dd === 1 ? "" : "s"} ago` : (dd === 0 ? "⚠️ Expires today" : `Ends ${escapeHtml(p.maturityDate)} · ${dd} day${dd === 1 ? "" : "s"} left`)}${dd < 0 ? ` (${escapeHtml(p.maturityDate)})` : ""}</span>`;
                     }
                     const who = p.insuredMemberId && getMemberById(p.insuredMemberId) ? accountOwnerTagHTML({ memberIds: [p.insuredMemberId] }) : "";
                     const meta = [p.insurer ? escapeHtml(p.insurer) : "", p.policyNo ? escapeHtml(p.policyNo) : "", who].filter(Boolean).join(" · ");
-                    return `<div data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; ${insIsLive(p) ? "" : "opacity:0.65; "}padding:9px 0; border-top:1px solid var(--border-color); display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+                    return `<div class="ins-ar" data-urg="${urg}" data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; ${insIsLive(p) ? "" : "opacity:0.65; "}border-top:1px solid var(--border-color); display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
                         <span style="min-width:0; display:flex; flex-direction:column; gap:2px;">
                             <strong style="font-size:0.85rem; overflow-wrap:anywhere;">${escapeHtml(p.product || p.insurer || "Policy")}</strong>
                             ${meta ? `<span style="font-size:0.72rem; color:var(--text-muted); font-weight:600; overflow-wrap:anywhere;">${meta}</span>` : ""}
@@ -16270,9 +16273,9 @@
                     </div>`;
                 }).join("");
                 totalYearly += yearlyBase;
-                return `<div style="border:1px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:6px;">
-                        <span style="font-weight:800; font-size:0.9rem;">${INS_TYPE_ICONS[type]} ${escapeHtml(INS_TYPES[type])} <span style="font-weight:600; font-size:0.75rem; color:var(--text-muted);">· ${ps.length} ${ps.length === 1 ? "policy" : "policies"}</span></span>
+                return `<div class="ins-ag" data-cat="${type}">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px;">
+                        <span class="ins-ag-ttl"><span class="ins-ag-ico">${INS_TYPE_ICONS[type]}</span><span class="ins-ag-name">${escapeHtml(INS_TYPES[type])}</span><span class="ins-ag-chip"></span><span style="font-weight:600; font-size:0.75rem; color:var(--text-muted);">· ${ps.length} ${ps.length === 1 ? "policy" : "policies"}</span></span>
                         <span style="font-size:0.72rem; font-weight:700; color:var(--text-muted); text-align:right;">Sum insured ${hasSum ? money(sumBase) : "—"}${yearlyBase > 0 ? ` · ${money(yearlyBase)}/yr` : ""}</span>
                     </div>${rows}
                 </div>`;

@@ -3966,3 +3966,12 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Tap it: retries the upload now when something is waiting, otherwise shows the full "Last synced" date and time in a toast.
 - Hidden when Google Drive is not connected. It only reads the existing sync state (no change to how syncing works, no DB change).
 - `APP_VERSION` / `CACHE_NAME` -> v519.
+
+## v520: Insurance > By person redesign (+ rebuilt sw.js)
+- **One card per person**: colour avatar (first letter), name, "N policies in force", and the yearly cash premium on the right ("per year"). People with no insured person set get a grey "?" card.
+- **One row per cover type** (Life, Term Life, Health/Medical, Critical Illness, Personal Accident, Other) with an icon, the number of policies and the big total on the right. Rows are **collapsed by default**; tap a row to see the policies behind the total (name, insurer, amount, "rider" tag). **Expand all / Collapse all** sits above the list.
+- **Health/Medical**: annual limit and lifetime remaining are small chips at the top of the open row; the (i) button explains why medical limits overlap.
+- **Riders** is a row too: soonest-ending first, ended ones last and dimmed, subtitle "N active · M ended".
+- Display only: totals, ordering of policies, the Policies tab, Car / Home / Travel and the print report are unchanged. No DB change.
+- **`sw.js` was 0 bytes in the v519 package** (v517 - v519 copies were lost). Rebuilt from v516: only `CACHE_NAME` changed in v517 - v519, and nothing new needs precaching. Check that `sw.js` is not empty before you deploy.
+- `APP_VERSION` / `CACHE_NAME` -> v520.

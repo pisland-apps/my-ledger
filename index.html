@@ -340,25 +340,13 @@
            No tooltip (v490) — it covered the Financial Assets amount while comparing; the
            description lives in Setting > Net Worth Card. Hidden by renderApp() when no in-force
            policy has a surrender value. */
-        .nw-ins-chip {
-            position: relative; display: inline-flex; align-items: center; gap: 7px;
-            margin-top: 10px; padding: 3px 10px 3px 9px; cursor: pointer;
+        .nw-ins-info {
+            display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 6px 12px;
             font-size: 0.72rem; font-weight: 700; color: rgba(255,255,255,0.92);
-            background: rgba(255,255,255,0.16); border-radius: 999px; user-select: none;
+            border: 1px dashed rgba(255,255,255,0.45); border-radius: 12px; cursor: pointer;
         }
-        .nw-ins-chip.hidden { display: none; }
-        .nw-ins-chip input { position: absolute; opacity: 0; width: 0; height: 0; }
-        .nw-ins-track {
-            position: relative; width: 26px; height: 15px; flex-shrink: 0; border-radius: 999px;
-            background: rgba(255,255,255,0.35); transition: background .15s;
-        }
-        .nw-ins-track::after {
-            content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px;
-            border-radius: 50%; background: #fff; transition: transform .15s;
-        }
-        .nw-ins-chip input:checked + .nw-ins-track { background: var(--income-color, #22c55e); }
-        .nw-ins-chip input:checked + .nw-ins-track::after { transform: translateX(11px); }
-        .nw-ins-chip input:focus-visible + .nw-ins-track { outline: 2px solid #fff; outline-offset: 2px; }
+        .nw-ins-info.hidden { display: none; }
+        .nw-ins-info .nw-ins-note { margin-left: auto; font-weight: 600; opacity: 0.75; }
         .net-worth-hero-card .net-worth-split-label { color: rgba(255,255,255,0.8); }
         .net-worth-hero-card .net-worth-split-value { color: #fff; }
 
@@ -3507,14 +3495,6 @@
                     <div class="net-worth-companion" id="netWorthCompanion" data-click="toggleCompanionSettingsFromDashboard" title="Companion — tap to change in Settings" style="display:none;"></div>
                 </div>
 
-                <!-- v489: quick on/off for counting insurance surrender value — the same setting as
-                     Setting > Net Worth Card > Insurance (includeInsuranceSvInNetWorth). Hidden when no
-                     policy has a surrender value. -->
-                <label class="nw-ins-chip hidden" id="nwInsChip">
-                    <input type="checkbox" id="nwInsChipToggle" data-change="handleInsuranceSvNetWorthToggleChange" aria-label="Count insurance surrender value in Net Worth">
-                    <span class="nw-ins-track"></span>
-                    <span>🛡️ Insurance SV</span>
-                </label>
                 <!-- v157: Financial Assets / Real Estate split — only shown when at least one Real
                      Estate account exists (toggled in renderApp()); otherwise stays hidden and the
                      Portfolio Net Worth figure above is the only total shown, per design. -->
@@ -3527,6 +3507,13 @@
                         <span class="net-worth-split-label">🏠 Real Estate</span>
                         <span class="net-worth-split-value privacy-amount-value" id="realEstateDisplay">0.00</span>
                     </div>
+                </div>
+                <!-- v518: Insurance surrender value shown as information only (not counted in Net Worth).
+                     Hidden by updateInsuranceSvChip() when no in-force policy has a surrender value. -->
+                <div class="nw-ins-info hidden" id="nwInsChip" data-click="togglePrivacyReveal" title="Information only — not part of Net Worth">
+                    <span>🛡️ Insurance SV</span>
+                    <span class="privacy-amount-value" id="nwInsChipValue">0.00</span>
+                    <span class="nw-ins-note">not counted</span>
                 </div>
             </div>
         </header>
@@ -4306,7 +4293,7 @@
                     <div><label id="insMemberLabel">Insured person</label><select id="insMember" class="form-input"></select></div>
                     <div><label>Policy currency</label><select id="insCurrency" class="form-input" data-input="insRecalcPaymentTotal" data-change="insRecalcPaymentTotal"></select></div>
                 </div>
-                <label style="display:flex; align-items:flex-start; gap:10px; margin:0 0 12px; font-size:0.85rem; font-weight:600;"><input type="checkbox" id="insExcludeNw" style="width:18px; height:18px; padding:0; flex:0 0 auto; margin-top:2px;"> <span>Leave out of my Net Worth<br><span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">For a policy that is not yours (e.g. a child's): its surrender value is not counted anywhere in Net Worth.</span></span></label>
+                <label style="display:flex; align-items:flex-start; gap:10px; margin:0 0 12px; font-size:0.85rem; font-weight:600;"><input type="checkbox" id="insExcludeNw" style="width:18px; height:18px; padding:0; flex:0 0 auto; margin-top:2px;"> <span>Not mine<br><span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">For a policy that is not yours (e.g. a child's): it stays in the list but is left out of the Value total on the Insurance page.</span></span></label>
                 <div class="form-row-inline">
                     <div><label>Start date</label><input type="date" id="insStartDate"></div>
                     <div><label>Maturity / end date</label><input type="date" id="insMaturityDate"></div>
@@ -4972,6 +4959,15 @@
             </div>
         </div>
 
+        <!-- v518: information only — insurance surrender value is NOT part of any total above. -->
+        <div class="statement-card" id="nwsInsMemo" style="display:none; border:1px dashed var(--border-color); background:transparent;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-weight:700; font-size:0.9rem;">
+                <span>🛡️ Insurance surrender value</span>
+                <span id="nwsInsMemoValue">0.00</span>
+            </div>
+            <p style="font-size:0.68rem; margin-top:4px; color:var(--text-muted); font-weight:600;"><span id="nwsInsMemoCount"></span> · Information only, not counted in Net Worth. You only receive it if you surrender the policy (and the cover ends).</p>
+        </div>
+
         <p style="font-size:0.68rem; color:var(--text-muted); margin-top:-6px; margin-bottom:16px;">
             A row with nothing in it is left out rather than shown as a zero — add an account under
             that group/sub-group (Accounts page) for it to appear here. Tap any row to jump to
@@ -5426,21 +5422,6 @@
                 <p style="font-size:0.75rem; font-weight:700; color:var(--text-muted); margin:0 0 8px;">CARD STYLE</p>
                 <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600; margin:0 0 10px;">Changes only the background of the Dashboard's Portfolio Net Worth card. "Classic" adapts to whichever Background Theme is active; the others are fixed gradients.</p>
                 <div class="color-swatch-grid" id="netWorthCardStyleSwatchGrid"></div>
-            </div>
-            <!-- v488: counts the latest surrender value (less any policy loan) of every in-force
-                 savings / investment policy in the Net Worth — the Dashboard figure, Net Worth
-                 Statement, by-member / by-owner / by-currency reports. Off by default. See
-                 insSvNetWorth() in ledger.js. -->
-            <div class="widget-setting-card">
-                <p style="font-size:0.75rem; font-weight:700; color:var(--text-muted); margin:0 0 8px;">INSURANCE</p>
-                <div class="toggle-switch-row" style="margin-top:0;">
-                    <span class="toggle-switch-label">Count surrender value in Net Worth</span>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="insuranceSvNetWorthToggle" data-change="handleInsuranceSvNetWorthToggleChange">
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600; margin:8px 0 0;">When on, each in-force policy's latest surrender value (minus any policy loan) is added to Portfolio Net Worth as a financial asset, under the person it insures. Lapsed, surrendered and matured policies, and policies with no surrender value, are left out. When off, Net Worth is exactly as before.</p>
             </div>
             <!-- v341: a small optional mascot shown in the Portfolio Net Worth card's right-hand
                  gutter (see .net-worth-companion / COMPANIONS in ledger.js). Original line-art,

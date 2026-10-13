@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v517";
+        const APP_VERSION = "v518";
         const APP_VERSION_DATE = "2026-10-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2371,9 +2371,11 @@
         // Persisted via SETTINGS like the widget settings above; defaults to true (unchanged
         // behaviour for existing installs).
         let showMonthlyTrendOnDashboard = true;
-        // v488: Setting > Net Worth Card > "Count insurance surrender value". Off by default, so the
-        // headline Net Worth stays exactly what it was until the user opts in. See insSvNetWorth().
-        let includeInsuranceSvInNetWorth = false;
+        // v518: the "Count insurance surrender value in Net Worth" switch (v488) is retired — a surrender
+        // value is only cash if the policy is surrendered, so it is shown as information (Dashboard card,
+        // Net Worth Statement memo row, Insurance page) and never added to Net Worth. Kept as a constant so
+        // the older insSvNetWorth(scope) calls in the Net Worth code keep returning zero.
+        const includeInsuranceSvInNetWorth = false;
         // v334: which of the current month's Category Budgets (if any) also get their own mini
         // progress row on the Dashboard's "Remaining Budget" widget, opted in one-by-one via the
         // Dashboard Widgets settings panel — see renderDashboardBudgetCategoryToggles(). Empty by
@@ -2753,26 +2755,15 @@
             if (slot) slot.style.display = showMonthlyTrendOnDashboard ? "" : "none";
         }
 
-        // v488: Setting > Net Worth Card > "Count insurance surrender value". Saved in the SETTINGS
-        // store (so it rides along with Backup & Restore and Drive sync); the dashboard is re-rendered
-        // straight away, every report page recalculates when it is next opened.
-        // v489: keeps the dashboard chip's checkbox and the Setting checkbox in step with
-        // includeInsuranceSvInNetWorth, and hides the chip when no in-force policy has a surrender
-        // value (nothing for it to switch). v490: no hover tooltip any more.
+        // v518: the Dashboard's Insurance SV pill is information only (not counted in Net Worth); it is
+        // hidden when no in-force policy has a surrender value.
         function updateInsuranceSvChip() {
             const chip = document.getElementById("nwInsChip");
-            const cb = document.getElementById("nwInsChipToggle");
-            const settingCb = document.getElementById("insuranceSvNetWorthToggle");
-            if (cb) cb.checked = includeInsuranceSvInNetWorth;
-            if (settingCb) settingCb.checked = includeInsuranceSvInNetWorth;
             if (!chip) return;
-            chip.classList.toggle("hidden", insSvNetWorth("all", true).count === 0);
-        }
-
-        async function handleInsuranceSvNetWorthToggleChange(el) {
-            includeInsuranceSvInNetWorth = !!el.checked;
-            await writeDB(STORES.SETTINGS, { key: "includeInsuranceSvInNetWorth", value: includeInsuranceSvInNetWorth });
-            renderApp();
+            const info = insSvNetWorth("all", true);
+            chip.classList.toggle("hidden", info.count === 0);
+            const v = document.getElementById("nwInsChipValue");
+            if (v) v.innerHTML = formatBalanceHTML(info.base, baseCurrency);
         }
 
         async function handleDashboardMonthlyTrendToggleChange(el) {
@@ -8796,8 +8787,6 @@
             buildNetWorthCardStyleSwatchGrid();
             applyMascotTargetUI(mascotTarget || mascotSettingsTarget);
             buildCompanionSwatchGrid();
-            const insSvToggle = document.getElementById("insuranceSvNetWorthToggle"); // v488
-            if (insSvToggle) insSvToggle.checked = includeInsuranceSvInNetWorth;
         }
 
         // --- v341: Companion (Setting page) --------------------------------------------------
@@ -9802,20 +9791,16 @@
                 };
             };
             const assets = build(assetDefs);
-            // v488: one extra Assets row (not tied to an account group, so not tappable) when the
-            // Setting > Net Worth Card toggle is on and at least one policy has a surrender value.
-            const insSv = insSvNetWorth("all");
-            if (insSv.count > 0) {
-                assets.total += insSv.base;
-                if (Math.abs(insSv.base) >= 0.005) assets.rows.push({ label: "Insurance (surrender value)", group: "", subgroup: "", amount: insSv.base, noClick: true });
-            }
+            // v518: the insurance surrender value is NOT part of Assets any more — it is returned separately
+            // and shown as an information row under MY NET WORTH.
+            const insSv = insSvNetWorth("all", true);
             const liabilities = build(liabDefs);          // total is already negative (or 0)
             const netCurrentAssets = assets.total + liabilities.total;
             const realEstateTotal = sumGroup("Real Estate");
             const hasRealEstate = included.some(a => (a.group || DEFAULT_ACCOUNT_GROUP) === "Real Estate");
             const fixedRows = Math.abs(realEstateTotal) >= 0.005 ? [{ label: "Real Estate", group: "Real Estate", subgroup: "", amount: realEstateTotal }] : [];
             return {
-                assets, liabilities, netCurrentAssets,
+                assets, liabilities, netCurrentAssets, insSv,
                 fixed: { rows: fixedRows, total: realEstateTotal, show: hasRealEstate },
                 finalNetWorth: netCurrentAssets + realEstateTotal
             };
@@ -9851,6 +9836,17 @@
             document.getElementById("nwsFixedAssetsTotal").innerHTML = formatBalanceHTML(d.fixed.total, baseCurrency);
 
             document.getElementById("nwsFinalNetWorth").innerHTML = formatBalanceHTML(d.finalNetWorth, baseCurrency);
+            { // v518: memo row — information only, not in any total above
+                const memo = document.getElementById("nwsInsMemo");
+                if (memo) {
+                    const iv = d.insSv;
+                    memo.style.display = (iv && iv.count > 0) ? "block" : "none";
+                    if (iv && iv.count > 0) {
+                        document.getElementById("nwsInsMemoValue").innerHTML = formatBalanceHTML(iv.base, baseCurrency);
+                        document.getElementById("nwsInsMemoCount").textContent = `${iv.count} in-force ${iv.count === 1 ? "policy" : "policies"}`;
+                    }
+                }
+            }
         }
 
         // v464: 📤 on the Net Worth Statement page — the statement as it stands today, one row per
@@ -9875,7 +9871,8 @@
                     ...d.fixed.rows.map(r => line("Fixed Assets", r.label, r.amount)),
                     line("Fixed Assets", "Total Fixed Assets", d.fixed.total)
                 ] : []),
-                line("My Net Worth", "My Net Worth", d.finalNetWorth)
+                line("My Net Worth", "My Net Worth", d.finalNetWorth),
+                ...((d.insSv && d.insSv.count > 0) ? [line("Memo (not counted)", "Insurance surrender value", d.insSv.base)] : []) // v518: information only
             ];
             const header = ["As of", "Section", "Item", `Amount (${baseCurrency})`];
             const csv = [header, ...rows].map(r => r.map(csvEscape).join(",")).join("\r\n");
@@ -15731,7 +15728,7 @@
             // v513: three separate readings instead of two bare numbers — what the policies ASK for each year
             // (obligation: cash + premiums the insurer takes from the accumulated bonus), what actually LEFT
             // the pocket (cash out: premiums paid − paid by a parent − cashback received) and what the
-            // policies are WORTH (surrender value of the policies that count toward Net Worth).
+            // policies are WORTH (surrender value of your in-force policies — information only, not part of Net Worth).
             const todayStr = todayLocalStr();
             const daysUntil = (d) => Math.round((Date.parse(d + "T00:00:00Z") - Date.parse(todayStr + "T00:00:00Z")) / 86400000);
             const figOf = new Map(insuranceCache.map(p => [p.id, computePolicyFigures(p, txs, planned)]));
@@ -15817,7 +15814,7 @@
             const bdObl = `<div class="ins-bd-sec">${bd("Paid in cash", fmtB(oblCash))}
                     ${oblAcbCount ? bd(`Paid via ACB (${oblAcbCount} ${oblAcbCount === 1 ? "policy" : "policies"})`, oblAcb > 0 ? fmtB(oblAcb) : "—") : ""}
                     ${bd("Total obligation", fmtB(oblTotal), "tot")}
-                    ${oblNotNw > 0 ? bd(`of which ${INS_NO_NW_ICON}not in Net Worth`, fmtB(oblNotNw)) : ""}
+                    ${oblNotNw > 0 ? bd(`of which ${INS_NO_NW_ICON}Not mine`, fmtB(oblNotNw)) : ""}
                     <div class="ins-bd-note">In-force policies only${oblAcbMissing ? `; ${oblAcbMissing} ACB ${oblAcbMissing === 1 ? "policy has" : "policies have"} no premium amount entered, so ${oblAcbMissing === 1 ? "it is" : "they are"} not counted` : ""}. Single-payment policies add nothing here.</div></div>`;
             const btn = (k) => `<button type="button" class="ins-bd-btn${insSumOpen === k ? " on" : ""}" data-click="insSumToggle" data-k="${k}">Breakdown ${insSumOpen === k ? "▴" : "▾"}</button>`;
             const cardObl = `<div class="ins-sum-card${insSumOpen === "obl" ? " on" : ""}" data-k="obl">
@@ -15863,8 +15860,8 @@
                 bdVal = `<div class="ins-bd-grid">
                         <div class="ins-bd-sec">
                             <div class="ins-bd-h" style="margin-top:0;">What counts</div>
-                            ${bd(`Counted in Net Worth (${svCountedN})`, fmtB(svCounted))}
-                            ${svNotN ? bd(`Not counted — ${INS_NO_NW_ICON}not in Net Worth or ended (${svNotN})`, fmtB(svNot)) : ""}
+                            ${bd(`Your in-force policies (${svCountedN})`, fmtB(svCounted))}
+                            ${svNotN ? bd(`Left out — ${INS_NO_NW_ICON}Not mine or ended (${svNotN})`, fmtB(svNot)) : ""}
                             ${bd(`All surrender values (${svCount})`, fmtB(svCounted + svNot), "tot")}
                         </div>
                         <div class="ins-bd-sec">
@@ -15881,7 +15878,7 @@
                 cardVal = `<div class="ins-sum-card${insSumOpen === "val" ? " on" : ""}" data-k="val">
                     <div class="ins-sum-k">Value · surrender</div>
                     <div class="ins-sum-v">${fmtB(svCounted)}</div>
-                    <div class="ins-sum-n">${svCountedN ? `Surrender value of ${svCountedN} ${svCountedN === 1 ? "policy" : "policies"} that count toward Net Worth${includeInsuranceSvInNetWorth ? "" : " (the Net Worth switch is off)"}.` : "None of these policies counts toward Net Worth."}</div>
+                    <div class="ins-sum-n">${svCountedN ? `Surrender value of ${svCountedN} in-force ${svCountedN === 1 ? "policy" : "policies"} that ${svCountedN === 1 ? "is" : "are"} yours. Information only — not part of Net Worth.` : "None of these policies is yours and in force."}</div>
                     <div class="ins-sum-n" style="color:${oldestSvAge > 365 ? "var(--expense-color)" : "var(--text-muted)"}; font-weight:700;">Statements ${escapeHtml(svDateLabel)}${oldestSvAge > 365 ? " ⚠️ oldest is over a year old" : ""}</div>
                     ${btn("val")}
                 </div>`;
@@ -15915,7 +15912,7 @@
             return { entries: [...groups.entries()] };
         }
 
-        // v514: "not in Net Worth" marker — a small hollow dashed circle in the muted text colour (the red
+        // v514: "Not mine" marker (renamed v518; the stored field is still excludeFromNetWorth) — a small hollow dashed circle in the muted text colour (the red
         // circle-slash looked alarming for something that is just a setting).
         const INS_NO_NW_ICON = '<svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true" style="vertical-align:-1px; margin-right:3px;"><circle cx="6" cy="6" r="4.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2.2 1.6"/></svg>';
         let insSumOpen = null; // v514: which summary card's breakdown panel is open: "obl" | "cash" | "val" | null
@@ -15973,7 +15970,7 @@
 
             // Chips
             const chips = [];
-            if (p.excludeFromNetWorth) chips.push(`<span class="ins-chip dashed">${INS_NO_NW_ICON}Not in Net Worth</span>`);
+            if (p.excludeFromNetWorth) chips.push(`<span class="ins-chip dashed">${INS_NO_NW_ICON}Not mine</span>`);
             const riders = insRiderItemsOf(p);
             if (riders.length) chips.push(`<span class="ins-chip">🧩 ${riders.length} rider${riders.length === 1 ? "" : "s"}</span>`);
             if (p.paidByBonus) chips.push(`<span class="ins-chip amber">💰 Premium via ACB${p.paidByBonusSince ? " since " + escapeHtml(String(p.paidByBonusSince).slice(0, 4)) : ""}</span>`);
@@ -23112,8 +23109,6 @@
             const storedRecentTxCollapsed = await readKeyDB("settings", "recentTxCollapsed"); // v442
             if (storedRecentTxCollapsed) recentTxCollapsed = storedRecentTxCollapsed.value === true;
 
-            const storedInsSvNw = await readKeyDB("settings", "includeInsuranceSvInNetWorth"); // v488
-            if (storedInsSvNw) includeInsuranceSvInNetWorth = storedInsSvNw.value === true;
 
             const storedShowMonthlyTrend = await readKeyDB("settings", "showMonthlyTrendOnDashboard");
             if (storedShowMonthlyTrend) showMonthlyTrendOnDashboard = storedShowMonthlyTrend.value !== false;
@@ -23780,7 +23775,7 @@
                                 case "recentTxCount": recentTxCount = rec.value || 5; break;
                                 case "recentTxCollapsed": recentTxCollapsed = rec.value === true; break; // v442
                                 case "showMonthlyTrendOnDashboard": showMonthlyTrendOnDashboard = rec.value !== false; break;
-                                case "includeInsuranceSvInNetWorth": includeInsuranceSvInNetWorth = rec.value === true; break; // v488
+                                case "includeInsuranceSvInNetWorth": break; // v518: retired setting — old backups still carry it; ignored
                                 case "dashboardWidgetOrder": dashboardWidgetOrder = rec.value === "recenttx-first" ? "recenttx-first" : "accounts-first"; break;
                                 case "dashboardBudgetCategoriesShown": dashboardBudgetCategoriesShown = Array.isArray(rec.value) ? rec.value : []; break;
                                 case "dashboardBudgetWidgetEnabled": dashboardBudgetWidgetEnabled = rec.value !== false; break;
@@ -25642,7 +25637,6 @@
             handlePinnedAccountCountChange: () => handlePinnedAccountCountChange(),
             handleDashboardWidgetOrderChange: () => handleDashboardWidgetOrderChange(),
             handleDashboardMonthlyTrendToggleChange: (el) => handleDashboardMonthlyTrendToggleChange(el),
-            handleInsuranceSvNetWorthToggleChange: (el) => handleInsuranceSvNetWorthToggleChange(el),
             handleDashboardBudgetCategoryToggleChange: (el) => handleDashboardBudgetCategoryToggleChange(el),
             handleDashboardBudgetWidgetToggleChange: (el) => handleDashboardBudgetWidgetToggleChange(el),
             handlePinnedAccountSlotChange: (el) => handlePinnedAccountSlotChange(el),

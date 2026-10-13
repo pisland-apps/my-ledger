@@ -3952,3 +3952,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - The line under the policy name (insurer, person, Year N / M) now wraps as whole items: "Year 24 / 63" and the person tag can no longer be cut in two.
 - "Not in Net Worth" moved from that line to the small tag row under the cover line (hollow dashed tag), so the header stays short.
 - `APP_VERSION` / `CACHE_NAME` -> v517.
+
+## v518: Insurance surrender value is information only - never counted in Net Worth
+- **The "Count surrender value in Net Worth" switch is gone** (Dashboard pill toggle and Setting > Net Worth Card > Insurance). A surrender value is only cash if the policy is surrendered (and the cover ends), so it no longer feeds any Net Worth figure. Net Worth now always excludes it; if the switch was on for you, the headline drops by the surrender value. An old backup that carries the setting still imports; the value is ignored.
+- **Dashboard**: a dashed *🛡️ Insurance SV  RM… · not counted* pill under the Portfolio Net Worth card (tap to reveal, hidden when no in-force policy has a surrender value).
+- **Net Worth Statement**: the "Insurance (surrender value)" row is no longer under Assets. A dashed memo card under MY NET WORTH shows it as information.
+- **"Not in Net Worth" -> "Not mine"** on the Insurance page (tag on the card, edit checkbox, Obligation / Value breakdowns). The stored field is unchanged (`excludeFromNetWorth`), so no data change: it now means "this policy is not mine, leave it out of the Value total". The Value card says "Information only - not part of Net Worth".
+- Net Worth by Member and the trend / by-currency reports needed no change (they read the same helper, which now returns zero). `APP_VERSION` / `CACHE_NAME` -> v518.

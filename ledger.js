@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v512";
+        const APP_VERSION = "v513";
         const APP_VERSION_DATE = "2026-10-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15726,140 +15726,257 @@
                     ? "No life or medical policies yet — car, home and travel policies are under the Car · Home · Travel tab."
                     : (insuranceStatusFilter === "ended" ? "No ended policies." : "No policies match this filter."));
 
-            let annualBase = 0, paidBase = 0, svBase = 0, svCount = 0;
+            // v513: three separate readings instead of two bare numbers — what the policies ASK for each year
+            // (obligation: cash + premiums the insurer takes from the accumulated bonus), what actually LEFT
+            // the pocket (cash out: premiums paid − paid by a parent − cashback received) and what the
+            // policies are WORTH (surrender value of the policies that count toward Net Worth).
+            const todayStr = todayLocalStr();
+            const daysUntil = (d) => Math.round((Date.parse(d + "T00:00:00Z") - Date.parse(todayStr + "T00:00:00Z")) / 86400000);
+            const figOf = new Map(insuranceCache.map(p => [p.id, computePolicyFigures(p, txs, planned)]));
+            let oblCash = 0, oblAcb = 0, oblAcbCount = 0, oblAcbMissing = 0, oblNotNw = 0, oblCount = 0;
+            let paidBase = 0, parentBase = 0, cbBase = 0;
+            let svCount = 0, svCounted = 0, svCountedN = 0, svNot = 0, svNotN = 0;
             let savPaidBase = 0, savSvBase = 0, savCbBase = 0, savMinDate = null, savMaxDate = null;
             const savByPerson = new Map(); // v506: insuredMemberId ("" = not set) -> { paid, sv, n }
             const rows = filtered.map(p => {
-                const f = computePolicyFigures(p, txs, planned);
-                // Yearly premium = cash outlay: a policy whose premium comes out of its accumulated bonus is left out.
-                if (!p.paidByBonus) annualBase += insConvert(f.annual, f.cur, baseCurrency);
+                const f = figOf.get(p.id);
+                if (insIsLive(p)) {
+                    const a = insConvert(f.annual, f.cur, baseCurrency);
+                    if (p.paidByBonus) { oblAcb += a; oblAcbCount++; if (!(a > 0)) oblAcbMissing++; }
+                    else { oblCash += a; if (a > 0) oblCount++; }
+                    if (p.excludeFromNetWorth) oblNotNw += a;
+                }
                 paidBase += insConvert(f.paid, f.cur, baseCurrency);
+                parentBase += insConvert(f.parentTotal || 0, f.cur, baseCurrency);
+                cbBase += insConvert(f.cbTotal || 0, f.cur, baseCurrency);
                 if (f.svValue != null) {
-                    svBase += insConvert(f.netSv, f.cur, baseCurrency); svCount++;
+                    svCount++;
+                    const netSvB = insConvert(f.netSv, f.cur, baseCurrency);
+                    if (insIsLive(p) && !p.excludeFromNetWorth) { svCounted += netSvB; svCountedN++; } else { svNot += netSvB; svNotN++; }
                     // v475: Savings / investment comparison — only policies that have a surrender value.
                     savPaidBase += insConvert(f.paidToSv, f.cur, baseCurrency);
-                    savSvBase += insConvert(f.netSv, f.cur, baseCurrency);
+                    savSvBase += netSvB;
                     savCbBase += insConvert(f.cbToSv || 0, f.cur, baseCurrency); // v510
                     {
                         const pk = p.insuredMemberId && getMemberById(p.insuredMemberId) ? p.insuredMemberId : "";
                         if (!savByPerson.has(pk)) savByPerson.set(pk, { paid: 0, sv: 0, n: 0 });
                         const sp = savByPerson.get(pk);
                         sp.paid += insConvert(f.paidToSv, f.cur, baseCurrency);
-                        sp.sv += insConvert(f.netSv, f.cur, baseCurrency);
+                        sp.sv += netSvB;
                         sp.n++;
                     }
                     if (!savMinDate || f.latestSv.date < savMinDate) savMinDate = f.latestSv.date;
                     if (!savMaxDate || f.latestSv.date > savMaxDate) savMaxDate = f.latestSv.date;
                 }
-                const icon = INS_TYPE_ICONS[p.type] || INS_TYPE_ICONS.other;
-                const metaParts = [];
-                if (p.product && p.insurer) metaParts.push(escapeHtml(p.insurer));
-                // Same coloured "● Name" tag as the account rows on the Accounts page (member's own colour).
-                if (p.insuredMemberId && getMemberById(p.insuredMemberId)) metaParts.push(accountOwnerTagHTML({ memberIds: [p.insuredMemberId] }));
-                if (p.excludeFromNetWorth) metaParts.push("🚫 not in Net Worth"); // v500
-                if (!insIsLive(p)) metaParts.push(escapeHtml(INS_STATUSES[p.status] || p.status));
-                let dueLine = "";
-                if (f.plan && !f.plan.paused) {
-                    const dd = Math.round((new Date(f.plan.dueDate + "T00:00:00") - new Date(todayLocalStr() + "T00:00:00")) / 86400000);
-                    dueLine = `<span style="font-size:0.72rem; font-weight:700; color:${dd < 0 ? "var(--expense-color)" : "var(--text-muted)"};">Next premium ${escapeHtml(f.plan.dueDate)} · ${dd < 0 ? "overdue " + Math.abs(dd) + "d" : (dd === 0 ? "today" : dd + "d left")}</span>`;
-                }
-                // v481: SV is the figure to compare with Paid, so it is bold with a small "% of paid" chip
-                // (green at/above paid to its date, neutral below — a young policy is normally below, not "bad");
-                // the date sits on its own muted line (red + ⚠️ once over a year old).
-                const svBasis = (f.paidToSv != null && f.paidToSv > 0) ? f.paidToSv : (f.paid > 0 ? f.paid : null);
-                const svPct = (f.svValue != null && svBasis) ? (f.svValue / svBasis) * 100 : null;
-                const svChip = svPct == null ? "" : `<span style="display:inline-block; margin-left:6px; padding:1px 7px; border-radius:999px; font-size:0.66rem; font-weight:800; ${svPct >= 100 ? "background:rgba(16,185,129,0.14); color:var(--income-color);" : "background:rgba(99,102,241,0.12); color:var(--primary);"}">${svPct.toFixed(0)}%</span>`;
-                const svText = f.svValue == null ? ""
-                    : `<span style="display:block; font-size:0.85rem; font-weight:800; color:var(--text-main);">SV ${formatCurrency(f.svValue, f.cur)}${svChip}</span><span style="display:block; font-size:0.68rem; font-weight:600; color:${f.svStale ? "var(--expense-color)" : "var(--text-muted)"};">as of ${escapeHtml(f.latestSv.date)}${f.svStale ? " ⚠️" : ""}</span>`;
-                return `
-                    <div class="config-item" data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}" style="cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent; flex-direction:column; align-items:stretch; gap:8px; ${insIsLive(p) ? "" : "opacity:0.65;"}">
-                        <div class="ins-pol-top" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-                        <span class="category-display-badge" style="min-width:0;">
-                            <span>${icon}</span>
-                            <span style="display:flex; flex-direction:column; min-width:0;">
-                                <strong>${escapeHtml(p.product || p.insurer || "Policy")}</strong>
-                                ${metaParts.length ? `<span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">${metaParts.join(" · ")}</span>` : ""}
-                                ${insCardCoverHtml(p, f.cur)}
-                                ${insCardRidersHtml(p)}
-                                ${dueLine}
-                            </span>
-                        </span>
-                        <span class="ins-pol-fig" style="text-align:right; flex:0 0 auto;">
-                            <span class="ins-pol-paid" style="display:block; font-size:0.85rem; font-weight:600;${f.svValue != null ? " color:var(--text-muted);" : ""}">Paid ${formatCurrency(f.paid, f.cur)}</span>
-                            ${f.svValue != null ? `<span class="ins-pol-sv" style="display:block;">${svText}</span>` : ""}
-                        </span>
-                        </div>
-                        ${insCashbackBannerHtml(p, f, true)}${(p.paidByBonus || p.notes || insAgentLine(p) || insAttCount(p)) ? `<div>${insBonusBannerHtml(p, true)}${insAgentLine(p) ? `<div style="${p.paidByBonus ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; overflow-wrap:anywhere;">🧑‍💼 ${escapeHtml(insAgentLine(p))}</div>` : ""}${p.notes ? `<div style="${(p.paidByBonus || insAgentLine(p)) ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:600; white-space:pre-line; overflow-wrap:anywhere; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${escapeHtml(p.notes)}</div>` : ""}${insAttCount(p) ? `<div style="${(p.paidByBonus || p.notes || insAgentLine(p)) ? "margin-top:6px; " : ""}font-size:0.74rem; color:var(--text-muted); font-weight:700;">📎 ${insAttCount(p)} attachment${insAttCount(p) === 1 ? "" : "s"}</div>` : ""}</div>` : ""}
-                    </div>`;
+                return insPolicyCardHtml(p, f, daysUntil);
             });
             list.innerHTML = rows.join("");
 
-            const cell = (label, value) => `
-                <div class="ins-sum-cell" style="flex:1 1 0; min-width:0; text-align:center;">
-                    <div class="ins-sum-label" style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">${label}</div>
-                    <div class="ins-sum-val" style="font-size:1rem; font-weight:800; font-variant-numeric:tabular-nums; overflow-wrap:anywhere;">${value}</div>
-                </div>`;
-            summary.style.display = filtered.length ? "flex" : "none";
-            summary.style.flexWrap = "wrap";
-            // v477: Surrender value lives only in the Savings panel below (it was a duplicate here, and
-            // sat next to an all-policy paid figure it can't be compared with).
-            summary.innerHTML = cell("Yearly premium", formatCurrency(annualBase, baseCurrency))
-                + cell("Premiums paid", formatCurrency(paidBase, baseCurrency))
-                + `<div class="ins-sum-scope" style="flex:0 0 100%; text-align:center; font-size:0.66rem; font-weight:600; color:var(--text-muted);">Life, medical &amp; other personal policies${insuranceStatusFilter === "all" ? "" : (insuranceStatusFilter === "ended" ? " (ended)" : " (in force)")} — car, home &amp; travel are on their own tab</div>`;
-
-            // v475: Savings / investment policies — the like-for-like comparison. Pure protection (medical,
-            // PA, fire, travel…) has no surrender value, so it drops out here by itself.
-            const savEl = document.getElementById("insuranceSavingsSummary");
-            if (savEl) {
-                if (!filtered.length || !svCount) {
-                    savEl.style.display = "none";
-                } else {
-                    const net = savSvBase - savPaidBase;
-                    const pct = savPaidBase > 0 ? (savSvBase / savPaidBase) * 100 : null;
-                    const netColor = net >= 0 ? "var(--income-color)" : "var(--expense-color)";
-                    const svDateLabel = savMinDate === savMaxDate
-                        ? `Surrender values as of ${savMinDate}`
-                        : `Surrender values dated ${savMinDate} to ${savMaxDate} (varies by policy)`;
-                    // v506: per-person breakdown (only when 2+ people have a surrender value), collapsed by default.
-                    let personBreak = "";
-                    if (savByPerson.size > 1) {
-                        const pOrder = [...membersCache.map(m => m.id).filter(id => savByPerson.has(id)), ...(savByPerson.has("") ? [""] : [])];
-                        const pRow = (key) => {
-                            const d = savByPerson.get(key), m = key ? getMemberById(key) : null;
-                            const pn = d.sv - d.paid, pp = d.paid > 0 ? (d.sv / d.paid) * 100 : null;
-                            const col = pn >= 0 ? "var(--income-color)" : "var(--expense-color)";
-                            const nm = m ? `<span class="member-color-dot" style="background:${m.color}; display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px;"></span>${escapeHtml(m.name)}` : "Insured person not set";
-                            return `<tr>
-                                <td style="padding:5px 4px 5px 0; font-weight:800;">${nm}<div style="font-weight:600; color:var(--text-muted); font-size:0.66rem;">${d.n} ${d.n === 1 ? "policy" : "policies"}</div></td>
-                                <td style="padding:5px 4px; text-align:right; font-variant-numeric:tabular-nums;">${formatCurrency(d.paid, baseCurrency)}</td>
-                                <td style="padding:5px 4px; text-align:right; font-variant-numeric:tabular-nums; font-weight:800;">${formatCurrency(d.sv, baseCurrency)}</td>
-                                <td style="padding:5px 0 5px 4px; text-align:right; font-variant-numeric:tabular-nums; font-weight:800; color:${col};">${pn >= 0 ? "+" : "−"}${formatCurrency(Math.abs(pn), baseCurrency)}${pp != null ? `<div style="font-weight:700; font-size:0.66rem;">${pp.toFixed(0)}%</div>` : ""}</td>
-                            </tr>`;
-                        };
-                        personBreak = `<details class="ins-more" style="margin-top:8px; border-top:1px solid var(--border-color);">
-                            <summary style="text-align:center;"><span class="ins-more-show">By person ▾</span><span class="ins-more-hide">By person ▴</span></summary>
-                            <div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:0.74rem;">
-                                <thead><tr style="color:var(--text-muted); font-size:0.62rem; text-transform:uppercase; letter-spacing:0.03em;"><th style="text-align:left; padding:2px 4px 4px 0;">Person</th><th style="text-align:right; padding:2px 4px 4px;">Paid</th><th style="text-align:right; padding:2px 4px 4px;">SV</th><th style="text-align:right; padding:2px 0 4px 4px;">Net</th></tr></thead>
-                                <tbody>${pOrder.map(pRow).join("")}</tbody>
-                            </table></div>
-                        </details>`;
+            // ---- "Needs attention" strip (v513): the things that used to hide inside individual cards ----
+            const attEl = document.getElementById("insuranceAttention");
+            if (attEl) {
+                const items = [];
+                const who = (p) => { const m = insMemberName(p); return escapeHtml(p.product || p.insurer || "Policy") + (m ? ` <span style="color:var(--text-muted); font-weight:600;">· ${escapeHtml(m)}</span>` : ""); };
+                insuranceCache.filter(insIsLive).forEach(p => {
+                    const f = figOf.get(p.id);
+                    if (f.plan && !f.plan.paused && f.plan.dueDate) {
+                        const dd = daysUntil(f.plan.dueDate);
+                        if (dd < 0) items.push({ sev: 0, key: dd, p, msg: `Premium overdue ${Math.abs(dd)} day${Math.abs(dd) === 1 ? "" : "s"} (due ${escapeHtml(f.plan.dueDate)})` });
+                        else if (dd <= 30) items.push({ sev: 3, key: dd, p, msg: `Premium due in ${dd} day${dd === 1 ? "" : "s"} (${escapeHtml(f.plan.dueDate)})` });
                     }
-                    const oldestSvAge = Math.round((new Date(todayLocalStr() + "T00:00:00") - new Date(savMinDate + "T00:00:00")) / 86400000);
-                    savEl.style.display = "block";
-                    savEl.innerHTML = `
-                        <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); text-align:center; margin-bottom:8px;">Savings / investment policies (${svCount})</div>
-                        <div class="ins-sav-grid" style="display:flex; gap:8px;">
-                            ${cell("Paid to SV date", formatCurrency(savPaidBase, baseCurrency))}
-                            ${cell("Surrender value", formatCurrency(savSvBase, baseCurrency))}
-                            ${cell("Net", `<span style="color:${netColor};">${net >= 0 ? "+" : "−"}${formatCurrency(Math.abs(net), baseCurrency)}</span>`)}
-                        </div>
-                        <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-align:center; margin-top:8px;">${pct != null ? `SV is ${pct.toFixed(1)}% of premiums paid` : ""}</div>
-                        ${(savCbBase > 0 && savPaidBase > 0) ? `<div style="font-size:0.7rem; font-weight:700; color:var(--income-color); text-align:center; margin-top:2px;">🎁 + ${formatCurrency(savCbBase, baseCurrency)} cashback received → SV + cashback is ${(((savSvBase + savCbBase) / savPaidBase) * 100).toFixed(1)}% of premiums paid</div>` : ""}
-                        <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-align:center; margin-top:2px;">${escapeHtml(svDateLabel)}</div>
-                        ${oldestSvAge > 365 ? `<div style="font-size:0.7rem; font-weight:700; color:var(--expense-color); text-align:center; margin-top:2px;">⚠️ Oldest surrender value is over a year old — update it from the latest statement</div>` : ""}
-                        <div style="font-size:0.66rem; font-weight:600; color:var(--text-muted); text-align:center; margin-top:4px;">Premiums counted only up to each policy's SV date. Net is a rough guide, not an investment return (riders, bonuses and fund prices move).</div>${personBreak}`;
+                    const nx = insCashbackNext(p, f);
+                    if (nx && nx.overdue && nx.date) items.push({ sev: 2, key: daysUntil(nx.date), p, msg: `Cashback payout due ${escapeHtml(nx.date)} is not recorded yet` });
+                    if (f.svValue != null && f.svStale) items.push({ sev: 1, key: -f.svAgeDays, p, msg: `Surrender value is from ${escapeHtml(f.latestSv.date)} — over a year old` });
+                    if (!insCoverGroups(p).entries.length) items.push({ sev: 5, key: 0, p, msg: "Sum insured not set" });
+                    insRiderItemsOf(p).forEach(r => {
+                        if (r.endDate && r.endDate >= todayStr) { const dd = daysUntil(r.endDate); if (dd <= 60) items.push({ sev: 4, key: dd, p, msg: `Rider “${escapeHtml(r.name.length > 40 ? r.name.slice(0, 40) + "…" : r.name)}” ends in ${dd} day${dd === 1 ? "" : "s"}` }); }
+                    });
+                });
+                items.sort((a, b) => (a.sev - b.sev) || (a.key - b.key));
+                if (!items.length || insuranceStatusFilter === "ended") {
+                    attEl.style.display = "none";
+                    attEl.innerHTML = "";
+                } else {
+                    const red = items.filter(i => i.sev <= 1).length;
+                    const row = (i) => `<div class="ins-att-row" data-click="insurancePolicyTap" data-id="${escapeHtml(i.p.id)}"><span class="ins-att-dot ${i.sev <= 1 ? "red" : "amber"}"></span><div style="min-width:0; flex:1;"><div style="font-weight:800; overflow-wrap:anywhere;">${who(i.p)}</div><div style="color:${i.sev <= 1 ? "var(--expense-color)" : "var(--text-muted)"}; font-weight:700;">${i.msg}</div></div><span style="color:var(--text-muted); font-weight:800;">›</span></div>`;
+                    const shown = items.slice(0, 4), rest = items.slice(4);
+                    attEl.className = "ins-att" + (red ? " hasred" : "");
+                    attEl.style.display = "block";
+                    attEl.innerHTML = `<summary><span>${red ? "🔴" : "🟠"} Needs attention (${items.length})</span><span style="color:var(--text-muted); font-weight:700;">${red ? red + " urgent" : "heads-up"} <span class="ins-att-chev">▾</span></span></summary>${shown.map(row).join("")}${rest.length ? `<details class="ins-more" style="border-top:1px solid var(--border-color);"><summary style="text-align:center;"><span class="ins-more-show">Show ${rest.length} more ▾</span><span class="ins-more-hide">Show less ▴</span></summary>${rest.map(row).join("")}</details>` : ""}`;
+                    if (attEl.dataset.init !== "1") { attEl.dataset.init = "1"; attEl.open = !!red; }
                 }
             }
+
+            // ---- Three-reading summary ----
+            const bd = (label, value, cls, color) => `<div class="ins-bd-row${cls ? " " + cls : ""}"><span>${label}</span><b${color ? ` style="color:${color};"` : ""}>${value}</b></div>`;
+            const fmtB = (v) => formatCurrency(v, baseCurrency);
+            const scopeWord = insuranceStatusFilter === "all" ? "all policies" : (insuranceStatusFilter === "ended" ? "ended policies" : "in-force policies");
+            const oblTotal = oblCash + oblAcb;
+            const cardObl = `<div class="ins-sum-card">
+                <div class="ins-sum-k">Obligation · per year</div>
+                <div class="ins-sum-v">${fmtB(oblTotal)}</div>
+                <div class="ins-sum-n">What the policies ask for each year: cash${oblAcbCount ? " + premiums taken from accumulated bonus (ACB)" : ""}.</div>
+                <details class="ins-more ins-bd-wrap"><summary><span class="ins-more-show">Breakdown ▾</span><span class="ins-more-hide">Breakdown ▴</span></summary><div class="ins-bd">
+                    ${bd("Paid in cash", fmtB(oblCash))}
+                    ${oblAcbCount ? bd(`Paid via ACB (${oblAcbCount} ${oblAcbCount === 1 ? "policy" : "policies"})`, oblAcb > 0 ? fmtB(oblAcb) : "—") : ""}
+                    ${bd("Total obligation", fmtB(oblTotal), "tot")}
+                    ${oblNotNw > 0 ? bd("of which 🚫 not in Net Worth", fmtB(oblNotNw)) : ""}
+                    <div class="ins-bd-note">In-force policies only${oblAcbMissing ? `; ${oblAcbMissing} ACB ${oblAcbMissing === 1 ? "policy has" : "policies have"} no premium amount entered, so ${oblAcbMissing === 1 ? "it is" : "they are"} not counted` : ""}. Single-payment policies add nothing here.</div>
+                </div></details>
+            </div>`;
+            const netCash = paidBase - parentBase - cbBase;
+            const cardCash = `<div class="ins-sum-card">
+                <div class="ins-sum-k">Cash out · so far</div>
+                <div class="ins-sum-v">${fmtB(netCash)}</div>
+                <div class="ins-sum-n">What really left your pocket: premiums paid${parentBase > 0 ? " − paid by parent" : ""}${cbBase > 0 ? " − cashback received" : ""}.</div>
+                <details class="ins-more ins-bd-wrap"><summary><span class="ins-more-show">Breakdown ▾</span><span class="ins-more-hide">Breakdown ▴</span></summary><div class="ins-bd">
+                    ${bd("Premiums paid", fmtB(paidBase))}
+                    ${parentBase > 0 ? bd("− Paid by parent", fmtB(parentBase)) : ""}
+                    ${cbBase > 0 ? bd("− Cashback received", fmtB(cbBase), "", "var(--income-color)") : ""}
+                    ${bd("Net cash out", fmtB(netCash), "tot")}
+                    <div class="ins-bd-note">Typed-in history plus premiums recorded in the ledger, for ${scopeWord}. Premiums taken from accumulated bonus are not cash and are not in here.</div>
+                </div></details>
+            </div>`;
+            let cardVal = "";
+            let personBreak = "";
+            if (svCount) {
+                const net = savSvBase - savPaidBase;
+                const pct = savPaidBase > 0 ? (savSvBase / savPaidBase) * 100 : null;
+                const netColor = net >= 0 ? "var(--income-color)" : "var(--expense-color)";
+                const oldestSvAge = Math.round((new Date(todayStr + "T00:00:00") - new Date(savMinDate + "T00:00:00")) / 86400000);
+                const svDateLabel = savMinDate === savMaxDate ? `as of ${savMinDate}` : `dated ${savMinDate} to ${savMaxDate}`;
+                if (savByPerson.size > 1) {
+                    const pOrder = [...membersCache.map(m => m.id).filter(id => savByPerson.has(id)), ...(savByPerson.has("") ? [""] : [])];
+                    const pRow = (key) => {
+                        const d = savByPerson.get(key), m = key ? getMemberById(key) : null;
+                        const pn = d.sv - d.paid, pp = d.paid > 0 ? (d.sv / d.paid) * 100 : null;
+                        const col = pn >= 0 ? "var(--income-color)" : "var(--expense-color)";
+                        const nm = m ? `<span class="member-color-dot" style="background:${m.color}; display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px;"></span>${escapeHtml(m.name)}` : "Insured person not set";
+                        return `<tr>
+                            <td style="padding:5px 4px 5px 0; font-weight:800;">${nm}<div style="font-weight:600; color:var(--text-muted); font-size:0.66rem;">${d.n} ${d.n === 1 ? "policy" : "policies"}</div></td>
+                            <td style="padding:5px 4px; text-align:right; font-variant-numeric:tabular-nums;">${fmtB(d.paid)}</td>
+                            <td style="padding:5px 4px; text-align:right; font-variant-numeric:tabular-nums; font-weight:800;">${fmtB(d.sv)}</td>
+                            <td style="padding:5px 0 5px 4px; text-align:right; font-variant-numeric:tabular-nums; font-weight:800; color:${col};">${pn >= 0 ? "+" : "−"}${fmtB(Math.abs(pn))}${pp != null ? `<div style="font-weight:700; font-size:0.66rem;">${pp.toFixed(0)}%</div>` : ""}</td>
+                        </tr>`;
+                    };
+                    personBreak = `<div class="ins-bd-h">By person</div><div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:0.74rem;">
+                        <thead><tr style="color:var(--text-muted); font-size:0.62rem; text-transform:uppercase; letter-spacing:0.03em;"><th style="text-align:left; padding:2px 4px 4px 0;">Person</th><th style="text-align:right; padding:2px 4px 4px;">Paid</th><th style="text-align:right; padding:2px 4px 4px;">SV</th><th style="text-align:right; padding:2px 0 4px 4px;">Net</th></tr></thead>
+                        <tbody>${pOrder.map(pRow).join("")}</tbody></table></div>`;
+                }
+                cardVal = `<div class="ins-sum-card">
+                    <div class="ins-sum-k">Value · surrender</div>
+                    <div class="ins-sum-v">${fmtB(svCounted)}</div>
+                    <div class="ins-sum-n">${svCountedN ? `Surrender value of ${svCountedN} ${svCountedN === 1 ? "policy" : "policies"} that count toward Net Worth${includeInsuranceSvInNetWorth ? "" : " (the Net Worth switch is off)"}.` : "None of these policies counts toward Net Worth."}</div>
+                    <div class="ins-sum-n" style="color:${oldestSvAge > 365 ? "var(--expense-color)" : "var(--text-muted)"}; font-weight:700;">Statements ${escapeHtml(svDateLabel)}${oldestSvAge > 365 ? " ⚠️ oldest is over a year old" : ""}</div>
+                    <details class="ins-more ins-bd-wrap"><summary><span class="ins-more-show">Breakdown ▾</span><span class="ins-more-hide">Breakdown ▴</span></summary><div class="ins-bd">
+                        ${bd(`Counted in Net Worth (${svCountedN})`, fmtB(svCounted))}
+                        ${svNotN ? bd(`Not counted — 🚫 or ended (${svNotN})`, fmtB(svNot)) : ""}
+                        ${bd(`All surrender values (${svCount})`, fmtB(svCounted + svNot), "tot")}
+                        <div class="ins-bd-h">Like for like — all ${svCount} with a surrender value</div>
+                        ${bd("Premiums paid to each SV date", fmtB(savPaidBase))}
+                        ${bd("Surrender value", fmtB(savSvBase))}
+                        ${bd("Net", `${net >= 0 ? "+" : "−"}${fmtB(Math.abs(net))}`, "tot", netColor)}
+                        ${pct != null ? bd("SV ÷ premiums paid", `${pct.toFixed(1)}%`) : ""}
+                        ${(savCbBase > 0 && savPaidBase > 0) ? bd("🎁 + cashback received → SV + cashback", `${(((savSvBase + savCbBase) / savPaidBase) * 100).toFixed(1)}%`, "", "var(--income-color)") : ""}
+                        ${personBreak}
+                        <div class="ins-bd-note">Premiums are counted only up to each policy's SV date. Net is a rough guide, not an investment return (riders, bonuses and fund prices move). A policy whose premium now comes from ACB stops adding premiums, so its % reads high.</div>
+                    </div></details>
+                </div>`;
+            }
+            summary.style.display = filtered.length ? "block" : "none";
+            summary.innerHTML = `<div class="ins-sum3">${insuranceStatusFilter === "ended" ? "" : cardObl}${cardCash}${cardVal}</div><div class="ins-sum-scope">Life, medical &amp; other personal policies — car, home &amp; travel are on their own tab</div>`;
+
+            // The old separate Savings panel now lives inside the Value card.
+            const savEl = document.getElementById("insuranceSavingsSummary");
+            if (savEl) { savEl.style.display = "none"; savEl.innerHTML = ""; }
+        }
+
+        // v513: compact "Sum insured" for the card — up to 2 covers on one wrapping line, the rest as "+N".
+        // Same merge rules as insCardCoverHtml (same-type rows summed; a medical row shows its annual limit).
+        function insCoverGroups(p) {
+            const groups = new Map();
+            (p.coverages || []).filter(c => c && (c.kind || c.label)).forEach(c => {
+                const k = INS_COV_KINDS[c.kind];
+                const name = (k && c.kind !== "other") ? k[1] : (c.label || (k ? k[1] : "Cover"));
+                let amount = null, tag = "";
+                if (c.kind === "medical" && typeof c.annualLimit === "number") { amount = c.annualLimit; tag = " annual limit"; }
+                else if (typeof insCovSum(c) === "number") amount = insCovSum(c);
+                else if (c.kind === "medical" && typeof c.lifetimeLimit === "number") { amount = c.lifetimeLimit; tag = " lifetime limit"; }
+                if (amount == null) return;
+                groups.set(name + tag, (groups.get(name + tag) || 0) + amount);
+            });
+            return { entries: [...groups.entries()] };
+        }
+
+        // v513: the slimmed policy card. Three layers: (1) name + insurer/person + ONE figure on the right
+        // (SV for a savings policy, premiums paid for a protection policy), (2) up to two covers + small
+        // chips (riders count, ACB, cashback, attachments, note), (3) one footer line: the next premium.
+        // Everything else (riders in full, agent, notes, attachments, history) is one tap away in the detail sheet.
+        function insPolicyCardHtml(p, f, daysUntil) {
+            const live = insIsLive(p);
+            const icon = INS_TYPE_ICONS[p.type] || INS_TYPE_ICONS.other;
+            const metaParts = [];
+            if (p.product && p.insurer) metaParts.push(escapeHtml(p.insurer));
+            if (p.insuredMemberId && getMemberById(p.insuredMemberId)) metaParts.push(accountOwnerTagHTML({ memberIds: [p.insuredMemberId] }));
+            if (p.excludeFromNetWorth) metaParts.push("🚫 not in Net Worth");
+            if (!live) metaParts.push(escapeHtml(INS_STATUSES[p.status] || p.status));
+
+            // Right-hand figure
+            let fig;
+            if (f.svValue != null) {
+                const svBasis = (f.paidToSv != null && f.paidToSv > 0) ? f.paidToSv : (f.paid > 0 ? f.paid : null);
+                const svPct = svBasis ? (f.svValue / svBasis) * 100 : null;
+                const chip = svPct == null ? "" : ` <span class="ins-pct ${svPct >= 100 ? "up" : ""}"${p.paidByBonus ? ' title="Premium now comes from accumulated bonus, so this % reads high"' : ""}>${svPct.toFixed(0)}%</span>`;
+                fig = `<div class="ins-card-big">${formatCurrency(f.svValue, f.cur)}</div>
+                       <div class="ins-card-sub" style="${f.svStale ? "color:var(--expense-color); font-weight:700;" : ""}">SV · as of ${escapeHtml(f.latestSv.date)}${f.svStale ? " ⚠️" : ""}</div>
+                       <div class="ins-card-sub">Paid ${formatCurrency(f.paid, f.cur)}${chip}</div>`;
+            } else {
+                fig = `<div class="ins-card-sub">Paid</div><div class="ins-card-big ins-muted">${formatCurrency(f.paid, f.cur)}</div>`;
+            }
+
+            // Cover line
+            const cg = insCoverGroups(p).entries;
+            let cover = "";
+            if (cg.length) {
+                cover = `<div class="ins-card-cover"><span class="ins-card-cover-k">Sum insured</span>${cg.slice(0, 2).map(([n, a]) => `<span>${escapeHtml(n)} <b>${formatCurrency(a, f.cur)}</b></span>`).join("")}${cg.length > 2 ? `<span>+${cg.length - 2} more</span>` : ""}</div>`;
+            } else if (live) {
+                cover = `<div class="ins-card-cover"><span>Sum insured not set ⚠️</span></div>`;
+            }
+
+            // Chips
+            const chips = [];
+            const riders = insRiderItemsOf(p);
+            if (riders.length) chips.push(`<span class="ins-chip">🧩 ${riders.length} rider${riders.length === 1 ? "" : "s"}</span>`);
+            if (p.paidByBonus) chips.push(`<span class="ins-chip amber">💰 Premium via ACB${p.paidByBonusSince ? " since " + escapeHtml(String(p.paidByBonusSince).slice(0, 4)) : ""}</span>`);
+            const nx = insCashbackNext(p, f);
+            if (nx && nx.date && nx.amount != null) {
+                chips.push(nx.overdue
+                    ? `<span class="ins-chip amber">🎁 Payout due ${escapeHtml(nx.date)}</span>`
+                    : `<span class="ins-chip green">🎁 Next ${formatCurrency(nx.amount, f.cur)} · ${escapeHtml(nx.date)}</span>`);
+            }
+            if (f.cbCount > 0) chips.push(`<span class="ins-chip">🎁 ${formatCurrency(f.cbTotal, f.cur)} received</span>`);
+            if (insAttCount(p)) chips.push(`<span class="ins-chip">📎 ${insAttCount(p)}</span>`);
+            if (p.notes) chips.push(`<span class="ins-chip">📝 Note</span>`);
+
+            // Footer: next premium
+            let foot = "";
+            if (f.plan && !f.plan.paused && f.plan.dueDate) {
+                const dd = daysUntil(f.plan.dueDate);
+                foot = `<span style="${dd < 0 ? "color:var(--expense-color);" : ""}">Next premium ${escapeHtml(f.plan.dueDate)} · ${dd < 0 ? "overdue " + Math.abs(dd) + "d" : (dd === 0 ? "today" : dd + "d left")}</span>`;
+            }
+            const overdue = !!(f.plan && !f.plan.paused && f.plan.dueDate && daysUntil(f.plan.dueDate) < 0);
+
+            return `
+                <div class="config-item ins-pc${overdue ? " alert" : ""}${live ? "" : " ended"}" data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}">
+                    <div class="ins-card-head">
+                        <span class="ins-card-ico">${icon}</span>
+                        <div class="ins-card-title"><strong>${escapeHtml(p.product || p.insurer || "Policy")}</strong>${metaParts.length ? `<div class="ins-card-meta">${metaParts.join(" · ")}</div>` : ""}</div>
+                        <div class="ins-card-fig">${fig}</div>
+                    </div>
+                    ${cover}
+                    ${chips.length ? `<div class="ins-chips">${chips.join("")}</div>` : ""}
+                    ${foot ? `<div class="ins-card-foot">${foot}<span>›</span></div>` : ""}
+                </div>`;
         }
 
         // --- Reports (the other two tabs of the Insurance page) ---

@@ -768,6 +768,55 @@
             .ins-pol-fig { display: flex !important; justify-content: space-between; align-items: flex-end; gap: 10px; text-align: left !important; border-top: 1px dashed var(--border-color); padding-top: 8px; }
             .ins-pol-sv { text-align: right; }
         }
+        /* v513: Insurance page — three-reading summary, "Needs attention" strip, slim policy cards */
+        .ins-sum3 { display: flex; gap: 10px; align-items: flex-start; }
+        .ins-sum-card { flex: 1 1 0; min-width: 0; border: 1px solid var(--border-color); border-radius: 14px; padding: 12px 14px; }
+        .ins-sum-k { font-size: 0.64rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+        .ins-sum-v { font-size: 1.1rem; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; overflow-wrap: anywhere; }
+        .ins-sum-n { font-size: 0.68rem; font-weight: 600; color: var(--text-muted); line-height: 1.4; margin-top: 3px; }
+        .ins-sum-scope { text-align: center; font-size: 0.66rem; font-weight: 600; color: var(--text-muted); margin-top: 8px; }
+        .ins-bd-wrap > summary { padding: 8px 0 0; }
+        .ins-bd { margin-top: 4px; border-top: 1px dashed var(--border-color); padding-top: 4px; }
+        .ins-bd-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 4px 0; font-size: 0.74rem; font-weight: 600; }
+        .ins-bd-row b { font-variant-numeric: tabular-nums; text-align: right; }
+        .ins-bd-row.tot { border-top: 1px solid var(--border-color); margin-top: 2px; padding-top: 6px; font-weight: 800; }
+        .ins-bd-h { font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin: 10px 0 2px; }
+        .ins-bd-note { font-size: 0.66rem; font-weight: 600; color: var(--text-muted); line-height: 1.45; margin-top: 6px; }
+        @media (max-width: 640px) {
+            .ins-sum3 { overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+            .ins-sum-card { flex: 0 0 82%; scroll-snap-align: start; }
+        }
+        .ins-att { border: 1px solid var(--border-color); border-radius: 14px; margin: 0 0 14px; overflow: hidden; }
+        .ins-att.hasred { border-color: rgba(239, 68, 68, 0.45); }
+        .ins-att > summary { list-style: none; cursor: pointer; padding: 10px 14px; font-size: 0.82rem; font-weight: 800; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+        .ins-att > summary::-webkit-details-marker { display: none; }
+        .ins-att[open] > summary .ins-att-chev { display: inline-block; transform: rotate(180deg); }
+        .ins-att-row { display: flex; gap: 10px; align-items: flex-start; padding: 9px 14px; border-top: 1px solid var(--border-color); cursor: pointer; font-size: 0.76rem; -webkit-tap-highlight-color: transparent; }
+        .ins-att-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex: 0 0 auto; }
+        .ins-att-dot.red { background: var(--expense-color); }
+        .ins-att-dot.amber { background: #f59e0b; }
+        .config-item.ins-pc { cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 0; }
+        .config-item.ins-pc.alert { border-left: 4px solid var(--expense-color); }
+        .config-item.ins-pc.ended { opacity: 0.65; }
+        .ins-card-head { display: flex; gap: 10px; align-items: flex-start; }
+        .ins-card-ico { font-size: 1.25rem; line-height: 1.25; flex: 0 0 auto; }
+        .ins-card-title { flex: 1 1 auto; min-width: 0; }
+        .ins-card-title strong { display: block; font-size: 0.95rem; overflow-wrap: anywhere; }
+        .ins-card-meta { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-top: 1px; }
+        .ins-card-fig { flex: 0 0 auto; text-align: right; max-width: 48%; }
+        .ins-card-big { font-size: 0.98rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+        .ins-card-big.ins-muted { font-size: 0.88rem; font-weight: 700; color: var(--text-muted); }
+        .ins-card-sub { font-size: 0.68rem; font-weight: 600; color: var(--text-muted); }
+        .ins-pct { display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 999px; font-size: 0.66rem; font-weight: 800; background: rgba(99, 102, 241, 0.12); color: var(--primary); }
+        .ins-pct.up { background: rgba(16, 185, 129, 0.14); color: var(--income-color); }
+        .ins-card-cover { margin-top: 8px; font-size: 0.76rem; font-weight: 600; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 2px 12px; }
+        .ins-card-cover b { color: var(--text-main); font-weight: 800; }
+        .ins-card-cover-k { font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; align-self: center; }
+        .ins-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .ins-chip { font-size: 0.66rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--chip-bg); color: var(--text-main); white-space: nowrap; }
+        .ins-chip.amber { background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.35); }
+        .ins-chip.green { background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); }
+        .ins-card-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-color); font-size: 0.72rem; font-weight: 700; color: var(--text-muted); }
         /* v482: reducing-cover schedule (editor + detail sheet accordion) */
         .ins-sched-edit, .ins-sched { border-top: 1px dashed var(--border-color); margin-top: 6px; padding-top: 6px; }
         .ins-sched > summary, .ins-sched-edit > summary { cursor: pointer; font-size: 0.74rem; font-weight: 700; color: var(--primary); list-style: none; padding: 4px 0; }
@@ -4153,8 +4202,9 @@
             <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetStatusFilter" data-status="all">All</button>
         </div>
         </div>
-        <div id="insuranceSummary" style="display:none; gap:8px; padding:12px 8px; margin:0 0 14px; border:1px solid var(--border-color); border-radius:12px;"></div>
-        <div id="insuranceSavingsSummary" style="display:none; padding:12px 8px; margin:-6px 0 14px; border:1px solid var(--border-color); border-radius:12px;"></div>
+        <div id="insuranceSummary" style="display:none; margin:0 0 14px;"></div>
+        <details id="insuranceAttention" class="ins-att" style="display:none;"></details>
+        <div id="insuranceSavingsSummary" style="display:none;"></div>
 
 
         <div id="insurancePageList" style="padding-bottom:90px;"></div>

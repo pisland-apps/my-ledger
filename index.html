@@ -745,6 +745,42 @@
         .ins-more .ins-more-hide { display: none; }
         .ins-more[open] .ins-more-show { display: none; }
         .ins-more[open] .ins-more-hide { display: inline; }
+        /* v520: Insurance → By person redesign */
+        .insp-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 2px 2px 10px; font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
+        .insp-toolbar button { border: 1px solid var(--border-color); background: var(--card-bg); color: var(--primary); font-size: 0.72rem; font-weight: 700; border-radius: 999px; padding: 5px 12px; cursor: pointer; flex: 0 0 auto; }
+        .insp-card { background: var(--card-bg); border: 1px solid var(--border-color); border-top: 3px solid var(--pc, var(--border-color)); border-radius: 16px; margin-bottom: 14px; overflow: hidden; }
+        .insp-head { display: flex; align-items: center; gap: 12px; padding: 14px; background: linear-gradient(180deg, var(--pc-tint, transparent), transparent); }
+        .insp-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--pc, #94a3b8); color: #fff; font-weight: 800; font-size: 1.05rem; display: grid; place-items: center; flex: 0 0 auto; }
+        .insp-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+        .insp-who-n { font-size: 1.02rem; font-weight: 800; color: var(--text-main); overflow-wrap: anywhere; }
+        .insp-who-s { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
+        .insp-prem { text-align: right; flex: 0 0 auto; display: flex; flex-direction: column; }
+        .insp-prem b { font-size: 0.92rem; font-weight: 800; color: var(--text-main); font-variant-numeric: tabular-nums; }
+        .insp-prem span { font-size: 0.62rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+        .insp-kind { border-top: 1px solid var(--border-color); }
+        .insp-kind > summary { display: flex; align-items: center; gap: 12px; padding: 11px 14px; min-height: 52px; cursor: pointer; list-style: none; -webkit-tap-highlight-color: transparent; }
+        .insp-kind > summary::-webkit-details-marker { display: none; }
+        .insp-kind > summary:active { background: var(--chip-bg); }
+        .insp-ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 1.05rem; flex: 0 0 auto; }
+        .insp-ttl { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+        .insp-name { font-size: 0.88rem; font-weight: 700; color: var(--text-main); }
+        .insp-sub { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); }
+        .insp-amt { text-align: right; flex: 0 0 auto; display: flex; flex-direction: column; font-size: 0.98rem; font-weight: 800; color: var(--text-main); font-variant-numeric: tabular-nums; }
+        .insp-cap { font-size: 0.58rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+        .insp-chev { color: var(--text-muted); font-size: 1.2rem; line-height: 1; transition: transform 0.15s; flex: 0 0 auto; }
+        .insp-kind[open] > summary .insp-chev { transform: rotate(90deg); }
+        .insp-kind[open] > summary { padding-bottom: 6px; }
+        .insp-body { padding: 0 14px 12px 60px; }
+        .insp-it { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 7px 0; border-top: 1px dashed var(--border-color); }
+        .insp-it:first-child { border-top: 0; }
+        .insp-it-l { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+        .insp-it-n { font-size: 0.8rem; font-weight: 600; color: var(--text-main); overflow-wrap: anywhere; }
+        .insp-it-s { font-size: 0.68rem; font-weight: 600; color: var(--text-muted); overflow-wrap: anywhere; }
+        .insp-it-a { font-size: 0.8rem; font-weight: 700; color: var(--text-main); flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .insp-ended { opacity: 0.6; }
+        .insp-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
+        .insp-chip { font-size: 0.7rem; font-weight: 600; color: var(--text-main); background: var(--chip-bg); border-radius: 8px; padding: 5px 9px; }
+        .insp-chip b { color: var(--text-muted); font-weight: 700; margin-right: 3px; }
         .ins-info-btn { border: 1.5px solid var(--border-color); background: transparent; color: var(--text-muted); border-radius: 50%; width: 18px; height: 18px; font-size: 0.66rem; font-weight: 800; line-height: 1; cursor: pointer; margin-left: 6px; padding: 0; vertical-align: middle; }
         .ins-med-note { display: none; font-size: 0.7rem; line-height: 1.45; color: var(--text-muted); background: var(--chip-bg); border-radius: 8px; padding: 7px 10px; margin-top: 6px; }
         .ins-med-note.open { display: block; }

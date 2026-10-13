@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v519";
+        const APP_VERSION = "v520";
         const APP_VERSION_DATE = "2026-10-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -16043,61 +16043,65 @@
             d.items.push({ p, c });
         }
 
+        // v520: By person redesign — each coverage type is one tappable row (icon badge, name, policy count,
+        // total on the right); the policies behind the total fold open underneath. Riders get the same row.
+        const INS_KIND_TINT = { life: "59,130,246", term: "139,92,246", medical: "20,184,166", critical: "244,63,94", accident: "245,158,11", other: "100,116,139", riders: "99,102,241" };
+        function inspRowHtml(kind, icon, label, subHtml, amtHtml, capHtml, bodyHtml) {
+            const t = INS_KIND_TINT[kind] || INS_KIND_TINT.other;
+            return `<details class="insp-kind ins-kind-row">
+                <summary>
+                    <span class="insp-ico" style="background:rgba(${t},0.14);">${icon}</span>
+                    <span class="insp-ttl"><span class="insp-name">${escapeHtml(label)}</span><span class="insp-sub">${subHtml}</span></span>
+                    <span class="insp-amt">${amtHtml}${capHtml ? `<span class="insp-cap">${capHtml}</span>` : ""}</span>
+                    <span class="insp-chev">›</span>
+                </summary>
+                <div class="insp-body">${bodyHtml}</div>
+            </details>`;
+        }
+
         function insKindRowHtml(kind, d, withItems) {
             const k = INS_COV_KINDS[kind];
             const money = (n) => formatCurrency(n, baseCurrency);
-            const sub = [];
+            const chips = [];
             if (kind === "medical") {
-                if (d.hasAnnual) sub.push(`Annual limit ${money(d.annual)}`);
-                if (d.hasRem) sub.push(`Lifetime limit remaining ${money(d.rem)}${d.hasLife ? " / " + money(d.life) : ""}`);
-                else if (d.hasLife) sub.push(`Lifetime limit ${money(d.life)}`);
+                if (d.hasAnnual) chips.push(`<span class="insp-chip"><b>Annual limit</b> ${money(d.annual)}</span>`);
+                if (d.hasRem) chips.push(`<span class="insp-chip"><b>Lifetime remaining</b> ${money(d.rem)}${d.hasLife ? " / " + money(d.life) : ""}</span>`);
+                else if (d.hasLife) chips.push(`<span class="insp-chip"><b>Lifetime limit</b> ${money(d.life)}</span>`);
             }
             const nPolicies = new Set(d.items.map(i => i.p.id)).size;
-            // v479: one line per policy (name left, amount right) instead of a dot-separated wall. A coverage
-            // that is not the policy's own main cover (e.g. a PA rider on a life plan) is tagged "rider"
-            // rather than repeating the full policy name as if it were a separate product.
+            // A coverage that is not the policy's own main cover (e.g. a PA rider on a life plan) is tagged "rider".
             const MAIN_KIND = { life: "life", savings: "life", investment: "life", term: "term", medical: "medical", critical: "critical", accident: "accident" };
-            const itemRow = ({ p, c }, hideAmt) => {
-                const prefix = (kind === "other" && c.label) ? escapeHtml(c.label) + " · " : "";
-                const amt = typeof insCovSum(c) === "number" ? formatCurrency(insCovSum(c), p.currency || baseCurrency) : "no sum";
-                const isRider = kind !== "other" && MAIN_KIND[p.type] && MAIN_KIND[p.type] !== kind;
-                const name = `${prefix}${escapeHtml(p.product || p.insurer || "Policy")}${p.insurer && p.product ? " (" + escapeHtml(p.insurer) + ")" : ""}`;
-                return `<div class="ins-item"><span style="min-width:0; overflow-wrap:anywhere;">${name}${isRider ? ` <span class="ins-rider-pill">rider</span>` : ""}</span>${(hideAmt && typeof insCovSum(c) === "number") ? "" : `<span class="ins-item-amt">${amt}</span>`}</div>`;
-            };
-            // Biggest first, own-cover before riders, so the rows hidden under "Show N more" are the small ones.
             const riderOf = ({ p }) => kind !== "other" && MAIN_KIND[p.type] && MAIN_KIND[p.type] !== kind;
+            const itemRow = ({ p, c }, hideAmt) => {
+                const labelled = kind === "other" && c.label;
+                const title = labelled ? c.label : (p.product || p.insurer || "Policy");
+                const sub = labelled ? [p.product, p.insurer].filter(Boolean).join(" · ") : (p.product && p.insurer ? p.insurer : "");
+                const hasNum = typeof insCovSum(c) === "number";
+                const amt = hasNum ? formatCurrency(insCovSum(c), p.currency || baseCurrency) : "no sum";
+                return `<div class="insp-it"><span class="insp-it-l"><span class="insp-it-n">${escapeHtml(title)}${riderOf({ p }) ? ` <span class="ins-rider-pill">rider</span>` : ""}</span>${sub ? `<span class="insp-it-s">${escapeHtml(sub)}</span>` : ""}</span>${(hideAmt && hasNum) ? "" : `<span class="insp-it-a">${amt}</span>`}</div>`;
+            };
+            // Biggest first, own-cover before riders.
             const sorted = d.items.slice().sort((a, b) => (riderOf(a) - riderOf(b))
                 || (insConvert(insCovSum(b.c) || 0, b.p.currency || baseCurrency, baseCurrency) - insConvert(insCovSum(a.c) || 0, a.p.currency || baseCurrency, baseCurrency)));
-            const items = withItems
-                ? (sorted.length === 1
-                    // one policy only: the heading already shows the amount, so just name the policy
-                    ? `<div class="ins-item-list">${itemRow(sorted[0], true)}</div>`
-                    : `<div class="ins-item-list">${sorted.slice(0, 3).map(x => itemRow(x)).join("")}${sorted.length > 3
-                        ? `<details class="ins-more"><summary><span class="ins-more-show">Show ${sorted.length - 3} more ▾</span><span class="ins-more-hide">Show less ▴</span></summary>${sorted.slice(3).map(x => itemRow(x)).join("")}</details>` : ""}</div>`)
-                : "";
-            return `<div class="ins-kind-row" style="padding:8px 0; border-bottom:1px solid var(--border-color);">
-                <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
-                    <span style="font-size:0.82rem; font-weight:700;">${k[2]} ${escapeHtml(k[1])} <span style="font-weight:600; color:var(--text-muted);">· ${nPolicies} ${nPolicies === 1 ? "policy" : "policies"}</span>${kind === "medical" ? `<button type="button" class="ins-info-btn" data-click="insToggleMedNote" aria-label="About medical limits">i</button>` : ""}</span>
-                    <span style="font-size:0.92rem; font-weight:800; flex:0 0 auto; text-align:right;">${d.hasSum ? money(d.sum) : "—"}${kind === "medical" ? `<span style="display:block; font-size:0.62rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.03em;">sum insured</span>` : ""}</span>
-                </div>
-                ${kind === "medical" ? `<div class="ins-med-note">Medical limits of different plans can overlap (each plan pays up to its own limit for the same bill), so these totals show what is arranged, not what you would receive.</div>` : ""}
-                ${sub.length ? `<div style="font-size:0.72rem; font-weight:600; color:var(--text-muted); margin-top:3px;">${sub.join(" · ")}</div>` : ""}
-                ${items}
-            </div>`;
+            const body = (kind === "medical" ? `<div class="insp-chips">${chips.join("")}<button type="button" class="ins-info-btn" data-click="insToggleMedNote" aria-label="About medical limits">i</button></div><div class="ins-med-note">Medical limits of different plans can overlap (each plan pays up to its own limit for the same bill), so these totals show what is arranged, not what you would receive.</div>` : "")
+                + (withItems ? sorted.map(x => itemRow(x, sorted.length === 1)).join("") : "");
+            return inspRowHtml(kind, k[2], k[1], `${nPolicies} ${nPolicies === 1 ? "policy" : "policies"}`, d.hasSum ? money(d.sum) : "—", kind === "medical" ? "sum insured" : "", body);
         }
 
-        // v502: By person — the policies' riders (no sum insured of their own, so they never appear in the
-        // coverage rows above) listed under that person: rider name, then the policy it belongs to + until-date.
+        // v502/v520: By person — the policies' riders (no sum insured of their own), soonest-ending first, ended ones last.
         function insPersonRidersHtml(policies) {
             const items = [];
             policies.forEach(p => insRiderItemsOf(p).forEach(r => items.push({ p, r })));
             if (!items.length) return "";
-            const row = ({ p, r }) => `<div class="ins-item" style="flex-direction:column; gap:1px;"><span style="color:var(--text-main); font-weight:600; overflow-wrap:anywhere;">${escapeHtml(r.name)}</span><span style="display:flex; justify-content:space-between; gap:10px;"><span style="min-width:0; overflow-wrap:anywhere;">${escapeHtml(p.product || p.insurer || "Policy")}${p.insurer && p.product ? " (" + escapeHtml(p.insurer) + ")" : ""}</span>${insRiderUntilHtml(r)}</span></div>`;
-            return `<div class="ins-kind-row" style="padding:8px 0; border-bottom:1px solid var(--border-color);">
-                <div style="font-size:0.82rem; font-weight:700;">🧩 Riders <span style="font-weight:600; color:var(--text-muted);">· ${items.length}</span></div>
-                <div class="ins-item-list">${items.slice(0, 3).map(row).join("")}${items.length > 3
-                    ? `<details class="ins-more"><summary><span class="ins-more-show">Show ${items.length - 3} more ▾</span><span class="ins-more-hide">Show less ▴</span></summary>${items.slice(3).map(row).join("")}</details>` : ""}</div>
-            </div>`;
+            const today = localDateStr(new Date());
+            const isEnded = ({ r }) => !!r.endDate && r.endDate < today;
+            items.sort((a, b) => (isEnded(a) - isEnded(b)) || (a.r.endDate || "9999").localeCompare(b.r.endDate || "9999"));
+            const row = (x) => {
+                const { p, r } = x;
+                return `<div class="insp-it${isEnded(x) ? " insp-ended" : ""}"><span class="insp-it-l"><span class="insp-it-n" style="overflow-wrap:anywhere;">${escapeHtml(r.name)}</span><span class="insp-it-s">${escapeHtml(p.product || p.insurer || "Policy")}${p.insurer && p.product ? " (" + escapeHtml(p.insurer) + ")" : ""}</span></span><span class="insp-it-a" style="font-weight:600; font-size:0.72rem;">${insRiderUntilHtml(r)}</span></div>`;
+            };
+            const nEnded = items.filter(isEnded).length;
+            return inspRowHtml("riders", "🧩", "Riders", nEnded ? `${items.length - nEnded} active · ${nEnded} ended` : "active", String(items.length), "", items.map(row).join(""));
         }
 
         function insReportPeopleHtml() {
@@ -16125,18 +16129,19 @@
             const order = [...membersCache.map(m => m.id).filter(id => groups.has(id)), ...(groups.has("") ? [""] : [])];
             const rowsFor = (kinds, withItems) => INS_COV_ORDER.filter(k => kinds.has(k)).map(k => insKindRowHtml(k, kinds.get(k), withItems)).join("")
                 || `<p style="font-size:0.75rem; color:var(--text-muted); padding:8px 0;">No coverage details recorded yet.</p>`;
-            let html = "";
+            let html = order.length ? `<div class="insp-toolbar"><span>${order.length} ${order.length === 1 ? "person" : "people"} · tap a row to see its policies</span><button type="button" data-click="insPeopleToggleAll">Expand all</button></div>` : "";
             // v503: the "Everyone" household-total card was removed (summed sums insured are not what any one person is covered for).
             order.forEach(key => {
                 const g = groups.get(key);
                 const m = key ? getMemberById(key) : null;
-                const head = m
-                    ? `<span class="member-color-dot" style="background:${m.color};"></span><span style="font-weight:800; font-size:0.9rem;">${escapeHtml(m.name)}</span>`
-                    : `<span style="font-weight:800; font-size:0.9rem; color:var(--text-muted);">Insured person not set</span>`;
-                html += `<div style="border:1px solid var(--border-color); border-radius:12px; padding:12px; margin-bottom:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:2px;">
-                        <span style="display:flex; align-items:center; gap:8px; min-width:0;">${head}</span>
-                        <span style="font-size:0.72rem; font-weight:700; color:var(--text-muted); text-align:right; flex:0 0 auto;">${g.policies.length} ${g.policies.length === 1 ? "policy" : "policies"} · ${formatCurrency(g.yearly, baseCurrency)}/yr</span>
+                const color = m && /^#[0-9a-f]{6}$/i.test(m.color || "") ? m.color : "#94a3b8";
+                const name = m ? m.name : "Insured person not set";
+                const initial = m ? ([...String(m.name || "?").trim()][0] || "?").toUpperCase() : "?";
+                html += `<div class="insp-card" style="--pc:${color}; --pc-tint:${color}1f;">
+                    <div class="insp-head">
+                        <span class="insp-avatar">${escapeHtml(initial)}</span>
+                        <span class="insp-who"><span class="insp-who-n"${m ? "" : ' style="color:var(--text-muted);"'}>${escapeHtml(name)}</span><span class="insp-who-s">${g.policies.length} ${g.policies.length === 1 ? "policy" : "policies"} in force</span></span>
+                        ${g.yearly > 0 ? `<span class="insp-prem"><b>${formatCurrency(g.yearly, baseCurrency)}</b><span>per year</span></span>` : ""}
                     </div>
                     ${rowsFor(g.kinds, true)}
                     ${insPersonRidersHtml(g.policies)}
@@ -25595,6 +25600,7 @@
             openInsurancePrintSheet: () => openInsurancePrintSheet(), // v496
             insurancePrintRun: () => insurancePrintRun(), // v496
             insToggleReturnNote: (el) => { const w = el.closest(".ins-ret-wrap"); const n = w && w.querySelector(".ins-med-note"); if (n) n.classList.toggle("open"); }, // v487
+            insPeopleToggleAll: (el) => { const ds = [...document.querySelectorAll("#insuranceReport details.insp-kind, details.insp-kind")]; const open = ds.some(d => !d.open); ds.forEach(d => { d.open = open; }); el.textContent = open ? "Collapse all" : "Expand all"; }, // v520
             insToggleMedNote: (el) => { const row = el.closest(".ins-kind-row"); const n = row && row.querySelector(".ins-med-note"); if (n) n.classList.toggle("open"); }, // v479
             insuranceSetStatusFilter: (el) => insuranceSetStatusFilter(el),
             openInsuranceModalNew: () => openInsuranceModal(null),

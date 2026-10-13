@@ -781,6 +781,16 @@
         .insp-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
         .insp-chip { font-size: 0.7rem; font-weight: 600; color: var(--text-main); background: var(--chip-bg); border-radius: 8px; padding: 5px 9px; }
         .insp-chip b { color: var(--text-muted); font-weight: 700; margin-right: 3px; }
+        /* v522: phone only — Insurance page */
+        .ins-group-chip { display: none; }
+        @media (max-width: 640px) {
+            .ins-head-sub { display: none; } /* the title says it; saves four lines of header */
+            body:has(#page-insurance:not(.hidden)) .print-fab-btn { display: none; } /* the header 🖨️ already opens the insurance print options; the floating one sat on top of the list */
+            #insuranceGroupRow { display: none !important; } /* Group moves into one chip on the Show row */
+            .ins-filter-row { flex-wrap: wrap; }
+            .ins-filter-row.has-group .ins-group-chip { display: inline-flex; align-items: center; margin-left: auto; padding: 5px 11px; border: 1.5px solid var(--border-color); border-radius: 999px; background: var(--card-bg); color: var(--primary); font: inherit; font-size: 0.72rem; font-weight: 800; cursor: pointer; white-space: nowrap; }
+            .ins-filter-row.has-group .ins-group-chip:active { background: var(--chip-bg); }
+        }
         /* v521: Insurance → Policies redesign */
         .ins-sum-help { display: none !important; }
         .ins-sum-helpbar { font-size: 0.7rem; font-weight: 600; line-height: 1.45; color: var(--text-muted); background: var(--chip-bg); border-radius: 10px; padding: 8px 12px; margin-top: 8px; }
@@ -4247,7 +4257,7 @@
             <button class="back-btn" data-click="navigateToWorkspace">&larr; Back</button>
             <div style="flex:1;">
                 <h3 style="font-weight:800; font-size:1.2rem;">Insurance</h3>
-                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Coverage, premiums paid and latest surrender values.</p>
+                <p class="ins-head-sub" style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Coverage, premiums paid and latest surrender values.</p>
             </div>
             <button type="button" class="icon-edit-btn" data-click="exportInsuranceOnly" title="Export insurance policies only" aria-label="Export insurance policies only">📤</button>
             <button type="button" class="icon-edit-btn" data-click="openInsMergePicker" title="Merge policies from another ledger's backup" aria-label="Merge policies from another ledger's backup">📥</button>
@@ -4266,6 +4276,7 @@
             <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetStatusFilter" data-status="ended">Ended</button>
             <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetStatusFilter" data-status="all">All</button>
         </div>
+        <button type="button" class="ins-group-chip" id="insuranceGroupChip" data-click="insuranceCycleGroup" title="Group by — tap to change"></button>
         </div>
         <div class="ins-filter-row" id="insuranceGroupRow"><span class="ins-filter-label">Group</span>
         <div class="nav-view-toggle ins-pills" id="insuranceGroupToggle">

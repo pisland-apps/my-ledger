@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v521";
+        const APP_VERSION = "v522";
         const APP_VERSION_DATE = "2026-10-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15676,6 +15676,13 @@
             document.querySelectorAll("#insuranceGroupToggle .nav-view-toggle-btn").forEach(b => b.classList.toggle("active", b.dataset.group === insuranceGroup));
             renderInsurancePage();
         }
+        // v522: phone — the Group pills are replaced by one chip on the Show row; each tap goes Person -> Insurer -> None.
+        function insuranceCycleGroup() {
+            const order = ["person", "insurer", "none"];
+            insuranceGroup = order[(order.indexOf(insuranceGroup) + 1) % order.length];
+            document.querySelectorAll("#insuranceGroupToggle .nav-view-toggle-btn").forEach(b => b.classList.toggle("active", b.dataset.group === insuranceGroup));
+            renderInsurancePage();
+        }
 
         async function renderInsurancePage() {
             const list = document.getElementById("insurancePageList");
@@ -15694,6 +15701,9 @@
             const filterRow = document.getElementById("insuranceFilterRow");
             if (filterRow) filterRow.style.display = showStatusFilter ? "flex" : "none";
             if (statusToggle) statusToggle.style.display = showStatusFilter ? "" : "none";
+            if (filterRow) filterRow.classList.toggle("has-group", insuranceView === "policies"); // v522: phone Group chip
+            const gChip = document.getElementById("insuranceGroupChip");
+            if (gChip) gChip.textContent = ({ person: "👤 Person", insurer: "🏢 Insurer", none: "☰ None" })[insuranceGroup] || "👤 Person";
             const groupRow = document.getElementById("insuranceGroupRow"); // v521: grouping only applies to the Policies list
             if (groupRow) groupRow.style.display = insuranceView === "policies" ? "flex" : "none";
             if (isReport) {
@@ -25658,6 +25668,7 @@
             insToggleMedNote: (el) => { const row = el.closest(".ins-kind-row"); const n = row && row.querySelector(".ins-med-note"); if (n) n.classList.toggle("open"); }, // v479
             insuranceSetStatusFilter: (el) => insuranceSetStatusFilter(el),
             insuranceSetGroup: (el) => insuranceSetGroup(el), // v521
+            insuranceCycleGroup: () => insuranceCycleGroup(), // v522
             insSumInfo: (el) => { const c = el.closest(".ins-sum-card"); const h = c && c.querySelector(".ins-sum-help"); const bar = document.querySelector("#insuranceSummary .ins-sum-helpbar"); if (!c || !h || !bar) return; const same = bar.dataset.k === c.dataset.k && bar.style.display !== "none"; bar.textContent = same ? "" : h.textContent; bar.dataset.k = c.dataset.k; bar.style.display = same ? "none" : "block"; }, // v521: one shared explanation strip under the cards (keeps the cards the same height)
             openInsuranceModalNew: () => openInsuranceModal(null),
             insurancePolicyTap: (el) => insurancePolicyTap(el),

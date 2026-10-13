@@ -3985,3 +3985,9 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **Summary cards** are the same height with Breakdown at the bottom; the long explanation is behind the (i) button and opens in one shared strip under the cards; an old surrender statement shows a small amber "⚠ Oldest date" tag.
 - Display only: numbers, calculations, the print report and the other tabs are unchanged. No DB change.
 - `APP_VERSION` / `CACHE_NAME` -> v521.
+
+## v522: Insurance page, phone only
+- The page subtitle is hidden on phones (the title says it).
+- The floating print button is hidden on the Insurance page on phones; the 🖨️ in the page header (insurance print options: who / what to include) stays. They are not the same function: the floating one prints the current screen as it is.
+- The Group pills (Person / Insurer / None) become one small button at the end of the Show row; each tap goes Person -> Insurer -> None.
+- PC layout is unchanged. `APP_VERSION` / `CACHE_NAME` -> v522.

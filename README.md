@@ -3935,3 +3935,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - The **Breakdown** of the three summary cards no longer opens inside its narrow card (which left a tall empty gap beside it). Tapping Breakdown on a card opens ONE full-width panel under the row (tap again, or tap another card, to close / switch); the open card gets a highlighted border. The Value panel lays out in columns: What counts | Like for like | By person.
 - "Not in Net Worth" is now a small hollow dashed circle in the muted text colour instead of the red circle-slash 🚫 (policy cards, Obligation and Value breakdowns). Other pages' 🚫 are unchanged.
 - No DB change. `APP_VERSION` / `CACHE_NAME` -> v514.
+
+## v515: Insurance - phone fixes for the summary breakdown
+- **Tapping Breakdown no longer re-renders the page.** On a phone the three summary cards scroll sideways, and the re-render snapped the row back to the first card, so the panel opened under a different card than the one you tapped. The panel is now swapped in place, the row keeps its scroll position, and the tapped card is scrolled into view and highlighted.
+- **Breakdown sections are separate blocks with a coloured left edge** (What counts / Like for like / By person, same look as the overdue edge on a policy card) so the long panel reads in chunks.
+- **By person is a stacked list instead of a table** (name + policies, net and %, then "Paid -> SV"), so nothing is cut off on a narrow screen.
+- **Needs attention is Policies-tab only** (it was leaking onto By person and Car · Home · Travel).
+- `APP_VERSION` / `CACHE_NAME` -> v515.

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v514";
+        const APP_VERSION = "v515";
         const APP_VERSION_DATE = "2026-10-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15695,6 +15695,8 @@
                 list.style.paddingBottom = "0"; // v479: its 90px bottom padding sat as a blank gap above the reports
                 empty.style.display = "none";
                 summary.style.display = "none";
+                const attOff = document.getElementById("insuranceAttention");
+                if (attOff) { attOff.style.display = "none"; attOff.innerHTML = ""; } // v515: it leaked onto the By person / Car · Home · Travel tabs
                 const svPanelOff = document.getElementById("insuranceSavingsSummary");
                 if (svPanelOff) svPanelOff.style.display = "none";
                 reportEl.innerHTML = insuranceView === "people" ? insReportPeopleHtml() : insReportAssetsHtml();
@@ -15812,25 +15814,25 @@
             const fmtB = (v) => formatCurrency(v, baseCurrency);
             const scopeWord = insuranceStatusFilter === "all" ? "all policies" : (insuranceStatusFilter === "ended" ? "ended policies" : "in-force policies");
             const oblTotal = oblCash + oblAcb;
-            const bdObl = `${bd("Paid in cash", fmtB(oblCash))}
+            const bdObl = `<div class="ins-bd-sec">${bd("Paid in cash", fmtB(oblCash))}
                     ${oblAcbCount ? bd(`Paid via ACB (${oblAcbCount} ${oblAcbCount === 1 ? "policy" : "policies"})`, oblAcb > 0 ? fmtB(oblAcb) : "—") : ""}
                     ${bd("Total obligation", fmtB(oblTotal), "tot")}
                     ${oblNotNw > 0 ? bd(`of which ${INS_NO_NW_ICON}not in Net Worth`, fmtB(oblNotNw)) : ""}
-                    <div class="ins-bd-note">In-force policies only${oblAcbMissing ? `; ${oblAcbMissing} ACB ${oblAcbMissing === 1 ? "policy has" : "policies have"} no premium amount entered, so ${oblAcbMissing === 1 ? "it is" : "they are"} not counted` : ""}. Single-payment policies add nothing here.</div>`;
+                    <div class="ins-bd-note">In-force policies only${oblAcbMissing ? `; ${oblAcbMissing} ACB ${oblAcbMissing === 1 ? "policy has" : "policies have"} no premium amount entered, so ${oblAcbMissing === 1 ? "it is" : "they are"} not counted` : ""}. Single-payment policies add nothing here.</div></div>`;
             const btn = (k) => `<button type="button" class="ins-bd-btn${insSumOpen === k ? " on" : ""}" data-click="insSumToggle" data-k="${k}">Breakdown ${insSumOpen === k ? "▴" : "▾"}</button>`;
-            const cardObl = `<div class="ins-sum-card${insSumOpen === "obl" ? " on" : ""}">
+            const cardObl = `<div class="ins-sum-card${insSumOpen === "obl" ? " on" : ""}" data-k="obl">
                 <div class="ins-sum-k">Obligation · per year</div>
                 <div class="ins-sum-v">${fmtB(oblTotal)}</div>
                 <div class="ins-sum-n">What the policies ask for each year: cash${oblAcbCount ? " + premiums taken from accumulated bonus (ACB)" : ""}.</div>
                 ${btn("obl")}
             </div>`;
             const netCash = paidBase - parentBase - cbBase;
-            const bdCash = `${bd("Premiums paid", fmtB(paidBase))}
+            const bdCash = `<div class="ins-bd-sec">${bd("Premiums paid", fmtB(paidBase))}
                     ${parentBase > 0 ? bd("− Paid by parent", fmtB(parentBase)) : ""}
                     ${cbBase > 0 ? bd("− Cashback received", fmtB(cbBase), "", "var(--income-color)") : ""}
                     ${bd("Net cash out", fmtB(netCash), "tot")}
-                    <div class="ins-bd-note">Typed-in history plus premiums recorded in the ledger, for ${scopeWord}. Premiums taken from accumulated bonus are not cash and are not in here.</div>`;
-            const cardCash = `<div class="ins-sum-card${insSumOpen === "cash" ? " on" : ""}">
+                    <div class="ins-bd-note">Typed-in history plus premiums recorded in the ledger, for ${scopeWord}. Premiums taken from accumulated bonus are not cash and are not in here.</div></div>`;
+            const cardCash = `<div class="ins-sum-card${insSumOpen === "cash" ? " on" : ""}" data-k="cash">
                 <div class="ins-sum-k">Cash out · so far</div>
                 <div class="ins-sum-v">${fmtB(netCash)}</div>
                 <div class="ins-sum-n">What really left your pocket: premiums paid${parentBase > 0 ? " − paid by parent" : ""}${cbBase > 0 ? " − cashback received" : ""}.</div>
@@ -15851,25 +15853,21 @@
                         const pn = d.sv - d.paid, pp = d.paid > 0 ? (d.sv / d.paid) * 100 : null;
                         const col = pn >= 0 ? "var(--income-color)" : "var(--expense-color)";
                         const nm = m ? `<span class="member-color-dot" style="background:${m.color}; display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px;"></span>${escapeHtml(m.name)}` : "Insured person not set";
-                        return `<tr>
-                            <td style="padding:5px 4px 5px 0; font-weight:800;">${nm}<div style="font-weight:600; color:var(--text-muted); font-size:0.66rem;">${d.n} ${d.n === 1 ? "policy" : "policies"}</div></td>
-                            <td style="padding:5px 4px; text-align:right; font-variant-numeric:tabular-nums;">${fmtB(d.paid)}</td>
-                            <td style="padding:5px 4px; text-align:right; font-variant-numeric:tabular-nums; font-weight:800;">${fmtB(d.sv)}</td>
-                            <td style="padding:5px 0 5px 4px; text-align:right; font-variant-numeric:tabular-nums; font-weight:800; color:${col};">${pn >= 0 ? "+" : "−"}${fmtB(Math.abs(pn))}${pp != null ? `<div style="font-weight:700; font-size:0.66rem;">${pp.toFixed(0)}%</div>` : ""}</td>
-                        </tr>`;
+                        return `<div class="ins-pp">
+                            <div class="ins-pp-top"><span style="font-weight:800;">${nm} <span style="font-weight:600; color:var(--text-muted); font-size:0.68rem;">· ${d.n} ${d.n === 1 ? "policy" : "policies"}</span></span><b style="color:${col};">${pn >= 0 ? "+" : "−"}${fmtB(Math.abs(pn))}${pp != null ? ` · ${pp.toFixed(0)}%` : ""}</b></div>
+                            <div class="ins-pp-sub">Paid ${fmtB(d.paid)} → SV <b>${fmtB(d.sv)}</b></div>
+                        </div>`;
                     };
-                    personBreak = `<div class="ins-bd-h">By person</div><div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:0.74rem;">
-                        <thead><tr style="color:var(--text-muted); font-size:0.62rem; text-transform:uppercase; letter-spacing:0.03em;"><th style="text-align:left; padding:2px 4px 4px 0;">Person</th><th style="text-align:right; padding:2px 4px 4px;">Paid</th><th style="text-align:right; padding:2px 4px 4px;">SV</th><th style="text-align:right; padding:2px 0 4px 4px;">Net</th></tr></thead>
-                        <tbody>${pOrder.map(pRow).join("")}</tbody></table></div>`;
+                    personBreak = `<div class="ins-bd-h" style="margin-top:0;">By person · net</div>${pOrder.map(pRow).join("")}`;
                 }
                 bdVal = `<div class="ins-bd-grid">
-                        <div>
+                        <div class="ins-bd-sec">
                             <div class="ins-bd-h" style="margin-top:0;">What counts</div>
                             ${bd(`Counted in Net Worth (${svCountedN})`, fmtB(svCounted))}
                             ${svNotN ? bd(`Not counted — ${INS_NO_NW_ICON}not in Net Worth or ended (${svNotN})`, fmtB(svNot)) : ""}
                             ${bd(`All surrender values (${svCount})`, fmtB(svCounted + svNot), "tot")}
                         </div>
-                        <div>
+                        <div class="ins-bd-sec">
                             <div class="ins-bd-h" style="margin-top:0;">Like for like — all ${svCount} with a surrender value</div>
                             ${bd("Premiums paid to each SV date", fmtB(savPaidBase))}
                             ${bd("Surrender value", fmtB(savSvBase))}
@@ -15877,10 +15875,10 @@
                             ${pct != null ? bd("SV ÷ premiums paid", `${pct.toFixed(1)}%`) : ""}
                             ${(savCbBase > 0 && savPaidBase > 0) ? bd("🎁 + cashback → SV + cashback", `${(((savSvBase + savCbBase) / savPaidBase) * 100).toFixed(1)}%`, "", "var(--income-color)") : ""}
                         </div>
-                        ${personBreak ? `<div>${personBreak}</div>` : ""}
+                        ${personBreak ? `<div class="ins-bd-sec">${personBreak}</div>` : ""}
                     </div>
                     <div class="ins-bd-note">Premiums are counted only up to each policy's SV date. Net is a rough guide, not an investment return (riders, bonuses and fund prices move). A policy whose premium now comes from ACB stops adding premiums, so its % reads high.</div>`;
-                cardVal = `<div class="ins-sum-card${insSumOpen === "val" ? " on" : ""}">
+                cardVal = `<div class="ins-sum-card${insSumOpen === "val" ? " on" : ""}" data-k="val">
                     <div class="ins-sum-k">Value · surrender</div>
                     <div class="ins-sum-v">${fmtB(svCounted)}</div>
                     <div class="ins-sum-n">${svCountedN ? `Surrender value of ${svCountedN} ${svCountedN === 1 ? "policy" : "policies"} that count toward Net Worth${includeInsuranceSvInNetWorth ? "" : " (the Net Worth switch is off)"}.` : "None of these policies counts toward Net Worth."}</div>
@@ -15888,9 +15886,12 @@
                     ${btn("val")}
                 </div>`;
             }
-            const panelHtml = insSumOpen === "obl" ? (insuranceStatusFilter === "ended" ? "" : `<div style="max-width:460px;">${bdObl}</div>`) : (insSumOpen === "cash" ? `<div style="max-width:460px;">${bdCash}</div>` : (insSumOpen === "val" && bdVal ? bdVal : ""));
+            insSumPanels = { obl: insuranceStatusFilter === "ended" ? "" : `<div style="max-width:460px;">${bdObl}</div>`, cash: `<div style="max-width:460px;">${bdCash}</div>`, val: bdVal };
             summary.style.display = filtered.length ? "block" : "none";
-            summary.innerHTML = `<div class="ins-sum3">${insuranceStatusFilter === "ended" ? "" : cardObl}${cardCash}${cardVal}</div>${panelHtml ? `<div class="ins-bd-panel">${panelHtml}</div>` : ""}<div class="ins-sum-scope">Life, medical &amp; other personal policies — car, home &amp; travel are on their own tab</div>`;
+            const keepScroll = (summary.querySelector(".ins-sum3") || {}).scrollLeft || 0;
+            summary.innerHTML = `<div class="ins-sum3">${insuranceStatusFilter === "ended" ? "" : cardObl}${cardCash}${cardVal}</div><div class="ins-bd-panel" style="display:none;"></div><div class="ins-sum-scope">Life, medical &amp; other personal policies — car, home &amp; travel are on their own tab</div>`;
+            { const row = summary.querySelector(".ins-sum3"); if (row) row.scrollLeft = keepScroll; }
+            insSumApplyOpen(false);
 
             // The old separate Savings panel now lives inside the Value card.
             const savEl = document.getElementById("insuranceSavingsSummary");
@@ -15918,6 +15919,22 @@
         // circle-slash looked alarming for something that is just a setting).
         const INS_NO_NW_ICON = '<svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true" style="vertical-align:-1px; margin-right:3px;"><circle cx="6" cy="6" r="4.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2.2 1.6"/></svg>';
         let insSumOpen = null; // v514: which summary card's breakdown panel is open: "obl" | "cash" | "val" | null
+        let insSumPanels = {}; // v515: the three panels' HTML, kept so a tap swaps the panel in place (no re-render, so the card row keeps its horizontal scroll)
+        function insSumApplyOpen(scrollToCard) {
+            const root = document.getElementById("insuranceSummary");
+            if (!root) return;
+            const panel = root.querySelector(".ins-bd-panel");
+            const html = insSumOpen ? (insSumPanels[insSumOpen] || "") : "";
+            if (!html) insSumOpen = null;
+            root.querySelectorAll(".ins-sum-card").forEach(c => {
+                const on = c.dataset.k === insSumOpen;
+                c.classList.toggle("on", on);
+                const b = c.querySelector(".ins-bd-btn");
+                if (b) { b.classList.toggle("on", on); b.textContent = "Breakdown " + (on ? "▴" : "▾"); }
+                if (on && scrollToCard) c.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+            });
+            if (panel) { panel.style.display = html ? "block" : "none"; panel.innerHTML = html; }
+        }
 
         // v513: the slimmed policy card. Three layers: (1) name + insurer/person + ONE figure on the right
         // (SV for a savings policy, premiums paid for a protection policy), (2) up to two covers + small
@@ -25514,7 +25531,7 @@
             // v468: INSURANCE
             navigateToInsurancePage: () => navigateToInsurancePage(),
             insuranceSetView: (el) => insuranceSetView(el), // v474
-            insSumToggle: (el) => { insSumOpen = (insSumOpen === el.dataset.k) ? null : el.dataset.k; renderInsurancePage(); }, // v514
+            insSumToggle: (el) => { insSumOpen = (insSumOpen === el.dataset.k) ? null : el.dataset.k; insSumApplyOpen(true); }, // v514 (in place since v515)
             openInsurancePrintSheet: () => openInsurancePrintSheet(), // v496
             insurancePrintRun: () => insurancePrintRun(), // v496
             insToggleReturnNote: (el) => { const w = el.closest(".ins-ret-wrap"); const n = w && w.querySelector(".ins-med-note"); if (n) n.classList.toggle("open"); }, // v487

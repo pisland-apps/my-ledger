@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v525";
+        const APP_VERSION = "v526";
         const APP_VERSION_DATE = "2026-10-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -22282,18 +22282,22 @@
                     targetRows = (rowsByAccount[accName] = rowsByAccount[accName] || []);
                 }
                 targetRows.push(`
-                    <tr style="cursor:pointer;" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}">
-                        <td style="padding:8px 10px;">
-                            <strong>${escapeHtml(f.name)}</strong><br>
-                            <span style="font-size:0.68rem; color:var(--text-muted);">${escapeHtml(f.code || "")}</span><br>
-                            <span style="font-size:0.68rem; color:var(--primary); font-weight:700;">${escapeHtml(ownerLabel)}</span>
-                        </td>
-                        <td style="padding:8px 10px; text-align:right;"><strong>${formatCurrency(value, f.currency)}</strong></td>
-                        <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested, f.currency)}</td>
-                        <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested - recovered, f.currency)}</td>
-                        <td style="padding:8px 10px; text-align:right; color:${plColor}; font-weight:700;">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)}</td>
-                        <td style="padding:8px 10px; text-align:right; color:${plColor};">${returnPct.toFixed(2)}%</td>
-                    </tr>`);
+                    <div class="fh-card" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}">
+                        <div class="fh-head">
+                            <div style="min-width:0;">
+                                <div class="fh-name">${escapeHtml(f.name)}</div>
+                                <div class="fh-sub">${escapeHtml(f.code || "")}${f.code && ownerLabel ? "<br>" : ""}<span class="fh-owner">${escapeHtml(ownerLabel)}</span></div>
+                            </div>
+                            <div class="fh-val">
+                                <div class="fh-val-main">${formatCurrency(value, f.currency)}</div>
+                                <div class="fh-pl" style="color:${plColor};">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)} (${returnPct.toFixed(2)}%)</div>
+                            </div>
+                        </div>
+                        <div class="fh-stats">
+                            <div><div class="fh-stat-l">Invested</div><div class="fh-stat-v">${formatCurrency(invested, f.currency)}</div></div>
+                            <div><div class="fh-stat-l" title="Invested minus Recovered (cash already taken out via sells / payouts). Current Inv. + P/L = Value.">Current Inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, f.currency)}</div></div>
+                        </div>
+                    </div>`);
             });
 
             document.getElementById("portfolioValueTotal").textContent = formatCurrency(totalValueBase, baseCurrency);
@@ -22369,27 +22373,7 @@
             detailWrap.innerHTML = accNames.map(accName => `
                 <div style="margin-bottom:14px;">
                     <div style="font-size:0.72rem; font-weight:800; color:var(--text-muted); text-transform:uppercase; margin-bottom:4px;">📊 ${escapeHtml(accName)}</div>
-                    <table style="width:100%; min-width:680px; table-layout:fixed; border-collapse:collapse; font-size:0.78rem; white-space:nowrap;">
-                        <colgroup>
-                            <col style="width:24%;">
-                            <col style="width:17%;">
-                            <col style="width:17%;">
-                            <col style="width:17%;">
-                            <col style="width:15%;">
-                            <col style="width:10%;">
-                        </colgroup>
-                        <thead>
-                            <tr style="text-align:left; color:var(--text-muted); font-size:0.68rem; text-transform:uppercase;">
-                                <th style="padding:6px 10px;">Fund</th>
-                                <th style="padding:6px 10px; text-align:right;">Value</th>
-                                <th style="padding:6px 10px; text-align:right;">Invested</th>
-                                <th style="padding:6px 10px; text-align:right;" title="Invested minus Recovered (cash already taken out via sells / payouts). Current Inv. + P/L = Value.">Current Inv.</th>
-                                <th style="padding:6px 10px; text-align:right;">P/L</th>
-                                <th style="padding:6px 10px; text-align:right;">Return</th>
-                            </tr>
-                        </thead>
-                        <tbody>${(rowsByAccount[accName] || []).join("")}${closedByAccount[accName] ? closedFundsSummaryRow(closedByAccount[accName].rows.length, (closedByAccount[accName].plBase >= 0 ? "+" : "") + formatCurrency(closedByAccount[accName].plBase, baseCurrency), closedByAccount[accName].plBase >= 0, 6) + (getShowClosedFunds() ? closedByAccount[accName].rows.join("") : "") : ""}</tbody>
-                    </table>
+                    ${(rowsByAccount[accName] || []).join("")}${closedByAccount[accName] ? closedFundsSummaryCard(closedByAccount[accName].rows.length, (closedByAccount[accName].plBase >= 0 ? "+" : "") + formatCurrency(closedByAccount[accName].plBase, baseCurrency), closedByAccount[accName].plBase >= 0) + (getShowClosedFunds() ? closedByAccount[accName].rows.join("") : "") : ""}
                 </div>`).join("");
         }
 

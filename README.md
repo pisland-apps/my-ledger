@@ -4006,3 +4006,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - The 11-column table (which needed sideways scrolling) is now one card per fund: name, code / category / owner, big Value with P/L and Return % on the top right; Units, NAV, Invested, Current Inv., Annualised and Holding in a grid below. PC: one row; phone: 3 per row.
 - Total is a card at the bottom (Value, P/L, Return, Invested, Current Inv.). Closed-fund summary line and "fund deleted" rows keep working. Tap a card to open the fund, as before.
 - Display layer only: no data, calculation or print changes. The Portfolio Fund Detail table is unchanged. `APP_VERSION` / `CACHE_NAME` -> v525.
+
+## v526: Portfolio Fund Detail - one card per fund (same look as the Unit Trust Fund Holdings cards)
+- The per-account table (min-width 680px, sideways scroll on phone) is now cards grouped under each account name: fund name, code / owner, Value with P/L and Return % on the right, Invested and Current Inv. below. Tap a card to open the fund. The closed-fund summary line still works.
+- Display layer only: no data, calculation or print changes. Reuses the v525 `.fh-*` CSS. `APP_VERSION` / `CACHE_NAME` -> v526.

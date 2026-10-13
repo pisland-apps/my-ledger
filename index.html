@@ -340,6 +340,9 @@
            No tooltip (v490) — it covered the Financial Assets amount while comparing; the
            description lives in Setting > Net Worth Card. Hidden by renderApp() when no in-force
            policy has a surrender value. */
+        .drive-status-line { margin: -8px 0 8px 2px; font-size: 0.68rem; font-weight: 600; color: var(--text-muted); cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+        .drive-status-line.hidden { display: none; }
+        .drive-status-line.warn { color: #d97706; font-weight: 700; }
         .nw-ins-info {
             display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 6px 12px;
             font-size: 0.72rem; font-weight: 700; color: rgba(255,255,255,0.92);
@@ -3473,6 +3476,8 @@
                     <button class="lock-btn-header insights-open-btn" title="Open Insights panel" aria-label="Open Insights panel" data-click="openInsightsDrawer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><line x1="6" y1="20" x2="6" y2="11"/><line x1="12" y1="20" x2="12" y2="5"/><line x1="18" y1="20" x2="18" y2="14"/></svg></button>
                 </div>
             </div>
+            <!-- v519: Google Drive sync status (hidden unless Drive is connected) — see updateDriveStatusLine(). -->
+            <div class="drive-status-line hidden" id="driveStatusLine" data-click="driveStatusLineTap" title="Google Drive sync — tap for details"></div>
             <div class="net-worth-hero-card">
                 <div class="net-worth-container">
                     <div style="cursor:pointer;" data-click="netWorthCardTap" title="Tap for the full Net Worth Statement (assets vs. liabilities breakdown)">

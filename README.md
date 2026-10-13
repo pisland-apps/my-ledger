@@ -3959,3 +3959,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **Net Worth Statement**: the "Insurance (surrender value)" row is no longer under Assets. A dashed memo card under MY NET WORTH shows it as information.
 - **"Not in Net Worth" -> "Not mine"** on the Insurance page (tag on the card, edit checkbox, Obligation / Value breakdowns). The stored field is unchanged (`excludeFromNetWorth`), so no data change: it now means "this policy is not mine, leave it out of the Value total". The Value card says "Information only - not part of Net Worth".
 - Net Worth by Member and the trend / by-currency reports needed no change (they read the same helper, which now returns zero). `APP_VERSION` / `CACHE_NAME` -> v518.
+
+## v519: Dashboard - Google Drive sync status line
+- A small line under the Dashboard header shows the sync state, so you can confirm an entry reached Google Drive without opening Setting: **☁ Waiting to upload…** (a change is waiting out the ~4 s delay) -> **☁ Syncing…** -> **☁ Synced 12:14 PM** (a date is added when it was not today).
+- Amber: **⚠ Not uploaded yet — retrying**, **⚠ Sync paused — resolve in Setting**, **☁ Auto-sync off · last 12:14 PM**.
+- Tap it: retries the upload now when something is waiting, otherwise shows the full "Last synced" date and time in a toast.
+- Hidden when Google Drive is not connected. It only reads the existing sync state (no change to how syncing works, no DB change).
+- `APP_VERSION` / `CACHE_NAME` -> v519.

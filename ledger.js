@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v518";
+        const APP_VERSION = "v519";
         const APP_VERSION_DATE = "2026-10-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -25006,6 +25006,7 @@
         function armDriveAutoSyncTimer() {
             clearTimeout(driveAutoSyncTimer);
             driveAutoSyncPending = true;
+            updateDriveStatusLine(); // v519: "Waiting to upload…" straight away
             driveAutoSyncTimer = setTimeout(() => {
                 driveAutoSyncPending = false;
                 attemptAutoSync().catch((err) => {
@@ -25186,11 +25187,52 @@
             const connectedRow = document.getElementById("driveConnectedRow");
             if (disconnectedRow) disconnectedRow.classList.remove("hidden");
             if (connectedRow) connectedRow.classList.add("hidden");
+            updateDriveStatusLine(); // v519
+        }
+
+        // v519: one small status line under the Dashboard header so a sync can be confirmed without going
+        // to Setting. Read-only: it only looks at the existing sync state. Hidden when Drive is not connected.
+        //   Waiting to upload… (a write is waiting out the 4 s debounce / not uploaded yet) -> Syncing… -> Synced 12:14 PM
+        //   Amber: Auto-sync off, Not uploaded yet — retrying, Sync paused.
+        let driveStatusLineText = "";
+        function driveStatusTimeLabel(ts) {
+            const d = new Date(ts), now = new Date();
+            const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            return d.toDateString() === now.toDateString() ? time : `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
+        }
+        function updateDriveStatusLine() {
+            const el = document.getElementById("driveStatusLine");
+            if (!el) return;
+            const connectedRow = document.getElementById("driveConnectedRow");
+            const connected = !!connectedRow && !connectedRow.classList.contains("hidden");
+            if (!connected) { el.classList.add("hidden"); driveStatusLineText = ""; return; }
+            const toggle = document.getElementById("driveAutoSyncToggle");
+            const autoOn = !toggle || toggle.checked;
+            const t = driveLastSyncedAtShown ? driveStatusTimeLabel(driveLastSyncedAtShown) : "";
+            let text, warn = false;
+            if (driveSyncPauseState) { text = "⚠ Sync paused — resolve in Setting"; warn = true; }
+            else if (driveSyncErrorNote) { text = "⚠ Not uploaded yet — retrying"; warn = true; }
+            else if (driveSyncInFlight) text = "☁ Syncing…";
+            else if (!autoOn) { text = "☁ Auto-sync off" + (t ? " · last " + t : ""); warn = true; }
+            else if (driveAutoSyncPending || driveDirtyStoreSet.size > 0) text = "☁ Waiting to upload…";
+            else text = t ? "☁ Synced " + t : "☁ Not synced yet";
+            el.classList.remove("hidden");
+            el.classList.toggle("warn", warn);
+            if (text !== driveStatusLineText) { driveStatusLineText = text; el.textContent = text; }
+        }
+        setInterval(() => { if (!document.hidden) updateDriveStatusLine(); }, 1000);
+        // Tap: retry now when something is waiting, otherwise show the full last-synced date and time.
+        function driveStatusLineTap() {
+            const waiting = !driveSyncInFlight && !driveSyncPauseState && (driveDirtyStoreSet.size > 0 || driveSyncErrorNote);
+            if (waiting) { kickDriveSyncIfDirty(); showToast("☁ Trying to upload now…"); }
+            else if (driveLastSyncedAtShown) { const d = new Date(driveLastSyncedAtShown); showToast(`☁ Last synced ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`); }
+            updateDriveStatusLine();
         }
 
         function updateDriveLastSyncedText(lastSyncedAt) {
             const el = document.getElementById("driveLastSyncedText");
             if (lastSyncedAt) driveLastSyncedAtShown = lastSyncedAt;
+            updateDriveStatusLine(); // v519
             if (!el) return;
             const note = driveSyncErrorNote ? "  " + driveSyncErrorNote : "";
             if (!lastSyncedAt) { el.textContent = "Not synced yet" + note; return; }
@@ -25209,6 +25251,7 @@
         // ---------------------------------------------------------------------------------
         const CLICK_ACTIONS = {
             openSidebar: () => openSidebar(),
+            driveStatusLineTap: () => driveStatusLineTap(), // v519
             closeSidebar: () => closeSidebar(),
             monthlyTrendBarTap: (el, e) => { e.stopPropagation(); showMonthlyTrendTooltip(e, el); },
             hideMonthlyTrendTooltip: () => hideMonthlyTrendTooltip(),

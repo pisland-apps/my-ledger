@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v520";
+        const APP_VERSION = "v521";
         const APP_VERSION_DATE = "2026-10-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15316,6 +15316,7 @@
         let insuranceCache = [];
         let activeInsuranceId = null;
         let insuranceStatusFilter = "active"; // "active" | "ended" | "all"
+        let insuranceGroup = "person"; // v521: Policies list grouping: "person" | "insurer" | "none"
         let insRowCounter = 0;
 
         function makeInsuranceId() {
@@ -15670,6 +15671,12 @@
             renderInsurancePage();
         }
 
+        function insuranceSetGroup(el) {
+            insuranceGroup = el.dataset.group;
+            document.querySelectorAll("#insuranceGroupToggle .nav-view-toggle-btn").forEach(b => b.classList.toggle("active", b.dataset.group === insuranceGroup));
+            renderInsurancePage();
+        }
+
         async function renderInsurancePage() {
             const list = document.getElementById("insurancePageList");
             const empty = document.getElementById("insurancePageEmpty");
@@ -15687,6 +15694,8 @@
             const filterRow = document.getElementById("insuranceFilterRow");
             if (filterRow) filterRow.style.display = showStatusFilter ? "flex" : "none";
             if (statusToggle) statusToggle.style.display = showStatusFilter ? "" : "none";
+            const groupRow = document.getElementById("insuranceGroupRow"); // v521: grouping only applies to the Policies list
+            if (groupRow) groupRow.style.display = insuranceView === "policies" ? "flex" : "none";
             if (isReport) {
                 list.innerHTML = "";
                 list.style.paddingBottom = "0"; // v479: its 90px bottom padding sat as a blank gap above the reports
@@ -15708,6 +15717,11 @@
             const filtered = personalPolicies.filter(p => insuranceStatusFilter === "all" ? true
                 : (insuranceStatusFilter === "ended" ? !insIsLive(p) : insIsLive(p)))
                 .sort((a, b) => {
+                    // v521: grouped by person -> members in their own order (not-set last) before anything else
+                    if (insuranceGroup === "person") {
+                        const rk = (p) => { const i = p.insuredMemberId ? membersCache.findIndex(m => m.id === p.insuredMemberId) : -1; return i < 0 ? 9999 : i; };
+                        if (rk(a) !== rk(b)) return rk(a) - rk(b);
+                    }
                     // Insurer first (blank insurer last), then type in the order of the Type list
                     // (Life before Medical…), then plan name.
                     const ia = (a.insurer || "").trim().toLowerCase(), ib = (b.insurer || "").trim().toLowerCase();
@@ -15767,9 +15781,28 @@
                     if (!savMinDate || f.latestSv.date < savMinDate) savMinDate = f.latestSv.date;
                     if (!savMaxDate || f.latestSv.date > savMaxDate) savMaxDate = f.latestSv.date;
                 }
-                return insPolicyCardHtml(p, f, daysUntil);
+                return insPolicyCardHtml(p, f, daysUntil, { hideWho: insuranceGroup === "person", hideInsurer: insuranceGroup === "insurer" });
             });
-            list.innerHTML = rows.join("");
+            // v521: group headers (avatar + name + policy count + yearly obligation of the in-force ones)
+            if (insuranceGroup === "none" || !filtered.length) list.innerHTML = rows.join("");
+            else {
+                const groups = new Map();
+                filtered.forEach((p, i) => {
+                    let key, label, m = null;
+                    if (insuranceGroup === "person") { key = p.insuredMemberId && getMemberById(p.insuredMemberId) ? p.insuredMemberId : ""; m = key ? getMemberById(key) : null; label = m ? m.name : "Insured person not set"; }
+                    else { const ins = (p.insurer || "").trim(); key = ins.toLowerCase(); label = ins || "No insurer"; }
+                    if (!groups.has(key)) groups.set(key, { label, m, idx: [], yearly: 0 });
+                    const g = groups.get(key);
+                    g.idx.push(i);
+                    if (insIsLive(p)) { const ff = figOf.get(p.id); g.yearly += insConvert(ff.annual, ff.cur, baseCurrency); }
+                });
+                list.innerHTML = [...groups.values()].map(g => {
+                    const color = g.m && /^#[0-9a-f]{6}$/i.test(g.m.color || "") ? g.m.color : "#94a3b8";
+                    const initial = ([...String(g.label).trim()][0] || "?").toUpperCase();
+                    const unset = insuranceGroup === "person" && !g.m;
+                    return `<div class="insp-ghead" style="--pc:${color};"><span class="insp-avatar sm">${unset ? "?" : escapeHtml(initial)}</span><span class="insp-who"><span class="insp-who-n"${unset ? ' style="color:var(--text-muted);"' : ""}>${escapeHtml(g.label)}</span><span class="insp-who-s">${g.idx.length} ${g.idx.length === 1 ? "policy" : "policies"}</span></span>${g.yearly > 0 ? `<span class="insp-prem"><b>${formatCurrency(g.yearly, baseCurrency)}</b><span>per year</span></span>` : ""}</div>${g.idx.map(i => rows[i]).join("")}`;
+                }).join("");
+            }
 
             // ---- "Needs attention" strip (v513): the things that used to hide inside individual cards ----
             const attEl = document.getElementById("insuranceAttention");
@@ -15817,10 +15850,13 @@
                     ${oblNotNw > 0 ? bd(`of which ${INS_NO_NW_ICON}Not mine`, fmtB(oblNotNw)) : ""}
                     <div class="ins-bd-note">In-force policies only${oblAcbMissing ? `; ${oblAcbMissing} ACB ${oblAcbMissing === 1 ? "policy has" : "policies have"} no premium amount entered, so ${oblAcbMissing === 1 ? "it is" : "they are"} not counted` : ""}. Single-payment policies add nothing here.</div></div>`;
             const btn = (k) => `<button type="button" class="ins-bd-btn${insSumOpen === k ? " on" : ""}" data-click="insSumToggle" data-k="${k}">Breakdown ${insSumOpen === k ? "▴" : "▾"}</button>`;
+            // v521: each card = label (+ ⓘ with the full explanation), the figure, ONE short line, Breakdown at the bottom
+            const infoBtn = `<button type="button" class="ins-info-btn" data-click="insSumInfo" aria-label="What is this?">i</button>`;
             const cardObl = `<div class="ins-sum-card${insSumOpen === "obl" ? " on" : ""}" data-k="obl">
-                <div class="ins-sum-k">Obligation · per year</div>
+                <div class="ins-sum-k"><span>Obligation · per year</span>${infoBtn}</div>
                 <div class="ins-sum-v">${fmtB(oblTotal)}</div>
-                <div class="ins-sum-n">What the policies ask for each year: cash${oblAcbCount ? " + premiums taken from accumulated bonus (ACB)" : ""}.</div>
+                <div class="ins-sum-n">${oblAcbCount ? "Cash + ACB premiums due" : "Cash premiums due"} each year</div>
+                <div class="ins-sum-help">What the policies ask for each year: cash${oblAcbCount ? " + premiums taken from accumulated bonus (ACB)" : ""}.</div>
                 ${btn("obl")}
             </div>`;
             const netCash = paidBase - parentBase - cbBase;
@@ -15830,9 +15866,10 @@
                     ${bd("Net cash out", fmtB(netCash), "tot")}
                     <div class="ins-bd-note">Typed-in history plus premiums recorded in the ledger, for ${scopeWord}. Premiums taken from accumulated bonus are not cash and are not in here.</div></div>`;
             const cardCash = `<div class="ins-sum-card${insSumOpen === "cash" ? " on" : ""}" data-k="cash">
-                <div class="ins-sum-k">Cash out · so far</div>
+                <div class="ins-sum-k"><span>Cash out · so far</span>${infoBtn}</div>
                 <div class="ins-sum-v">${fmtB(netCash)}</div>
-                <div class="ins-sum-n">What really left your pocket: premiums paid${parentBase > 0 ? " − paid by parent" : ""}${cbBase > 0 ? " − cashback received" : ""}.</div>
+                <div class="ins-sum-n">Premiums paid${parentBase > 0 ? " − parent" : ""}${cbBase > 0 ? " − cashback" : ""}</div>
+                <div class="ins-sum-help">What really left your pocket: premiums paid${parentBase > 0 ? " − paid by parent" : ""}${cbBase > 0 ? " − cashback received" : ""}.</div>
                 ${btn("cash")}
             </div>`;
             let cardVal = "", bdVal = "";
@@ -15876,17 +15913,18 @@
                     </div>
                     <div class="ins-bd-note">Premiums are counted only up to each policy's SV date. Net is a rough guide, not an investment return (riders, bonuses and fund prices move). A policy whose premium now comes from ACB stops adding premiums, so its % reads high.</div>`;
                 cardVal = `<div class="ins-sum-card${insSumOpen === "val" ? " on" : ""}" data-k="val">
-                    <div class="ins-sum-k">Value · surrender</div>
+                    <div class="ins-sum-k"><span>Value · surrender</span>${infoBtn}</div>
                     <div class="ins-sum-v">${fmtB(svCounted)}</div>
-                    <div class="ins-sum-n">${svCountedN ? `Surrender value of ${svCountedN} in-force ${svCountedN === 1 ? "policy" : "policies"} that ${svCountedN === 1 ? "is" : "are"} yours. Information only — not part of Net Worth.` : "None of these policies is yours and in force."}</div>
-                    <div class="ins-sum-n" style="color:${oldestSvAge > 365 ? "var(--expense-color)" : "var(--text-muted)"}; font-weight:700;">Statements ${escapeHtml(svDateLabel)}${oldestSvAge > 365 ? " ⚠️ oldest is over a year old" : ""}</div>
+                    <div class="ins-sum-n">${svCountedN ? `${svCountedN} in-force ${svCountedN === 1 ? "policy" : "policies"} · info only` : "None is yours and in force"}</div>
+                    <div class="ins-sum-n">${oldestSvAge > 365 ? `<span class="ins-sum-warn">⚠ Oldest ${escapeHtml(savMinDate)}</span>` : `Statements ${escapeHtml(svDateLabel)}`}</div>
+                    <div class="ins-sum-help">${svCountedN ? `Surrender value of ${svCountedN} in-force ${svCountedN === 1 ? "policy" : "policies"} that ${svCountedN === 1 ? "is" : "are"} yours. Information only — not part of Net Worth.` : "None of these policies is yours and in force."} Statements ${escapeHtml(svDateLabel)}${oldestSvAge > 365 ? " — the oldest is over a year old" : ""}.</div>
                     ${btn("val")}
                 </div>`;
             }
             insSumPanels = { obl: insuranceStatusFilter === "ended" ? "" : `<div style="max-width:460px;">${bdObl}</div>`, cash: `<div style="max-width:460px;">${bdCash}</div>`, val: bdVal };
             summary.style.display = filtered.length ? "block" : "none";
             const keepScroll = (summary.querySelector(".ins-sum3") || {}).scrollLeft || 0;
-            summary.innerHTML = `<div class="ins-sum3">${insuranceStatusFilter === "ended" ? "" : cardObl}${cardCash}${cardVal}</div><div class="ins-bd-panel" style="display:none;"></div><div class="ins-sum-scope">Life, medical &amp; other personal policies — car, home &amp; travel are on their own tab</div>`;
+            summary.innerHTML = `<div class="ins-sum3">${insuranceStatusFilter === "ended" ? "" : cardObl}${cardCash}${cardVal}</div><div class="ins-sum-helpbar" style="display:none;"></div><div class="ins-bd-panel" style="display:none;"></div><div class="ins-sum-scope">Life, medical &amp; other personal policies — car, home &amp; travel are on their own tab</div>`;
             { const row = summary.querySelector(".ins-sum3"); if (row) row.scrollLeft = keepScroll; }
             insSumApplyOpen(false);
 
@@ -15898,7 +15936,7 @@
         // v513: compact "Sum insured" for the card — up to 2 covers on one wrapping line, the rest as "+N".
         // Same merge rules as insCardCoverHtml (same-type rows summed; a medical row shows its annual limit).
         function insCoverGroups(p) {
-            const groups = new Map();
+            const groups = new Map(), kinds = new Map(); // v521: kinds (name -> cover kind) for the tinted badges
             (p.coverages || []).filter(c => c && (c.kind || c.label)).forEach(c => {
                 const k = INS_COV_KINDS[c.kind];
                 const name = (k && c.kind !== "other") ? k[1] : (c.label || (k ? k[1] : "Cover"));
@@ -15908,8 +15946,9 @@
                 else if (c.kind === "medical" && typeof c.lifetimeLimit === "number") { amount = c.lifetimeLimit; tag = " lifetime limit"; }
                 if (amount == null) return;
                 groups.set(name + tag, (groups.get(name + tag) || 0) + amount);
+                if (!kinds.has(name + tag)) kinds.set(name + tag, INS_COV_KINDS[c.kind] ? c.kind : "other");
             });
-            return { entries: [...groups.entries()] };
+            return { entries: [...groups.entries()], kinds };
         }
 
         // v514: "Not mine" marker (renamed v518; the stored field is still excludeFromNetWorth) — a small hollow dashed circle in the muted text colour (the red
@@ -15937,71 +15976,86 @@
         // (SV for a savings policy, premiums paid for a protection policy), (2) up to two covers + small
         // chips (riders count, ACB, cashback, attachments, note), (3) one footer line: the next premium.
         // Everything else (riders in full, agent, notes, attachments, history) is one tap away in the detail sheet.
-        function insPolicyCardHtml(p, f, daysUntil) {
+        // v521: Policies list redesign. Group headers (by person / insurer), a tinted icon badge, ONE labelled
+        // main figure on the right (Surrender value for savings / investment, Premium / year for protection,
+        // "Paid so far" when there is no premium on record), sum-insured as small tinted badges, fewer and
+        // clearer chips, and a due-date pill in the footer (grey > 30 days, amber within 30, red overdue).
+        const INS_TYPE_TINT = { life: "59,130,246", savings: "59,130,246", investment: "59,130,246", term: "139,92,246", medical: "20,184,166", critical: "244,63,94", accident: "245,158,11", other: "100,116,139" };
+        function insPolicyCardHtml(p, f, daysUntil, ctx) {
+            ctx = ctx || {};
             const live = insIsLive(p);
             const icon = INS_TYPE_ICONS[p.type] || INS_TYPE_ICONS.other;
+            const tint = INS_TYPE_TINT[p.type] || INS_TYPE_TINT.other;
             const metaParts = [];
-            if (p.product && p.insurer) metaParts.push(escapeHtml(p.insurer));
-            if (p.insuredMemberId && getMemberById(p.insuredMemberId)) metaParts.push(accountOwnerTagHTML({ memberIds: [p.insuredMemberId] }));
+            if (p.product && p.insurer && !ctx.hideInsurer) metaParts.push(escapeHtml(p.insurer));
+            if (!ctx.hideWho && p.insuredMemberId && getMemberById(p.insuredMemberId)) metaParts.push(accountOwnerTagHTML({ memberIds: [p.insuredMemberId] }));
             if (live) { const py = insPolicyYear(p); if (py) metaParts.push(`<span title="Policy year — next anniversary ${escapeHtml(py.next)}">Year ${py.year}${py.of ? " / " + py.of : ""}</span>`); }
             if (!live) metaParts.push(escapeHtml(INS_STATUSES[p.status] || p.status));
+            if (p.excludeFromNetWorth) metaParts.push(`<span class="insp-nm" title="Not mine — left out of the Value total">${INS_NO_NW_ICON}Not mine</span>`);
 
-            // Right-hand figure
+            // Right-hand figure: always says what the number is.
             let fig;
             if (f.svValue != null) {
                 const svBasis = (f.paidToSv != null && f.paidToSv > 0) ? f.paidToSv : (f.paid > 0 ? f.paid : null);
                 const svPct = svBasis ? (f.svValue / svBasis) * 100 : null;
                 const chip = svPct == null ? "" : ` <span class="ins-pct ${svPct >= 100 ? "up" : ""}"${p.paidByBonus ? ' title="Premium now comes from accumulated bonus, so this % reads high"' : ""}>${svPct.toFixed(0)}%</span>`;
-                fig = `<div class="ins-card-big">${formatCurrency(f.svValue, f.cur)}</div>
-                       <div class="ins-card-sub" style="${f.svStale ? "color:var(--expense-color); font-weight:700;" : ""}">SV · as of ${escapeHtml(f.latestSv.date)}${f.svStale ? " ⚠️" : ""}</div>
+                fig = `<div class="insp-fig-k">Surrender value</div>
+                       <div class="ins-card-big">${formatCurrency(f.svValue, f.cur)}</div>
+                       <div class="ins-card-sub" style="${f.svStale ? "color:var(--expense-color); font-weight:700;" : ""}">as of ${escapeHtml(f.latestSv.date)}${f.svStale ? " ⚠️" : ""}</div>
                        <div class="ins-card-sub">Paid ${formatCurrency(f.paid, f.cur)}${chip}</div>`;
+            } else if (live && f.annual > 0) {
+                fig = `<div class="insp-fig-k">${p.paidByBonus ? "Via ACB · year" : "Premium · year"}</div>
+                       <div class="ins-card-big">${formatCurrency(f.annual, f.cur)}</div>
+                       ${f.paid > 0 ? `<div class="ins-card-sub">Paid ${formatCurrency(f.paid, f.cur)} so far</div>` : ""}`;
             } else {
-                fig = `<div class="ins-card-sub">Paid</div><div class="ins-card-big ins-muted">${formatCurrency(f.paid, f.cur)}</div>`;
+                fig = `<div class="insp-fig-k">Paid so far</div><div class="ins-card-big ins-muted">${formatCurrency(f.paid, f.cur)}</div>`;
             }
 
-            // Cover line
-            const cg = insCoverGroups(p).entries;
+            // Sum insured: small tinted badges (up to 3), the rest as "+N"
+            const cgd = insCoverGroups(p), cg = cgd.entries;
             let cover = "";
             if (cg.length) {
-                cover = `<div class="ins-card-cover"><span class="ins-card-cover-k">Sum insured</span>${cg.slice(0, 2).map(([n, a]) => `<span>${escapeHtml(n)} <b>${formatCurrency(a, f.cur)}</b></span>`).join("")}${cg.length > 2 ? `<span>+${cg.length - 2} more</span>` : ""}</div>`;
+                const badge = ([n, a]) => `<span class="insp-badge" style="--bt:${INS_TYPE_TINT[cgd.kinds.get(n)] || INS_TYPE_TINT.other};">${escapeHtml(n)} <b>${formatCurrency(a, f.cur)}</b></span>`;
+                cover = `<div class="insp-cov"><span class="ins-card-cover-k">Sum insured</span>${cg.slice(0, 3).map(badge).join("")}${cg.length > 3 ? `<span class="insp-more">+${cg.length - 3} more</span>` : ""}</div>`;
             } else if (live) {
-                cover = `<div class="ins-card-cover"><span>Sum insured not set ⚠️</span></div>`;
+                cover = `<div class="insp-cov"><span class="insp-badge" style="--bt:245,158,11;">Sum insured not set ⚠️</span></div>`;
             }
 
-            // Chips
+            // Chips (each one says what it is): riders, ACB, cashback (received + next in ONE chip), files, note
             const chips = [];
-            if (p.excludeFromNetWorth) chips.push(`<span class="ins-chip dashed">${INS_NO_NW_ICON}Not mine</span>`);
             const riders = insRiderItemsOf(p);
             if (riders.length) chips.push(`<span class="ins-chip">🧩 ${riders.length} rider${riders.length === 1 ? "" : "s"}</span>`);
             if (p.paidByBonus) chips.push(`<span class="ins-chip amber">💰 Premium via ACB${p.paidByBonusSince ? " since " + escapeHtml(String(p.paidByBonusSince).slice(0, 4)) : ""}</span>`);
             const nx = insCashbackNext(p, f);
-            if (nx && nx.date && nx.amount != null) {
-                chips.push(nx.overdue
-                    ? `<span class="ins-chip amber">🎁 Payout due ${escapeHtml(nx.date)}</span>`
-                    : `<span class="ins-chip green">🎁 Next ${formatCurrency(nx.amount, f.cur)} · ${escapeHtml(nx.date)}</span>`);
-            }
-            if (f.cbCount > 0) chips.push(`<span class="ins-chip">🎁 ${formatCurrency(f.cbTotal, f.cur)} received</span>`);
-            if (insAttCount(p)) chips.push(`<span class="ins-chip">📎 ${insAttCount(p)}</span>`);
+            const nxOk = !!(nx && nx.date && nx.amount != null);
+            const cbParts = [];
+            if (f.cbCount > 0) cbParts.push(`${formatCurrency(f.cbTotal, f.cur)} received`);
+            if (nxOk) cbParts.push(nx.overdue ? `payout due ${escapeHtml(nx.date)}` : `next ${formatCurrency(nx.amount, f.cur)} on ${escapeHtml(nx.date)}`);
+            if (cbParts.length) chips.push(`<span class="ins-chip wrap ${nxOk ? (nx.overdue ? "amber" : "green") : ""}">🎁 Cashback ${cbParts.join(" · ")}</span>`);
+            if (insAttCount(p)) chips.push(`<span class="ins-chip">📎 ${insAttCount(p)} file${insAttCount(p) === 1 ? "" : "s"}</span>`);
             if (p.notes) chips.push(`<span class="ins-chip">📝 Note</span>`);
 
-            // Footer: next premium
+            // Footer: next premium + due pill
             let foot = "";
-            if (f.plan && !f.plan.paused && f.plan.dueDate) {
-                const dd = daysUntil(f.plan.dueDate);
-                foot = `<span style="${dd < 0 ? "color:var(--expense-color);" : ""}">Next premium ${escapeHtml(f.plan.dueDate)} · ${dd < 0 ? "overdue " + Math.abs(dd) + "d" : (dd === 0 ? "today" : dd + "d left")}</span>`;
+            const hasPlan = !!(f.plan && !f.plan.paused && f.plan.dueDate);
+            const dd = hasPlan ? daysUntil(f.plan.dueDate) : 0;
+            if (hasPlan) {
+                const cls = dd < 0 ? "late" : (dd <= 30 ? "soon" : "ok");
+                const txt = dd < 0 ? `Overdue ${Math.abs(dd)}d` : (dd === 0 ? "Due today" : (dd <= 30 ? `Due in ${dd}d` : `${dd}d left`));
+                foot = `<span>Next premium ${escapeHtml(f.plan.dueDate)}</span><span class="insp-foot-r"><span class="insp-due ${cls}">${txt}</span><span>›</span></span>`;
             }
-            const overdue = !!(f.plan && !f.plan.paused && f.plan.dueDate && daysUntil(f.plan.dueDate) < 0);
+            const overdue = hasPlan && dd < 0;
 
             return `
-                <div class="config-item ins-pc${overdue ? " alert" : ""}${live ? "" : " ended"}" data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}">
+                <div class="config-item ins-pc${overdue ? " alert" : ""}${live ? "" : " ended"}${p.excludeFromNetWorth ? " ins-nm-card" : ""}" data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}">
                     <div class="ins-card-head">
-                        <span class="ins-card-ico">${icon}</span>
+                        <span class="insp-pico" style="background:rgba(${tint},0.14);">${icon}</span>
                         <div class="ins-card-title"><strong>${escapeHtml(p.product || p.insurer || "Policy")}</strong>${metaParts.length ? `<div class="ins-card-meta">${metaParts.map(x => `<span class="ins-mp">${x}</span>`).join("")}</div>` : ""}</div>
                         <div class="ins-card-fig">${fig}</div>
                     </div>
                     ${cover}
                     ${chips.length ? `<div class="ins-chips">${chips.join("")}</div>` : ""}
-                    ${foot ? `<div class="ins-card-foot">${foot}<span>›</span></div>` : ""}
+                    ${foot ? `<div class="ins-card-foot">${foot}</div>` : ""}
                 </div>`;
         }
 
@@ -25603,6 +25657,8 @@
             insPeopleToggleAll: (el) => { const ds = [...document.querySelectorAll("#insuranceReport details.insp-kind, details.insp-kind")]; const open = ds.some(d => !d.open); ds.forEach(d => { d.open = open; }); el.textContent = open ? "Collapse all" : "Expand all"; }, // v520
             insToggleMedNote: (el) => { const row = el.closest(".ins-kind-row"); const n = row && row.querySelector(".ins-med-note"); if (n) n.classList.toggle("open"); }, // v479
             insuranceSetStatusFilter: (el) => insuranceSetStatusFilter(el),
+            insuranceSetGroup: (el) => insuranceSetGroup(el), // v521
+            insSumInfo: (el) => { const c = el.closest(".ins-sum-card"); const h = c && c.querySelector(".ins-sum-help"); const bar = document.querySelector("#insuranceSummary .ins-sum-helpbar"); if (!c || !h || !bar) return; const same = bar.dataset.k === c.dataset.k && bar.style.display !== "none"; bar.textContent = same ? "" : h.textContent; bar.dataset.k = c.dataset.k; bar.style.display = same ? "none" : "block"; }, // v521: one shared explanation strip under the cards (keeps the cards the same height)
             openInsuranceModalNew: () => openInsuranceModal(null),
             insurancePolicyTap: (el) => insurancePolicyTap(el),
             handleSaveInsurance: () => handleSaveInsurance(),

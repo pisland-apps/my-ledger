@@ -3975,3 +3975,13 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Display only: totals, ordering of policies, the Policies tab, Car / Home / Travel and the print report are unchanged. No DB change.
 - **`sw.js` was 0 bytes in the v519 package** (v517 - v519 copies were lost). Rebuilt from v516: only `CACHE_NAME` changed in v517 - v519, and nothing new needs precaching. Check that `sw.js` is not empty before you deploy.
 - `APP_VERSION` / `CACHE_NAME` -> v520.
+
+## v521: Insurance > Policies redesign
+- **Group** pills under Show: **Person** (default) / **Insurer** / **None**. Each group has a header (colour avatar or initial, "N policies", and the yearly obligation of its in-force policies). Only on the Policies tab.
+- **One labelled main figure** top-right of every card: *Surrender value* (savings / investment), *Premium · year* (protection; *Via ACB · year* when the bonus pays it) with "Paid … so far" underneath, or *Paid so far* when no premium is recorded.
+- **Sum insured** is a row of small tinted badges (max 3, then "+N more"), in the same colours as By person.
+- **Fewer, clearer chips**: *Not mine* moved under the name (the card gets a dashed border); cashback received + next payout are one chip; "📎 N files".
+- **Footer pill** for the next premium: grey (> 30 days), amber (within 30), red (overdue).
+- **Summary cards** are the same height with Breakdown at the bottom; the long explanation is behind the (i) button and opens in one shared strip under the cards; an old surrender statement shows a small amber "⚠ Oldest date" tag.
+- Display only: numbers, calculations, the print report and the other tabs are unchanged. No DB change.
+- `APP_VERSION` / `CACHE_NAME` -> v521.

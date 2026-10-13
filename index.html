@@ -721,7 +721,7 @@
         .ins-tabs .nav-view-toggle-btn + .nav-view-toggle-btn { border-left: none; }
         .ins-tabs .nav-view-toggle-btn.active { background: transparent; color: var(--primary); border-bottom-color: var(--primary); }
         .ins-filter-row { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
-        .ins-filter-label { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+        .ins-filter-label { min-width: 44px; font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
         .nav-view-toggle.ins-pills { border: none; border-radius: 0; overflow: visible; gap: 6px; }
         .ins-pills .nav-view-toggle-btn {
             background: transparent; border: 1.5px solid var(--border-color); border-radius: 999px;
@@ -781,6 +781,30 @@
         .insp-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
         .insp-chip { font-size: 0.7rem; font-weight: 600; color: var(--text-main); background: var(--chip-bg); border-radius: 8px; padding: 5px 9px; }
         .insp-chip b { color: var(--text-muted); font-weight: 700; margin-right: 3px; }
+        /* v521: Insurance → Policies redesign */
+        .ins-sum-help { display: none !important; }
+        .ins-sum-helpbar { font-size: 0.7rem; font-weight: 600; line-height: 1.45; color: var(--text-muted); background: var(--chip-bg); border-radius: 10px; padding: 8px 12px; margin-top: 8px; }
+        .config-item.ins-pc { margin-bottom: 10px; }
+        .ins-sum-warn { display: inline-block; font-size: 0.66rem; font-weight: 800; color: #b45309; background: rgba(245, 158, 11, 0.16); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 999px; padding: 1px 8px; }
+        .ins-sum-k { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+        .ins-sum-warn { white-space: nowrap; }
+        .ins-sum-k .ins-info-btn { width: 16px; height: 16px; font-size: 0.6rem; margin-left: 4px; text-transform: none; }
+        .insp-ghead { display: flex; align-items: center; gap: 10px; padding: 4px 2px 8px; margin: 18px 0 10px; border-bottom: 2px solid var(--pc, var(--border-color)); }
+        .insp-ghead:first-child { margin-top: 4px; }
+        .insp-avatar.sm { width: 30px; height: 30px; font-size: 0.85rem; }
+        .insp-pico { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; font-size: 1.15rem; flex: 0 0 auto; }
+        .insp-fig-k { font-size: 0.58rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+        .insp-nm { color: var(--text-muted); border: 1px dashed var(--border-color); border-radius: 999px; padding: 0 7px; font-size: 0.66rem; font-weight: 700; }
+        .config-item.ins-pc.ins-nm-card { border-style: dashed; opacity: 0.88; }
+        .insp-cov { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; margin-top: 10px; }
+        .insp-badge { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); background: rgba(var(--bt, 100, 116, 139), 0.12); border-left: 3px solid rgba(var(--bt, 100, 116, 139), 0.65); border-radius: 6px; padding: 3px 8px; }
+        .insp-badge b { color: var(--text-main); font-weight: 700; }
+        .insp-more { font-size: 0.68rem; font-weight: 700; color: var(--text-muted); }
+        .ins-chip.wrap { white-space: normal; }
+        .insp-foot-r { display: flex; align-items: center; gap: 8px; }
+        .insp-due { font-size: 0.66rem; font-weight: 800; padding: 2px 9px; border-radius: 999px; background: var(--chip-bg); color: var(--text-muted); white-space: nowrap; }
+        .insp-due.soon { background: rgba(245, 158, 11, 0.16); color: #b45309; }
+        .insp-due.late { background: rgba(239, 68, 68, 0.14); color: var(--expense-color); }
         .ins-info-btn { border: 1.5px solid var(--border-color); background: transparent; color: var(--text-muted); border-radius: 50%; width: 18px; height: 18px; font-size: 0.66rem; font-weight: 800; line-height: 1; cursor: pointer; margin-left: 6px; padding: 0; vertical-align: middle; }
         .ins-med-note { display: none; font-size: 0.7rem; line-height: 1.45; color: var(--text-muted); background: var(--chip-bg); border-radius: 8px; padding: 7px 10px; margin-top: 6px; }
         .ins-med-note.open { display: block; }
@@ -796,13 +820,13 @@
             .ins-pol-sv { text-align: right; }
         }
         /* v513: Insurance page — three-reading summary, "Needs attention" strip, slim policy cards */
-        .ins-sum3 { display: flex; gap: 10px; align-items: flex-start; }
-        .ins-sum-card { flex: 1 1 0; min-width: 0; border: 1px solid var(--border-color); border-radius: 14px; padding: 12px 14px; }
+        .ins-sum3 { display: flex; gap: 10px; align-items: stretch; }
+        .ins-sum-card { flex: 1 1 0; min-width: 0; border: 1px solid var(--border-color); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; }
         .ins-sum-k { font-size: 0.64rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
         .ins-sum-v { font-size: 1.1rem; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; overflow-wrap: anywhere; }
         .ins-sum-n { font-size: 0.68rem; font-weight: 600; color: var(--text-muted); line-height: 1.4; margin-top: 3px; }
         .ins-sum-scope { text-align: center; font-size: 0.66rem; font-weight: 600; color: var(--text-muted); margin-top: 8px; }
-        .ins-bd-btn { margin-top: 8px; padding: 2px 0; background: none; border: 0; font: inherit; font-size: 0.74rem; font-weight: 700; color: var(--primary); cursor: pointer; }
+        .ins-bd-btn { margin-top: auto; align-self: flex-start; padding: 8px 0 2px; background: none; border: 0; font: inherit; font-size: 0.74rem; font-weight: 700; color: var(--primary); cursor: pointer; }
         .ins-sum-card.on { border-color: var(--primary); }
         .ins-bd-panel { margin-top: 10px; border: 1px solid var(--primary); border-radius: 14px; padding: 10px; }
         .ins-bd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
@@ -4241,6 +4265,13 @@
             <button type="button" class="nav-view-toggle-btn active" data-click="insuranceSetStatusFilter" data-status="active">In force</button>
             <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetStatusFilter" data-status="ended">Ended</button>
             <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetStatusFilter" data-status="all">All</button>
+        </div>
+        </div>
+        <div class="ins-filter-row" id="insuranceGroupRow"><span class="ins-filter-label">Group</span>
+        <div class="nav-view-toggle ins-pills" id="insuranceGroupToggle">
+            <button type="button" class="nav-view-toggle-btn active" data-click="insuranceSetGroup" data-group="person">Person</button>
+            <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetGroup" data-group="insurer">Insurer</button>
+            <button type="button" class="nav-view-toggle-btn" data-click="insuranceSetGroup" data-group="none">None</button>
         </div>
         </div>
         <div id="insuranceSummary" style="display:none; margin:0 0 14px;"></div>

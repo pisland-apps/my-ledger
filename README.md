@@ -3930,3 +3930,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **New "Needs attention" strip** under the cards (not shown under *Ended*): overdue premium and surrender value older than a year (red), cashback payout due but not recorded, premium due within 30 days, a rider ending within 60 days, sum insured not set (amber). Tap a line to open that policy. Open by default when something is red.
 - **Policy cards slimmed to three layers**: (1) name, insurer / person, and one figure on the right (SV for a savings policy, premiums paid for a protection policy; the old "% of paid" chip stays on the Paid line); (2) up to two covers + small chips - 🧩 N riders, 💰 Premium via ACB, 🎁 next payout / received, 📎 attachments, 📝 note; (3) one footer line with the next premium (red edge on the card when overdue). Riders in full, agent, notes, attachments and history are in the policy sheet (tap the card).
 - Printable report, By person and Car · Home · Travel tabs are unchanged. No DB change. `APP_VERSION` / `CACHE_NAME` -> v513.
+
+## v514: Insurance - breakdown panel uses the full width, softer "not in Net Worth" marker
+- The **Breakdown** of the three summary cards no longer opens inside its narrow card (which left a tall empty gap beside it). Tapping Breakdown on a card opens ONE full-width panel under the row (tap again, or tap another card, to close / switch); the open card gets a highlighted border. The Value panel lays out in columns: What counts | Like for like | By person.
+- "Not in Net Worth" is now a small hollow dashed circle in the muted text colour instead of the red circle-slash 🚫 (policy cards, Obligation and Value breakdowns). Other pages' 🚫 are unchanged.
+- No DB change. `APP_VERSION` / `CACHE_NAME` -> v514.

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v513";
+        const APP_VERSION = "v514";
         const APP_VERSION_DATE = "2026-10-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15812,32 +15812,31 @@
             const fmtB = (v) => formatCurrency(v, baseCurrency);
             const scopeWord = insuranceStatusFilter === "all" ? "all policies" : (insuranceStatusFilter === "ended" ? "ended policies" : "in-force policies");
             const oblTotal = oblCash + oblAcb;
-            const cardObl = `<div class="ins-sum-card">
+            const bdObl = `${bd("Paid in cash", fmtB(oblCash))}
+                    ${oblAcbCount ? bd(`Paid via ACB (${oblAcbCount} ${oblAcbCount === 1 ? "policy" : "policies"})`, oblAcb > 0 ? fmtB(oblAcb) : "—") : ""}
+                    ${bd("Total obligation", fmtB(oblTotal), "tot")}
+                    ${oblNotNw > 0 ? bd(`of which ${INS_NO_NW_ICON}not in Net Worth`, fmtB(oblNotNw)) : ""}
+                    <div class="ins-bd-note">In-force policies only${oblAcbMissing ? `; ${oblAcbMissing} ACB ${oblAcbMissing === 1 ? "policy has" : "policies have"} no premium amount entered, so ${oblAcbMissing === 1 ? "it is" : "they are"} not counted` : ""}. Single-payment policies add nothing here.</div>`;
+            const btn = (k) => `<button type="button" class="ins-bd-btn${insSumOpen === k ? " on" : ""}" data-click="insSumToggle" data-k="${k}">Breakdown ${insSumOpen === k ? "▴" : "▾"}</button>`;
+            const cardObl = `<div class="ins-sum-card${insSumOpen === "obl" ? " on" : ""}">
                 <div class="ins-sum-k">Obligation · per year</div>
                 <div class="ins-sum-v">${fmtB(oblTotal)}</div>
                 <div class="ins-sum-n">What the policies ask for each year: cash${oblAcbCount ? " + premiums taken from accumulated bonus (ACB)" : ""}.</div>
-                <details class="ins-more ins-bd-wrap"><summary><span class="ins-more-show">Breakdown ▾</span><span class="ins-more-hide">Breakdown ▴</span></summary><div class="ins-bd">
-                    ${bd("Paid in cash", fmtB(oblCash))}
-                    ${oblAcbCount ? bd(`Paid via ACB (${oblAcbCount} ${oblAcbCount === 1 ? "policy" : "policies"})`, oblAcb > 0 ? fmtB(oblAcb) : "—") : ""}
-                    ${bd("Total obligation", fmtB(oblTotal), "tot")}
-                    ${oblNotNw > 0 ? bd("of which 🚫 not in Net Worth", fmtB(oblNotNw)) : ""}
-                    <div class="ins-bd-note">In-force policies only${oblAcbMissing ? `; ${oblAcbMissing} ACB ${oblAcbMissing === 1 ? "policy has" : "policies have"} no premium amount entered, so ${oblAcbMissing === 1 ? "it is" : "they are"} not counted` : ""}. Single-payment policies add nothing here.</div>
-                </div></details>
+                ${btn("obl")}
             </div>`;
             const netCash = paidBase - parentBase - cbBase;
-            const cardCash = `<div class="ins-sum-card">
-                <div class="ins-sum-k">Cash out · so far</div>
-                <div class="ins-sum-v">${fmtB(netCash)}</div>
-                <div class="ins-sum-n">What really left your pocket: premiums paid${parentBase > 0 ? " − paid by parent" : ""}${cbBase > 0 ? " − cashback received" : ""}.</div>
-                <details class="ins-more ins-bd-wrap"><summary><span class="ins-more-show">Breakdown ▾</span><span class="ins-more-hide">Breakdown ▴</span></summary><div class="ins-bd">
-                    ${bd("Premiums paid", fmtB(paidBase))}
+            const bdCash = `${bd("Premiums paid", fmtB(paidBase))}
                     ${parentBase > 0 ? bd("− Paid by parent", fmtB(parentBase)) : ""}
                     ${cbBase > 0 ? bd("− Cashback received", fmtB(cbBase), "", "var(--income-color)") : ""}
                     ${bd("Net cash out", fmtB(netCash), "tot")}
-                    <div class="ins-bd-note">Typed-in history plus premiums recorded in the ledger, for ${scopeWord}. Premiums taken from accumulated bonus are not cash and are not in here.</div>
-                </div></details>
+                    <div class="ins-bd-note">Typed-in history plus premiums recorded in the ledger, for ${scopeWord}. Premiums taken from accumulated bonus are not cash and are not in here.</div>`;
+            const cardCash = `<div class="ins-sum-card${insSumOpen === "cash" ? " on" : ""}">
+                <div class="ins-sum-k">Cash out · so far</div>
+                <div class="ins-sum-v">${fmtB(netCash)}</div>
+                <div class="ins-sum-n">What really left your pocket: premiums paid${parentBase > 0 ? " − paid by parent" : ""}${cbBase > 0 ? " − cashback received" : ""}.</div>
+                ${btn("cash")}
             </div>`;
-            let cardVal = "";
+            let cardVal = "", bdVal = "";
             let personBreak = "";
             if (svCount) {
                 const net = savSvBase - savPaidBase;
@@ -15863,28 +15862,35 @@
                         <thead><tr style="color:var(--text-muted); font-size:0.62rem; text-transform:uppercase; letter-spacing:0.03em;"><th style="text-align:left; padding:2px 4px 4px 0;">Person</th><th style="text-align:right; padding:2px 4px 4px;">Paid</th><th style="text-align:right; padding:2px 4px 4px;">SV</th><th style="text-align:right; padding:2px 0 4px 4px;">Net</th></tr></thead>
                         <tbody>${pOrder.map(pRow).join("")}</tbody></table></div>`;
                 }
-                cardVal = `<div class="ins-sum-card">
+                bdVal = `<div class="ins-bd-grid">
+                        <div>
+                            <div class="ins-bd-h" style="margin-top:0;">What counts</div>
+                            ${bd(`Counted in Net Worth (${svCountedN})`, fmtB(svCounted))}
+                            ${svNotN ? bd(`Not counted — ${INS_NO_NW_ICON}not in Net Worth or ended (${svNotN})`, fmtB(svNot)) : ""}
+                            ${bd(`All surrender values (${svCount})`, fmtB(svCounted + svNot), "tot")}
+                        </div>
+                        <div>
+                            <div class="ins-bd-h" style="margin-top:0;">Like for like — all ${svCount} with a surrender value</div>
+                            ${bd("Premiums paid to each SV date", fmtB(savPaidBase))}
+                            ${bd("Surrender value", fmtB(savSvBase))}
+                            ${bd("Net", `${net >= 0 ? "+" : "−"}${fmtB(Math.abs(net))}`, "tot", netColor)}
+                            ${pct != null ? bd("SV ÷ premiums paid", `${pct.toFixed(1)}%`) : ""}
+                            ${(savCbBase > 0 && savPaidBase > 0) ? bd("🎁 + cashback → SV + cashback", `${(((savSvBase + savCbBase) / savPaidBase) * 100).toFixed(1)}%`, "", "var(--income-color)") : ""}
+                        </div>
+                        ${personBreak ? `<div>${personBreak}</div>` : ""}
+                    </div>
+                    <div class="ins-bd-note">Premiums are counted only up to each policy's SV date. Net is a rough guide, not an investment return (riders, bonuses and fund prices move). A policy whose premium now comes from ACB stops adding premiums, so its % reads high.</div>`;
+                cardVal = `<div class="ins-sum-card${insSumOpen === "val" ? " on" : ""}">
                     <div class="ins-sum-k">Value · surrender</div>
                     <div class="ins-sum-v">${fmtB(svCounted)}</div>
                     <div class="ins-sum-n">${svCountedN ? `Surrender value of ${svCountedN} ${svCountedN === 1 ? "policy" : "policies"} that count toward Net Worth${includeInsuranceSvInNetWorth ? "" : " (the Net Worth switch is off)"}.` : "None of these policies counts toward Net Worth."}</div>
                     <div class="ins-sum-n" style="color:${oldestSvAge > 365 ? "var(--expense-color)" : "var(--text-muted)"}; font-weight:700;">Statements ${escapeHtml(svDateLabel)}${oldestSvAge > 365 ? " ⚠️ oldest is over a year old" : ""}</div>
-                    <details class="ins-more ins-bd-wrap"><summary><span class="ins-more-show">Breakdown ▾</span><span class="ins-more-hide">Breakdown ▴</span></summary><div class="ins-bd">
-                        ${bd(`Counted in Net Worth (${svCountedN})`, fmtB(svCounted))}
-                        ${svNotN ? bd(`Not counted — 🚫 or ended (${svNotN})`, fmtB(svNot)) : ""}
-                        ${bd(`All surrender values (${svCount})`, fmtB(svCounted + svNot), "tot")}
-                        <div class="ins-bd-h">Like for like — all ${svCount} with a surrender value</div>
-                        ${bd("Premiums paid to each SV date", fmtB(savPaidBase))}
-                        ${bd("Surrender value", fmtB(savSvBase))}
-                        ${bd("Net", `${net >= 0 ? "+" : "−"}${fmtB(Math.abs(net))}`, "tot", netColor)}
-                        ${pct != null ? bd("SV ÷ premiums paid", `${pct.toFixed(1)}%`) : ""}
-                        ${(savCbBase > 0 && savPaidBase > 0) ? bd("🎁 + cashback received → SV + cashback", `${(((savSvBase + savCbBase) / savPaidBase) * 100).toFixed(1)}%`, "", "var(--income-color)") : ""}
-                        ${personBreak}
-                        <div class="ins-bd-note">Premiums are counted only up to each policy's SV date. Net is a rough guide, not an investment return (riders, bonuses and fund prices move). A policy whose premium now comes from ACB stops adding premiums, so its % reads high.</div>
-                    </div></details>
+                    ${btn("val")}
                 </div>`;
             }
+            const panelHtml = insSumOpen === "obl" ? (insuranceStatusFilter === "ended" ? "" : `<div style="max-width:460px;">${bdObl}</div>`) : (insSumOpen === "cash" ? `<div style="max-width:460px;">${bdCash}</div>` : (insSumOpen === "val" && bdVal ? bdVal : ""));
             summary.style.display = filtered.length ? "block" : "none";
-            summary.innerHTML = `<div class="ins-sum3">${insuranceStatusFilter === "ended" ? "" : cardObl}${cardCash}${cardVal}</div><div class="ins-sum-scope">Life, medical &amp; other personal policies — car, home &amp; travel are on their own tab</div>`;
+            summary.innerHTML = `<div class="ins-sum3">${insuranceStatusFilter === "ended" ? "" : cardObl}${cardCash}${cardVal}</div>${panelHtml ? `<div class="ins-bd-panel">${panelHtml}</div>` : ""}<div class="ins-sum-scope">Life, medical &amp; other personal policies — car, home &amp; travel are on their own tab</div>`;
 
             // The old separate Savings panel now lives inside the Value card.
             const savEl = document.getElementById("insuranceSavingsSummary");
@@ -15908,6 +15914,11 @@
             return { entries: [...groups.entries()] };
         }
 
+        // v514: "not in Net Worth" marker — a small hollow dashed circle in the muted text colour (the red
+        // circle-slash looked alarming for something that is just a setting).
+        const INS_NO_NW_ICON = '<svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true" style="vertical-align:-1px; margin-right:3px;"><circle cx="6" cy="6" r="4.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2.2 1.6"/></svg>';
+        let insSumOpen = null; // v514: which summary card's breakdown panel is open: "obl" | "cash" | "val" | null
+
         // v513: the slimmed policy card. Three layers: (1) name + insurer/person + ONE figure on the right
         // (SV for a savings policy, premiums paid for a protection policy), (2) up to two covers + small
         // chips (riders count, ACB, cashback, attachments, note), (3) one footer line: the next premium.
@@ -15918,7 +15929,7 @@
             const metaParts = [];
             if (p.product && p.insurer) metaParts.push(escapeHtml(p.insurer));
             if (p.insuredMemberId && getMemberById(p.insuredMemberId)) metaParts.push(accountOwnerTagHTML({ memberIds: [p.insuredMemberId] }));
-            if (p.excludeFromNetWorth) metaParts.push("🚫 not in Net Worth");
+            if (p.excludeFromNetWorth) metaParts.push(`<span style="color:var(--text-muted);">${INS_NO_NW_ICON}not in Net Worth</span>`);
             if (!live) metaParts.push(escapeHtml(INS_STATUSES[p.status] || p.status));
 
             // Right-hand figure
@@ -25503,6 +25514,7 @@
             // v468: INSURANCE
             navigateToInsurancePage: () => navigateToInsurancePage(),
             insuranceSetView: (el) => insuranceSetView(el), // v474
+            insSumToggle: (el) => { insSumOpen = (insSumOpen === el.dataset.k) ? null : el.dataset.k; renderInsurancePage(); }, // v514
             openInsurancePrintSheet: () => openInsurancePrintSheet(), // v496
             insurancePrintRun: () => insurancePrintRun(), // v496
             insToggleReturnNote: (el) => { const w = el.closest(".ins-ret-wrap"); const n = w && w.querySelector(".ins-med-note"); if (n) n.classList.toggle("open"); }, // v487

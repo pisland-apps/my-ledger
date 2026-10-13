@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v515";
+        const APP_VERSION = "v516";
         const APP_VERSION_DATE = "2026-10-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15946,6 +15946,7 @@
             const metaParts = [];
             if (p.product && p.insurer) metaParts.push(escapeHtml(p.insurer));
             if (p.insuredMemberId && getMemberById(p.insuredMemberId)) metaParts.push(accountOwnerTagHTML({ memberIds: [p.insuredMemberId] }));
+            if (live) { const py = insPolicyYear(p); if (py) metaParts.push(`<span title="Policy year — next anniversary ${escapeHtml(py.next)}">Year ${py.year}${py.of ? " / " + py.of : ""}</span>`); }
             if (p.excludeFromNetWorth) metaParts.push(`<span style="color:var(--text-muted);">${INS_NO_NW_ICON}not in Net Worth</span>`);
             if (!live) metaParts.push(escapeHtml(INS_STATUSES[p.status] || p.status));
 
@@ -16657,6 +16658,7 @@
                     ${kv("Insured", escapeHtml(insMemberName(p)))}
                     ${kv("Premium", premiumText)}
                     ${kv("Start", escapeHtml(p.startDate || ""))}
+                    ${(() => { const py = insIsLive(p) ? insPolicyYear(p) : null; return py ? kv("Policy year", `Year ${py.year}${py.of ? " of " + py.of : ""} · next anniversary ${escapeHtml(py.next)}`) : ""; })()}
                     ${kv("Maturity / end", escapeHtml(p.maturityDate || ""))}
                 </div>
                 ${(p.agentName || p.agentContact) ? `<div style="display:flex; align-items:flex-start; gap:10px; padding:10px 12px; margin:0 0 12px; border:1px solid var(--border-color); border-radius:12px;"><span style="font-size:1.1rem; line-height:1.3;">🧑‍💼</span><div style="min-width:0;"><div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Agent</div>${p.agentName ? `<div style="font-size:0.88rem; font-weight:800; overflow-wrap:anywhere;">${escapeHtml(p.agentName)}</div>` : ""}${p.agentContact ? `<div style="font-size:0.82rem; font-weight:600; color:var(--text-muted); overflow-wrap:anywhere;">${insLinkifyPhones(p.agentContact)}</div>` : ""}</div></div>` : ""}
@@ -17657,6 +17659,26 @@
             let mm = m[2], dd = m[3];
             if (mm === "02" && dd === "29") { const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0; if (!leap) dd = "28"; }
             return String(year).padStart(4, "0") + "-" + mm + "-" + dd;
+        }
+        // v516: policy year = which year of the policy we are in (year 1 runs from the start date to the
+        // first anniversary). "of" is the policy term when an end / maturity date is set. null when there is
+        // no start date or it is still in the future.
+        function insPolicyYear(p, todayStr) {
+            const m = /^(\d{4})-\d{2}-\d{2}$/.exec(p && p.startDate || "");
+            if (!m) return null;
+            const sy = parseInt(m[1], 10);
+            const today = todayStr || todayLocalStr();
+            if (p.startDate > today) return null;
+            let elapsed = parseInt(today.slice(0, 4), 10) - sy;
+            if (insAnnivDate(p.startDate, sy + elapsed) > today) elapsed--;
+            let of = null;
+            const mm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(p.maturityDate || "");
+            if (mm && p.maturityDate > p.startDate) {
+                let t = parseInt(mm[1], 10) - sy;
+                if (insAnnivDate(p.startDate, sy + t) > p.maturityDate) t--;
+                if (t >= 1) of = t;
+            }
+            return { year: elapsed + 1, of, next: insAnnivDate(p.startDate, sy + elapsed + 1) };
         }
         function insCovAmountOn(c, dateStr) {
             let cur = null;

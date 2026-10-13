@@ -4001,3 +4001,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Each group card (Car / Home / Fire / Travel) now has a coloured icon badge and a small colour chip in its header: Car = blue, Home = purple, Travel = teal. The colours avoid red / amber / green, so they never read as a warning. They are CSS variables (`--ins-cat-car/home/travel`, rgb triplets) on `:root`.
 - Each policy row has a thin left bar that only means urgency: red = overdue or ends within 7 days, amber = 8-30 days, faint grey-blue = normal, fainter grey = ended (row also stays dimmed). The "Ends ... days left" text uses the same two levels (it used amber up to 60 days before).
 - Display layer only: no data, calculation, filter or print changes. `APP_VERSION` / `CACHE_NAME` -> v524.
+
+## v525: Unit Trust > Fund Holdings - one card per fund (easy to read on PC and phone)
+- The 11-column table (which needed sideways scrolling) is now one card per fund: name, code / category / owner, big Value with P/L and Return % on the top right; Units, NAV, Invested, Current Inv., Annualised and Holding in a grid below. PC: one row; phone: 3 per row.
+- Total is a card at the bottom (Value, P/L, Return, Invested, Current Inv.). Closed-fund summary line and "fund deleted" rows keep working. Tap a card to open the fund, as before.
+- Display layer only: no data, calculation or print changes. The Portfolio Fund Detail table is unchanged. `APP_VERSION` / `CACHE_NAME` -> v525.

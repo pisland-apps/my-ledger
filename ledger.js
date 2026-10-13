@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v524";
-        const APP_VERSION_DATE = "2026-10-13";
+        const APP_VERSION = "v525";
+        const APP_VERSION_DATE = "2026-10-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -7798,6 +7798,12 @@
                     </td>
                 </tr>`;
         }
+        // v525: same summary as closedFundsSummaryRow, but a <div> for the card layout.
+        function closedFundsSummaryCard(count, plText, plPositive) {
+            const expanded = getShowClosedFunds();
+            const plColor = plPositive ? "var(--income-color)" : "var(--expense-color)";
+            return `<div class="fh-closed" data-click="toggleClosedFunds" title="Fully redeemed funds (0 units). They still count in every total.">${expanded ? "▾" : "▸"} ${count} closed fund${count === 1 ? "" : "s"} · Realized P/L <span style="color:${plColor};">${plText}</span> · ${expanded ? "tap to hide" : "tap to show"}</div>`;
+        }
         function toggleClosedFunds() {
             setShowClosedFunds(!getShowClosedFunds());
             renderApp();
@@ -7913,28 +7919,33 @@
 
                 const closed = isClosedFund(f, invested);
                 if (closed) closedPl += pl;
+                const stat = (l, v) => `<div><div class="fh-stat-l">${l}</div><div class="fh-stat-v">${v}</div></div>`;
+                const metaBits = [f.code, f.category].filter(Boolean).map(escapeHtml).join(" · ");
                 (closed ? closedRows : rowsHtml).push(`
-                    <tr style="cursor:pointer;" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}">
-                        <td style="padding:8px 10px;">
-                            <strong>${escapeHtml(f.name)}</strong><br>
-                            <span style="font-size:0.68rem; color:var(--text-muted);">${escapeHtml(f.code || "")}</span><br>
-                            <span style="font-size:0.68rem; color:var(--primary); font-weight:700;">${escapeHtml(ownerLabel)}</span>
-                        </td>
-                        <td style="padding:8px 10px;">${escapeHtml(f.category || "")}</td>
-                        <td style="padding:8px 10px; text-align:right;">${(f.units || 0).toFixed(4)}${isGoldFund(f) ? " g" : ""}</td>
-                        <td style="padding:8px 10px; text-align:right;">${formatCurrency(f.currentNav || 0, f.currency)}${isGoldFund(f) ? "/g" : ""}${goldStalenessBadgeHTML(f)}</td>
-                        <td style="padding:8px 10px; text-align:right;"><strong>${formatCurrency(value, f.currency)}</strong></td>
-                        <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested, f.currency)}</td>
-                        <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested - recovered, f.currency)}</td>
-                        <td style="padding:8px 10px; text-align:right; color:${plColor}; font-weight:700;">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)}</td>
-                        <td style="padding:8px 10px; text-align:right; color:${plColor};">${returnPct.toFixed(2)}%</td>
-                        <td style="padding:8px 10px; text-align:right;">${holdingYears >= 0.08 ? annualised.toFixed(2) + "%" : "-"}</td>
-                        <td style="padding:8px 10px; text-align:right;">${holdingYears >= 0.08 ? holdingYears.toFixed(1) + " yrs" : "-"}</td>
-                    </tr>`);
+                    <div class="fh-card" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}">
+                        <div class="fh-head">
+                            <div style="min-width:0;">
+                                <div class="fh-name">${escapeHtml(f.name)}</div>
+                                <div class="fh-sub">${metaBits}${metaBits && ownerLabel ? "<br>" : ""}<span class="fh-owner">${escapeHtml(ownerLabel)}</span></div>
+                            </div>
+                            <div class="fh-val">
+                                <div class="fh-val-main">${formatCurrency(value, f.currency)}</div>
+                                <div class="fh-pl" style="color:${plColor};">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)} (${returnPct.toFixed(2)}%)</div>
+                            </div>
+                        </div>
+                        <div class="fh-stats">
+                            ${stat("Units", (f.units || 0).toFixed(4) + (isGoldFund(f) ? " g" : ""))}
+                            ${stat("NAV", formatCurrency(f.currentNav || 0, f.currency) + (isGoldFund(f) ? "/g" : "") + goldStalenessBadgeHTML(f))}
+                            ${stat("Invested", formatCurrency(invested, f.currency))}
+                            ${stat("Current Inv.", formatCurrency(invested - recovered, f.currency))}
+                            ${stat("Annualised", holdingYears >= 0.08 ? annualised.toFixed(2) + "%" : "-")}
+                            ${stat("Holding", holdingYears >= 0.08 ? holdingYears.toFixed(1) + " yrs" : "-")}
+                        </div>
+                    </div>`);
             });
 
             if (closedRows.length > 0) {
-                rowsHtml.push(closedFundsSummaryRow(closedRows.length, (closedPl >= 0 ? "+" : "") + formatCurrency(closedPl, commonCurrency || baseCurrency), closedPl >= 0, 11));
+                rowsHtml.push(closedFundsSummaryCard(closedRows.length, (closedPl >= 0 ? "+" : "") + formatCurrency(closedPl, commonCurrency || baseCurrency), closedPl >= 0));
                 if (getShowClosedFunds()) closedRows.forEach(r => rowsHtml.push(r));
             }
 
@@ -7969,22 +7980,20 @@
                 if (commonCurrency === null) commonCurrency = currency; else if (commonCurrency !== currency) mixedCurrency = true;
 
                 rowsHtml.push(`
-                    <tr style="opacity:0.7;">
-                        <td style="padding:8px 10px;">
-                            <strong>${escapeHtml(name)}</strong><br>
-                            <span style="font-size:0.68rem; color:var(--expense-color); font-weight:700;">⚠️ fund deleted</span>
-                        </td>
-                        <td style="padding:8px 10px;">-</td>
-                        <td style="padding:8px 10px; text-align:right;">${units.toFixed(4)}</td>
-                        <td style="padding:8px 10px; text-align:right;">-</td>
-                        <td style="padding:8px 10px; text-align:right;"><strong>${formatCurrency(orphanValue, currency)}</strong></td>
-                        <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested, currency)}</td>
-                        <td style="padding:8px 10px; text-align:right;">${formatCurrency(invested - recovered, currency)}</td>
-                        <td style="padding:8px 10px; text-align:right;">-</td>
-                        <td style="padding:8px 10px; text-align:right;">-</td>
-                        <td style="padding:8px 10px; text-align:right;">-</td>
-                        <td style="padding:8px 10px; text-align:right;">-</td>
-                    </tr>`);
+                    <div class="fh-card orphan">
+                        <div class="fh-head">
+                            <div style="min-width:0;">
+                                <div class="fh-name">${escapeHtml(name)}</div>
+                                <div class="fh-sub" style="color:var(--expense-color); font-weight:700;">⚠️ fund deleted</div>
+                            </div>
+                            <div class="fh-val"><div class="fh-val-main">${formatCurrency(orphanValue, currency)}</div></div>
+                        </div>
+                        <div class="fh-stats">
+                            <div><div class="fh-stat-l">Units</div><div class="fh-stat-v">${units.toFixed(4)}</div></div>
+                            <div><div class="fh-stat-l">Invested</div><div class="fh-stat-v">${formatCurrency(invested, currency)}</div></div>
+                            <div><div class="fh-stat-l">Current Inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, currency)}</div></div>
+                        </div>
+                    </div>`);
             });
 
             if (rowsHtml.length === 0) {
@@ -7997,39 +8006,27 @@
             // Totals only mean much as one number when every fund shares a currency — with a
             // mixed basket, sum the figures at face value but flag it rather than implying a false
             // single-currency total.
+            const cur = commonCurrency || baseCurrency;
+            const tstat = (l, v, c) => `<div><div class="fh-stat-l">${l}</div><div class="fh-stat-v"${c ? ` style="color:${c};"` : ""}>${v}</div></div>`;
             const totalsRow = `
-                <tr style="border-top:2px solid var(--border-color); font-weight:700;">
-                    <td style="padding:8px 10px;" colspan="2">Total${mixedCurrency ? ' <span style="font-weight:400; font-size:0.68rem; color:var(--text-muted);">(mixed currencies — summed at face value)</span>' : ""}</td>
-                    <td style="padding:8px 10px;"></td>
-                    <td style="padding:8px 10px;"></td>
-                    <td style="padding:8px 10px; text-align:right;">${formatCurrency(totalValue, commonCurrency || baseCurrency)}</td>
-                    <td style="padding:8px 10px; text-align:right;">${formatCurrency(totalInvested, commonCurrency || baseCurrency)}</td>
-                    <td style="padding:8px 10px; text-align:right;">${formatCurrency(totalInvested - totalRecovered, commonCurrency || baseCurrency)}</td>
-                    <td style="padding:8px 10px; text-align:right; color:${totalPlColor};">${totalPl >= 0 ? "+" : ""}${formatCurrency(totalPl, commonCurrency || baseCurrency)}</td>
-                    <td style="padding:8px 10px; text-align:right; color:${totalPlColor};">${totalReturnPct.toFixed(2)}%</td>
-                    <td style="padding:8px 10px;"></td>
-                    <td style="padding:8px 10px;"></td>
-                </tr>`;
+                <div class="fh-card total">
+                    <div class="fh-head">
+                        <div>
+                            <div class="fh-name">Total</div>
+                            ${mixedCurrency ? '<div class="fh-sub">mixed currencies — summed at face value</div>' : ""}
+                        </div>
+                        <div class="fh-val">
+                            <div class="fh-val-main">${formatCurrency(totalValue, cur)}</div>
+                            <div class="fh-pl" style="color:${totalPlColor};">${totalPl >= 0 ? "+" : ""}${formatCurrency(totalPl, cur)} (${totalReturnPct.toFixed(2)}%)</div>
+                        </div>
+                    </div>
+                    <div class="fh-stats">
+                        ${tstat("Invested", formatCurrency(totalInvested, cur))}
+                        ${tstat("Current Inv.", formatCurrency(totalInvested - totalRecovered, cur))}
+                    </div>
+                </div>`;
 
-            wrap.innerHTML = `
-                <table style="width:100%; border-collapse:collapse; font-size:0.78rem; white-space:nowrap;">
-                    <thead>
-                        <tr style="text-align:left; color:var(--text-muted); font-size:0.68rem; text-transform:uppercase;">
-                            <th style="padding:6px 10px;">Fund</th>
-                            <th style="padding:6px 10px;">Category</th>
-                            <th style="padding:6px 10px; text-align:right;">Units</th>
-                            <th style="padding:6px 10px; text-align:right;">NAV</th>
-                            <th style="padding:6px 10px; text-align:right;">Value</th>
-                            <th style="padding:6px 10px; text-align:right;">Invested</th>
-                            <th style="padding:6px 10px; text-align:right;" title="Invested minus Recovered (cash already taken out via sells / payouts). Current Invested + P/L = Value.">Current Inv.</th>
-                            <th style="padding:6px 10px; text-align:right;">P/L</th>
-                            <th style="padding:6px 10px; text-align:right;">Return</th>
-                            <th style="padding:6px 10px; text-align:right;">Annualised</th>
-                            <th style="padding:6px 10px; text-align:right;">Holding</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rowsHtml.join("")}${totalsRow}</tbody>
-                </table>`;
+            wrap.innerHTML = rowsHtml.join("") + totalsRow;
         }
 
         // --- DAILY NAV UPDATE PAGE ---

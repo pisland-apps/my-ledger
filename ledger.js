@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v516";
+        const APP_VERSION = "v517";
         const APP_VERSION_DATE = "2026-10-13";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -15947,7 +15947,6 @@
             if (p.product && p.insurer) metaParts.push(escapeHtml(p.insurer));
             if (p.insuredMemberId && getMemberById(p.insuredMemberId)) metaParts.push(accountOwnerTagHTML({ memberIds: [p.insuredMemberId] }));
             if (live) { const py = insPolicyYear(p); if (py) metaParts.push(`<span title="Policy year — next anniversary ${escapeHtml(py.next)}">Year ${py.year}${py.of ? " / " + py.of : ""}</span>`); }
-            if (p.excludeFromNetWorth) metaParts.push(`<span style="color:var(--text-muted);">${INS_NO_NW_ICON}not in Net Worth</span>`);
             if (!live) metaParts.push(escapeHtml(INS_STATUSES[p.status] || p.status));
 
             // Right-hand figure
@@ -15974,6 +15973,7 @@
 
             // Chips
             const chips = [];
+            if (p.excludeFromNetWorth) chips.push(`<span class="ins-chip dashed">${INS_NO_NW_ICON}Not in Net Worth</span>`);
             const riders = insRiderItemsOf(p);
             if (riders.length) chips.push(`<span class="ins-chip">🧩 ${riders.length} rider${riders.length === 1 ? "" : "s"}</span>`);
             if (p.paidByBonus) chips.push(`<span class="ins-chip amber">💰 Premium via ACB${p.paidByBonusSince ? " since " + escapeHtml(String(p.paidByBonusSince).slice(0, 4)) : ""}</span>`);
@@ -15999,7 +15999,7 @@
                 <div class="config-item ins-pc${overdue ? " alert" : ""}${live ? "" : " ended"}" data-click="insurancePolicyTap" data-id="${escapeHtml(p.id)}">
                     <div class="ins-card-head">
                         <span class="ins-card-ico">${icon}</span>
-                        <div class="ins-card-title"><strong>${escapeHtml(p.product || p.insurer || "Policy")}</strong>${metaParts.length ? `<div class="ins-card-meta">${metaParts.join(" · ")}</div>` : ""}</div>
+                        <div class="ins-card-title"><strong>${escapeHtml(p.product || p.insurer || "Policy")}</strong>${metaParts.length ? `<div class="ins-card-meta">${metaParts.map(x => `<span class="ins-mp">${x}</span>`).join("")}</div>` : ""}</div>
                         <div class="ins-card-fig">${fig}</div>
                     </div>
                     ${cover}

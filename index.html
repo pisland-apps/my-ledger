@@ -813,7 +813,8 @@
         .ins-card-ico { font-size: 1.25rem; line-height: 1.25; flex: 0 0 auto; }
         .ins-card-title { flex: 1 1 auto; min-width: 0; }
         .ins-card-title strong { display: block; font-size: 0.95rem; overflow-wrap: anywhere; }
-        .ins-card-meta { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-top: 1px; }
+        .ins-card-meta { display: flex; flex-wrap: wrap; gap: 1px 10px; font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-top: 1px; }
+        .ins-mp { white-space: nowrap; }
         .ins-card-fig { flex: 0 0 auto; text-align: right; max-width: 48%; }
         .ins-card-big { font-size: 0.98rem; font-weight: 800; font-variant-numeric: tabular-nums; }
         .ins-card-big.ins-muted { font-size: 0.88rem; font-weight: 700; color: var(--text-muted); }
@@ -825,6 +826,7 @@
         .ins-card-cover-k { font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; align-self: center; }
         .ins-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
         .ins-chip { font-size: 0.66rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--chip-bg); color: var(--text-main); white-space: nowrap; }
+        .ins-chip.dashed { background: transparent; border: 1px dashed var(--border-color); color: var(--text-muted); }
         .ins-chip.amber { background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.35); }
         .ins-chip.green { background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); }
         .ins-card-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-color); font-size: 0.72rem; font-weight: 700; color: var(--text-muted); }

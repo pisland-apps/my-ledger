@@ -3947,3 +3947,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Each in-force policy card now shows **Year N** (or **Year N / M** when an end / maturity date is set) after the insured person, so a low SV ÷ premiums paid in the early years reads as "early" rather than "bad". Hover / long-press shows the next anniversary. The policy sheet has a **Policy year** row (year, term, next anniversary) under Start.
 - Year 1 runs from the start date to the first anniversary; nothing is shown when there is no start date or it is still in the future. Ended policies show no year. No new field to fill in, no DB change.
 - `APP_VERSION` / `CACHE_NAME` -> v516.
+
+## v517: Insurance - policy card header no longer breaks mid-phrase on a phone
+- The line under the policy name (insurer, person, Year N / M) now wraps as whole items: "Year 24 / 63" and the person tag can no longer be cut in two.
+- "Not in Net Worth" moved from that line to the small tag row under the cover line (hollow dashed tag), so the header stays short.
+- `APP_VERSION` / `CACHE_NAME` -> v517.

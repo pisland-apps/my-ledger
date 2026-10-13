@@ -3991,3 +3991,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - The floating print button is hidden on the Insurance page on phones; the 🖨️ in the page header (insurance print options: who / what to include) stays. They are not the same function: the floating one prints the current screen as it is.
 - The Group pills (Person / Insurer / None) become one small button at the end of the Show row; each tap goes Person -> Insurer -> None.
 - PC layout is unchanged. `APP_VERSION` / `CACHE_NAME` -> v522.
+
+## v523: Insurance page, PC filter row + tab focus
+- PC (>640px): Show and Group now sit on one row (thin divider between them); they wrap to two rows only when the window is narrow. Phone layout (v522 Group chip) is unchanged.
+- Tabs (Policies / By person / Car · Home · Travel): keyboard focus no longer draws a box over the underline; it uses a soft tint instead, so every tab looks the same. Mouse/touch click shows only the underline.
+- `APP_VERSION` / `CACHE_NAME` -> v523. No data, calculation or print changes.

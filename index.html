@@ -3289,6 +3289,12 @@
         .fh-stats.split { grid-template-columns: 1.3fr 1fr 1fr; }
         .fh-stats.split .fh-stat-main { grid-row: span 2; padding-right: 10px; border-right: 1px solid var(--border-color); }
         .fh-stat-v.strong { font-weight: 800; font-size: 0.95rem; }
+        /* v534: single panel — main money figure on the left, Units x NAV on the right; Annualised sits under the P/L pill. */
+        .fh-panel { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 10px 16px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--text-muted) 7%, transparent); }
+        .fh-uxn { text-align: right; margin-left: auto; }
+        .fh-grey { font-size: 0.68rem; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; line-height: 1.4; }
+        .fh-grey-gap { margin-top: 5px; }
+        .fh-ann { margin-top: 4px; font-size: 0.7rem; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
         .fh-stat-sub { font-size: 0.68rem; font-weight: 600; color: var(--income-color); margin-top: 1px; }
         .fh-stat-l { font-size: 0.7rem; letter-spacing: 0.01em; color: var(--text-muted); font-weight: 600; margin-bottom: 2px; }
         .fh-stat-v { font-size: 0.82rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }

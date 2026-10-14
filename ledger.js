@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v533";
+        const APP_VERSION = "v534";
         const APP_VERSION_DATE = "2026-10-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7938,6 +7938,7 @@
                             <div class="fh-val">
                                 <div class="fh-val-main">${formatCurrency(value, f.currency)}</div>
                                 <div class="fh-pl">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)} (${returnPct.toFixed(2)}%)</div>
+                                ${fundAnnualisedLineHTML(f, fundTxs)}
                             </div>
                         </div>
                         ${fundCardStatsHTML(f, invested, recovered, fundTxs)}
@@ -22258,26 +22259,38 @@
             const r = insXirr(flows);
             return (r == null || !isFinite(r)) ? null : r * 100;
         }
+        // v534: Annualised (XIRR) sits under the P/L pill, next to the total return it belongs with.
+        // Hidden when it can't be computed (under 1 year of history).
+        function fundAnnualisedLineHTML(f, fundTxs) {
+            const x = fundXirrPct(f, fundTxs);
+            if (x === null) return "";
+            return `<div class="fh-ann" title="Money-weighted yearly return (XIRR): uses the date of every buy, sell and payout. Needs at least 1 year of history.">Annualised ${x.toFixed(2)}%</div>`;
+        }
+        // Units: at least 2, up to 4 decimals (13,425.45 / 12.3456), so Units x NAV still multiplies out.
+        function fmtFundUnits(u) {
+            return (u || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+        }
+        // v534: one panel for both card types. Left = the main money figure: Current inv. (with Invested /
+        // Recovered as small grey text) once something has been taken out, or just Invested when nothing has.
+        // Right = Units x NAV, which is how the card's Value is made. Fully recovered principal reads
+        // "Fully recovered" with the amount above cost instead of a negative number.
         function fundCardStatsHTML(f, invested, recovered, fundTxs) {
-            const xirr = fundXirrPct(f, fundTxs);
             const gold = isGoldFund(f);
-            const stat = (l, v, tip) => `<div><div class="fh-stat-l"${tip ? ` title="${tip}"` : ""}>${l}</div><div class="fh-stat-v">${v}</div></div>`;
-            const units = stat("Units", (f.units || 0).toFixed(4) + (gold ? " g" : ""));
-            const nav = stat("NAV", formatNavPrice(f.currentNav || 0, f.currency) + (gold ? "/g" : "") + goldStalenessBadgeHTML(f));
-            const ann = stat("Annualised", xirr === null ? "-" : xirr.toFixed(2) + "%", "Money-weighted yearly return (XIRR): uses the date of every buy, sell and payout. Needs at least 1 year of history.");
-            // Nothing taken out yet: Invested and Current inv. would be the same number, so show it once.
+            const uxn = `<div class="fh-uxn"><div class="fh-stat-l">Units × NAV</div><div class="fh-stat-v">${fmtFundUnits(f.units)}${gold ? " g" : ""} × ${(Number(f.currentNav) || 0).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}${gold ? "/g" : ""}${goldStalenessBadgeHTML(f)}</div></div>`;
             if (Math.abs(recovered) < 0.005) {
-                return `<div class="fh-stats">${units}${nav}${stat("Invested", formatCurrency(invested, f.currency))}${ann}</div>`;
+                return `<div class="fh-panel"><div><div class="fh-stat-l">Invested</div><div class="fh-stat-v strong">${formatCurrency(invested, f.currency)}</div></div>${uxn}</div>`;
             }
             const cur = invested - recovered;
-            const curVal = cur > 0.005
+            const main = cur > 0.005
                 ? formatCurrency(cur, f.currency)
-                : `Fully recovered${cur < -0.005 ? `<div class="fh-stat-sub">+${formatCurrency(-cur, f.currency)} above cost</div>` : ""}`;
-            const block = `<div class="fh-stat-main">
-                    <div class="fh-stat-l" title="Invested minus Recovered: the money still in the fund. Current inv. + P/L = Value.">Current inv.</div><div class="fh-stat-v strong">${curVal}</div>
-                    <div class="fh-stat-l fh-stat-gap">Invested</div><div class="fh-stat-v">${formatCurrency(invested, f.currency)}</div>
-                </div>`;
-            return `<div class="fh-stats split">${block}${units}${nav}${ann}${stat("Recovered", formatCurrency(recovered, f.currency), "Cash already taken out via sells and payouts.")}</div>`;
+                : `Fully recovered${cur < -0.005 ? `<div class="fh-grey">+${formatCurrency(-cur, f.currency)} above cost</div>` : ""}`;
+            const num = (v) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return `<div class="fh-panel"><div>
+                    <div class="fh-stat-l" title="Invested minus Recovered: the money still in the fund. Current inv. + P/L = Value.">Current inv.</div>
+                    <div class="fh-stat-v strong">${main}</div>
+                    <div class="fh-grey fh-grey-gap">Invested ${num(invested)}</div>
+                    <div class="fh-grey">Recovered ${num(recovered)}</div>
+                </div>${uxn}</div>`;
         }
 
         function computePortfolioFundPL(fundTxs) {
@@ -22359,6 +22372,7 @@
                             <div class="fh-val">
                                 <div class="fh-val-main">${formatCurrency(value, f.currency)}</div>
                                 <div class="fh-pl">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)} (${returnPct.toFixed(2)}%)</div>
+                                ${fundAnnualisedLineHTML(f, fundTxs)}
                             </div>
                         </div>
                         ${fundCardStatsHTML(f, invested, recovered, fundTxs)}

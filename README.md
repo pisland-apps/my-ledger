@@ -4035,3 +4035,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v532: fund cards — 4 stats, stacked Invested / Current inv., Holding moved to subtitle
 - Fund Holdings + Portfolio Fund Detail cards: stats are now Units · NAV · Invested · Annualised (2×2 on phone, 4 across once the card is ≥440px). Holding years moved into the subtitle ("028302078 · Held 14.0 yrs").
 - Invested and Current inv.: if nothing has been sold/paid out they are identical, so only Invested shows; otherwise both show stacked (Invested above, Current inv. below) in the same cell. Display only. `APP_VERSION` / `CACHE_NAME` -> v532.
+
+## v533: fund cards — Current inv. first, XIRR annualised
+- When money has been taken out, the fund card shows a left block (Current inv. bold on top, Invested below) beside Units · NAV · Annualised · Recovered. Fully redeemed principal shows "Fully recovered" (+amount above cost) instead of a negative number. When nothing was taken out: Units · NAV · Invested · Annualised, as in v532. Holding stays in the subtitle.
+- Annualised is now a money-weighted return (XIRR, reusing `insXirr`): each Buy is cash out on its date, each Sell / Dividend (Payout) cash in, today's value the final cash in. Reinvest / Contribution are not cash flows. Needs >= 1 year of history, otherwise "-". Applies to both the account Fund Holdings cards and the Portfolio Fund Detail cards (shared `fundCardStatsHTML`). Display only. `APP_VERSION` / `CACHE_NAME` -> v533.

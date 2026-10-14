@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v532";
+        const APP_VERSION = "v533";
         const APP_VERSION_DATE = "2026-10-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -22240,28 +22240,44 @@
             if (h) parts.push(`Held ${h}`);
             return parts.length ? `<div class="fh-sub">${parts.join(" · ")}</div>` : "";
         }
-        function fundCardStatsHTML(f, invested, recovered, fundTxs) {
+        // v533: Annualised is now a money-weighted return (XIRR): every Buy is money out on its own date,
+        // every Sell / Dividend (Payout) is money in on its date, and today's value is the final money in.
+        // Reinvest / Contribution add units but no cash, so they are not flows (same rule as Invested).
+        // Returns a percentage, or null when it can't be honest: held < 1 year, no buys, or no sign change.
+        function fundXirrPct(f, fundTxs) {
+            const day = (d) => Date.parse(String(d).slice(0, 10) + "T00:00:00Z") / 86400000;
+            const rows = fundTxs.filter(t => t.date && (t.fundTxType === "buy" || t.fundTxType === "sell" || t.fundTxType === "dividend_payout") && t.amount);
+            if (!rows.some(t => t.fundTxType === "buy")) return null;
+            const t0 = Math.min(...rows.map(t => day(t.date)));
+            const today = Math.floor(Date.now() / 86400000);
+            const span = today - t0;
+            if (!(span >= 365)) return null;
+            const flows = rows.map(t => ({ t: Math.max(0, (day(t.date) - t0) / 365), amt: t.fundTxType === "buy" ? -t.amount : t.amount }));
             const value = (f.units || 0) * (f.currentNav || 0);
-            const holdingYears = fundHoldingYears(fundTxs);
-            const growth = value + recovered;
-            let annualised = null;
-            if (invested > 0 && growth > 0 && holdingYears >= 0.08) {
-                annualised = (Math.pow(growth / invested, 1 / holdingYears) - 1) * 100;
-            }
+            flows.push({ t: span / 365, amt: value });
+            const r = insXirr(flows);
+            return (r == null || !isFinite(r)) ? null : r * 100;
+        }
+        function fundCardStatsHTML(f, invested, recovered, fundTxs) {
+            const xirr = fundXirrPct(f, fundTxs);
             const gold = isGoldFund(f);
             const stat = (l, v, tip) => `<div><div class="fh-stat-l"${tip ? ` title="${tip}"` : ""}>${l}</div><div class="fh-stat-v">${v}</div></div>`;
-            const hasRecovered = Math.abs(recovered) >= 0.005;
-            const investedCell = hasRecovered
-                ? `<div><div class="fh-stat-l">Invested</div><div class="fh-stat-v">${formatCurrency(invested, f.currency)}</div>` +
-                  `<div class="fh-stat-l fh-stat-gap" title="Invested minus Recovered (cash already taken out via sells / payouts). Current inv. + P/L = Value.">Current inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, f.currency)}</div></div>`
-                : stat("Invested", formatCurrency(invested, f.currency));
-            return `
-                <div class="fh-stats">
-                    ${stat("Units", (f.units || 0).toFixed(4) + (gold ? " g" : ""))}
-                    ${stat("NAV", formatNavPrice(f.currentNav || 0, f.currency) + (gold ? "/g" : "") + goldStalenessBadgeHTML(f))}
-                    ${investedCell}
-                    ${stat("Annualised", annualised === null ? "-" : annualised.toFixed(2) + "%", "Yearly growth rate of Value + Recovered over Invested, since the first transaction.")}
+            const units = stat("Units", (f.units || 0).toFixed(4) + (gold ? " g" : ""));
+            const nav = stat("NAV", formatNavPrice(f.currentNav || 0, f.currency) + (gold ? "/g" : "") + goldStalenessBadgeHTML(f));
+            const ann = stat("Annualised", xirr === null ? "-" : xirr.toFixed(2) + "%", "Money-weighted yearly return (XIRR): uses the date of every buy, sell and payout. Needs at least 1 year of history.");
+            // Nothing taken out yet: Invested and Current inv. would be the same number, so show it once.
+            if (Math.abs(recovered) < 0.005) {
+                return `<div class="fh-stats">${units}${nav}${stat("Invested", formatCurrency(invested, f.currency))}${ann}</div>`;
+            }
+            const cur = invested - recovered;
+            const curVal = cur > 0.005
+                ? formatCurrency(cur, f.currency)
+                : `Fully recovered${cur < -0.005 ? `<div class="fh-stat-sub">+${formatCurrency(-cur, f.currency)} above cost</div>` : ""}`;
+            const block = `<div class="fh-stat-main">
+                    <div class="fh-stat-l" title="Invested minus Recovered: the money still in the fund. Current inv. + P/L = Value.">Current inv.</div><div class="fh-stat-v strong">${curVal}</div>
+                    <div class="fh-stat-l fh-stat-gap">Invested</div><div class="fh-stat-v">${formatCurrency(invested, f.currency)}</div>
                 </div>`;
+            return `<div class="fh-stats split">${block}${units}${nav}${ann}${stat("Recovered", formatCurrency(recovered, f.currency), "Cash already taken out via sells and payouts.")}</div>`;
         }
 
         function computePortfolioFundPL(fundTxs) {

@@ -4023,3 +4023,6 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 ## v529: hide "Current inv." when it equals Invested
 - On Fund Holdings cards, the Unit Trust balance hero, "fund deleted" cards and Portfolio Fund Detail cards, Current inv. is only shown when something has been taken out (sells / payouts, i.e. Recovered > 0). Otherwise it is identical to Invested and is left out. Display only. `APP_VERSION` / `CACHE_NAME` -> v529.
+
+## v530: balance hero - P/L as plain coloured text
+- In the Unit Trust balance hero the P/L + Return % no longer sits in a tinted pill; it is plain bold green / red text, 1rem. The pills on the fund cards are unchanged. Display only. `APP_VERSION` / `CACHE_NAME` -> v530.

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v528";
+        const APP_VERSION = "v529";
         const APP_VERSION_DATE = "2026-10-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7937,7 +7937,7 @@
                             ${stat("Units", (f.units || 0).toFixed(4) + (isGoldFund(f) ? " g" : ""))}
                             ${stat("NAV", formatCurrency(f.currentNav || 0, f.currency) + (isGoldFund(f) ? "/g" : "") + goldStalenessBadgeHTML(f))}
                             ${stat("Invested", formatCurrency(invested, f.currency))}
-                            ${stat("Current inv.", formatCurrency(invested - recovered, f.currency))}
+                            ${Math.abs(recovered) >= 0.005 ? stat("Current inv.", formatCurrency(invested - recovered, f.currency)) : ""}
                             ${stat("Annualised", holdingYears >= 0.08 ? annualised.toFixed(2) + "%" : "-")}
                             ${stat("Holding", holdingYears >= 0.08 ? holdingYears.toFixed(1) + " yrs" : "-")}
                         </div>
@@ -7991,7 +7991,7 @@
                         <div class="fh-stats">
                             <div><div class="fh-stat-l">Units</div><div class="fh-stat-v">${units.toFixed(4)}</div></div>
                             <div><div class="fh-stat-l">Invested</div><div class="fh-stat-v">${formatCurrency(invested, currency)}</div></div>
-                            <div><div class="fh-stat-l">Current inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, currency)}</div></div>
+                            ${Math.abs(recovered) >= 0.005 ? `<div><div class="fh-stat-l">Current inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, currency)}</div></div>` : ""}
                         </div>
                     </div>`);
             });
@@ -8013,7 +8013,7 @@
                 heroSub.innerHTML = `
                     <span class="fh-pl" style="--pl:${totalPlColor};">${totalPl >= 0 ? "+" : ""}${formatCurrency(totalPl, cur)} (${totalReturnPct.toFixed(2)}%)</span>
                     <span>Invested<b>${formatCurrency(totalInvested, cur)}</b></span>
-                    <span>Current inv.<b>${formatCurrency(totalInvested - totalRecovered, cur)}</b></span>
+                    ${Math.abs(totalRecovered) >= 0.005 ? `<span>Current inv.<b>${formatCurrency(totalInvested - totalRecovered, cur)}</b></span>` : ""}
                     ${mixedCurrency ? '<span class="bal-hero-note">Mixed currencies — totals are summed at face value</span>' : ""}`;
                 heroSub.style.display = "flex";
             }
@@ -22303,7 +22303,7 @@
                         </div>
                         <div class="fh-stats two">
                             <div><div class="fh-stat-l">Invested</div><div class="fh-stat-v">${formatCurrency(invested, f.currency)}</div></div>
-                            <div><div class="fh-stat-l" title="Invested minus Recovered (cash already taken out via sells / payouts). Current inv. + P/L = Value.">Current inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, f.currency)}</div></div>
+                            ${Math.abs(recovered) >= 0.005 ? `<div><div class="fh-stat-l" title="Invested minus Recovered (cash already taken out via sells / payouts). Current inv. + P/L = Value.">Current inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, f.currency)}</div></div>` : ""}
                         </div>
                     </div>`);
             });

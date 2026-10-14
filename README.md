@@ -4020,3 +4020,6 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - The `< 2026 >` year switcher moves into the Fund Holdings header as one compact bordered control (same element and ids, re-parented by `renderLedger`; it returns to `#ledgerYearNavHome` on other pages). "+ Transaction" no longer wraps.
 - Card labels are sentence case (Units, NAV, Invested, Current inv.). The "Transaction Log History" hint under the page title is smaller and lighter (all account pages).
 - Display layer only. `APP_VERSION` / `CACHE_NAME` -> v528.
+
+## v529: hide "Current inv." when it equals Invested
+- On Fund Holdings cards, the Unit Trust balance hero, "fund deleted" cards and Portfolio Fund Detail cards, Current inv. is only shown when something has been taken out (sells / payouts, i.e. Recovered > 0). Otherwise it is identical to Invested and is left out. Display only. `APP_VERSION` / `CACHE_NAME` -> v529.

@@ -4026,3 +4026,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 ## v530: balance hero - P/L as plain coloured text
 - In the Unit Trust balance hero the P/L + Return % no longer sits in a tinted pill; it is plain bold green / red text, 1rem. The pills on the fund cards are unchanged. Display only. `APP_VERSION` / `CACHE_NAME` -> v530.
+
+## v531: Unit Trust Portfolio fund cards — Units / NAV / Annualised / Holding; NAV shown to 4 decimals
+- Unit Trust Portfolio → Fund Detail cards now show the same six figures as the account page's Fund Holdings cards: Units · NAV · Invested · Current inv. · Annualised · Holding (3 per row on phone, 6 per row on wide screens). Both pages use one shared builder, `fundCardStatsHTML()`, so they can no longer drift apart.
+- "Current inv." is always shown now (it equals Invested when nothing has been taken out), so the grid keeps two even rows instead of a gap.
+- NAV / unit price now shows 4 decimals via new `formatNavPrice()` (e.g. RM0.8713 instead of RM0.87) on both card types and on the fund activity header line, so it matches what is typed on Daily NAV Update. Money amounts stay at 2 decimals. Display only, no data change. `APP_VERSION` / `CACHE_NAME` -> v531.

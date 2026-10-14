@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v530";
+        const APP_VERSION = "v531";
         const APP_VERSION_DATE = "2026-10-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -3045,6 +3045,14 @@
             const isNeg = amount < 0;
             const absStr = Math.abs(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             return `${isNeg ? "-" : ""}${sym}${absStr}`;
+        }
+
+        // v531: NAV / unit price needs 4 decimals (e.g. 0.8713) — formatCurrency's 2dp showed it as
+        // "RM0.87", which looked different from the 0.8713 typed on Daily NAV Update.
+        function formatNavPrice(nav, curr) {
+            const sym = currencySymbols[curr] || curr;
+            const n = Number(nav) || 0;
+            return `${n < 0 ? "-" : ""}${sym}${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
         }
 
         // v377: same formatting as formatCurrency() (thousands separators, 2dp, sign placement)
@@ -7111,7 +7119,7 @@
             document.getElementById("fundActivityMeta").innerHTML = `
                 <span>${escapeHtml(fund.category || "")}${fund.code ? " · " + escapeHtml(fund.code) : ""}</span>
                 <span style="color:var(--primary); font-weight:700;">${escapeHtml(ownerLabel)}</span>
-                <span>${(fund.units || 0).toFixed(4)} ${gold ? "g" : "units"} @ ${formatCurrency(fund.currentNav || 0, fund.currency)}${gold ? "/g" : " NAV"}${goldStalenessBadgeHTML(fund)}</span>
+                <span>${(fund.units || 0).toFixed(4)} ${gold ? "g" : "units"} @ ${formatNavPrice(fund.currentNav || 0, fund.currency)}${gold ? "/g" : " NAV"}${goldStalenessBadgeHTML(fund)}</span>
             `;
 
             const html = fundTxs.map(t => {
@@ -7919,7 +7927,6 @@
 
                 const closed = isClosedFund(f, invested);
                 if (closed) closedPl += pl;
-                const stat = (l, v) => `<div><div class="fh-stat-l">${l}</div><div class="fh-stat-v">${v}</div></div>`;
                 (closed ? closedRows : rowsHtml).push(`
                     <div class="fh-card ${pl >= 0 ? "pos" : "neg"}" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}">
                         <div class="fh-head">
@@ -7933,14 +7940,7 @@
                                 <div class="fh-pl">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)} (${returnPct.toFixed(2)}%)</div>
                             </div>
                         </div>
-                        <div class="fh-stats">
-                            ${stat("Units", (f.units || 0).toFixed(4) + (isGoldFund(f) ? " g" : ""))}
-                            ${stat("NAV", formatCurrency(f.currentNav || 0, f.currency) + (isGoldFund(f) ? "/g" : "") + goldStalenessBadgeHTML(f))}
-                            ${stat("Invested", formatCurrency(invested, f.currency))}
-                            ${Math.abs(recovered) >= 0.005 ? stat("Current inv.", formatCurrency(invested - recovered, f.currency)) : ""}
-                            ${stat("Annualised", holdingYears >= 0.08 ? annualised.toFixed(2) + "%" : "-")}
-                            ${stat("Holding", holdingYears >= 0.08 ? holdingYears.toFixed(1) + " yrs" : "-")}
-                        </div>
+                        ${fundCardStatsHTML(f, invested, recovered, fundTxs)}
                     </div>`);
             });
 
@@ -22220,6 +22220,32 @@
         // computeInvested() inside renderFundHoldingsTable — deliberately duplicated here
         // rather than shared, so a future change to the per-account table can't silently alter
         // this report's numbers (or vice versa) without both being touched on purpose.
+        // v531: one stats panel shared by the account page's Fund Holdings cards and the Unit Trust
+        // Portfolio's Fund Detail cards, so both always show the same six figures in the same order:
+        //   Units · NAV · Invested / Current inv. · Annualised · Holding.
+        // `fundTxs` must be sorted oldest-first (Holding years start at the first transaction).
+        function fundCardStatsHTML(f, invested, recovered, fundTxs) {
+            const value = (f.units || 0) * (f.currentNav || 0);
+            const firstTx = fundTxs.length > 0 ? new Date(fundTxs[0].date) : null;
+            const holdingYears = firstTx ? Math.max((Date.now() - firstTx.getTime()) / (365.25 * 86400000), 0) : 0;
+            const growth = value + recovered;
+            let annualised = null;
+            if (invested > 0 && growth > 0 && holdingYears >= 0.08) {
+                annualised = (Math.pow(growth / invested, 1 / holdingYears) - 1) * 100;
+            }
+            const gold = isGoldFund(f);
+            const stat = (l, v, tip) => `<div><div class="fh-stat-l"${tip ? ` title="${tip}"` : ""}>${l}</div><div class="fh-stat-v">${v}</div></div>`;
+            return `
+                <div class="fh-stats">
+                    ${stat("Units", (f.units || 0).toFixed(4) + (gold ? " g" : ""))}
+                    ${stat("NAV", formatNavPrice(f.currentNav || 0, f.currency) + (gold ? "/g" : "") + goldStalenessBadgeHTML(f))}
+                    ${stat("Invested", formatCurrency(invested, f.currency))}
+                    ${stat("Current inv.", formatCurrency(invested - recovered, f.currency), "Invested minus Recovered (cash already taken out via sells / payouts). Current inv. + P/L = Value.")}
+                    ${stat("Annualised", annualised === null ? "-" : annualised.toFixed(2) + "%", "Yearly growth rate of Value + Recovered over Invested, since the first transaction.")}
+                    ${stat("Holding", holdingYears >= 0.08 ? holdingYears.toFixed(1) + " yrs" : "-")}
+                </div>`;
+        }
+
         function computePortfolioFundPL(fundTxs) {
             let invested = 0, recovered = 0;
             fundTxs.forEach(t => {
@@ -22301,10 +22327,7 @@
                                 <div class="fh-pl">${pl >= 0 ? "+" : ""}${formatCurrency(pl, f.currency)} (${returnPct.toFixed(2)}%)</div>
                             </div>
                         </div>
-                        <div class="fh-stats two">
-                            <div><div class="fh-stat-l">Invested</div><div class="fh-stat-v">${formatCurrency(invested, f.currency)}</div></div>
-                            ${Math.abs(recovered) >= 0.005 ? `<div><div class="fh-stat-l" title="Invested minus Recovered (cash already taken out via sells / payouts). Current inv. + P/L = Value.">Current inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, f.currency)}</div></div>` : ""}
-                        </div>
+                        ${fundCardStatsHTML(f, invested, recovered, fundTxs)}
                     </div>`);
             });
 

@@ -3282,9 +3282,10 @@
         .fh-val { text-align: right; flex: 0 0 auto; }
         .fh-val-main { font-weight: 800; font-size: 1.2rem; line-height: 1.2; white-space: nowrap; letter-spacing: -0.01em; }
         .fh-pl { display: inline-block; margin-top: 5px; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 800; white-space: nowrap; color: var(--pl); background: color-mix(in srgb, var(--pl) 14%, transparent); }
-        .fh-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--text-muted) 7%, transparent); }
+        .fh-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px 10px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--text-muted) 7%, transparent); }
         .fh-stats.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        @container (min-width: 560px) { .fh-stats:not(.two) { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+        @container (min-width: 440px) { .fh-stats:not(.two) { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+        .fh-stat-gap { margin-top: 8px; }
         .fh-stat-l { font-size: 0.7rem; letter-spacing: 0.01em; color: var(--text-muted); font-weight: 600; margin-bottom: 2px; }
         .fh-stat-v { font-size: 0.82rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
         .fh-closed { padding: 9px 12px; font-size: 0.74rem; color: var(--text-muted); font-weight: 700; cursor: pointer; border: 1px dashed var(--border-color); border-radius: 10px; margin: 0 0 12px; text-align: center; }

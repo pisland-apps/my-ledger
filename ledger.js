@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v531";
+        const APP_VERSION = "v532";
         const APP_VERSION_DATE = "2026-10-14";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7932,7 +7932,7 @@
                         <div class="fh-head">
                             <div style="min-width:0;">
                                 <div class="fh-name">${escapeHtml(f.name)}</div>
-                                ${f.code ? `<div class="fh-sub">${escapeHtml(f.code)}</div>` : ""}
+                                ${fundCardSubHTML(f, fundTxs)}
                                 <div class="fh-chips">${f.category ? `<span class="fh-chip">${escapeHtml(f.category)}</span>` : ""}${ownerLabel ? `<span class="fh-chip owner">${escapeHtml(ownerLabel)}</span>` : ""}</div>
                             </div>
                             <div class="fh-val">
@@ -22220,14 +22220,29 @@
         // computeInvested() inside renderFundHoldingsTable — deliberately duplicated here
         // rather than shared, so a future change to the per-account table can't silently alter
         // this report's numbers (or vice versa) without both being touched on purpose.
-        // v531: one stats panel shared by the account page's Fund Holdings cards and the Unit Trust
-        // Portfolio's Fund Detail cards, so both always show the same six figures in the same order:
-        //   Units · NAV · Invested / Current inv. · Annualised · Holding.
-        // `fundTxs` must be sorted oldest-first (Holding years start at the first transaction).
+        // v531/v532: one stats panel shared by the account page's Fund Holdings cards and the Unit Trust
+        // Portfolio's Fund Detail cards: Units · NAV · Invested · Annualised. When money has been taken
+        // out (sells / payouts), the Invested cell also shows "Current inv." stacked underneath; when
+        // nothing was taken out the two figures are identical, so only Invested is shown.
+        // `fundTxs` must be sorted oldest-first. Holding years live in the card subtitle (fundHoldingText).
+        function fundHoldingYears(fundTxs) {
+            const firstTx = fundTxs.length > 0 ? new Date(fundTxs[0].date) : null;
+            return firstTx ? Math.max((Date.now() - firstTx.getTime()) / (365.25 * 86400000), 0) : 0;
+        }
+        function fundHoldingText(fundTxs) {
+            const y = fundHoldingYears(fundTxs);
+            return y >= 0.08 ? `${y.toFixed(1)} yrs` : "";
+        }
+        function fundCardSubHTML(f, fundTxs) {
+            const parts = [];
+            if (f.code) parts.push(escapeHtml(f.code));
+            const h = fundHoldingText(fundTxs);
+            if (h) parts.push(`Held ${h}`);
+            return parts.length ? `<div class="fh-sub">${parts.join(" · ")}</div>` : "";
+        }
         function fundCardStatsHTML(f, invested, recovered, fundTxs) {
             const value = (f.units || 0) * (f.currentNav || 0);
-            const firstTx = fundTxs.length > 0 ? new Date(fundTxs[0].date) : null;
-            const holdingYears = firstTx ? Math.max((Date.now() - firstTx.getTime()) / (365.25 * 86400000), 0) : 0;
+            const holdingYears = fundHoldingYears(fundTxs);
             const growth = value + recovered;
             let annualised = null;
             if (invested > 0 && growth > 0 && holdingYears >= 0.08) {
@@ -22235,14 +22250,17 @@
             }
             const gold = isGoldFund(f);
             const stat = (l, v, tip) => `<div><div class="fh-stat-l"${tip ? ` title="${tip}"` : ""}>${l}</div><div class="fh-stat-v">${v}</div></div>`;
+            const hasRecovered = Math.abs(recovered) >= 0.005;
+            const investedCell = hasRecovered
+                ? `<div><div class="fh-stat-l">Invested</div><div class="fh-stat-v">${formatCurrency(invested, f.currency)}</div>` +
+                  `<div class="fh-stat-l fh-stat-gap" title="Invested minus Recovered (cash already taken out via sells / payouts). Current inv. + P/L = Value.">Current inv.</div><div class="fh-stat-v">${formatCurrency(invested - recovered, f.currency)}</div></div>`
+                : stat("Invested", formatCurrency(invested, f.currency));
             return `
                 <div class="fh-stats">
                     ${stat("Units", (f.units || 0).toFixed(4) + (gold ? " g" : ""))}
                     ${stat("NAV", formatNavPrice(f.currentNav || 0, f.currency) + (gold ? "/g" : "") + goldStalenessBadgeHTML(f))}
-                    ${stat("Invested", formatCurrency(invested, f.currency))}
-                    ${stat("Current inv.", formatCurrency(invested - recovered, f.currency), "Invested minus Recovered (cash already taken out via sells / payouts). Current inv. + P/L = Value.")}
+                    ${investedCell}
                     ${stat("Annualised", annualised === null ? "-" : annualised.toFixed(2) + "%", "Yearly growth rate of Value + Recovered over Invested, since the first transaction.")}
-                    ${stat("Holding", holdingYears >= 0.08 ? holdingYears.toFixed(1) + " yrs" : "-")}
                 </div>`;
         }
 
@@ -22319,7 +22337,7 @@
                         <div class="fh-head">
                             <div style="min-width:0;">
                                 <div class="fh-name">${escapeHtml(f.name)}</div>
-                                ${f.code ? `<div class="fh-sub">${escapeHtml(f.code)}</div>` : ""}
+                                ${fundCardSubHTML(f, fundTxs)}
                                 <div class="fh-chips">${ownerLabel ? `<span class="fh-chip owner">${escapeHtml(ownerLabel)}</span>` : ""}</div>
                             </div>
                             <div class="fh-val">

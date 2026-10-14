@@ -4031,3 +4031,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Unit Trust Portfolio → Fund Detail cards now show the same six figures as the account page's Fund Holdings cards: Units · NAV · Invested · Current inv. · Annualised · Holding (3 per row on phone, 6 per row on wide screens). Both pages use one shared builder, `fundCardStatsHTML()`, so they can no longer drift apart.
 - "Current inv." is always shown now (it equals Invested when nothing has been taken out), so the grid keeps two even rows instead of a gap.
 - NAV / unit price now shows 4 decimals via new `formatNavPrice()` (e.g. RM0.8713 instead of RM0.87) on both card types and on the fund activity header line, so it matches what is typed on Daily NAV Update. Money amounts stay at 2 decimals. Display only, no data change. `APP_VERSION` / `CACHE_NAME` -> v531.
+
+## v532: fund cards — 4 stats, stacked Invested / Current inv., Holding moved to subtitle
+- Fund Holdings + Portfolio Fund Detail cards: stats are now Units · NAV · Invested · Annualised (2×2 on phone, 4 across once the card is ≥440px). Holding years moved into the subtitle ("028302078 · Held 14.0 yrs").
+- Invested and Current inv.: if nothing has been sold/paid out they are identical, so only Invested shows; otherwise both show stacked (Invested above, Current inv. below) in the same cell. Display only. `APP_VERSION` / `CACHE_NAME` -> v532.

@@ -4071,3 +4071,6 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Note box: rounded, focus ring, auto-grows (max 240px), live character counter (limit 1000).
 - Person -> Person(s): same owner-chip checkboxes as the account form. Stored as `memberIds[]` (`memberId` = first, kept for compatibility; older entries still read fine via `tlMemberIds()`). Person filter matches any selected person.
 - No DB_VERSION change. `APP_VERSION` / `CACHE_NAME` -> v539.
+
+## v540: Timeline amount chips — centred grey separator dot
+- The "·" between an extra amount and its note is now a small grey CSS dot (`.tl-ref-dot`), vertically centred. `APP_VERSION` / `CACHE_NAME` -> v540.

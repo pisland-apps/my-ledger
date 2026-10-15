@@ -768,6 +768,27 @@
         .tl-marker span { font-size: 0.76rem; font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; }
         .tl-marker .tl-marker-sub { display: block; margin-top: 2px; font-weight: 600; }
         @media (prefers-reduced-motion: reduce) { .tl-chev { transition: none; } }
+
+        /* v539: Timeline modal — note box, extra reference-amount rows */
+        .tl-note-wrap { position: relative; margin-top: 4px; }
+        .tl-note-input { width: 100%; box-sizing: border-box; min-height: 88px; max-height: 240px; padding: 12px 14px 26px; border: 1.5px solid var(--border-color); border-radius: 14px; background: var(--chip-bg); color: var(--text-main); font-family: inherit; font-size: 0.9rem; line-height: 1.5; resize: none; overflow-y: auto; transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s; }
+        .tl-note-input::placeholder { color: var(--text-muted); opacity: 0.8; }
+        .tl-note-input:focus { outline: none; border-color: var(--primary); background: var(--card-bg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
+        .tl-note-count { position: absolute; right: 12px; bottom: 8px; font-size: 0.68rem; font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; pointer-events: none; }
+        .tl-amt-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+        .tl-amt-head label { margin: 0; }
+        .tl-amt-add { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--primary); background: var(--active-bg); color: var(--primary); font-size: 1.2rem; font-weight: 800; line-height: 1; display: grid; place-items: center; padding: 0; cursor: pointer; }
+        .tl-amt-add:active { background: var(--primary); color: #fff; }
+        .tl-amt-add:disabled { opacity: 0.35; cursor: default; }
+        .tl-xrow { display: grid; grid-template-columns: 1fr 1fr 34px; gap: 10px; align-items: center; margin-top: 10px; }
+        .tl-xrow input { min-width: 0; margin: 0; }
+        .tl-xrow-amt { position: relative; }
+        .tl-xrow-amt input { padding-left: 54px; }
+        .tl-xrow-cur { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 0.74rem; font-weight: 800; color: var(--text-muted); pointer-events: none; }
+        .tl-xrow-del { width: 34px; height: 34px; border-radius: 50%; border: none; background: none; color: var(--text-muted); font-size: 1.25rem; line-height: 1; cursor: pointer; padding: 0; display: grid; place-items: center; }
+        .tl-xrow-del:hover { background: #fee2e2; color: var(--expense-color); }
+        .tl-amt-hint { font-size: 0.7rem; color: var(--text-muted); font-weight: 600; margin: 8px 2px 0; }
+        .tl-ref-note { font-weight: 600; color: var(--text-muted); }
         /* v476: Insurance — primary tabs = underline tabs, secondary filter = small left-aligned pills,
            so the two rows no longer look like the same control. Scoped by modifier class; the shared
            .nav-view-toggle styling used by other pages is untouched. */
@@ -4691,16 +4712,36 @@
                     </div>
                 </div>
 
-                <div class="form-row-inline">
-                    <div><label>Type</label><select id="tlType" class="form-input"></select></div>
-                    <div><label>Person</label><select id="tlMember" class="form-input"></select></div>
+                <div class="form-row"><label>Type</label><select id="tlType" class="form-input"></select></div>
+
+                <!-- v539: Person(s) — same chip picker as the account form's Owner(s): one for an
+                     individual item, several for a joint one (e.g. a joint property). -->
+                <div class="form-row">
+                    <label>Person(s) — select one, or several for a joint item</label>
+                    <div id="tlMemberChips" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;"></div>
                 </div>
 
-                <div class="form-row"><label>Note (Optional)</label><textarea id="tlNote" class="form-input" rows="3" placeholder="Details and context worth remembering"></textarea></div>
+                <div class="form-row">
+                    <label>Note (Optional)</label>
+                    <div class="tl-note-wrap">
+                        <textarea id="tlNote" class="tl-note-input" rows="3" maxlength="1000" placeholder="Details and context worth remembering" data-input="timelineNoteInput"></textarea>
+                        <span id="tlNoteCount" class="tl-note-count" aria-hidden="true"></span>
+                    </div>
+                </div>
 
-                <div class="form-row-inline">
-                    <div><label>Reference amount (Optional)</label><input type="number" id="tlRefAmount" class="form-input" step="0.01" placeholder="Display only — never added up"></div>
-                    <div><label>Currency</label><select id="tlRefCurrency" class="form-input"></select></div>
+                <!-- v539: Reference amounts — row 1 is the main amount + currency; "+" adds more rows
+                     (Amount + Note) that share row 1's currency. Display only, never added up. -->
+                <div class="form-row">
+                    <div class="tl-amt-head">
+                        <label>Reference amount (Optional)</label>
+                        <button type="button" class="tl-amt-add" data-click="timelineAddAmountRow" aria-label="Add another amount" title="Add another amount">+</button>
+                    </div>
+                    <div class="form-row-inline" style="margin-bottom:0;">
+                        <div><input type="number" id="tlRefAmount" class="form-input" step="0.01" placeholder="Amount" aria-label="Reference amount"></div>
+                        <div><select id="tlRefCurrency" class="form-input" aria-label="Currency" data-change="timelineRefCurChange"></select></div>
+                    </div>
+                    <div id="tlExtraRows"></div>
+                    <p class="tl-amt-hint">Extra amounts use the currency above. Display only — never added up.</p>
                 </div>
 
                 <div class="form-row"><label>Link to (Optional)</label><select id="tlLink" class="form-input"></select></div>

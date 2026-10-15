@@ -4065,3 +4065,9 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - The reference amount is now a pill (`ref. SGD 51,816.00`); ✏️ became a small pencil button; cards with a note show a chevron that flips when expanded; a one-line summary (`23 entries · 1983–2025`, or `Showing x of y` when filtered) sits above the list.
 - **Ledger starts here** is now a full-width divider: the rail above it is solid, the rail below it is dashed (replaces the per-card "· before ledger" text).
 - Colours come from per-type `--tc` plus the existing theme tokens (`color-mix`), so all background presets still work. `APP_VERSION` / `CACHE_NAME` -> v538.
+
+## v539: Timeline entry form — multiple reference amounts, nicer note box, multi-person
+- Reference amount: row 1 = amount + currency (unchanged). A round "+" next to the label adds rows of **Amount + Note** (max 10); their currency is row 1's, shown as a small prefix. Stored as `extraAmounts: [{amount, note}]`; card shows one chip per amount ("MYR 214,671.80 · Renov"). Display only, never summed.
+- Note box: rounded, focus ring, auto-grows (max 240px), live character counter (limit 1000).
+- Person -> Person(s): same owner-chip checkboxes as the account form. Stored as `memberIds[]` (`memberId` = first, kept for compatibility; older entries still read fine via `tlMemberIds()`). Person filter matches any selected person.
+- No DB_VERSION change. `APP_VERSION` / `CACHE_NAME` -> v539.

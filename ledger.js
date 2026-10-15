@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v538";
+        const APP_VERSION = "v539";
         const APP_VERSION_DATE = "2026-10-16";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -18153,8 +18153,10 @@
         //   a deleted target just shows as "(deleted)" and is not tappable.
         // - The "Ledger starts here" marker sits at the earliest transaction date; entries dated
         //   before it get a dashed "pre-ledger" look. Entries after it are allowed too.
-        // Record shape: { id, date, title, type, memberId, note, refAmount, refCurrency, linkKind,
-        // linkId, createdAt, updated }. Stored encrypted + included in Backup & Restore and Google
+        // Record shape: { id, date, title, type, memberIds[], memberId (first, legacy), note, refAmount,
+        // refCurrency, extraAmounts[{amount,note}] (v539, share refCurrency), linkKind,
+        // linkId, createdAt, updated }. v539: Person(s) is multi-select (older records only have
+        // memberId — tlMemberIds() reads either). Stored encrypted + included in Backup & Restore and Google
         // Drive sync like every other store (generic writeDB/readAllDB path).
         const TL_TYPES = {
             work: ["💼", "Work / Income"],
@@ -18193,6 +18195,16 @@
             if (p.length >= 3) return `${parseInt(p[2], 10)} ${TL_MONTHS[parseInt(p[1], 10) - 1] || ""}`;
             if (p.length === 2) return TL_MONTHS[parseInt(p[1], 10) - 1] || "";
             return "";
+        }
+
+        // v539: Person(s) is multi-select. Older entries only carry the single `memberId`.
+        function tlMemberIds(e) {
+            if (Array.isArray(e.memberIds)) return e.memberIds.filter(Boolean);
+            return e.memberId ? [e.memberId] : [];
+        }
+
+        function tlFmtAmt(n) {
+            return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
         function tlValidDate(d) {
@@ -18238,8 +18250,8 @@
             const memberFilter = memberSel.value;
             const filtered = all.filter(e => {
                 if (timelineTypeFilter !== "all" && (e.type || "other") !== timelineTypeFilter) return false;
-                if (memberFilter !== "all" && e.memberId !== memberFilter) return false;
-                if (q && !((e.title || "") + " " + (e.note || "")).toLowerCase().includes(q)) return false;
+                if (memberFilter !== "all" && !tlMemberIds(e).includes(memberFilter)) return false;
+                if (q && !((e.title || "") + " " + (e.note || "") + " " + (e.extraAmounts || []).map(x => x.note || "").join(" ")).toLowerCase().includes(q)) return false;
                 return true;
             });
 
@@ -18300,12 +18312,21 @@
                 const typeKey = TL_TYPES[e.type] ? e.type : "other";
                 const t = TL_TYPES[typeKey];
                 const pre = !!startKey && it.key < startKey;
-                const member = e.memberId && getMemberById(e.memberId) ? accountOwnerTagHTML({ memberIds: [e.memberId] }) : "";
+                const liveIds = tlMemberIds(e).filter(id => getMemberById(id));
+                const member = liveIds.length ? accountOwnerTagHTML({ memberIds: liveIds }) : "";
                 const shortDate = tlShortDate(e.date);
                 const metaParts = [];
+                let refShown = false;
                 if (typeof e.refAmount === "number" && isFinite(e.refAmount)) {
-                    metaParts.push(`<span class="tl-ref"><i>ref.</i> <i>${escapeHtml(e.refCurrency || "")}</i> ${e.refAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`);
+                    metaParts.push(`<span class="tl-ref"><i>ref.</i> <i>${escapeHtml(e.refCurrency || "")}</i> ${tlFmtAmt(e.refAmount)}</span>`);
+                    refShown = true;
                 }
+                // v539: extra amounts — each its own chip, "CUR amount · note", in the main currency.
+                (Array.isArray(e.extraAmounts) ? e.extraAmounts : []).forEach(x => {
+                    if (!x || typeof x.amount !== "number" || !isFinite(x.amount)) return;
+                    metaParts.push(`<span class="tl-ref">${refShown ? "" : "<i>ref.</i> "}<i>${escapeHtml(e.refCurrency || "")}</i> ${tlFmtAmt(x.amount)}${x.note ? ` <span class="tl-ref-note">· ${escapeHtml(x.note)}</span>` : ""}</span>`);
+                    refShown = true;
+                });
                 if (e.linkKind && e.linkId) {
                     let label = null;
                     if (e.linkKind === "account") { const a = accounts.find(x => x.id === e.linkId); if (a) label = accountOptionLabel(a, accounts); }
@@ -18373,7 +18394,7 @@
             document.getElementById("tlTitle").value = rec ? (rec.title || "") : "";
             document.getElementById("tlNote").value = rec ? (rec.note || "") : "";
             insFillSelect("tlType", Object.entries(TL_TYPES).map(([k, v]) => [k, v[0] + " " + v[1]]), rec ? (rec.type || "other") : "other");
-            insFillSelect("tlMember", [["", "— not set —"], ...membersCache.map(m => [m.id, m.name])], rec ? (rec.memberId || "") : "");
+            tlRenderMemberChips(rec ? tlMemberIds(rec) : []);
 
             const d = rec ? rec.date : "";
             const precision = d.length === 4 ? "year" : d.length === 7 ? "month" : "day";
@@ -18388,6 +18409,9 @@
             if (!curs.includes(refCur)) curs.push(refCur);
             insFillSelect("tlRefCurrency", curs.map(c => [c, c]), refCur);
             document.getElementById("tlRefAmount").value = rec && typeof rec.refAmount === "number" ? String(rec.refAmount) : "";
+            document.getElementById("tlExtraRows").innerHTML = "";
+            if (rec && Array.isArray(rec.extraAmounts)) rec.extraAmounts.forEach(x => timelineAddAmountRow(null, x));
+            tlUpdateAddBtn();
 
             // Link picker: accounts and policies in two groups.
             const accounts = await readAllDB(STORES.ACCOUNTS);
@@ -18401,6 +18425,70 @@
 
             document.getElementById("tlDeleteBtn").style.display = id ? "block" : "none";
             openModal("timelineModal");
+            timelineNoteInput();
+            requestAnimationFrame(timelineNoteInput);
+        }
+
+        // --- v539 helpers for the modal ---
+        function tlRenderMemberChips(selectedIds) {
+            const wrap = document.getElementById("tlMemberChips");
+            if (membersCache.length === 0) {
+                wrap.innerHTML = `<p style="font-size:0.75rem; color:var(--text-muted);">No members yet — add one via Sidebar ▸ Manage Members.</p>`;
+                return;
+            }
+            wrap.innerHTML = membersCache.map(m => `
+                <label class="owner-chip">
+                    <input type="checkbox" class="tl-member-checkbox" value="${escapeHtml(m.id)}" ${selectedIds.includes(m.id) ? "checked" : ""} style="accent-color:${escapeHtml(m.color)};">
+                    ${escapeHtml(m.name)}
+                </label>`).join("");
+        }
+
+        const TL_MAX_EXTRA = 10;
+
+        function tlUpdateAddBtn() {
+            const btn = document.querySelector(".tl-amt-add");
+            if (btn) btn.disabled = document.querySelectorAll("#tlExtraRows .tl-xrow").length >= TL_MAX_EXTRA;
+        }
+
+        // "+" button (el set) or restoring a saved row (x set). Rows: Amount + Note; the currency
+        // is row 1's, shown as a small prefix inside the amount box.
+        function timelineAddAmountRow(el, x) {
+            const box = document.getElementById("tlExtraRows");
+            if (box.children.length >= TL_MAX_EXTRA) return;
+            const row = document.createElement("div");
+            row.className = "tl-xrow";
+            row.innerHTML = `
+                <div class="tl-xrow-amt"><span class="tl-xrow-cur"></span><input type="number" class="form-input tl-x-amt" step="0.01" placeholder="Amount" aria-label="Amount"></div>
+                <input type="text" class="form-input tl-x-note" maxlength="60" placeholder="Note" aria-label="Note for this amount">
+                <button type="button" class="tl-xrow-del" data-click="timelineRemoveAmountRow" aria-label="Remove this amount" title="Remove">&times;</button>`;
+            if (x) {
+                if (typeof x.amount === "number" && isFinite(x.amount)) row.querySelector(".tl-x-amt").value = String(x.amount);
+                row.querySelector(".tl-x-note").value = x.note || "";
+            }
+            box.appendChild(row);
+            timelineRefCurChange();
+            tlUpdateAddBtn();
+            if (el) row.querySelector(".tl-x-amt").focus();
+        }
+
+        function timelineRemoveAmountRow(el) {
+            const row = el.closest(".tl-xrow");
+            if (row) row.remove();
+            tlUpdateAddBtn();
+        }
+
+        function timelineRefCurChange() {
+            const cur = document.getElementById("tlRefCurrency").value || "";
+            document.querySelectorAll("#tlExtraRows .tl-xrow-cur").forEach(s => { s.textContent = cur; });
+        }
+
+        function timelineNoteInput() {
+            const ta = document.getElementById("tlNote");
+            if (!ta) return;
+            ta.style.height = "auto";
+            ta.style.height = Math.min(ta.scrollHeight + 2, 240) + "px";
+            const n = ta.value.length;
+            document.getElementById("tlNoteCount").textContent = n ? n + " / " + ta.maxLength : "";
         }
 
         async function handleSaveTimeline() {
@@ -18421,13 +18509,26 @@
             const amtRaw = document.getElementById("tlRefAmount").value.trim();
             const amt = amtRaw === "" ? NaN : parseFloat(amtRaw);
             const link = document.getElementById("tlLink").value;
+            // v539: extra amount rows — an empty row is skipped; a note without an amount is flagged.
+            const extras = [];
+            let badRow = false;
+            document.querySelectorAll("#tlExtraRows .tl-xrow").forEach(row => {
+                const raw = row.querySelector(".tl-x-amt").value.trim();
+                const note = row.querySelector(".tl-x-note").value.trim();
+                const v = raw === "" ? NaN : parseFloat(raw);
+                if (isFinite(v)) extras.push({ amount: v, note });
+                else if (note) badRow = true;
+            });
+            if (badRow) { alert("An extra row has a note but no amount — enter the amount or remove the row."); return; }
             record.date = date;
             record.title = title;
             record.type = document.getElementById("tlType").value || "other";
-            record.memberId = document.getElementById("tlMember").value || "";
+            record.memberIds = Array.from(document.querySelectorAll(".tl-member-checkbox:checked")).map(cb => cb.value);
+            record.memberId = record.memberIds[0] || ""; // legacy single-person field, kept for older readers
             record.note = document.getElementById("tlNote").value.trim();
             record.refAmount = isFinite(amt) ? amt : null;
-            record.refCurrency = isFinite(amt) ? document.getElementById("tlRefCurrency").value : "";
+            record.extraAmounts = extras;
+            record.refCurrency = (isFinite(amt) || extras.length) ? document.getElementById("tlRefCurrency").value : "";
             record.linkKind = link ? link.split(":")[0] : "";
             record.linkId = link ? link.slice(link.indexOf(":") + 1) : "";
             record.updated = todayLocalStr();
@@ -26079,6 +26180,8 @@
             timelineOpenLink: (el) => timelineOpenLink(el),
             openTimelineModalNew: () => openTimelineModal(null),
             handleSaveTimeline: () => handleSaveTimeline(),
+            timelineAddAmountRow: (el) => timelineAddAmountRow(el), // v539
+            timelineRemoveAmountRow: (el) => timelineRemoveAmountRow(el), // v539
             handleDeleteTimeline: () => handleDeleteTimeline(),
             // v468: INSURANCE
             navigateToInsurancePage: () => navigateToInsurancePage(),
@@ -26154,6 +26257,7 @@
             toggleReminderRepeatFields: () => toggleReminderRepeatFields(),
             timelineRender: () => renderTimelinePage(), // v537
             timelinePrecisionChange: () => timelinePrecisionChange(), // v537
+            timelineRefCurChange: () => timelineRefCurChange(), // v539
             recalcResolveFdMaturity: () => recalcResolveFdMaturity(),
             recalcFdOpeningRowMaturity: (el) => recalcFdOpeningRowMaturity(el.dataset.rowId),
             handleAutoLockChange: () => handleAutoLockChange(),
@@ -26232,6 +26336,7 @@
             recalcFundTxPriceFromTotal: () => recalcFundTxPriceFromTotal(),
             handleNavPriceInput: (el) => handleNavPriceInput(el),
             timelineRender: () => renderTimelinePage(), // v537
+            timelineNoteInput: () => timelineNoteInput(), // v539
             recalcTxSplitTotal: () => recalcTxSplitTotal(),
             recalcTplSplitTotal: () => recalcTplSplitTotal(),
             recalcSalaryPreview: () => recalcSalaryPreview(),

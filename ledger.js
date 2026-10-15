@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v540";
+        const APP_VERSION = "v541";
         const APP_VERSION_DATE = "2026-10-16";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -18203,6 +18203,12 @@
             return e.memberId ? [e.memberId] : [];
         }
 
+        // v541: display-only — a period followed by a space in a title (e.g. "EP. Senior Engineer")
+        // is drawn as a small grey centred dot. The stored title is unchanged.
+        function tlTitleHTML(t) {
+            return escapeHtml(t || "").replace(/\.\s+/g, '<span class="tl-ref-dot tl-title-dot" aria-hidden="true"></span>');
+        }
+
         function tlFmtAmt(n) {
             return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
@@ -18340,7 +18346,7 @@
                         <span class="tl-dot">${t[0]}</span>
                         <div class="tl-card" data-click="timelineToggleNote">
                             <div class="tl-head"><span class="tl-kind">${escapeHtml(t[1])}</span>${shortDate ? `<span>· ${escapeHtml(shortDate)}</span>` : ""}<span class="tl-head-end">${member}<button type="button" class="tl-edit" data-click="timelineEdit" data-id="${escapeHtml(e.id)}" aria-label="Edit entry" title="Edit">${editIcon}</button></span></div>
-                            <div class="tl-title">${escapeHtml(e.title || "")}</div>
+                            <div class="tl-title">${tlTitleHTML(e.title)}</div>
                             ${e.note ? `<div class="tl-note-row"><div class="tl-note">${escapeHtml(e.note)}</div>${chevIcon}</div>` : ""}
                             ${metaParts.length ? `<div class="tl-meta">${metaParts.join("")}</div>` : ""}
                         </div>

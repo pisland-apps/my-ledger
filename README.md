@@ -4074,3 +4074,6 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 ## v540: Timeline amount chips — centred grey separator dot
 - The "·" between an extra amount and its note is now a small grey CSS dot (`.tl-ref-dot`), vertically centred. `APP_VERSION` / `CACHE_NAME` -> v540.
+
+## v541: Timeline card title — grey centred dot
+- In the card title, ". " (period + space) is displayed as a small grey centred dot (`tlTitleHTML()`, `.tl-title-dot`). Display only; the stored title and search are unchanged. `APP_VERSION` / `CACHE_NAME` -> v541.

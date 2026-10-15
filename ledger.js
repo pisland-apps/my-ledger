@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v534";
-        const APP_VERSION_DATE = "2026-10-14";
+        const APP_VERSION = "v535";
+        const APP_VERSION_DATE = "2026-10-15";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -23361,9 +23361,10 @@
         // CSV export button in the Ledger page header — exports either every transaction
         // (activeLedgerAccountView === "all", the Portfolio General Log reached via the sidebar's
         // "Transactions" link) or just the one account currently open, since those are the two
-        // scopes the page itself already represents. Deliberately does NOT also respect the
-        // page's Category/Type drill-down filters (activeCategoryView/directTypeView) — keeping
-        // the export to exactly "all accounts" or "this account" avoids a confusing mismatch
+        // scopes the page itself already represents. v535: it NOW also respects the Category/Type
+        // drill-down pages (activeCategoryView/directTypeView + the carried year/month), because a
+        // category page exporting every account was a mismatch with what the page shows. Previously
+        // the export stayed at exactly "all accounts" or "this account" to avoid a confusing mismatch
         // where the CSV silently omits transactions a user wouldn't expect missing.
         async function exportLedgerCsv() {
             const [txsAll, accounts] = await Promise.all([
@@ -23384,9 +23385,21 @@
             };
             const viewAccountId = activeLedgerAccountView;
 
-            const scoped = viewAccountId === "all"
-                ? txsAll
-                : txsAll.filter(t => t.src === viewAccountId || t.dest === viewAccountId);
+            // v535: a Category page (e.g. EPF Contrib.(EE)) or an Income/Expense type page is
+            // reached with activeLedgerAccountView === "all", so the export used to dump EVERY
+            // transaction of every account instead of what the page shows. It now applies the
+            // same filter (and the year/month carried in from the report) the page's list uses.
+            const inDrillPeriod = t => {
+                if (categoryDrillYear === "all" && categoryDrillMonth === "all") return true;
+                const d = new Date(t.date);
+                return (categoryDrillYear === "all" || d.getFullYear().toString() === categoryDrillYear)
+                    && (categoryDrillMonth === "all" || d.getMonth().toString() === categoryDrillMonth);
+            };
+            let scoped;
+            if (activeCategoryView !== "all") scoped = txsAll.filter(t => t.cat === activeCategoryView && inDrillPeriod(t));
+            else if (directTypeView !== "all") scoped = txsAll.filter(t => t.type === directTypeView && inDrillPeriod(t));
+            else if (viewAccountId === "all") scoped = txsAll;
+            else scoped = txsAll.filter(t => t.src === viewAccountId || t.dest === viewAccountId);
 
             // v341: an account can have an Opening Balance but zero real transactions yet — the
             // on-screen ledger still shows its "[Opening Balance Setup]" row in that case (see
@@ -23453,9 +23466,13 @@
             // into Notes) — the BOM makes Excel specifically detect it as UTF-8.
             const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
             const url = URL.createObjectURL(blob);
-            const scopeLabel = viewAccountId === "all"
-                ? "all-accounts"
-                : accountName(viewAccountId).replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-+|-+$/g, "");
+            const slug = x => String(x).replace(/[^a-z0-9]+/gi, "-").toLowerCase().replace(/^-+|-+$/g, "");
+            const drillPeriod = (categoryDrillYear === "all" ? "" : `_${categoryDrillYear}`)
+                + (categoryDrillMonth === "all" ? "" : `_m${Number(categoryDrillMonth) + 1}`);
+            const scopeLabel = activeCategoryView !== "all" ? `category-${slug(activeCategoryView)}${drillPeriod}`
+                : directTypeView !== "all" ? `${slug(directTypeView)}${drillPeriod}`
+                : viewAccountId === "all" ? "all-accounts"
+                : slug(accountName(viewAccountId));
             const a = document.createElement("a");
             a.href = url;
             a.download = `ledger_export_${scopeLabel}_${todayLocalStr()}.csv`;

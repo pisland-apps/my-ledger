@@ -4043,3 +4043,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v534: fund cards — one panel, Annualised under the P/L pill
 - Fund Holdings + Portfolio Fund Detail cards: the stats are now one panel. Left: Current inv. as the main figure with "Invested …" and "Recovered …" as small grey lines (when something has been taken out), or just Invested (nothing taken out). Right: "Units × NAV" (units 2–4 decimals, NAV 4 decimals). Fully recovered principal shows "Fully recovered" + a grey "+RM… above cost" line.
 - Annualised (XIRR, from v533) moved under the P/L pill as "Annualised 7.88%"; hidden when under 1 year of history. Holding stays in the subtitle. Display only. `APP_VERSION` / `CACHE_NAME` -> v534.
+
+## v535: 📤 CSV export on a Category / Income / Expense page now exports that page
+
+- On a Category page (e.g. EPF Contrib.(EE)) or an All Income / All Expense Log page, the 📤 button used to export every transaction of every account (`ledger_export_all-accounts_…csv`). It now exports only what the page lists: the category (or type) plus the year/month carried in from the report, e.g. `ledger_export_category-epf-contrib-ee_<date>.csv`. Account pages and the Portfolio General Log export exactly as before. `APP_VERSION` / `CACHE_NAME` -> v535.

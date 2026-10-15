@@ -4051,3 +4051,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v536: CSV export shows the member next to the account
 
 - The Account column of the Ledger CSV export (📤) now uses the same label as the on-screen list, e.g. `KWSP (VF)` and `KWSP (RS)`, instead of the bare account name, so same-named accounts of different members can be told apart (also covers transfers `A → B` and the Opening Balance row). `APP_VERSION` / `CACHE_NAME` -> v536.
+
+## v537: Timeline page (new sidebar item, DB v15)
+
+- New **Timeline** page (sidebar, under Insurance) for things worth remembering from before the ledger started, and after. Display-only: nothing touches balances, Net Worth or any report.
+- Entry fields: title, date at three precisions (exact date / month & year / year only), type (💼 Work / 🏠 Property / 🚗 Vehicle / 🛡️ Insurance / 🏦 Account·Loan / 🎓 Education / 👨‍👩‍👧 Family / 📌 Other), person, note, optional reference amount + currency (grey "ref.", never summed), optional link to an account or insurance policy (tap the chip to open it). No attachments yet.
+- List: vertical timeline grouped by year, newest first; tap a card to expand its note, ✏️ to edit. A **📍 Ledger starts here** marker sits at the earliest transaction date; entries dated before it show a dashed "before ledger" look. Filters: search, person, and type chips (only types in use).
+- New IndexedDB store `timeline` (DB_VERSION 14 -> 15), encrypted like the others, included in Backup & Restore (`bundle.timeline`; older backups without it restore fine) and Google Drive sync. Not merged by "merge from another backup" and not on the Dashboard. Deferred: print report, auto-milestones toggle, attachments. `APP_VERSION` / `CACHE_NAME` -> v537.

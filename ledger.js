@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v536";
+        const APP_VERSION = "v537";
         const APP_VERSION_DATE = "2026-10-15";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -124,14 +124,16 @@
         // active/disposed/lost status). Created either inline from an Expense entry (see the
         // "📦 Add to Inventory" block on the transaction form) or manually from the Inventory
         // page's own + button. See the "--- INVENTORY ---" section below.
+        // v537: DB_VERSION 14→15 adds the TIMELINE store (notes timeline of things to remember from
+        // before/after the ledger started; see the "--- TIMELINE ---" section).
         // v468: DB_VERSION 13→14 adds the INSURANCE store (one record per insurance policy — coverage,
         // typed-in premium history, surrender-value history; see the "--- INSURANCE ---" section).
-        const DB_VERSION = 14;
-        const STORES = { ACCOUNTS: "accounts", TRANSACTIONS: "transactions", SETTINGS: "settings", CATEGORIES: "categories", MEMBERS: "members", FUNDS: "funds", NAV_HISTORY: "navHistory", ATTACHMENTS: "attachments", TEMPLATES: "templates", TAGS: "tags", BUDGETS: "budgets", INVENTORY: "inventory", PLANNED_PAYMENTS: "plannedPayments", REMINDERS: "reminders", INSURANCE: "insurance", DRIVE_SNAPSHOTS: "driveSnapshots" };
+        const DB_VERSION = 15;
+        const STORES = { ACCOUNTS: "accounts", TRANSACTIONS: "transactions", SETTINGS: "settings", CATEGORIES: "categories", MEMBERS: "members", FUNDS: "funds", NAV_HISTORY: "navHistory", ATTACHMENTS: "attachments", TEMPLATES: "templates", TAGS: "tags", BUDGETS: "budgets", INVENTORY: "inventory", PLANNED_PAYMENTS: "plannedPayments", REMINDERS: "reminders", INSURANCE: "insurance", TIMELINE: "timeline", DRIVE_SNAPSHOTS: "driveSnapshots" };
         // Maps each object store to the field IndexedDB uses as its keyPath. That field must stay
         // unencrypted on the stored record (IndexedDB needs to read it directly to index/generate keys);
         // every other field on the record is encrypted as a single AES-GCM blob.
-        const STORE_KEYPATHS = { accounts: "id", transactions: "id", settings: "key", categories: "id", members: "id", funds: "id", navHistory: "date", attachments: "id", templates: "id", tags: "id", budgets: "id", inventory: "id", plannedPayments: "id", reminders: "id", insurance: "id" };
+        const STORE_KEYPATHS = { accounts: "id", transactions: "id", settings: "key", categories: "id", members: "id", funds: "id", navHistory: "date", attachments: "id", templates: "id", tags: "id", budgets: "id", inventory: "id", plannedPayments: "id", reminders: "id", insurance: "id", timeline: "id" };
 
         // Fixed palette offered when picking a member's color (sidebar dot, net-worth rows, etc.)
         const MEMBER_COLORS = ["#3b82f6", "#ec4899", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#0ea5e9", "#14b8a6", "#f97316", "#64748b"];
@@ -2125,6 +2127,7 @@
             const plannedPaymentsPage = document.getElementById("page-plannedpayments");
             const remindersPage = document.getElementById("page-reminders");
             const insurancePage = document.getElementById("page-insurance");
+            const timelinePage = document.getElementById("page-timeline");
 
             if (!ledgerPage.classList.contains("hidden")) {
                 handleLedgerBackClick();
@@ -2170,7 +2173,8 @@
                 !inventoryPage.classList.contains("hidden") ||
                 !plannedPaymentsPage.classList.contains("hidden") ||
                 !remindersPage.classList.contains("hidden") ||
-                !insurancePage.classList.contains("hidden")
+                !insurancePage.classList.contains("hidden") ||
+                !timelinePage.classList.contains("hidden")
             ) {
                 navigateToWorkspace();
             }
@@ -2274,6 +2278,11 @@
                         // terminal,total}], loanOutstanding, notes, createdAt, updated }. See the
                         // "--- INSURANCE ---" section for the full model.
                         database.createObjectStore(STORES.INSURANCE, { keyPath: "id" });
+                    }
+                    if (!database.objectStoreNames.contains(STORES.TIMELINE)) {
+                        // v537: one record per timeline entry — keyPath "id" (app-generated, see
+                        // makeTimelineId()). See the "--- TIMELINE ---" section for the shape.
+                        database.createObjectStore(STORES.TIMELINE, { keyPath: "id" });
                     }
                     if (!database.objectStoreNames.contains(STORES.DRIVE_SNAPSHOTS)) {
                         // v433: safety-net snapshots of THIS device's own data, taken right before
@@ -3265,7 +3274,7 @@
         // --- SPA NAVIGATION PIPELINE ---
         // Every top-level page div's id — used by showPage() to hide all but the target,
         // so adding a new page never risks leaving a stale one visible underneath.
-        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-database", "page-attachment-review", "page-total-summary", "page-monthly-trend", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-incometax", "page-datasecurity", "page-bgtheme", "page-networthcardstyle", "page-dashboardwidgets", "page-currencyconfig", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity", "page-inventory", "page-plannedpayments", "page-reminders", "page-insurance"];
+        const APP_PAGE_IDS = ["page-workspace", "page-ledger", "page-savings", "page-networth-statement", "page-accounts", "page-categories", "page-templates", "page-tags", "page-tag-report", "page-budget", "page-database", "page-attachment-review", "page-total-summary", "page-monthly-trend", "page-spending-breakdown", "page-income-breakdown", "page-portfolio-report", "page-owner-networth-report", "page-currency-report", "page-incometax", "page-datasecurity", "page-bgtheme", "page-networthcardstyle", "page-dashboardwidgets", "page-currencyconfig", "page-member", "page-navupdate", "page-fundactivity", "page-currencyactivity", "page-inventory", "page-plannedpayments", "page-reminders", "page-insurance", "page-timeline"];
         // v406: which rail icon (by its data-click, and data-target for the one that uses
         // sidebarGo instead of its own navigateTo*Page()) corresponds to which Settings page —
         // used by updateSettingsIconRailActiveState() below to highlight the icon for whichever
@@ -3352,6 +3361,7 @@
                 case "page-currencyconfig": return "Currency Setting";
                 case "page-reminders": return "Reminders";
                 case "page-insurance": return "Insurance";
+                case "page-timeline": return "Timeline";
                 default: return "Ledger";
             }
         }
@@ -5547,6 +5557,7 @@
             else if (target === "plannedpayments") navigateToPlannedPaymentsPage();
             else if (target === "reminders") navigateToRemindersPage();
             else if (target === "insurance") navigateToInsurancePage();
+            else if (target === "timeline") navigateToTimelinePage();
             else if (target === "lock") lockAppNow();
         }
 
@@ -18131,6 +18142,292 @@
             });
         }
 
+        // --- TIMELINE (v537) --- a notes timeline for things worth remembering from BEFORE the
+        // ledger started (and after): started EPF in 2015, bought the car, took a policy, changed
+        // jobs. Deliberately a memory aid only — nothing here touches balances, Net Worth or any
+        // report, so there is no double-counting with Opening Balance. Design agreed in chat:
+        // - `date` is a string of one of three precisions — "YYYY-MM-DD", "YYYY-MM" or "YYYY" —
+        //   because old memories are rarely exact. tlSortKey() pads it so mixed precisions sort.
+        // - `refAmount`/`refCurrency` are display-only (grey "ref." figure), never summed.
+        // - `linkKind` ("account" | "policy") + `linkId` optionally point at an existing record;
+        //   a deleted target just shows as "(deleted)" and is not tappable.
+        // - The "Ledger starts here" marker sits at the earliest transaction date; entries dated
+        //   before it get a dashed "pre-ledger" look. Entries after it are allowed too.
+        // Record shape: { id, date, title, type, memberId, note, refAmount, refCurrency, linkKind,
+        // linkId, createdAt, updated }. Stored encrypted + included in Backup & Restore and Google
+        // Drive sync like every other store (generic writeDB/readAllDB path).
+        const TL_TYPES = {
+            work: ["💼", "Work / Income"],
+            property: ["🏠", "Property"],
+            vehicle: ["🚗", "Vehicle"],
+            insurance: ["🛡️", "Insurance"],
+            account: ["🏦", "Account / Loan"],
+            education: ["🎓", "Education"],
+            family: ["👨‍👩‍👧", "Family"],
+            other: ["📌", "Other"]
+        };
+        const TL_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        let timelineTypeFilter = "all";
+
+        function makeTimelineId() {
+            return "tl_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+        }
+
+        // "2015" -> "2015-00-00", "2015-06" -> "2015-06-00": a year-only entry sorts below the dated
+        // ones of the same year (newest-first list), which reads naturally ("sometime in 2015").
+        function tlSortKey(d) {
+            const p = String(d || "").split("-");
+            return (p[0] || "0000") + "-" + (p[1] || "00") + "-" + (p[2] || "00");
+        }
+
+        function tlDateLabel(d) {
+            const p = String(d || "").split("-");
+            if (p.length >= 3) return `${parseInt(p[2], 10)} ${TL_MONTHS[parseInt(p[1], 10) - 1] || ""} ${p[0]}`;
+            if (p.length === 2) return `${TL_MONTHS[parseInt(p[1], 10) - 1] || ""} ${p[0]}`;
+            return p[0] || "";
+        }
+
+        function tlValidDate(d) {
+            return /^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$/.test(d || "");
+        }
+
+        function navigateToTimelinePage() {
+            showPage("page-timeline");
+            pushVirtualState("timeline");
+            renderTimelinePage();
+        }
+
+        function timelineSetType(el) {
+            timelineTypeFilter = el.dataset.type || "all";
+            renderTimelinePage();
+        }
+
+        async function renderTimelinePage() {
+            const listEl = document.getElementById("timelineList");
+            const emptyEl = document.getElementById("timelineEmpty");
+            const chipsEl = document.getElementById("timelineTypeChips");
+            const memberSel = document.getElementById("timelineMember");
+            if (!listEl || !emptyEl || !chipsEl || !memberSel) return;
+
+            await loadMembersCache();
+            const all = await readAllDB(STORES.TIMELINE);
+
+            // Member filter: keep the current choice if that member still exists.
+            const prevMember = memberSel.value || "all";
+            memberSel.innerHTML = `<option value="all">All people</option>` + membersCache.map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join("");
+            memberSel.value = membersCache.some(m => m.id === prevMember) ? prevMember : "all";
+
+            // Type chips: only the types actually in use (plus "All"), so the row stays short.
+            const counts = {};
+            all.forEach(e => { counts[e.type || "other"] = (counts[e.type || "other"] || 0) + 1; });
+            if (timelineTypeFilter !== "all" && !counts[timelineTypeFilter]) timelineTypeFilter = "all";
+            chipsEl.innerHTML = all.length === 0 ? "" :
+                [`<button type="button" class="tl-chip${timelineTypeFilter === "all" ? " active" : ""}" data-click="timelineSetType" data-type="all">All ${all.length}</button>`]
+                    .concat(Object.keys(TL_TYPES).filter(k => counts[k]).map(k =>
+                        `<button type="button" class="tl-chip${timelineTypeFilter === k ? " active" : ""}" data-click="timelineSetType" data-type="${k}">${TL_TYPES[k][0]} ${escapeHtml(TL_TYPES[k][1])} ${counts[k]}</button>`)).join("");
+
+            const q = (document.getElementById("timelineSearch").value || "").trim().toLowerCase();
+            const memberFilter = memberSel.value;
+            const filtered = all.filter(e => {
+                if (timelineTypeFilter !== "all" && (e.type || "other") !== timelineTypeFilter) return false;
+                if (memberFilter !== "all" && e.memberId !== memberFilter) return false;
+                if (q && !((e.title || "") + " " + (e.note || "")).toLowerCase().includes(q)) return false;
+                return true;
+            });
+
+            // Ledger start = earliest transaction date.
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            let startDate = "";
+            txs.forEach(t => { const d = String(t.date || "").slice(0, 10); if (d && (!startDate || d < startDate)) startDate = d; });
+
+            // Names for linked records (read once per render).
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const policies = await readAllDB(STORES.INSURANCE);
+
+            const items = filtered.map(e => ({ e, key: tlSortKey(e.date) }));
+            if (startDate) items.push({ marker: true, key: tlSortKey(startDate) });
+            // Newest first; on an equal key the marker goes last (entries on the start day are "after" it).
+            items.sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : (a.marker ? 1 : 0) - (b.marker ? 1 : 0) || String((b.e && b.e.createdAt) || "").localeCompare(String((a.e && a.e.createdAt) || ""))));
+
+            emptyEl.style.display = all.length === 0 ? "block" : "none";
+            if (all.length === 0) {
+                listEl.innerHTML = "";
+                return;
+            }
+            if (filtered.length === 0) {
+                listEl.innerHTML = `<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:30px 20px;">No entries match this filter.</p>`;
+                return;
+            }
+
+            const startKey = startDate ? tlSortKey(startDate) : "";
+            let html = `<div class="tl-wrap">`;
+            let curYear = "";
+            items.forEach(it => {
+                const year = it.key.slice(0, 4);
+                if (year !== curYear) {
+                    curYear = year;
+                    html += `<div class="tl-year">${escapeHtml(year)}</div>`;
+                }
+                if (it.marker) {
+                    html += `<div class="tl-item"><span class="tl-dot tl-dot-start">📍</span><div class="tl-marker">Ledger starts here · ${escapeHtml(tlDateLabel(startDate))}</div></div>`;
+                    return;
+                }
+                const e = it.e;
+                const t = TL_TYPES[e.type] || TL_TYPES.other;
+                const pre = !!startKey && it.key < startKey;
+                const member = e.memberId && getMemberById(e.memberId) ? accountOwnerTagHTML({ memberIds: [e.memberId] }) : "";
+                const metaParts = [];
+                if (typeof e.refAmount === "number" && isFinite(e.refAmount)) {
+                    metaParts.push(`<span style="color:var(--text-muted);">ref. ${escapeHtml(e.refCurrency || "")} ${e.refAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`);
+                }
+                if (e.linkKind && e.linkId) {
+                    let label = null;
+                    if (e.linkKind === "account") { const a = accounts.find(x => x.id === e.linkId); if (a) label = accountOptionLabel(a, accounts); }
+                    else if (e.linkKind === "policy") { const p = policies.find(x => x.id === e.linkId); if (p) label = p.product || p.insurer || "Policy"; }
+                    metaParts.push(label
+                        ? `<span class="tl-link" data-click="timelineOpenLink" data-kind="${escapeHtml(e.linkKind)}" data-id="${escapeHtml(e.linkId)}">🔗 ${escapeHtml(label)}</span>`
+                        : `<span style="color:var(--text-muted);">🔗 (deleted)</span>`);
+                }
+                html += `
+                    <div class="tl-item${pre ? " tl-pre" : ""}">
+                        <span class="tl-dot">${t[0]}</span>
+                        <div class="tl-card" data-click="timelineToggleNote">
+                            <div class="tl-head"><span>${escapeHtml(tlDateLabel(e.date))}${pre ? " · before ledger" : ""}</span><span style="display:flex; align-items:center; gap:6px;">${member}<button type="button" class="tl-edit" data-click="timelineEdit" data-id="${escapeHtml(e.id)}" aria-label="Edit entry" title="Edit">✏️</button></span></div>
+                            <div class="tl-title">${escapeHtml(e.title || "")}</div>
+                            ${e.note ? `<div class="tl-note">${escapeHtml(e.note)}</div>` : ""}
+                            ${metaParts.length ? `<div class="tl-meta">${metaParts.join("")}</div>` : ""}
+                        </div>
+                    </div>`;
+            });
+            html += `</div>`;
+            listEl.innerHTML = html;
+        }
+
+        function timelineToggleNote(el) {
+            el.classList.toggle("open");
+        }
+
+        function timelineEdit(el) {
+            openTimelineModal(el.dataset.id);
+        }
+
+        function timelineOpenLink(el) {
+            const id = el.dataset.id;
+            if (el.dataset.kind === "account") navigateToLedgerPage(id);
+            else if (el.dataset.kind === "policy") { navigateToInsurancePage(); setTimeout(() => openInsuranceDetail(id), 60); }
+        }
+
+        // --- Add/Edit modal ---
+
+        function timelinePrecisionChange() {
+            const p = document.getElementById("tlPrecision").value;
+            const day = document.getElementById("tlDateDay");
+            const mon = document.getElementById("tlDateMonth");
+            const yr = document.getElementById("tlDateYear");
+            // Carry what's already typed over to the newly chosen precision.
+            const cur = (day.value || mon.value || yr.value || "");
+            const parts = cur.split("-");
+            if (p === "day" && !day.value) day.value = parts.length >= 3 ? cur : "";
+            if (p === "month" && !mon.value) mon.value = parts.length >= 2 ? parts.slice(0, 2).join("-") : "";
+            if (p === "year" && !yr.value) yr.value = parts[0] || "";
+            day.style.display = p === "day" ? "" : "none";
+            mon.style.display = p === "month" ? "" : "none";
+            yr.style.display = p === "year" ? "" : "none";
+        }
+
+        async function openTimelineModal(id) {
+            let rec = null;
+            if (id) {
+                rec = (await readAllDB(STORES.TIMELINE)).find(r => r.id === id) || null;
+                if (!rec) return;
+            }
+            await loadMembersCache();
+            document.getElementById("tlId").value = id || "";
+            document.getElementById("tlModalTitle").textContent = id ? "Edit Timeline Entry" : "Add Timeline Entry";
+            document.getElementById("tlTitle").value = rec ? (rec.title || "") : "";
+            document.getElementById("tlNote").value = rec ? (rec.note || "") : "";
+            insFillSelect("tlType", Object.entries(TL_TYPES).map(([k, v]) => [k, v[0] + " " + v[1]]), rec ? (rec.type || "other") : "other");
+            insFillSelect("tlMember", [["", "— not set —"], ...membersCache.map(m => [m.id, m.name])], rec ? (rec.memberId || "") : "");
+
+            const d = rec ? rec.date : "";
+            const precision = d.length === 4 ? "year" : d.length === 7 ? "month" : "day";
+            document.getElementById("tlPrecision").value = precision;
+            document.getElementById("tlDateDay").value = d.length === 10 ? d : "";
+            document.getElementById("tlDateMonth").value = d.length === 7 ? d : "";
+            document.getElementById("tlDateYear").value = d.length === 4 ? d : "";
+            timelinePrecisionChange();
+
+            const curs = Object.keys(fxRates);
+            const refCur = rec && rec.refCurrency ? rec.refCurrency : baseCurrency;
+            if (!curs.includes(refCur)) curs.push(refCur);
+            insFillSelect("tlRefCurrency", curs.map(c => [c, c]), refCur);
+            document.getElementById("tlRefAmount").value = rec && typeof rec.refAmount === "number" ? String(rec.refAmount) : "";
+
+            // Link picker: accounts and policies in two groups.
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const policies = await readAllDB(STORES.INSURANCE);
+            const cur = rec && rec.linkKind && rec.linkId ? rec.linkKind + ":" + rec.linkId : "";
+            const opt = (v, label) => `<option value="${escapeHtml(v)}"${v === cur ? " selected" : ""}>${escapeHtml(label)}</option>`;
+            document.getElementById("tlLink").innerHTML =
+                `<option value="">— none —</option>` +
+                (accounts.length ? `<optgroup label="Accounts">${accounts.map(a => opt("account:" + a.id, accountOptionLabel(a, accounts))).join("")}</optgroup>` : "") +
+                (policies.length ? `<optgroup label="Policies">${policies.map(p => opt("policy:" + p.id, p.product || p.insurer || "Policy")).join("")}</optgroup>` : "");
+
+            document.getElementById("tlDeleteBtn").style.display = id ? "block" : "none";
+            openModal("timelineModal");
+        }
+
+        async function handleSaveTimeline() {
+            const id = document.getElementById("tlId").value || null;
+            const title = document.getElementById("tlTitle").value.trim();
+            if (!title) { alert("Please enter a title."); return; }
+            const p = document.getElementById("tlPrecision").value;
+            const date = p === "day" ? document.getElementById("tlDateDay").value
+                : p === "month" ? document.getElementById("tlDateMonth").value
+                : String(document.getElementById("tlDateYear").value || "").trim();
+            if (!tlValidDate(date) || parseInt(date.slice(0, 4), 10) < 1900) { alert("Please enter a valid date (or just a month / year)."); return; }
+
+            let record = { id: id || makeTimelineId(), createdAt: todayLocalStr() };
+            if (id) {
+                const existing = (await readAllDB(STORES.TIMELINE)).find(r => r.id === id);
+                if (existing) record = { ...existing };
+            }
+            const amtRaw = document.getElementById("tlRefAmount").value.trim();
+            const amt = amtRaw === "" ? NaN : parseFloat(amtRaw);
+            const link = document.getElementById("tlLink").value;
+            record.date = date;
+            record.title = title;
+            record.type = document.getElementById("tlType").value || "other";
+            record.memberId = document.getElementById("tlMember").value || "";
+            record.note = document.getElementById("tlNote").value.trim();
+            record.refAmount = isFinite(amt) ? amt : null;
+            record.refCurrency = isFinite(amt) ? document.getElementById("tlRefCurrency").value : "";
+            record.linkKind = link ? link.split(":")[0] : "";
+            record.linkId = link ? link.slice(link.indexOf(":") + 1) : "";
+            record.updated = todayLocalStr();
+
+            try {
+                await writeDB(STORES.TIMELINE, record);
+            } catch (err) {
+                alert("Could not save entry: " + (err && err.message ? err.message : err));
+                return;
+            }
+            closeModal("timelineModal");
+            await renderTimelinePage();
+            showToast("Timeline entry saved");
+        }
+
+        async function handleDeleteTimeline() {
+            const id = document.getElementById("tlId").value;
+            if (!id) { closeModal("timelineModal"); return; }
+            closeModalAndThen("timelineModal", async () => {
+                const confirmed = await customConfirm("Delete this timeline entry? This can't be undone.");
+                if (!confirmed) return;
+                try { await deleteDB(STORES.TIMELINE, id); } catch (err) {}
+                await renderTimelinePage();
+            });
+        }
+
         // --- REMINDERS (v418) --- renewal-type dates (passport, driving license, PR renewal,
         // insurance, credit card, etc.). Deliberately NOT tied to a family member (user's explicit
         // choice, unlike Accounts/Funds) — one unified list. Design settled via chat discussion
@@ -23639,6 +23936,8 @@
                 // "--- INSURANCE ---" section. Transactions/plannedPayments above carry their own
                 // `policyId`, so the links survive a restore as long as this list comes back too.
                 insurance: await readAllDB(STORES.INSURANCE),
+                // v537: timeline notes — see the "--- TIMELINE ---" section.
+                timeline: await readAllDB(STORES.TIMELINE),
                 // v65: full SETTINGS store dump ({key,value} rows — defaultPaymentAccount,
                 // defaultReceiveAccount, defaultIncomeCategory, defaultExpenseCategory, recentTx*
                 // widget filters, expandedAccountSubrows, plus baseCurrency/fxRates which are
@@ -23824,6 +24123,9 @@
                     if (db.objectStoreNames.contains(STORES.INSURANCE)) {
                         await clearStoreDB(STORES.INSURANCE);
                     }
+                    if (db.objectStoreNames.contains(STORES.TIMELINE)) {
+                        await clearStoreDB(STORES.TIMELINE);
+                    }
 
                     if (bundle.baseCurrency) baseCurrency = bundle.baseCurrency;
                     if (bundle.fxRates) fxRates = bundle.fxRates;
@@ -23894,6 +24196,10 @@
                     // v468: Insurance policies — same "absent on older backups → skip" pattern.
                     if (bundle.insurance) {
                         for (const pol of bundle.insurance) await writeDB(STORES.INSURANCE, pol);
+                    }
+                    // v537: Timeline entries — same "absent on older backups → skip" pattern.
+                    if (bundle.timeline) {
+                        for (const tl of bundle.timeline) await writeDB(STORES.TIMELINE, tl);
                     }
 
                     // v65: restore preferences from the SETTINGS store dump (defaultPaymentAccount,
@@ -25739,6 +26045,15 @@
             handleSaveReminder: () => handleSaveReminder(),
             handleDeleteReminderFromModal: () => handleDeleteReminderFromModal(),
             reminderRowTap: (el) => reminderRowTap(el),
+            // v537: TIMELINE
+            navigateToTimelinePage: () => navigateToTimelinePage(),
+            timelineSetType: (el) => timelineSetType(el),
+            timelineToggleNote: (el) => timelineToggleNote(el),
+            timelineEdit: (el) => timelineEdit(el),
+            timelineOpenLink: (el) => timelineOpenLink(el),
+            openTimelineModalNew: () => openTimelineModal(null),
+            handleSaveTimeline: () => handleSaveTimeline(),
+            handleDeleteTimeline: () => handleDeleteTimeline(),
             // v468: INSURANCE
             navigateToInsurancePage: () => navigateToInsurancePage(),
             insuranceSetView: (el) => insuranceSetView(el), // v474
@@ -25811,6 +26126,8 @@
             handleAccLogoFileSelected: (el) => handleAccLogoFileSelected(el),
             toggleTxPlannedRepeatFields: () => toggleTxPlannedRepeatFields(),
             toggleReminderRepeatFields: () => toggleReminderRepeatFields(),
+            timelineRender: () => renderTimelinePage(), // v537
+            timelinePrecisionChange: () => timelinePrecisionChange(), // v537
             recalcResolveFdMaturity: () => recalcResolveFdMaturity(),
             recalcFdOpeningRowMaturity: (el) => recalcFdOpeningRowMaturity(el.dataset.rowId),
             handleAutoLockChange: () => handleAutoLockChange(),
@@ -25888,6 +26205,7 @@
             recalcFundTxTotal: () => recalcFundTxTotal(),
             recalcFundTxPriceFromTotal: () => recalcFundTxPriceFromTotal(),
             handleNavPriceInput: (el) => handleNavPriceInput(el),
+            timelineRender: () => renderTimelinePage(), // v537
             recalcTxSplitTotal: () => recalcTxSplitTotal(),
             recalcTplSplitTotal: () => recalcTplSplitTotal(),
             recalcSalaryPreview: () => recalcSalaryPreview(),

@@ -707,6 +707,31 @@
         }
         .nav-view-toggle-btn + .nav-view-toggle-btn { border-left: 1.5px solid var(--border-color); }
         .nav-view-toggle-btn.active { background: var(--primary); color: #fff; }
+        /* v537: Timeline page */
+        .tl-filters { display: flex; gap: 8px; margin: 0 0 10px; }
+        .tl-filters .form-input { margin: 0; }
+        .tl-filters input { flex: 1 1 auto; min-width: 0; }
+        .tl-filters select { flex: 0 0 38%; max-width: 170px; min-width: 0; }
+        .tl-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; }
+        .tl-chips::-webkit-scrollbar { display: none; }
+        .tl-chip { flex: 0 0 auto; border: 1.5px solid var(--border-color); background: var(--card-bg); color: var(--text-muted); border-radius: 999px; padding: 5px 11px; font-size: 0.74rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+        .tl-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+        .tl-wrap { position: relative; padding-left: 40px; padding-bottom: 80px; }
+        .tl-wrap::before { content: ""; position: absolute; left: 15px; top: 6px; bottom: 70px; width: 2px; background: var(--border-color); }
+        .tl-year { font-weight: 800; font-size: 0.95rem; color: var(--text-main); margin: 10px 0 8px; }
+        .tl-item { position: relative; margin-bottom: 10px; }
+        .tl-dot { position: absolute; left: -40px; top: 4px; width: 32px; height: 32px; border-radius: 50%; background: var(--card-bg); border: 2px solid var(--border-color); display: flex; align-items: center; justify-content: center; font-size: 0.95rem; box-sizing: border-box; }
+        .tl-dot-start { border-color: var(--primary); }
+        .tl-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 9px 12px; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+        .tl-pre .tl-card, .tl-pre .tl-dot { border-style: dashed; }
+        .tl-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.72rem; font-weight: 700; color: var(--text-muted); }
+        .tl-title { font-weight: 800; font-size: 0.95rem; overflow-wrap: anywhere; margin-top: 2px; }
+        .tl-note { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .tl-card.open .tl-note { display: block; -webkit-line-clamp: unset; overflow: visible; }
+        .tl-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-size: 0.72rem; font-weight: 700; }
+        .tl-link { background: var(--active-bg); color: var(--primary); border-radius: 999px; padding: 2px 8px; cursor: pointer; }
+        .tl-edit { background: none; border: none; font-size: 0.9rem; padding: 2px 6px; cursor: pointer; }
+        .tl-marker { background: var(--active-bg); border: 1.5px solid var(--primary); color: var(--primary); border-radius: 12px; padding: 9px 12px; font-weight: 800; font-size: 0.8rem; }
         /* v476: Insurance — primary tabs = underline tabs, secondary filter = small left-aligned pills,
            so the two rows no longer look like the same control. Scoped by modifier class; the shared
            .nav-view-toggle styling used by other pages is untouched. */
@@ -3437,6 +3462,11 @@
             <button class="sidebar-item" data-click="sidebarGo" data-target="insurance">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></span> Insurance
             </button>
+            <!-- v537: Timeline — notes of things worth remembering from before (and after) the ledger
+                 started. Display-only; never touches balances. See renderTimelinePage() in ledger.js. -->
+            <button class="sidebar-item" data-click="sidebarGo" data-target="timeline">
+                <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><circle cx="12" cy="7" r="2.5" fill="var(--card-bg)"/><circle cx="12" cy="17" r="2.5" fill="var(--card-bg)"/></svg></span> Timeline
+            </button>
             <button class="sidebar-item" data-click="navigateToNavUpdatePage">
                 <span class="sidebar-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> Daily NAV Update
             </button>
@@ -4570,6 +4600,80 @@
         <p id="remindersPageEmpty" style="display:none; text-align:center; color:var(--text-muted); font-size:0.85rem; padding:40px 20px;">No reminders yet — tap + to add one (passport, driving license, PR renewal, etc.).</p>
 
         <button class="fab-btn" data-click="openReminderModalNew" aria-label="Add reminder" title="Add reminder"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+    </div>
+
+    <!-- v537: Timeline — notes of things worth remembering from before (and after) the ledger
+         started. Display-only: nothing here touches balances, Net Worth or reports. "+" FAB opens
+         the Add form; each card's ✏️ edits it. See renderTimelinePage()/openTimelineModal(). -->
+    <div id="page-timeline" class="page hidden">
+        <div class="nav-header">
+            <button class="back-btn" data-click="navigateToWorkspace">&larr; Back</button>
+            <div style="flex:1;">
+                <h3 style="font-weight:800; font-size:1.2rem;">Timeline</h3>
+                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Things worth remembering, from before the ledger started and after.</p>
+            </div>
+        </div>
+
+        <div class="tl-filters">
+            <input type="search" id="timelineSearch" class="form-input" placeholder="Search title or note" aria-label="Search timeline" data-input="timelineRender">
+            <select id="timelineMember" class="form-input" aria-label="Filter by person" data-change="timelineRender"></select>
+        </div>
+        <div id="timelineTypeChips" class="tl-chips"></div>
+
+        <div id="timelineList"></div>
+        <p id="timelineEmpty" style="display:none; text-align:center; color:var(--text-muted); font-size:0.85rem; padding:40px 20px;">No entries yet — tap + to add something worth remembering (started EPF, bought the car, changed jobs…).</p>
+
+        <button class="fab-btn" data-click="openTimelineModalNew" aria-label="Add timeline entry" title="Add timeline entry"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+    </div>
+
+    <!-- MODAL: Add/Edit Timeline entry -->
+    <div class="modal" id="timelineModal">
+        <div class="modal-sheet" style="padding:0; display:flex; flex-direction:column; overflow:hidden;">
+            <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:20px 20px 12px; flex-shrink:0; border-bottom:1px solid var(--border-color);">
+                <h3 id="tlModalTitle" style="font-weight:800; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Add Timeline Entry</h3>
+                <button type="button" data-click="closeModal" data-modal="timelineModal" style="background:none; border:none; font-size:1.5rem; padding:8px; flex:0 0 auto;">&times;</button>
+            </div>
+            <div style="flex:1 1 auto; min-height:0; overflow-y:auto; padding:16px 20px;">
+                <input type="hidden" id="tlId">
+
+                <div class="form-row form-row-icon"><span class="field-icon" aria-hidden="true">📝</span><input type="text" id="tlTitle" required placeholder="Title (e.g. Started EPF contributions)" aria-label="Title"></div>
+
+                <div class="form-row-inline">
+                    <div>
+                        <label>Date precision</label>
+                        <select id="tlPrecision" class="form-input" data-change="timelinePrecisionChange">
+                            <option value="day">Exact date</option>
+                            <option value="month">Month &amp; year</option>
+                            <option value="year">Year only</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Date</label>
+                        <input type="date" id="tlDateDay" class="form-input">
+                        <input type="month" id="tlDateMonth" class="form-input" style="display:none;">
+                        <input type="number" id="tlDateYear" class="form-input" min="1900" max="2100" step="1" placeholder="e.g. 2015" style="display:none;">
+                    </div>
+                </div>
+
+                <div class="form-row-inline">
+                    <div><label>Type</label><select id="tlType" class="form-input"></select></div>
+                    <div><label>Person</label><select id="tlMember" class="form-input"></select></div>
+                </div>
+
+                <div class="form-row"><label>Note (Optional)</label><textarea id="tlNote" class="form-input" rows="3" placeholder="Details and context worth remembering"></textarea></div>
+
+                <div class="form-row-inline">
+                    <div><label>Reference amount (Optional)</label><input type="number" id="tlRefAmount" class="form-input" step="0.01" placeholder="Display only — never added up"></div>
+                    <div><label>Currency</label><select id="tlRefCurrency" class="form-input"></select></div>
+                </div>
+
+                <div class="form-row"><label>Link to (Optional)</label><select id="tlLink" class="form-input"></select></div>
+            </div>
+            <div style="flex-shrink:0; padding:12px 20px 20px; border-top:1px solid var(--border-color);">
+                <button type="button" class="submit-btn" data-click="handleSaveTimeline" style="margin-top:0;">Save</button>
+                <button type="button" id="tlDeleteBtn" class="submit-btn" data-click="handleDeleteTimeline" style="display:none; margin-top:10px; background:#fee2e2; color:var(--expense-color);">🗑 Delete</button>
+            </div>
+        </div>
     </div>
 
     <!-- MODAL: Add/Edit Reminder -->

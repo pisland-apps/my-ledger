@@ -4077,3 +4077,6 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 ## v541: Timeline card title — grey centred dot
 - In the card title, ". " (period + space) is displayed as a small grey centred dot (`tlTitleHTML()`, `.tl-title-dot`). Display only; the stored title and search are unchanged. `APP_VERSION` / `CACHE_NAME` -> v541.
+
+## v542: Timeline hierarchy — year heading muted, card title lighter
+- `.tl-year-n` now text-muted at weight 700 (was heavy black 800); `.tl-title` weight 700 (was 800) so the card title is the strongest text on the page. CSS only. `APP_VERSION` / `CACHE_NAME` -> v542.

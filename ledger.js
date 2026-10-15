@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v535";
+        const APP_VERSION = "v536";
         const APP_VERSION_DATE = "2026-10-15";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -23381,7 +23381,9 @@
             const accountName = (id) => {
                 if (!id) return "(Opening Balance)";
                 const a = accounts.find(acc => acc.id === id);
-                return a ? a.name : "(deleted account)";
+                // v536: same label the on-screen ledger shows, e.g. "KWSP (VF)" vs "KWSP (RS)" —
+                // two members can own accounts with the same name, so the bare name was ambiguous.
+                return a ? accountOptionLabel(a, accounts) : "(deleted account)";
             };
             const viewAccountId = activeLedgerAccountView;
 
@@ -23454,7 +23456,7 @@
             // just one year's page.
             if (hasOpeningBalanceRow) {
                 rows.push([
-                    "", "opening_balance", viewingAccForOpeningBalance.name, "", "",
+                    "", "opening_balance", accountOptionLabel(viewingAccForOpeningBalance, accounts), "", "",
                     "[Opening Balance Setup]", "Account Opening Initial Vault Point",
                     viewingAccForOpeningBalance.initialBalance.toFixed(2), viewingAccForOpeningBalance.currency || "", ""
                 ]);

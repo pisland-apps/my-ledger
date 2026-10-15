@@ -4047,3 +4047,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v535: 📤 CSV export on a Category / Income / Expense page now exports that page
 
 - On a Category page (e.g. EPF Contrib.(EE)) or an All Income / All Expense Log page, the 📤 button used to export every transaction of every account (`ledger_export_all-accounts_…csv`). It now exports only what the page lists: the category (or type) plus the year/month carried in from the report, e.g. `ledger_export_category-epf-contrib-ee_<date>.csv`. Account pages and the Portfolio General Log export exactly as before. `APP_VERSION` / `CACHE_NAME` -> v535.
+
+## v536: CSV export shows the member next to the account
+
+- The Account column of the Ledger CSV export (📤) now uses the same label as the on-screen list, e.g. `KWSP (VF)` and `KWSP (RS)`, instead of the bare account name, so same-named accounts of different members can be told apart (also covers transfers `A → B` and the Opening Balance row). `APP_VERSION` / `CACHE_NAME` -> v536.

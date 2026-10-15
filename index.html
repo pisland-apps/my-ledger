@@ -707,31 +707,67 @@
         }
         .nav-view-toggle-btn + .nav-view-toggle-btn { border-left: 1.5px solid var(--border-color); }
         .nav-view-toggle-btn.active { background: var(--primary); color: #fff; }
-        /* v537: Timeline page */
+        /* v538: Timeline page redesign — type-coloured rail/dots/accent, big year headings, the
+           "Ledger starts here" divider splits the rail into a solid (after) and a dashed (before)
+           section. Colours only come from --tc (per type) + the existing theme tokens, so every
+           background preset keeps working. */
         .tl-filters { display: flex; gap: 8px; margin: 0 0 10px; }
         .tl-filters .form-input { margin: 0; }
         .tl-filters input { flex: 1 1 auto; min-width: 0; }
         .tl-filters select { flex: 0 0 38%; max-width: 170px; min-width: 0; }
-        .tl-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; }
+        .tl-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; scrollbar-width: none; }
         .tl-chips::-webkit-scrollbar { display: none; }
         .tl-chip { flex: 0 0 auto; border: 1.5px solid var(--border-color); background: var(--card-bg); color: var(--text-muted); border-radius: 999px; padding: 5px 11px; font-size: 0.74rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+        .tl-chip-n { margin-left: 3px; font-weight: 800; opacity: 0.6; font-variant-numeric: tabular-nums; }
         .tl-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
-        .tl-wrap { position: relative; padding-left: 40px; padding-bottom: 80px; }
-        .tl-wrap::before { content: ""; position: absolute; left: 15px; top: 6px; bottom: 70px; width: 2px; background: var(--border-color); }
-        .tl-year { font-weight: 800; font-size: 0.95rem; color: var(--text-main); margin: 10px 0 8px; }
+        .tl-chip.active .tl-chip-n { opacity: 0.85; }
+        .tl-summary { font-size: 0.74rem; font-weight: 600; color: var(--text-muted); margin: 0 2px 2px; }
+        .tl-item.tl-t-work { --tc: #0ea5e9; } .tl-item.tl-t-property { --tc: #10b981; } .tl-item.tl-t-vehicle { --tc: #f97316; }
+        .tl-item.tl-t-insurance { --tc: #14b8a6; } .tl-item.tl-t-account { --tc: #6366f1; } .tl-item.tl-t-education { --tc: #a855f7; }
+        .tl-item.tl-t-family { --tc: #ec4899; } .tl-item.tl-t-other { --tc: #64748b; }
+        .tl-wrap { --tc: var(--primary); position: relative; padding-left: 48px; padding-bottom: 90px; --tl-rail: color-mix(in srgb, var(--text-muted) 38%, var(--card-bg)); }
+        .tl-sec { position: relative; }
+        .tl-sec::before { content: ""; position: absolute; left: -32px; top: 0; bottom: 0; width: 2px; border-radius: 2px; background: var(--tl-rail); }
+        .tl-sec-pre::before { background: repeating-linear-gradient(to bottom, var(--tl-rail) 0 6px, transparent 6px 11px); }
+        .tl-year { display: flex; align-items: center; gap: 10px; margin: 20px 0 10px; }
+        .tl-sec > .tl-year:first-child { margin-top: 4px; }
+        .tl-year-n { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; color: var(--text-main); }
+        .tl-year-c { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); }
+        .tl-year::after { content: ""; flex: 1; height: 1px; background: var(--border-color); }
         .tl-item { position: relative; margin-bottom: 10px; }
-        .tl-dot { position: absolute; left: -40px; top: 4px; width: 32px; height: 32px; border-radius: 50%; background: var(--card-bg); border: 2px solid var(--border-color); display: flex; align-items: center; justify-content: center; font-size: 0.95rem; box-sizing: border-box; }
-        .tl-dot-start { border-color: var(--primary); }
-        .tl-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 9px 12px; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
-        .tl-pre .tl-card, .tl-pre .tl-dot { border-style: dashed; }
-        .tl-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 0.72rem; font-weight: 700; color: var(--text-muted); }
-        .tl-title { font-weight: 800; font-size: 0.95rem; overflow-wrap: anywhere; margin-top: 2px; }
-        .tl-note { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .tl-item::before { content: ""; position: absolute; left: -14px; top: 24px; width: 14px; height: 2px; background: color-mix(in srgb, var(--tc) 45%, var(--card-bg)); }
+        .tl-dot { position: absolute; left: -48px; top: 7px; width: 34px; height: 34px; border-radius: 50%; background: color-mix(in srgb, var(--tc) 14%, var(--card-bg)); border: 2px solid var(--tc); display: flex; align-items: center; justify-content: center; font-size: 1rem; line-height: 1; box-sizing: border-box; }
+        .tl-pre .tl-dot { border-style: dashed; }
+        .tl-card { background: var(--card-bg); border: 1px solid var(--border-color); border-left: 4px solid var(--tc); border-radius: 14px; padding: 10px 8px 11px 14px; box-shadow: var(--card-shadow); cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+        .tl-card:active { background: var(--press-bg); }
+        .tl-pre .tl-card { border-style: dashed dashed dashed solid; }
+        .tl-head { display: flex; align-items: center; gap: 6px; min-height: 28px; font-size: 0.72rem; font-weight: 700; color: var(--text-muted); }
+        .tl-kind { color: color-mix(in srgb, var(--tc) 75%, var(--text-main)); font-weight: 800; }
+        .tl-head-end { margin-left: auto; display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+        .tl-title { font-weight: 800; font-size: 1.02rem; line-height: 1.3; letter-spacing: -0.01em; overflow-wrap: anywhere; margin: 1px 6px 0 0; }
+        .tl-note-row { display: flex; align-items: flex-start; gap: 8px; margin: 5px 6px 0 0; }
+        .tl-note { flex: 1; min-width: 0; font-size: 0.82rem; line-height: 1.45; color: var(--text-muted); white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .tl-card.open .tl-note { display: block; -webkit-line-clamp: unset; overflow: visible; }
-        .tl-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; font-size: 0.72rem; font-weight: 700; }
-        .tl-link { background: var(--active-bg); color: var(--primary); border-radius: 999px; padding: 2px 8px; cursor: pointer; }
-        .tl-edit { background: none; border: none; font-size: 0.9rem; padding: 2px 6px; cursor: pointer; }
-        .tl-marker { background: var(--active-bg); border: 1.5px solid var(--primary); color: var(--primary); border-radius: 12px; padding: 9px 12px; font-weight: 800; font-size: 0.8rem; }
+        .tl-chev { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 3px; color: var(--text-muted); transition: transform 0.15s; }
+        .tl-card.open .tl-chev { transform: rotate(180deg); }
+        .tl-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 6px 0 0; font-size: 0.74rem; font-weight: 700; }
+        .tl-ref { background: color-mix(in srgb, var(--tc) 10%, var(--card-bg)); border-radius: 999px; padding: 3px 10px; color: var(--text-main); font-variant-numeric: tabular-nums; }
+        .tl-ref i { font-style: normal; font-weight: 600; color: var(--text-muted); }
+        .tl-link { background: var(--active-bg); color: var(--primary); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+        .tl-gone { color: var(--text-muted); padding: 3px 0; }
+        .tl-edit { display: grid; place-items: center; width: 30px; height: 30px; background: none; border: none; border-radius: 50%; color: var(--text-muted); cursor: pointer; padding: 0; }
+        .tl-edit:hover { background: var(--active-bg); color: var(--primary); }
+        .tl-edit:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+        .tl-edit svg { width: 16px; height: 16px; }
+        .tl-marker-row { --tc: var(--primary); position: relative; margin: 6px 0 4px; }
+        .tl-marker-row::before { content: ""; position: absolute; left: -14px; top: 24px; width: 14px; height: 2px; background: var(--primary); }
+        .tl-dot-start { background: var(--primary); border-color: var(--primary); }
+        .tl-marker { background: var(--active-bg); border: 1.5px solid var(--primary); border-radius: 14px; padding: 10px 14px; }
+        .tl-marker-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+        .tl-marker b { font-weight: 800; font-size: 0.92rem; color: var(--primary); }
+        .tl-marker span { font-size: 0.76rem; font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+        .tl-marker .tl-marker-sub { display: block; margin-top: 2px; font-weight: 600; }
+        @media (prefers-reduced-motion: reduce) { .tl-chev { transition: none; } }
         /* v476: Insurance — primary tabs = underline tabs, secondary filter = small left-aligned pills,
            so the two rows no longer look like the same control. Scoped by modifier class; the shared
            .nav-view-toggle styling used by other pages is untouched. */

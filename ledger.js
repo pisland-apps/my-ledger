@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v537";
-        const APP_VERSION_DATE = "2026-10-15";
+        const APP_VERSION = "v538";
+        const APP_VERSION_DATE = "2026-10-16";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -18187,6 +18187,14 @@
             return p[0] || "";
         }
 
+        // v538: the year heading already shows the year, so cards only show the finer part.
+        function tlShortDate(d) {
+            const p = String(d || "").split("-");
+            if (p.length >= 3) return `${parseInt(p[2], 10)} ${TL_MONTHS[parseInt(p[1], 10) - 1] || ""}`;
+            if (p.length === 2) return TL_MONTHS[parseInt(p[1], 10) - 1] || "";
+            return "";
+        }
+
         function tlValidDate(d) {
             return /^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$/.test(d || "");
         }
@@ -18222,9 +18230,9 @@
             all.forEach(e => { counts[e.type || "other"] = (counts[e.type || "other"] || 0) + 1; });
             if (timelineTypeFilter !== "all" && !counts[timelineTypeFilter]) timelineTypeFilter = "all";
             chipsEl.innerHTML = all.length === 0 ? "" :
-                [`<button type="button" class="tl-chip${timelineTypeFilter === "all" ? " active" : ""}" data-click="timelineSetType" data-type="all">All ${all.length}</button>`]
+                [`<button type="button" class="tl-chip${timelineTypeFilter === "all" ? " active" : ""}" data-click="timelineSetType" data-type="all">All<span class="tl-chip-n">${all.length}</span></button>`]
                     .concat(Object.keys(TL_TYPES).filter(k => counts[k]).map(k =>
-                        `<button type="button" class="tl-chip${timelineTypeFilter === k ? " active" : ""}" data-click="timelineSetType" data-type="${k}">${TL_TYPES[k][0]} ${escapeHtml(TL_TYPES[k][1])} ${counts[k]}</button>`)).join("");
+                        `<button type="button" class="tl-chip${timelineTypeFilter === k ? " active" : ""}" data-click="timelineSetType" data-type="${k}">${TL_TYPES[k][0]} ${escapeHtml(TL_TYPES[k][1])}<span class="tl-chip-n">${counts[k]}</span></button>`)).join("");
 
             const q = (document.getElementById("timelineSearch").value || "").trim().toLowerCase();
             const memberFilter = memberSel.value;
@@ -18260,25 +18268,43 @@
             }
 
             const startKey = startDate ? tlSortKey(startDate) : "";
-            let html = `<div class="tl-wrap">`;
+
+            // v538: group into year blocks first (so each heading can show its entry count), then
+            // lay out as: [after-ledger rail] -> start marker -> [before-ledger dashed rail].
+            const yearCount = {};
+            items.forEach(it => { if (!it.marker) { const y = it.key.slice(0, 4); yearCount[y] = (yearCount[y] || 0) + 1; } });
+            const preCount = startKey ? items.filter(it => !it.marker && it.key < startKey).length : 0;
+            const years = items.filter(it => !it.marker).map(it => it.key.slice(0, 4));
+            const yearsSpan = years.length ? (years[years.length - 1] === years[0] ? years[0] : `${years[years.length - 1]}–${years[0]}`) : "";
+            const editIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+            const chevIcon = `<svg class="tl-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+            let html = `<div class="tl-summary">${filtered.length === all.length ? `${all.length} ${all.length === 1 ? "entry" : "entries"}` : `Showing ${filtered.length} of ${all.length}`}${yearsSpan ? ` · ${escapeHtml(yearsSpan)}` : ""}</div><div class="tl-wrap"><div class="tl-sec">`;
             let curYear = "";
+            let inPre = false;
             items.forEach(it => {
                 const year = it.key.slice(0, 4);
-                if (year !== curYear) {
-                    curYear = year;
-                    html += `<div class="tl-year">${escapeHtml(year)}</div>`;
-                }
                 if (it.marker) {
-                    html += `<div class="tl-item"><span class="tl-dot tl-dot-start">📍</span><div class="tl-marker">Ledger starts here · ${escapeHtml(tlDateLabel(startDate))}</div></div>`;
+                    // close the "after" rail, show the divider, then open the dashed "before" rail
+                    html += `</div><div class="tl-marker-row"><span class="tl-dot tl-dot-start">📍</span><div class="tl-marker"><div class="tl-marker-line"><b>Ledger starts here</b><span>${escapeHtml(tlDateLabel(startDate))}</span></div>${preCount ? `<span class="tl-marker-sub">Notes below are from before the ledger</span>` : ""}</div></div><div class="tl-sec tl-sec-pre">`;
+                    inPre = true;
+                    curYear = year === curYear ? "" : curYear; // marker's own year may still need a heading for the entries below
                     return;
                 }
+                if (year !== curYear) {
+                    curYear = year;
+                    const n = yearCount[year] || 0;
+                    html += `<div class="tl-year"><span class="tl-year-n">${escapeHtml(year)}</span><span class="tl-year-c">${n} ${n === 1 ? "entry" : "entries"}</span></div>`;
+                }
                 const e = it.e;
-                const t = TL_TYPES[e.type] || TL_TYPES.other;
+                const typeKey = TL_TYPES[e.type] ? e.type : "other";
+                const t = TL_TYPES[typeKey];
                 const pre = !!startKey && it.key < startKey;
                 const member = e.memberId && getMemberById(e.memberId) ? accountOwnerTagHTML({ memberIds: [e.memberId] }) : "";
+                const shortDate = tlShortDate(e.date);
                 const metaParts = [];
                 if (typeof e.refAmount === "number" && isFinite(e.refAmount)) {
-                    metaParts.push(`<span style="color:var(--text-muted);">ref. ${escapeHtml(e.refCurrency || "")} ${e.refAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`);
+                    metaParts.push(`<span class="tl-ref"><i>ref.</i> <i>${escapeHtml(e.refCurrency || "")}</i> ${e.refAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`);
                 }
                 if (e.linkKind && e.linkId) {
                     let label = null;
@@ -18286,20 +18312,20 @@
                     else if (e.linkKind === "policy") { const p = policies.find(x => x.id === e.linkId); if (p) label = p.product || p.insurer || "Policy"; }
                     metaParts.push(label
                         ? `<span class="tl-link" data-click="timelineOpenLink" data-kind="${escapeHtml(e.linkKind)}" data-id="${escapeHtml(e.linkId)}">🔗 ${escapeHtml(label)}</span>`
-                        : `<span style="color:var(--text-muted);">🔗 (deleted)</span>`);
+                        : `<span class="tl-gone">🔗 (deleted)</span>`);
                 }
                 html += `
-                    <div class="tl-item${pre ? " tl-pre" : ""}">
+                    <div class="tl-item tl-t-${typeKey}${pre ? " tl-pre" : ""}">
                         <span class="tl-dot">${t[0]}</span>
                         <div class="tl-card" data-click="timelineToggleNote">
-                            <div class="tl-head"><span>${escapeHtml(tlDateLabel(e.date))}${pre ? " · before ledger" : ""}</span><span style="display:flex; align-items:center; gap:6px;">${member}<button type="button" class="tl-edit" data-click="timelineEdit" data-id="${escapeHtml(e.id)}" aria-label="Edit entry" title="Edit">✏️</button></span></div>
+                            <div class="tl-head"><span class="tl-kind">${escapeHtml(t[1])}</span>${shortDate ? `<span>· ${escapeHtml(shortDate)}</span>` : ""}<span class="tl-head-end">${member}<button type="button" class="tl-edit" data-click="timelineEdit" data-id="${escapeHtml(e.id)}" aria-label="Edit entry" title="Edit">${editIcon}</button></span></div>
                             <div class="tl-title">${escapeHtml(e.title || "")}</div>
-                            ${e.note ? `<div class="tl-note">${escapeHtml(e.note)}</div>` : ""}
+                            ${e.note ? `<div class="tl-note-row"><div class="tl-note">${escapeHtml(e.note)}</div>${chevIcon}</div>` : ""}
                             ${metaParts.length ? `<div class="tl-meta">${metaParts.join("")}</div>` : ""}
                         </div>
                     </div>`;
             });
-            html += `</div>`;
+            html += `</div></div>`;
             listEl.innerHTML = html;
         }
 

@@ -4058,3 +4058,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Entry fields: title, date at three precisions (exact date / month & year / year only), type (💼 Work / 🏠 Property / 🚗 Vehicle / 🛡️ Insurance / 🏦 Account·Loan / 🎓 Education / 👨‍👩‍👧 Family / 📌 Other), person, note, optional reference amount + currency (grey "ref.", never summed), optional link to an account or insurance policy (tap the chip to open it). No attachments yet.
 - List: vertical timeline grouped by year, newest first; tap a card to expand its note, ✏️ to edit. A **📍 Ledger starts here** marker sits at the earliest transaction date; entries dated before it show a dashed "before ledger" look. Filters: search, person, and type chips (only types in use).
 - New IndexedDB store `timeline` (DB_VERSION 14 -> 15), encrypted like the others, included in Backup & Restore (`bundle.timeline`; older backups without it restore fine) and Google Drive sync. Not merged by "merge from another backup" and not on the Dashboard. Deferred: print report, auto-milestones toggle, attachments. `APP_VERSION` / `CACHE_NAME` -> v537.
+
+## v538: Timeline page redesign (display only, no data/DB change)
+
+- Each entry type now has its own colour (dot, left accent, type label), so the list can be scanned by colour instead of reading every emoji. The card header shows the type name and, for month/day precision, the short date; the old repeated year is gone (the big year heading carries it, with an entry count).
+- The reference amount is now a pill (`ref. SGD 51,816.00`); ✏️ became a small pencil button; cards with a note show a chevron that flips when expanded; a one-line summary (`23 entries · 1983–2025`, or `Showing x of y` when filtered) sits above the list.
+- **Ledger starts here** is now a full-width divider: the rail above it is solid, the rail below it is dashed (replaces the per-card "· before ledger" text).
+- Colours come from per-type `--tc` plus the existing theme tokens (`color-mix`), so all background presets still work. `APP_VERSION` / `CACHE_NAME` -> v538.

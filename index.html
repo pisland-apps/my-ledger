@@ -789,6 +789,13 @@
         .tl-xrow-del:hover { background: #fee2e2; color: var(--expense-color); }
         .tl-amt-hint { font-size: 0.7rem; color: var(--text-muted); font-weight: 600; margin: 8px 2px 0; }
         .tl-ref-note { font-weight: 600; color: var(--text-muted); }
+
+        /* v543: "Add this purchase to Inventory" panel — was hard-coded light green (#f0fdf4), so in
+           dark themes the inputs' light text sat on a light box and Serial / Model looked empty.
+           Now the tint is mixed from the theme's own card/text colours, so it follows any theme. */
+        .tx-inv-wrap { background: color-mix(in srgb, #22c55e 13%, var(--card-bg)); border: 1px solid color-mix(in srgb, #22c55e 38%, var(--border-color)); border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+        .tx-inv-wrap input, .tx-inv-wrap select { color: var(--text-main); }
+        .tx-inv-hint { font-size: 0.68rem; font-weight: 600; color: color-mix(in srgb, #16a34a 62%, var(--text-main)); margin: 2px 0 8px; }
         .tl-ref-dot { display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--text-muted); opacity: 0.7; vertical-align: middle; margin: 0 7px 0 6px; }
         .tl-title-dot { width: 5px; height: 5px; margin: 0 6px 0 5px; }
         /* v476: Insurance — primary tabs = underline tabs, secondary filter = small left-aligned pills,
@@ -6919,7 +6926,7 @@
                      all auto-filled from Description/Date/Amount/this entry's own receipts at
                      save time (see handleTransactionSubmitMobile()). Only Serial/Model/Warranty
                      need filling in here, since those don't exist anywhere else on the form. -->
-                <div id="txInventoryWrap" style="display:none; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:10px; margin-bottom:10px;">
+                <div id="txInventoryWrap" class="tx-inv-wrap" style="display:none;">
                     <div class="toggle-switch-row" style="margin:0 0 4px;">
                         <span class="toggle-switch-label" style="font-size:0.75rem;">📦 Add this purchase to Inventory</span>
                         <label class="toggle-switch">
@@ -6928,7 +6935,7 @@
                         </label>
                     </div>
                     <div id="txInventoryFieldsWrap" style="display:none;">
-                        <p style="font-size:0.68rem; color:#166534; margin:2px 0 8px;">Item name comes from Notes above. Vendor/Date/Price/attachments are taken from this entry automatically.</p>
+                        <p class="tx-inv-hint">Item name comes from Notes above. Vendor/Date/Price/attachments are taken from this entry automatically.</p>
                         <div class="form-row-inline">
                             <div>
                                 <label>Serial Number (Optional)</label>

@@ -4080,3 +4080,6 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 ## v542: Timeline hierarchy — year heading muted, card title lighter
 - `.tl-year-n` now text-muted at weight 700 (was heavy black 800); `.tl-title` weight 700 (was 800) so the card title is the strongest text on the page. CSS only. `APP_VERSION` / `CACHE_NAME` -> v542.
+
+## v543: Dark-mode fix — Serial / Model unreadable in "Add this purchase to Inventory"
+- `#txInventoryWrap` had inline light-green colours; inputs inherit the theme's (light) text colour, so in dark themes the text was invisible. Moved to `.tx-inv-wrap` with the tint mixed from `--card-bg` / `--border-color`, input text forced to `--text-main`, hint text via `.tx-inv-hint`. CSS/markup only. `APP_VERSION` / `CACHE_NAME` -> v543.

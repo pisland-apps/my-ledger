@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v544";
+        const APP_VERSION = "v545";
         const APP_VERSION_DATE = "2026-10-16";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -14387,14 +14387,20 @@
             if (atts.length === 1) { openAttachment(atts[0], null); return; }
 
             const list = document.getElementById("txAttachmentsPickerList");
-            list.innerHTML = atts.map((att, idx) => `
-                <div class="tx-att-item" data-click="openAttachmentFromPicker" data-idx="${idx}" style="display:flex; align-items:center; gap:8px; background:var(--chip-bg); border:1px solid var(--border-color); border-radius:8px; padding:8px; cursor:pointer;">
-                    <div style="width:36px; height:36px; border-radius:6px; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:var(--chip-bg); font-size:1.1rem;">
-                        ${att.thumb ? `<img src="${att.thumb}" alt="" style="width:100%; height:100%; object-fit:cover;">` : ((att.mime || "").startsWith("image/") ? "🖼️" : "📄")}
+            list.innerHTML = atts.map((att, idx) => ((att.mime || "").startsWith("image/") && !/\.pdf$/i.test(att.name || "")) ? `
+                <div class="tx-att-item" data-click="openAttachmentFromPicker" data-idx="${idx}" style="background:var(--chip-bg); border:1px solid var(--border-color); border-radius:10px; overflow:hidden; cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent;">
+                    <div style="display:flex; align-items:center; justify-content:center; min-height:80px; line-height:0;">
+                        ${(att.thumb || att.data) ? `<img data-att-img="p${idx}" src="${att.data || att.thumb}" alt="" style="display:block; width:100%; max-height:240px; object-fit:contain;">` : `<span style="font-size:1.6rem; line-height:1; padding:24px;">🖼️</span>`}
                     </div>
+                    <div style="padding:6px 10px; border-top:1px solid var(--border-color); font-size:0.78rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(att.name || "Attachment")}</div>
+                </div>
+            ` : `
+                <div class="tx-att-item" data-click="openAttachmentFromPicker" data-idx="${idx}" style="display:flex; align-items:center; gap:8px; background:var(--chip-bg); border:1px solid var(--border-color); border-radius:8px; padding:8px; cursor:pointer; user-select:none; -webkit-user-select:none;">
+                    <div style="width:36px; height:36px; border-radius:6px; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:var(--chip-bg); font-size:1.1rem;">📄</div>
                     <div style="flex:1; min-width:0; font-size:0.8rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(att.name || "Attachment")}</div>
                 </div>
             `).join("");
+            hydrateInlineAttImages(list, atts.slice(), "p");
             txAttachmentsPickerCurrent = atts;
             openModal("txAttachmentsPickerModal");
         }
@@ -14722,13 +14728,60 @@
             document.getElementById("invFilesInput").value = "";
         }
 
+        // v544: inventory attachments show images as large inline previews (same idea as Quick View):
+        // tap the picture to open the full viewer; the ✕ below it still removes the attachment.
+        // PDFs keep the compact row. `key` ("e0"/"t0") ties an <img> to its attachment for hydration.
+        function renderInvAttachmentCard(att, key, kind, idx, removeDataClick) {
+            const isImage = (att.mime || "").startsWith("image/") && !/\.pdf$/i.test(att.name || "");
+            if (!isImage) return `<div style="flex:1 1 100%; min-width:0;">${renderTxAttachmentRow(att, removeDataClick)}</div>`;
+            const src = att.data || att.thumb || "";
+            return `
+                <div class="tx-att-item" style="flex:1 1 100%; min-width:0; background:var(--chip-bg); border:1px solid var(--border-color); border-radius:10px; overflow:hidden;">
+                    <div data-click="openInvFormAttachment" data-kind="${kind}" data-idx="${idx}" title="Tap to open" style="cursor:pointer; display:flex; align-items:center; justify-content:center; min-height:80px; line-height:0; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent;">
+                        ${src ? `<img data-att-img="${key}" src="${src}" alt="${escapeHtml(att.name || "Attachment")}" style="display:block; width:100%; max-height:240px; object-fit:contain;">` : `<span style="font-size:1.6rem; line-height:1; padding:24px;">🖼️</span>`}
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px; padding:6px 10px; border-top:1px solid var(--border-color);">
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-size:0.78rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(att.name || "Attachment")}</div>
+                            <div style="font-size:0.68rem; color:var(--text-muted);">${formatAttBytes(att.size)}</div>
+                        </div>
+                        <button type="button" data-click="${removeDataClick}" style="border:none; background:none; color:var(--expense-color); font-weight:700; font-size:1rem; cursor:pointer; padding:2px 6px; flex-shrink:0;">✕</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // v544: swaps the 96px stored thumb for the full-resolution image (read from
+        // STORES.ATTACHMENTS) in every <img data-att-img="<prefix><idx>"> under `container`.
+        // Skips imgs that were re-rendered away while the read was in flight; failures keep the thumb.
+        async function hydrateInlineAttImages(container, atts, prefix) {
+            if (!container) return;
+            for (let idx = 0; idx < atts.length; idx++) {
+                const att = atts[idx];
+                if (!att || att.data || !att.id || !(att.mime || "").startsWith("image/")) continue;
+                const img = container.querySelector(`img[data-att-img="${prefix}${idx}"]`);
+                if (!img) continue;
+                try {
+                    const rec = await readKeyDB(STORES.ATTACHMENTS, att.id);
+                    if (rec && rec.data && img.isConnected) img.src = rec.data;
+                } catch (err) { /* keep thumb */ }
+            }
+        }
+
+        function openInvFormAttachment(el) {
+            const idx = parseInt(el.dataset.idx, 10);
+            const att = (el.dataset.kind === "temp" ? invTempAttachments : invExistingAttachments)[idx];
+            if (att) openAttachment(att, null);
+        }
+
         function renderInvAttachmentPreview() {
             const wrap = document.getElementById("invAttachmentPreview");
             const items = [];
-            invExistingAttachments.forEach((att, idx) => items.push(renderTxAttachmentRow(att, `removeExistingInvAttachment" data-idx="${idx}`)));
-            invTempAttachments.forEach((att, idx) => items.push(renderTxAttachmentRow(att, `removeTempInvAttachment" data-idx="${idx}`)));
+            invExistingAttachments.forEach((att, idx) => items.push(renderInvAttachmentCard(att, "e" + idx, "existing", idx, `removeExistingInvAttachment" data-idx="${idx}`)));
+            invTempAttachments.forEach((att, idx) => items.push(renderInvAttachmentCard(att, "t" + idx, "temp", idx, `removeTempInvAttachment" data-idx="${idx}`)));
             wrap.innerHTML = items.join("");
             wrap.style.display = items.length ? "flex" : "none";
+            hydrateInlineAttImages(wrap, invExistingAttachments.slice(), "e");
         }
 
         function removeExistingInvAttachment(el) {
@@ -26204,6 +26257,7 @@
             handleSaveInventoryItem: () => handleSaveInventoryItem(),
             handleDeleteInventoryItem: () => handleDeleteInventoryItem(),
             removeExistingInvAttachment: (el) => removeExistingInvAttachment(el),
+            openInvFormAttachment: (el) => openInvFormAttachment(el),
             removeTempInvAttachment: (el) => removeTempInvAttachment(el),
             openInvAttachmentsBadge: (el, e) => openInvAttachmentsBadge(el, e),
             warrantyReminderItemTap: (el) => { navigateToInventoryPage(); setTimeout(() => openInventoryItemModal(el.dataset.id), 60); },

@@ -4083,3 +4083,6 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 ## v543: Dark-mode fix — Serial / Model unreadable in "Add this purchase to Inventory"
 - `#txInventoryWrap` had inline light-green colours; inputs inherit the theme's (light) text colour, so in dark themes the text was invisible. Moved to `.tx-inv-wrap` with the tint mixed from `--card-bg` / `--border-color`, input text forced to `--text-main`, hint text via `.tx-inv-hint`. CSS/markup only. `APP_VERSION` / `CACHE_NAME` -> v543.
+
+## v544: Quick View shows image attachments as large inline previews
+- Quick View (the transaction pop-up) listed images as a 32px thumbnail row. Images now render as a full-width preview (max 320px tall, `object-fit:contain`) with the file name underneath; tapping it opens the existing full viewer (zoom/Save/Delete) exactly as before. PDFs keep the compact row. The stored thumb is only 96px, so `hydrateQuickViewImages()` loads the full-resolution image from the attachments store after render (guarded against Quick View having moved on). The Quick View sheet now scrolls vertically (`overflow-y:auto`; it was `overflow:hidden`, which would clip tall content). `APP_VERSION` / `CACHE_NAME` -> v544.

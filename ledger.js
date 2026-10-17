@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v543";
+        const APP_VERSION = "v544";
         const APP_VERSION_DATE = "2026-10-16";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -19313,6 +19313,26 @@
         // while Quick View is already open+active underneath the attachment viewer (deleting an
         // attachment via handleDeleteAttachmentFromViewer() below) — calling openModal a second
         // time would push a duplicate modalStack/history entry for a modal that's already open.
+        // v544: Quick View image previews start from the 96px thumb stored on the transaction;
+        // this loads each saved image's full-resolution data from STORES.ATTACHMENTS and swaps it
+        // in. Guards against Quick View having moved on (closed / another tx opened) while the
+        // IndexedDB reads were in flight. Failures are non-fatal — the thumb simply stays.
+        async function hydrateQuickViewImages(txId, atts) {
+            for (let idx = 0; idx < atts.length; idx++) {
+                const att = atts[idx];
+                if (!att || att.data || !att.id) continue;
+                if (!(att.mime || "").startsWith("image/")) continue;
+                try {
+                    const rec = await readKeyDB(STORES.ATTACHMENTS, att.id);
+                    if (!rec || !rec.data) continue;
+                    if (activeQuickViewTxId !== txId) return;
+                    const box = document.getElementById("txQuickViewDetails");
+                    const img = box ? box.querySelector(`img[data-qv-img="${idx}"]`) : null;
+                    if (img) img.src = rec.data;
+                } catch (err) { /* keep thumb */ }
+            }
+        }
+
         async function openTxQuickView(el, opts = {}) {
             const id = Number(el.dataset.id);
             if (!id) return;
@@ -19387,14 +19407,29 @@
                 quickViewAtts = [{ name: "Receipt.jpg", mime: "image/jpeg", data: tx.image }];
             }
             txAttachmentsPickerCurrent = quickViewAtts; // reused by openAttachmentFromQuickView() below
+            // v544: image attachments render as a large inline preview (tap → full viewer), like the
+            // other apps' entry page; PDFs / unreadable files keep the compact row. The stored thumb
+            // is only 96px, so it is just a placeholder here — hydrateQuickViewImages() swaps in the
+            // full-resolution image from STORES.ATTACHMENTS right after the details are rendered.
+            const attIsImage = att => (att.mime || "").startsWith("image/") && !/\.pdf$/i.test(att.name || "");
             const attachmentsHTML = quickViewAtts.length ? `
                 <div style="margin-top:4px;">
                     <div style="font-size:0.7rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-bottom:6px;">Attachments</div>
-                    <div style="display:flex; flex-direction:column; gap:6px;">
-                        ${quickViewAtts.map((att, idx) => `
-                            <div class="tx-att-item" data-click="openAttachmentFromQuickView" data-idx="${idx}" style="display:flex; align-items:center; gap:8px; background:var(--chip-bg); border:1px solid var(--border-color); border-radius:8px; padding:6px 8px; cursor:pointer;">
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        ${quickViewAtts.map((att, idx) => attIsImage(att) ? `
+                            <div class="tx-att-item" data-click="openAttachmentFromQuickView" data-idx="${idx}" title="Tap to open" style="background:var(--chip-bg); border:1px solid var(--border-color); border-radius:10px; overflow:hidden; cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent;">
+                                <div style="display:flex; align-items:center; justify-content:center; min-height:80px; line-height:0;">
+                                    ${(att.thumb || att.data) ? `<img data-qv-img="${idx}" src="${att.data || att.thumb}" alt="${escapeHtml(att.name || "Attachment")}" style="display:block; width:100%; max-height:320px; object-fit:contain;">` : `<span style="font-size:1.6rem; line-height:1; padding:24px;">🖼️</span>`}
+                                </div>
+                                <div style="display:flex; align-items:center; gap:8px; padding:6px 10px; border-top:1px solid var(--border-color); line-height:1.4;">
+                                    <div style="flex:1; min-width:0; font-size:0.74rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(att.name || "Attachment")}</div>
+                                    <span style="font-size:0.7rem; color:var(--text-muted); flex-shrink:0;">View ›</span>
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="tx-att-item" data-click="openAttachmentFromQuickView" data-idx="${idx}" style="display:flex; align-items:center; gap:8px; background:var(--chip-bg); border:1px solid var(--border-color); border-radius:8px; padding:6px 8px; cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;">
                                 <div style="width:32px; height:32px; border-radius:6px; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:var(--chip-bg); font-size:1rem;">
-                                    ${att.thumb || ((att.mime || "").startsWith("image/") && att.data) ? `<img src="${att.thumb || att.data}" alt="" style="width:100%; height:100%; object-fit:cover;">` : ((att.mime || "").startsWith("image/") ? "🖼️" : "📄")}
+                                    ${att.thumb ? `<img src="${att.thumb}" alt="" style="width:100%; height:100%; object-fit:cover;">` : "📄"}
                                 </div>
                                 <div style="flex:1; min-width:0; font-size:0.78rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(att.name || "Attachment")}</div>
                                 <span style="font-size:0.7rem; color:var(--text-muted); flex-shrink:0;">View ›</span>
@@ -19440,6 +19475,7 @@
                 ${attachmentsHTML}
             `;
 
+            hydrateQuickViewImages(id, quickViewAtts);
             updateTxQuickViewCheckedBtn(!!tx.checked);
             // Refund/Reimbursement only make sense for an ordinary expense — not for a Transfer,
             // not for another refund (no "refund of a refund"), and not for Income. Split

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v547";
+        const APP_VERSION = "v548";
         const APP_VERSION_DATE = "2026-10-16";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -3198,11 +3198,17 @@
         // received amount). Replaces the orange "✏️ Manual FX" pill — once locking is the default that
         // pill would shout on every foreign row. Hover title / Quick View show the actual rate.
         function fmtRateShown(r) { return r >= 1 ? r.toFixed(4) : String(Number(r.toPrecision(5))); }
+        // v548: quote a pair the same way the Currency Setting table does — the currency worth MORE sits on
+        // the left ("1 USD = 4.0964 MYR", "1 MYR = 337.2663 KRW"). `rate` = how many `acctCur` 1 `cur` buys.
+        function fxQuote(cur, acctCur, rate) {
+            if (!(rate > 0) || !isFinite(rate)) return "";
+            return rate >= 1 ? `1 ${cur} = ${rate.toFixed(4)} ${acctCur}` : `1 ${acctCur} = ${(1 / rate).toFixed(4)} ${cur}`;
+        }
         function txFxLockBadgeHTML(t, accounts) {
             let title;
             if (t.manualFxRate) {
                 const acc = (accounts || []).find(a => a.id === t.src);
-                title = acc && acc.currency ? `Rate locked: 1 ${t.currency} = ${fmtRateShown(t.manualFxRate)} ${acc.currency}` : "Rate locked";
+                title = acc && acc.currency ? `Rate locked: ${fxQuote(t.currency, acc.currency, t.manualFxRate)}` : "Rate locked";
             } else if (t.type === "transfer" && t.destAmount != null) {
                 title = "Received amount locked";
             } else return "";
@@ -3215,10 +3221,10 @@
             const acc = (accounts || []).find(a => a.id === tx.src);
             if (!acc || !acc.currency || acc.currency === tx.currency || acc.type === "multi" || acc.type === "fd" || acc.type === "unittrust") return "";
             if (tx.manualFxRate) {
-                return `<div>Rate: 🔒 1 ${escapeHtml(tx.currency)} = ${fmtRateShown(tx.manualFxRate)} ${escapeHtml(acc.currency)} <span style="color:var(--text-muted);">(≈ ${formatCurrency(tx.amount * tx.manualFxRate, acc.currency)}, fixed)</span></div>`;
+                return `<div>Rate: 🔒 ${escapeHtml(fxQuote(tx.currency, acc.currency, tx.manualFxRate))} <span style="color:var(--text-muted);">(≈ ${formatCurrency(tx.amount * tx.manualFxRate, acc.currency)}, fixed)</span></div>`;
             }
             const live = convertCurrency(1, tx.currency, acc.currency);
-            return `<div>Rate: live ${fmtRateShown(live)} ${escapeHtml(acc.currency)} <span style="color:var(--text-muted);">(not locked — follows the FX table)</span></div>`;
+            return `<div>Rate: live ${escapeHtml(fxQuote(tx.currency, acc.currency, live))} <span style="color:var(--text-muted);">(not locked — follows the FX table)</span></div>`;
         }
 
         // v546: shared 📎 badge for a transaction row — same markup/behaviour as the main ledger
@@ -5711,7 +5717,7 @@
             e.dir.innerHTML = `<option value="cur">1 ${escapeHtml(cur)} = ? ${escapeHtml(acct)}</option><option value="acct">1 ${escapeHtml(acct)} = ? ${escapeHtml(cur)}</option>`;
             e.dir.value = curPer ? "cur" : "acct";
             e.hint.textContent = live === null ? "Pick two different currencies."
-                : `For reference only (not applied): today's table has 1 ${acct} = ${fmtRateShown(1 / live)} ${cur}, i.e. 1 ${cur} = ${fmtRateShown(live)} ${acct}. Type the rate you actually paid.`;
+                : `For reference only (not applied): today's table has ${fxQuote(cur, acct, live)}. Type the rate you actually paid.`;
             fxLockInvalidate();
         }
         async function initFxLockCard() {
@@ -5732,7 +5738,7 @@
             try { rec = await readKeyDB("settings", FX_LOCK_UNDO_KEY); } catch (err) { rec = null; }
             const u = rec && rec.value;
             if (!u || !Array.isArray(u.ids) || !u.ids.length) { box.innerHTML = ""; return; }
-            box.innerHTML = `<p style="font-size:0.72rem; color:var(--text-muted); margin:0 0 6px;">Last bulk lock: ${u.ids.length} record${u.ids.length === 1 ? "" : "s"} (${escapeHtml(u.cur)} → ${escapeHtml(u.acctCur)}, ${escapeHtml(u.from)} to ${escapeHtml(u.to)}, 1 ${escapeHtml(u.cur)} = ${fmtRateShown(u.rate)} ${escapeHtml(u.acctCur)}). Undo sends them back to following the live rate.</p>
+            box.innerHTML = `<p style="font-size:0.72rem; color:var(--text-muted); margin:0 0 6px;">Last bulk lock: ${u.ids.length} record${u.ids.length === 1 ? "" : "s"} (${escapeHtml(u.cur)} → ${escapeHtml(u.acctCur)}, ${escapeHtml(u.from)} to ${escapeHtml(u.to)}, ${escapeHtml(fxQuote(u.cur, u.acctCur, u.rate))}). Undo sends them back to following the live rate.</p>
                 <button type="button" class="btn-util" data-click="fxLockUndo" style="width:100%;">↩ Undo last bulk lock</button>`;
         }
         async function fxLockPreview() {
@@ -5770,7 +5776,7 @@
                 const live = convertCurrency(1, cur, acctCur);
                 const offPct = live > 0 ? Math.abs(rate / live - 1) * 100 : 0;
                 html = `<div style="margin-top:10px; padding:10px; border:1px solid var(--border-color); border-radius:10px; font-size:0.8rem;">
-                    <div style="font-weight:800;">Will lock ${ids.length} record${ids.length === 1 ? "" : "s"} at 1 ${escapeHtml(cur)} = ${fmtRateShown(rate)} ${escapeHtml(acctCur)} <span style="font-weight:600; color:var(--text-muted);">(${escapeHtml(from)} to ${escapeHtml(to)})</span></div>
+                    <div style="font-weight:800;">Will lock ${ids.length} record${ids.length === 1 ? "" : "s"} at ${escapeHtml(fxQuote(cur, acctCur, rate))} <span style="font-weight:600; color:var(--text-muted);">(${escapeHtml(from)} to ${escapeHtml(to)})</span></div>
                     ${row("Expense", sums.expense)}${row("Income", sums.income)}
                     ${offPct > 20 ? `<div style="margin-top:6px; color:#b91c1c; font-weight:700;">⚠ Your rate is ${offPct.toFixed(0)}% away from today's table rate. Check the digits and the direction before confirming.</div>` : ""}
                     ${(alreadyLocked || otherAcctCur) ? `<div style="margin-top:6px; color:var(--text-muted);">Skipped: ${alreadyLocked ? `${alreadyLocked} already locked` : ""}${alreadyLocked && otherAcctCur ? ", " : ""}${otherAcctCur ? `${otherAcctCur} on accounts whose currency is not ${escapeHtml(acctCur)}` : ""}.</div>` : ""}

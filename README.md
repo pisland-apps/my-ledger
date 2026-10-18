@@ -4107,3 +4107,6 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **Breakdown:** hidden when there is only one category; with 2+ categories only the donut + its legend is shown (the duplicate progress-bar list is removed). Pending Claim still hides it.
 - **Transactions:** grouped into one card per month with a subtotal; rows use icon circle + title, show **Notes** (italic), and drop the current tag's chip (kept on Pending Claim, where the chip opens the settle flow). Foreign rows show the base value underneath: "≈ RM…" (live) or "🔒 RM…" (locked); the 🔒 moved from the title to this line. Amounts use tabular numerals; minus sign and red colour kept on purpose.
 - Element ids unchanged; shared donut/list components untouched. `APP_VERSION` / `CACHE_NAME` -> v549.
+
+## v550: Spending by Tag — notes moved to the last line of each row
+- Row order is now title → date · category (· account) → notes (italic). `APP_VERSION` / `CACHE_NAME` -> v550.

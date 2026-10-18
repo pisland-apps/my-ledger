@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v549";
+        const APP_VERSION = "v550";
         const APP_VERSION_DATE = "2026-10-16";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -22977,8 +22977,8 @@
                         <div class="tx-row-body">
                             <div class="item-left">
                                 <span class="item-name">${escapeHtml(t.desc)}${txAttachBadgeHTML(t)}${buildTagBadgesHTML(rowTags, t.id)}${buildClaimedBadgeHTML(t, txs)}</span>
-                                ${t.notes ? `<span class="item-meta" style="font-style:italic;">${escapeHtml(t.notes)}</span>` : ""}
                                 <span class="item-meta">${metaParts.join(" · ")}</span>
+                                ${t.notes ? `<span class="item-meta" style="font-style:italic;">${escapeHtml(t.notes)}</span>` : ""}
                             </div>
                             <div class="item-right" style="flex-direction:column; align-items:flex-end; gap:1px;">
                                 <div class="item-value tagrep-amt" style="color:var(--${col});">${sgn}${formatCurrency(Math.abs(t.amount), t.currency)}</div>

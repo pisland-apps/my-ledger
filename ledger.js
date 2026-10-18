@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v552";
-        const APP_VERSION_DATE = "2026-10-16";
+        const APP_VERSION = "v553";
+        const APP_VERSION_DATE = "2026-10-18";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -22990,35 +22990,70 @@
                 if (t.type === "expense" || t.type === "transfer" || isRefundCredit) curGroup.spent += isRefundCredit ? -tBase : tBase;
                 else if (t.type === "income") curGroup.inc += tBase;
             });
-            const rowHTML = t => {
+            // v553: row model. (1) A description that merely repeats the tag (or is the same word on most rows) is
+            // filler -> the note becomes the headline. (2) Category is only worth printing per row when the tag
+            // mixes categories (otherwise the hero already says it). (3) Date stamp once per day.
+            const normTxt = s => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+            const tagNorm = normTxt(tagName);
+            const descCount = {};
+            matching.forEach(t => { const k = normTxt(t.desc); descCount[k] = (descCount[k] || 0) + 1; });
+            const topDesc = Object.keys(descCount).sort((x, y) => descCount[y] - descCount[x])[0];
+            const isFillerDesc = d => {
+                const k = normTxt(d);
+                if (!k) return true;
+                if (k === tagNorm) return true;
+                if (k.length >= 3 && (tagNorm.includes(k) || k.includes(tagNorm))) return true;
+                return matching.length >= 3 && k === topDesc && descCount[k] / matching.length >= 0.6;
+            };
+            const catOf = t => t.cat || (t.type === "transfer" ? "Claims Receivable" : "");
+            const mixedCat = new Set(matching.map(catOf)).size > 1;
+            const rowHTML = (t, prev) => {
                 const acc = accById.get(t.src);
-                const col = t.type === "income" ? "income-color" : t.type === "transfer" ? "primary" : "expense-color";
-                const sgn = t.type === "income" ? "+" : t.type === "transfer" ? "" : "-";
-                const icon = t.cat ? getCategoryIcon(t.cat, t.type) : (t.type === "transfer" ? "🔄" : "🧾");
-                const catText = t.cat || (t.type === "transfer" ? "Claims Receivable" : "");
-                // The page is already filtered by this tag, so its own chip on every row is noise — except on
-                // Pending Claim, where that chip is the tap target for the settle/reimburse flow.
+                const isInc = t.type === "income";
+                const valColor = isInc ? "var(--income-color)" : "var(--text-main)";
+                const sgn = isInc ? "+" : "";
                 const rowTags = isPending ? t.tags : (t.tags || []).filter(x => x !== tagName);
-                let sub = "";
+
+                // amount column: base currency is the headline so the column adds up to the hero total
+                let approx = "", valTxt, sub = "";
                 if (t.currency !== base) {
-                    const b = convertTxAmountToBase(t, accounts);
-                    sub = `<span class="converted-subtext tagrep-amt">${txBaseIsFrozen(t, acc) ? "🔒 " : "≈ "}${formatCurrency(b, base)}</span>`;
+                    const locked = txBaseIsFrozen(t, acc);
+                    valTxt = formatCurrency(Math.abs(convertTxAmountToBase(t, accounts)), base);
+                    if (!locked) approx = `<i title="Converted at today's rate">≈</i>`;
+                    sub = `<div class="tagrep-sub">${escapeHtml(formatCurrency(Math.abs(t.amount), t.currency))}${locked ? " 🔒" : ""}</div>`;
+                } else {
+                    valTxt = formatCurrency(Math.abs(t.amount), t.currency);
                 }
-                const metaParts = [escapeHtml(String(t.date || "").slice(5)), escapeHtml(catText)].filter(Boolean);
-                if (!singleAcct) metaParts.push(`🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}`);
+
+                // date stamp (first row of each day only)
+                const dstr = String(t.date || "").slice(0, 10);
+                const showDate = !prev || String(prev.date || "").slice(0, 10) !== dstr;
+                const dayNum = dstr.slice(8, 10).replace(/^0/, "");
+                const dt = new Date(dstr + "T00:00:00");
+                const wd = isNaN(dt) ? "" : dt.toLocaleDateString(undefined, { weekday: "short" });
+
+                // headline / note
+                const desc = String(t.desc || "").trim(), notes = String(t.notes || "").trim();
+                let head, noteLine = "";
+                if (notes && (isFillerDesc(desc) || !desc)) head = notes;
+                else { head = desc || tagName; noteLine = notes; }
+
+                const meta = [];
+                const catText = catOf(t);
+                if (mixedCat && catText) meta.push(`${t.cat ? getCategoryIcon(t.cat, t.type) : "🔄"} ${escapeHtml(catText)}`);
+                if (!singleAcct) meta.push(`🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}`);
+
                 return `
-                    <div class="ledger-item ledger-item-tx" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
-                        <div class="tx-icon-circle" style="background:${categoryIconBgColor(t.cat || t.type)};"><span style="line-height:1;">${icon}</span></div>
-                        <div class="tx-row-body">
-                            <div class="item-left">
-                                <span class="item-name">${escapeHtml(t.desc)}${txAttachBadgeHTML(t)}${buildTagBadgesHTML(rowTags, t.id)}${buildClaimedBadgeHTML(t, txs)}</span>
-                                <span class="item-meta">${metaParts.join(" · ")}</span>
-                                ${t.notes ? `<span class="item-meta" style="font-style:italic;">${escapeHtml(t.notes)}</span>` : ""}
-                            </div>
-                            <div class="item-right" style="flex-direction:column; align-items:flex-end; gap:1px;">
-                                <div class="item-value tagrep-amt" style="color:var(--${col});">${sgn}${formatCurrency(Math.abs(t.amount), t.currency)}</div>
-                                ${sub}
-                            </div>
+                    <div class="tagrep-row${showDate ? "" : " cont"}" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
+                        <div class="tagrep-date">${showDate ? `<b>${escapeHtml(dayNum)}</b><span>${escapeHtml(wd)}</span>` : ""}</div>
+                        <div class="tagrep-main">
+                            <div class="tagrep-title">${escapeHtml(head)}${txAttachBadgeHTML(t)}${buildTagBadgesHTML(rowTags, t.id)}${buildClaimedBadgeHTML(t, txs)}</div>
+                            ${noteLine ? `<div class="tagrep-note">${escapeHtml(noteLine)}</div>` : ""}
+                            ${meta.length ? `<div class="tagrep-meta">${meta.join(" · ")}</div>` : ""}
+                        </div>
+                        <div class="tagrep-amtcol">
+                            <div class="tagrep-val" style="color:${valColor};">${approx}${sgn}${escapeHtml(valTxt)}</div>
+                            ${sub}
                         </div>
                     </div>`;
             };
@@ -23027,8 +23062,8 @@
                 const label = (mi >= 0 && mi < 12) ? `${MONTHS[mi]} ${g.ym.slice(0, 4)}` : (g.ym || "No date");
                 const totalTxt = [g.spent !== 0 ? formatCurrency(g.spent, base) : "", g.inc > 0 ? "+" + formatCurrency(g.inc, base) : ""].filter(Boolean).join(" · ");
                 return `<div class="tagrep-month">
-                    <div class="tagrep-month-head"><span>${escapeHtml(label)} · ${g.items.length}</span><b>${escapeHtml(totalTxt)}</b></div>
-                    <div class="ledger-container">${g.items.map(rowHTML).join("")}</div>
+                    <div class="tagrep-month-head"><span>${escapeHtml(label)}<em>${g.items.length} ${g.items.length === 1 ? "entry" : "entries"}</em></span><b>${escapeHtml(totalTxt)}</b></div>
+                    <div class="ledger-container">${g.items.map((t, i) => rowHTML(t, g.items[i - 1])).join("")}</div>
                 </div>`;
             }).join("") : `<p style="color:var(--text-muted); text-align:center; padding:16px 0; font-size:0.85rem;">No transactions tagged yet.</p>`;
         }

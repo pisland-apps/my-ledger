@@ -2256,11 +2256,30 @@
         .tagrep-incnet { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-color); }
         .tagrep-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
         .tagrep-month { margin-bottom: 14px; }
-        .tagrep-month-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 0 4px 6px; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); }
-        .tagrep-month-head b { color: var(--text-main); font-weight: 800; font-variant-numeric: tabular-nums; }
-        .tagrep-month .ledger-container .ledger-item:last-child { border-bottom: none; }
-        .tagrep-month .ledger-item-tx { padding: 12px 16px; }
-        .tagrep-month .tx-icon-circle { width: 38px; height: 38px; min-width: 38px; font-size: 1.05rem; }
+        .tagrep-month-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 0 4px 8px; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); }
+        .tagrep-month-head > span:first-child { color: var(--text-main); font-weight: 800; font-size: 0.88rem; }
+        .tagrep-month-head em { font-style: normal; font-weight: 600; font-size: 0.72rem; color: var(--text-muted); margin-left: 6px; }
+        .tagrep-month-head b { color: var(--text-main); font-weight: 800; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+        /* v553: Spending by Tag rows — the NOTE is the headline (a tag report's repeated title/icon carried no
+           information), a date stamp replaces the category icon circle (shown once per day), amounts are in
+           the report's base currency and neutral-coloured (only income/refund is green). */
+        .tagrep-row { position: relative; display: flex; align-items: flex-start; gap: 12px; padding: 13px 16px; border-top: 1px solid var(--border-color); cursor: pointer; transition: background-color 0.15s ease-out; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+        .tagrep-row:first-child { border-top: none; }
+        .tagrep-row:hover { background: var(--hover-bg); }
+        .tagrep-row:active { background: var(--press-bg); }
+        .tagrep-row.cont { border-top: none; }
+        .tagrep-row.cont::before { content: ""; position: absolute; top: 0; left: 62px; right: 16px; border-top: 1px dashed var(--border-color); }
+        .tagrep-date { width: 34px; flex: 0 0 34px; text-align: center; padding-top: 1px; }
+        .tagrep-date b { display: block; font-size: 1.15rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--text-main); }
+        .tagrep-date span { display: block; margin-top: 2px; font-size: 0.62rem; font-weight: 700; color: var(--text-muted); }
+        .tagrep-main { flex: 1; min-width: 0; }
+        .tagrep-title { font-size: 0.95rem; font-weight: 600; line-height: 1.35; color: var(--text-main); overflow-wrap: anywhere; }
+        .tagrep-note { margin-top: 2px; font-size: 0.8rem; line-height: 1.4; color: var(--text-muted); overflow-wrap: anywhere; }
+        .tagrep-meta { margin-top: 3px; font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
+        .tagrep-amtcol { flex-shrink: 0; margin-left: auto; text-align: right; }
+        .tagrep-val { font-size: 0.95rem; font-weight: 700; line-height: 1.35; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .tagrep-val i { font-style: normal; font-weight: 600; color: var(--text-muted); margin-right: 2px; }
+        .tagrep-sub { margin-top: 1px; font-size: 0.68rem; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
         .trash-btn { background: none; border: none; color: #cbd5e1; cursor: pointer; padding: 8px; font-size: 1.1rem; }
         .trash-btn:active { color: var(--expense-color); }
 

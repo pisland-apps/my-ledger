@@ -4116,3 +4116,14 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 ## v552: Inventory lock lookup fixed (items never stored linkedTxId)
 - v551 looked the source expense up through `linkedTxId`, but that field is always null (the new transaction's id is unknown when the item is created), so items always showed the live "≈" value. The source expense is now matched by content: same account + purchase date + currency + amount (`t.amount === it.purchasePrice`), preferring same vendor = description and name = notes; if only the loose match applies it is used only when exactly one rate-locked expense fits. `APP_VERSION` / `CACHE_NAME` -> v552.
+
+## v553: Spending by Tag — rows redesigned for readability
+
+- Each transaction row now leads with the **note** when the description only repeats the tag (or the same
+  word on most rows); otherwise description is the headline and the note sits underneath as normal text.
+- The per-row category icon circle is replaced by a **date stamp** (day + weekday, once per day). Category
+  is printed per row only when the tag mixes categories.
+- Amounts show the base currency (≈ when not rate-locked), neutral colour for expenses, green for income;
+  the original foreign amount (🔒 if locked) is the small line underneath.
+- Only `renderTagReportPage()` and the `.tagrep-*` CSS changed. Bumped `APP_VERSION`/`APP_VERSION_DATE`
+  (ledger.js) and `CACHE_NAME` (sw.js) to v553.

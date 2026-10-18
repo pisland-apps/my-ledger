@@ -2255,11 +2255,14 @@
         .tagrep-link { text-decoration: underline; cursor: pointer; font-weight: 800; white-space: nowrap; }
         .tagrep-incnet { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-color); }
         .tagrep-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .tagrep-month { margin-bottom: 14px; }
-        .tagrep-month-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 0 4px 8px; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); }
-        .tagrep-month-head > span:first-child { color: var(--text-main); font-weight: 800; font-size: 0.88rem; }
-        .tagrep-month-head em { font-style: normal; font-weight: 600; font-size: 0.72rem; color: var(--text-muted); margin-left: 6px; }
-        .tagrep-month-head b { color: var(--text-main); font-weight: 800; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+        .tagrep-month { margin-bottom: 16px; background: var(--card-bg); border: 1.5px solid var(--border-color); border-top-color: var(--card-top-border); border-radius: 16px; overflow: hidden; box-shadow: var(--card-shadow); }
+        .tagrep-month-head { background: var(--active-bg); border-bottom: 1.5px solid var(--active-border); padding: 12px 16px 0; }
+        .tagrep-mh-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 10px; }
+        .tagrep-mh-name { font-size: 1rem; font-weight: 800; color: var(--text-main); line-height: 1.25; }
+        .tagrep-mh-sub { margin-top: 2px; font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
+        .tagrep-mh-top b { font-size: 1.1rem; font-weight: 800; color: var(--text-main); font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .tagrep-share { height: 4px; margin: 0 -16px; background: var(--active-border); }
+        .tagrep-share i { display: block; height: 100%; background: var(--primary); border-radius: 0 2px 2px 0; }
         /* v553: Spending by Tag rows — the NOTE is the headline (a tag report's repeated title/icon carried no
            information), a date stamp replaces the category icon circle (shown once per day), amounts are in
            the report's base currency and neutral-coloured (only income/refund is green). */

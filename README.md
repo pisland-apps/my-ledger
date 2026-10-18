@@ -4127,3 +4127,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   the original foreign amount (🔒 if locked) is the small line underneath.
 - Only `renderTagReportPage()` and the `.tagrep-*` CSS changed. Bumped `APP_VERSION`/`APP_VERSION_DATE`
   (ledger.js) and `CACHE_NAME` (sw.js) to v553.
+
+## v554: Spending by Tag — month header
+
+- Each month is now one card: a tinted header strip (month, entry count, share of the tag's total, month
+  subtotal) with a thin share bar, followed by its rows. Bumped `APP_VERSION` and `CACHE_NAME` to v554.

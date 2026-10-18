@@ -4139,3 +4139,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   tagged transaction, newest first: Date, Description, Note, Category, Account, Type, Original
   Currency/Amount, FX Rate (Locked/Live), Expense and Income in base currency, Tags. `SUM(Expense)` equals
   the page's total (refund credits are negative). Bumped `APP_VERSION` and `CACHE_NAME` to v555.
+
+## v556: fix Spending by Tag Export CSV button did nothing
+
+- `exportTagReportCsv` had been registered in `CHANGE_ACTIONS` instead of `CLICK_ACTIONS`, so the 📤 button
+  (`data-click`) found no handler. Moved to `CLICK_ACTIONS`. Bumped `APP_VERSION` and `CACHE_NAME` to v556.

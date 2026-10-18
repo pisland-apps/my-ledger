@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v555";
+        const APP_VERSION = "v556";
         const APP_VERSION_DATE = "2026-10-18";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -26548,6 +26548,7 @@
             exportAccountsCsv: () => exportAccountsCsv(),
             exportInventoryCsv: () => exportInventoryCsv(),
             exportTotalSummaryCsv: () => exportTotalSummaryCsv(),
+            exportTagReportCsv: () => exportTagReportCsv(), // v555
             exportBackup: () => exportBackup(),
             exportBackupQuick: () => exportBackupQuick(),
             openImportInput: () => document.getElementById("importInput").click(),
@@ -26774,7 +26775,6 @@
         const CHANGE_ACTIONS = {
             resetLedgerPageAndRender: () => { ledgerRenderLimit = LEDGER_PAGE_SIZE; renderApp(); },
             renderTagReportPage: () => renderTagReportPage(),
-            exportTagReportCsv: () => exportTagReportCsv(), // v555
             renderAttachmentReviewPage: () => renderAttachmentReviewPage(),
             toggleBudgetCarryover: (el) => toggleBudgetCarryover(el),
             importBackup: (el, e) => importBackup(e),

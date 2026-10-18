@@ -4132,3 +4132,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 - Each month is now one card: a tinted header strip (month, entry count, share of the tag's total, month
   subtotal) with a thin share bar, followed by its rows. Bumped `APP_VERSION` and `CACHE_NAME` to v554.
+
+## v555: Spending by Tag — Export CSV
+
+- New 📤 button in the page header (visible once a tag is picked) → `exportTagReportCsv()`. One row per
+  tagged transaction, newest first: Date, Description, Note, Category, Account, Type, Original
+  Currency/Amount, FX Rate (Locked/Live), Expense and Income in base currency, Tags. `SUM(Expense)` equals
+  the page's total (refund credits are negative). Bumped `APP_VERSION` and `CACHE_NAME` to v555.

@@ -5571,10 +5571,13 @@
     <div id="page-tag-report" class="page hidden">
         <div class="nav-header">
             <button class="back-btn" data-click="navigateToWorkspace">&larr; Back</button>
-            <div>
+            <div style="flex:1;">
                 <h3 style="font-weight:800; font-size:1.2rem;" id="tagReportTitle">Spending by Tag</h3>
                 <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Pick a tag to see its total, breakdown &amp; transactions</p>
             </div>
+            <!-- v555: exports the selected tag's transactions — see exportTagReportCsv()'s own comment.
+                 Hidden until a tag is picked (renderTagReportPage toggles it). -->
+            <button id="tagReportExportCsvBtn" class="icon-edit-btn" style="display:none;" data-click="exportTagReportCsv" title="Export to CSV">📤</button>
         </div>
 
         <div class="form-row print-filter-row" style="margin-bottom:14px;">

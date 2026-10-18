@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v554";
+        const APP_VERSION = "v555";
         const APP_VERSION_DATE = "2026-10-18";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -22862,6 +22862,8 @@
             const tagName = document.getElementById("tagReportTagSelect").value;
             document.getElementById("tagReportEmptyState").style.display = tagName ? "none" : "";
             document.getElementById("tagReportContent").style.display = tagName ? "" : "none";
+            const exportBtn = document.getElementById("tagReportExportCsvBtn");
+            if (exportBtn) exportBtn.style.display = tagName ? "" : "none";
             if (!tagName) return;
 
             const txs = await readAllDB(STORES.TRANSACTIONS);
@@ -23075,6 +23077,62 @@
                     <div class="tagrep-rows">${g.items.map((t, i) => rowHTML(t, g.items[i - 1])).join("")}</div>
                 </div>`;
             }).join("") : `<p style="color:var(--text-muted); text-align:center; padding:16px 0; font-size:0.85rem;">No transactions tagged yet.</p>`;
+        }
+
+        // v555: CSV export for Spending by Tag — one row per transaction carrying the selected tag, same
+        // order as the page (newest first), same csvEscape()/BOM convention as the other exports.
+        // Money is split into an Expense and an Income column (base currency) using the SAME rules as the
+        // report: expense / claim-transfer count as spending, a refund credit counts as NEGATIVE spending,
+        // so SUM(Expense column) equals the page's total exactly. The original currency/amount and whether
+        // the rate is locked or live are kept alongside, so foreign rows stay auditable.
+        async function exportTagReportCsv() {
+            const tagName = document.getElementById("tagReportTagSelect").value;
+            if (!tagName) { showToast("Pick a tag first"); return; }
+            const [txs, accounts] = await Promise.all([readAllDB(STORES.TRANSACTIONS), readAllDB(STORES.ACCOUNTS)]);
+            const accById = new Map(accounts.map(a => [a.id, a]));
+            const matching = txs
+                .filter(t => Array.isArray(t.tags) && t.tags.includes(tagName))
+                .sort((a, b) => (new Date(b.date) - new Date(a.date)) || (b.id - a.id));
+            if (matching.length === 0) { showToast("No transactions tagged yet"); return; }
+
+            const base = baseCurrency;
+            const header = ["Date", "Description", "Note", "Category", "Account", "Type",
+                "Original Currency", "Original Amount", "FX Rate", `Expense (${base})`, `Income (${base})`, "Tags"];
+            const rows = matching.map(t => {
+                const acc = accById.get(t.src);
+                const isRefundCredit = t.type === "income" && t.isRefund;
+                const tBase = convertTxAmountToBase(t, accounts);
+                let expense = "", income = "";
+                if (t.type === "expense" || t.type === "transfer" || isRefundCredit) expense = (isRefundCredit ? -tBase : tBase).toFixed(2);
+                else if (t.type === "income") income = tBase.toFixed(2);
+                const typeLabel = isRefundCredit ? "Refund" : t.type === "transfer" ? "Claim (Transfer)" : t.type === "income" ? "Income" : "Expense";
+                const fx = t.currency === base ? "" : (txBaseIsFrozen(t, acc) ? "Locked" : "Live");
+                return [
+                    String(t.date || "").slice(0, 10),
+                    t.desc || "",
+                    t.notes || "",
+                    t.cat || (t.type === "transfer" ? "Claims Receivable" : ""),
+                    acc ? accountOptionLabel(acc, accounts) : "(deleted account)",
+                    typeLabel,
+                    t.currency,
+                    (Number(t.amount) || 0).toFixed(2),
+                    fx,
+                    expense,
+                    income,
+                    (t.tags || []).join("; ")
+                ];
+            });
+
+            const csv = [header, ...rows].map(r => r.map(csvEscape).join(",")).join("\r\n");
+            const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const slug = tagName.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").toLowerCase() || "tag";
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `spending_by_tag_${slug}_${todayLocalStr()}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast(`\ud83d\udce4 Exported ${matching.length} transaction${matching.length === 1 ? "" : "s"} to CSV`);
         }
 
         // Generic year-filter populator (mirrors populateYearFilterOptions/populateSavingsYearFilterOptions)
@@ -26716,6 +26774,7 @@
         const CHANGE_ACTIONS = {
             resetLedgerPageAndRender: () => { ledgerRenderLimit = LEDGER_PAGE_SIZE; renderApp(); },
             renderTagReportPage: () => renderTagReportPage(),
+            exportTagReportCsv: () => exportTagReportCsv(), // v555
             renderAttachmentReviewPage: () => renderAttachmentReviewPage(),
             toggleBudgetCarryover: (el) => toggleBudgetCarryover(el),
             importBackup: (el, e) => importBackup(e),

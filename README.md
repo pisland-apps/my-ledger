@@ -4100,3 +4100,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 ## v548: FX rates quoted like the Currency Setting table
 - New `fxQuote(cur, acctCur, rate)`: the currency worth more sits on the left, 4 decimals (e.g. "1 MYR = 367.3145 KRW", "1 USD = 4.0964 MYR"), same rule as the table. Used in the bulk-lock Preview heading, its reference hint, the Undo line, the 🔒 hover title and the Quick View "Rate:" line — previously these showed the tiny inverse (1 KRW = 0.0027225 MYR). Stored values unchanged. The bulk card's direction dropdown already defaulted to the table's direction. `APP_VERSION` / `CACHE_NAME` -> v548.
+
+## v549: Spending by Tag redesign
+- **Hero total** (neutral colour, 1.9rem) replaces the Income/Expense/Net block; **Income and Net rows only appear when the tag has income** (zero income is no longer shown at all). Meta line: category (single-category tags), count, date range and — when every record is on one account — the account, so rows don't repeat it.
+- **FX trust note** under the total: lists the foreign amounts still converted at today's rates (native total, entry count, ≈ base value) with a "Lock rates" link to Currency Setting; or "🔒 N foreign entries are rate-locked" when none follow the live table (`txBaseIsFrozen`).
+- **Breakdown:** hidden when there is only one category; with 2+ categories only the donut + its legend is shown (the duplicate progress-bar list is removed). Pending Claim still hides it.
+- **Transactions:** grouped into one card per month with a subtotal; rows use icon circle + title, show **Notes** (italic), and drop the current tag's chip (kept on Pending Claim, where the chip opens the settle flow). Foreign rows show the base value underneath: "≈ RM…" (live) or "🔒 RM…" (locked); the 🔒 moved from the title to this line. Amounts use tabular numerals; minus sign and red colour kept on purpose.
+- Element ids unchanged; shared donut/list components untouched. `APP_VERSION` / `CACHE_NAME` -> v549.

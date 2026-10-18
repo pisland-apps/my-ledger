@@ -2244,6 +2244,23 @@
         .item-right { display: flex; align-items: center; gap: 10px; }
         .item-value { font-weight: 700; font-size: 0.9rem; text-align: right; }
         .converted-subtext { font-size: 0.65rem; color: var(--text-muted); display: block; font-weight: 500; }
+        /* v549: Spending by Tag redesign (scoped to #page-tag-report content; shared components untouched) */
+        .tagrep-hero { padding: 18px 18px 16px; margin-bottom: 14px; }
+        .tagrep-hero-label { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+        .tagrep-hero-amt { font-size: 1.9rem; font-weight: 800; line-height: 1.15; margin: 2px 0 6px; font-variant-numeric: tabular-nums; }
+        .tagrep-hero-meta { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; line-height: 1.5; }
+        .tagrep-fxnote { margin-top: 12px; padding: 8px 10px; border-radius: 10px; font-size: 0.72rem; line-height: 1.45; font-weight: 600; color: var(--text-main); }
+        .tagrep-fxnote.warn { background: rgba(245, 158, 11, 0.13); border-left: 3px solid #f59e0b; }
+        .tagrep-fxnote.ok { background: rgba(16, 185, 129, 0.10); border-left: 3px solid #10b981; }
+        .tagrep-link { text-decoration: underline; cursor: pointer; font-weight: 800; white-space: nowrap; }
+        .tagrep-incnet { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-color); }
+        .tagrep-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .tagrep-month { margin-bottom: 14px; }
+        .tagrep-month-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 0 4px 6px; font-size: 0.75rem; font-weight: 700; color: var(--text-muted); }
+        .tagrep-month-head b { color: var(--text-main); font-weight: 800; font-variant-numeric: tabular-nums; }
+        .tagrep-month .ledger-container .ledger-item:last-child { border-bottom: none; }
+        .tagrep-month .ledger-item-tx { padding: 12px 16px; }
+        .tagrep-month .tx-icon-circle { width: 38px; height: 38px; min-width: 38px; font-size: 1.05rem; }
         .trash-btn { background: none; border: none; color: #cbd5e1; cursor: pointer; padding: 8px; font-size: 1.1rem; }
         .trash-btn:active { color: var(--expense-color); }
 
@@ -5550,20 +5567,23 @@
         </div>
 
         <div id="tagReportContent" style="display:none;">
-            <div class="report-card">
-                <div style="display:flex; justify-content:space-between; font-size:0.85rem; font-weight:700; margin-bottom:4px;">
-                    <span style="color:var(--text-muted);">Income</span>
-                    <span id="tagReportIncomeTotal" style="color:var(--income-color);">0.00</span>
+            <!-- v549: hero total (calm, neutral colour) · Income/Net rows only appear when the tag has income ·
+                 FX trust note says whether the total still follows live FX rates. Element ids are unchanged. -->
+            <div class="report-card tagrep-hero">
+                <div class="tagrep-hero-label" id="tagReportHeroLabel">Total expense</div>
+                <div class="tagrep-hero-amt" id="tagReportExpenseTotal">0.00</div>
+                <div class="tagrep-hero-meta" id="tagReportMeta"></div>
+                <div id="tagReportFxNote" class="tagrep-fxnote" style="display:none;"></div>
+                <div id="tagReportIncomeNetWrap" class="tagrep-incnet" style="display:none;">
+                    <div style="display:flex; justify-content:space-between; font-size:0.85rem; font-weight:700; margin-bottom:4px;">
+                        <span style="color:var(--text-muted);">Income</span>
+                        <span id="tagReportIncomeTotal" class="tagrep-amt" style="color:var(--income-color);">0.00</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.95rem; font-weight:800;">
+                        <span>Net</span>
+                        <span id="tagReportNetTotal" class="tagrep-amt">0.00</span>
+                    </div>
                 </div>
-                <div style="display:flex; justify-content:space-between; font-size:0.85rem; font-weight:700; margin-bottom:4px;">
-                    <span style="color:var(--text-muted);">Expense</span>
-                    <span id="tagReportExpenseTotal" style="color:var(--expense-color);">0.00</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; font-size:0.95rem; font-weight:800; padding-top:8px; border-top:1.5px solid var(--border-color); margin-top:4px;">
-                    <span>Net</span>
-                    <span id="tagReportNetTotal">0.00</span>
-                </div>
-                <p style="font-size:0.72rem; color:var(--text-muted); margin-top:10px;" id="tagReportMeta"></p>
             </div>
 
             <!-- v291: only shown when the selected tag is exactly "Pending Claim" — opens the
@@ -5588,9 +5608,7 @@
             <div class="section-header">
                 <span class="section-title">Transactions</span>
             </div>
-            <div class="ledger-container" style="margin-bottom:24px;">
-                <div id="tagReportTxList"></div>
-            </div>
+            <div id="tagReportTxList" style="margin-bottom:24px;"></div>
         </div>
     </div>
 

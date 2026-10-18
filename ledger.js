@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v546";
+        const APP_VERSION = "v547";
         const APP_VERSION_DATE = "2026-10-16";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -3194,6 +3194,33 @@
             return convertCurrency(t.amount, t.currency, baseCurrency);
         }
 
+        // v547: small 🔒 on rows whose FX is frozen (Income/Expense manualFxRate, or a Transfer's fixed
+        // received amount). Replaces the orange "✏️ Manual FX" pill — once locking is the default that
+        // pill would shout on every foreign row. Hover title / Quick View show the actual rate.
+        function fmtRateShown(r) { return r >= 1 ? r.toFixed(4) : String(Number(r.toPrecision(5))); }
+        function txFxLockBadgeHTML(t, accounts) {
+            let title;
+            if (t.manualFxRate) {
+                const acc = (accounts || []).find(a => a.id === t.src);
+                title = acc && acc.currency ? `Rate locked: 1 ${t.currency} = ${fmtRateShown(t.manualFxRate)} ${acc.currency}` : "Rate locked";
+            } else if (t.type === "transfer" && t.destAmount != null) {
+                title = "Received amount locked";
+            } else return "";
+            return `<span title="${escapeHtml(title)}" style="margin-left:6px; font-size:0.78rem; cursor:help;">🔒</span>`;
+        }
+
+        // v547: Quick View "Rate" line for foreign Income/Expense on a single-currency account.
+        function fxRateLineHTML(tx, accounts) {
+            if (tx.type === "transfer") return "";
+            const acc = (accounts || []).find(a => a.id === tx.src);
+            if (!acc || !acc.currency || acc.currency === tx.currency || acc.type === "multi" || acc.type === "fd" || acc.type === "unittrust") return "";
+            if (tx.manualFxRate) {
+                return `<div>Rate: 🔒 1 ${escapeHtml(tx.currency)} = ${fmtRateShown(tx.manualFxRate)} ${escapeHtml(acc.currency)} <span style="color:var(--text-muted);">(≈ ${formatCurrency(tx.amount * tx.manualFxRate, acc.currency)}, fixed)</span></div>`;
+            }
+            const live = convertCurrency(1, tx.currency, acc.currency);
+            return `<div>Rate: live ${fmtRateShown(live)} ${escapeHtml(acc.currency)} <span style="color:var(--text-muted);">(not locked — follows the FX table)</span></div>`;
+        }
+
         // v546: shared 📎 badge for a transaction row — same markup/behaviour as the main ledger
         // list's receiptBadge (tap = open the attachment, or the picker when there are several;
         // openTxAttachmentsBadge() stops propagation so the row's own Quick View doesn't also open).
@@ -5610,6 +5637,7 @@
             baseSelect.value = baseCurrency;
             renderFxRatesInputs();
             document.getElementById("fetchFxRatesStatus").textContent = "";
+            initFxLockCard(); // v547
         }
 
         // Renders one row per non-base currency in `rates` (defaults to the saved fxRates when
@@ -5649,6 +5677,152 @@
                 `;
             });
             document.getElementById("fxRatesFormContainer").innerHTML = html;
+        }
+
+
+        // --- v547: LOCK RATE ON PAST RECORDS (Currency Setting ▸ bulk) ---
+        // Freezes existing, still-unlocked foreign-currency Income/Expense records at a rate the USER types
+        // (never today's table rate — that would rewrite history). Filters: entry currency, account
+        // currency, date range. Preview first (count + RM impact vs today's table), then Confirm.
+        // Only records with NO manualFxRate are touched, so "Undo" simply returns them to following the live
+        // rate (their state before) — records that were already locked are never modified by either action.
+        let fxLockPending = null;
+        const FX_LOCK_UNDO_KEY = "fxLockUndo";
+        function fxLockEls() {
+            return { cur: document.getElementById("fxLockCur"), acct: document.getElementById("fxLockAcctCur"),
+                from: document.getElementById("fxLockFrom"), to: document.getElementById("fxLockTo"),
+                dir: document.getElementById("fxLockDir"), rate: document.getElementById("fxLockRate"),
+                hint: document.getElementById("fxLockHint"), out: document.getElementById("fxLockPreview"),
+                confirm: document.getElementById("fxLockConfirmBtn") };
+        }
+        function fxLockInvalidate() {
+            fxLockPending = null;
+            const e = fxLockEls();
+            if (e.out) e.out.innerHTML = "";
+            if (e.confirm) e.confirm.style.display = "none";
+        }
+        function fxLockSelectionChanged() {
+            const e = fxLockEls();
+            if (!e.cur) return;
+            const cur = e.cur.value, acct = e.acct.value;
+            const live = (cur !== acct && fxRates[cur] && fxRates[acct]) ? convertCurrency(1, cur, acct) : null;
+            // default direction = the side that gives a number >= 1 (how rates are normally quoted)
+            const curPer = live !== null && live >= 1;
+            e.dir.innerHTML = `<option value="cur">1 ${escapeHtml(cur)} = ? ${escapeHtml(acct)}</option><option value="acct">1 ${escapeHtml(acct)} = ? ${escapeHtml(cur)}</option>`;
+            e.dir.value = curPer ? "cur" : "acct";
+            e.hint.textContent = live === null ? "Pick two different currencies."
+                : `For reference only (not applied): today's table has 1 ${acct} = ${fmtRateShown(1 / live)} ${cur}, i.e. 1 ${cur} = ${fmtRateShown(live)} ${acct}. Type the rate you actually paid.`;
+            fxLockInvalidate();
+        }
+        async function initFxLockCard() {
+            const e = fxLockEls();
+            if (!e.cur) return;
+            const opts = Object.keys(fxRates).sort((a, b) => a.localeCompare(b)).map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+            const prevCur = e.cur.value, prevAcct = e.acct.value;
+            e.cur.innerHTML = opts; e.acct.innerHTML = opts;
+            e.cur.value = (prevCur && fxRates[prevCur]) ? prevCur : (fxRates.KRW ? "KRW" : Object.keys(fxRates).find(c => c !== baseCurrency) || baseCurrency);
+            e.acct.value = (prevAcct && fxRates[prevAcct]) ? prevAcct : baseCurrency;
+            fxLockSelectionChanged();
+            await fxLockRenderUndo();
+        }
+        async function fxLockRenderUndo() {
+            const box = document.getElementById("fxLockUndoBox");
+            if (!box) return;
+            let rec = null;
+            try { rec = await readKeyDB("settings", FX_LOCK_UNDO_KEY); } catch (err) { rec = null; }
+            const u = rec && rec.value;
+            if (!u || !Array.isArray(u.ids) || !u.ids.length) { box.innerHTML = ""; return; }
+            box.innerHTML = `<p style="font-size:0.72rem; color:var(--text-muted); margin:0 0 6px;">Last bulk lock: ${u.ids.length} record${u.ids.length === 1 ? "" : "s"} (${escapeHtml(u.cur)} → ${escapeHtml(u.acctCur)}, ${escapeHtml(u.from)} to ${escapeHtml(u.to)}, 1 ${escapeHtml(u.cur)} = ${fmtRateShown(u.rate)} ${escapeHtml(u.acctCur)}). Undo sends them back to following the live rate.</p>
+                <button type="button" class="btn-util" data-click="fxLockUndo" style="width:100%;">↩ Undo last bulk lock</button>`;
+        }
+        async function fxLockPreview() {
+            const e = fxLockEls();
+            const cur = e.cur.value, acctCur = e.acct.value, from = e.from.value, to = e.to.value;
+            const typed = parseFloat(e.rate.value);
+            if (!cur || !acctCur || cur === acctCur) { alert("Pick two different currencies (entry currency and account currency)."); return; }
+            if (!from || !to || from > to) { alert("Pick a valid date range (From must not be after To)."); return; }
+            if (!isFinite(typed) || typed <= 0) { alert("Type the exchange rate you actually paid (greater than zero). It is never filled in automatically."); return; }
+            const rate = e.dir.value === "cur" ? typed : 1 / typed;   // stored as: 1 entry-currency = rate account-currency
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const accounts = await readAllDB(STORES.ACCOUNTS);
+            const accById = new Map(accounts.map(a => [a.id, a]));
+            const ids = [];
+            let alreadyLocked = 0, otherAcctCur = 0;
+            const sums = { expense: { n: 0, native: 0, locked: 0, live: 0 }, income: { n: 0, native: 0, locked: 0, live: 0 } };
+            txs.forEach(t => {
+                if ((t.type !== "income" && t.type !== "expense") || t.currency !== cur || t.fundId) return;
+                const d = String(t.date || "").slice(0, 10);
+                if (d < from || d > to) return;
+                const acc = accById.get(t.src);
+                if (!acc || acc.type === "multi" || acc.type === "fd" || acc.type === "unittrust" || !acc.currency || acc.currency === cur) return;
+                if (acc.currency !== acctCur) { otherAcctCur++; return; }
+                if (t.manualFxRate) { alreadyLocked++; return; }
+                ids.push(t.id);
+                const g = sums[t.type];
+                g.n++; g.native += t.amount; g.locked += t.amount * rate; g.live += convertCurrency(t.amount, cur, acctCur);
+            });
+            fxLockPending = null;
+            let html = "";
+            if (!ids.length) {
+                html = `<p style="font-size:0.8rem; margin:8px 0 0;">No unlocked ${escapeHtml(cur)} Income/Expense records found on ${escapeHtml(acctCur)} accounts in that range.${alreadyLocked ? ` (${alreadyLocked} already locked.)` : ""}</p>`;
+            } else {
+                const row = (label, g) => g.n ? `<div style="margin-top:4px;">${label}: <b>${g.n}</b> record${g.n === 1 ? "" : "s"} · ${formatCurrency(g.native, cur)} → <b>${formatCurrency(g.locked, acctCur)}</b> at your rate <span style="color:var(--text-muted);">(today's table would give ${formatCurrency(g.live, acctCur)}, difference ${formatCurrency(g.locked - g.live, acctCur)})</span></div>` : "";
+                const live = convertCurrency(1, cur, acctCur);
+                const offPct = live > 0 ? Math.abs(rate / live - 1) * 100 : 0;
+                html = `<div style="margin-top:10px; padding:10px; border:1px solid var(--border-color); border-radius:10px; font-size:0.8rem;">
+                    <div style="font-weight:800;">Will lock ${ids.length} record${ids.length === 1 ? "" : "s"} at 1 ${escapeHtml(cur)} = ${fmtRateShown(rate)} ${escapeHtml(acctCur)} <span style="font-weight:600; color:var(--text-muted);">(${escapeHtml(from)} to ${escapeHtml(to)})</span></div>
+                    ${row("Expense", sums.expense)}${row("Income", sums.income)}
+                    ${offPct > 20 ? `<div style="margin-top:6px; color:#b91c1c; font-weight:700;">⚠ Your rate is ${offPct.toFixed(0)}% away from today's table rate. Check the digits and the direction before confirming.</div>` : ""}
+                    ${(alreadyLocked || otherAcctCur) ? `<div style="margin-top:6px; color:var(--text-muted);">Skipped: ${alreadyLocked ? `${alreadyLocked} already locked` : ""}${alreadyLocked && otherAcctCur ? ", " : ""}${otherAcctCur ? `${otherAcctCur} on accounts whose currency is not ${escapeHtml(acctCur)}` : ""}.</div>` : ""}
+                    <div style="margin-top:6px; color:var(--text-muted);">Account balances and reports will show these amounts at your rate from now on, and no longer move when you save new FX values.</div>
+                </div>`;
+                fxLockPending = { ids, rate, cur, acctCur, from, to };
+            }
+            e.out.innerHTML = html;
+            e.confirm.style.display = ids.length ? "" : "none";
+            if (ids.length) e.confirm.textContent = `🔒 Lock ${ids.length} record${ids.length === 1 ? "" : "s"}`;
+        }
+        async function fxLockConfirm() {
+            const p = fxLockPending;
+            if (!p) { return; }
+            const idSet = new Set(p.ids);
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const done = [];
+            try {
+                for (const t of txs) {
+                    if (!idSet.has(t.id) || t.manualFxRate) continue;
+                    t.manualFxRate = p.rate;
+                    await writeDB(STORES.TRANSACTIONS, t);
+                    done.push(t.id);
+                }
+                await writeDB(STORES.SETTINGS, { key: FX_LOCK_UNDO_KEY, value: { ids: done, rate: p.rate, cur: p.cur, acctCur: p.acctCur, from: p.from, to: p.to, at: new Date().toISOString() } });
+            } catch (err) {
+                alert("Bulk lock stopped part-way: " + (err && err.message ? err.message : err) + (done.length ? ` (${done.length} record(s) were already locked; use Undo to revert them.)` : ""));
+            }
+            fxLockInvalidate();
+            showToast(`Locked ${done.length} record${done.length === 1 ? "" : "s"}`);
+            await fxLockRenderUndo();
+            renderApp();
+        }
+        async function fxLockUndo() {
+            let rec = null;
+            try { rec = await readKeyDB("settings", FX_LOCK_UNDO_KEY); } catch (err) { rec = null; }
+            const u = rec && rec.value;
+            if (!u || !Array.isArray(u.ids) || !u.ids.length) return;
+            if (!confirm(`Undo the last bulk lock?\n\n${u.ids.length} record(s) go back to following the live rate (they were not locked before). Records you have edited since are left alone.`)) return;
+            const idSet = new Set(u.ids);
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            let n = 0;
+            for (const t of txs) {
+                if (!idSet.has(t.id) || t.manualFxRate !== u.rate) continue;
+                t.manualFxRate = null;
+                await writeDB(STORES.TRANSACTIONS, t);
+                n++;
+            }
+            await writeDB(STORES.SETTINGS, { key: FX_LOCK_UNDO_KEY, value: null });
+            showToast(`Unlocked ${n} record${n === 1 ? "" : "s"}`);
+            await fxLockRenderUndo();
+            renderApp();
         }
 
         function handleBaseCurrencyChange() {
@@ -12043,6 +12217,7 @@
                 resetTxTagsChips(tx.tags || []);
                 refreshTxPolicyRow(tx.policyId || null); // v468
 
+                txManualFxTouched = true; // v547: existing records are never auto-locked
                 document.getElementById("txManualFxToggle").checked = !!tx.manualFxRate;
                 document.getElementById("txManualFxRate").value = tx.manualFxRate || "";
                 document.getElementById("txManualFxRateRow").style.display = tx.manualFxRate ? "block" : "none";
@@ -12265,6 +12440,7 @@
                 document.getElementById("txFdLinkPlacement").innerHTML = "";
                 document.getElementById("txFdLinkPlacement").value = "";
 
+                txManualFxTouched = false; txManualFxLastAuto = ""; // v547: new entry starts in auto-lock mode
                 document.getElementById("txManualFxToggle").checked = false;
                 document.getElementById("txManualFxRate").value = "";
                 document.getElementById("txManualFxRateRow").style.display = "none";
@@ -13407,6 +13583,17 @@
         // Fixed Deposit accounts keep separate per-currency baskets with no conversion, and
         // Transfers have two account legs (src + dest currency), so a single rate would be
         // ambiguous — out of scope here.
+        // v547: a NEW foreign-currency Income/Expense entry now starts LOCKED (tick on, rate prefilled with
+        // today's table rate, editable). Why: once paid, the amount the account actually received/paid
+        // is a fact; following the live table means a later "Save FX Values" silently rewrites it.
+        // Untick = follow the live rate (explicit choice). Editing an EXISTING record never auto-locks
+        // (that would stamp today's rate onto an old entry) — txManualFxTouched is set on edit-load.
+        let txManualFxTouched = false;   // user has ticked/unticked the lock in this form session
+        let txManualFxLastAuto = "";     // last auto-prefilled rate text (so we only overwrite untouched values)
+        function fmtFxRateInput(r) {
+            if (!isFinite(r) || r <= 0) return "";
+            return r >= 1 ? r.toFixed(6) : String(Number(r.toPrecision(7)));
+        }
         async function updateTxManualFxVisibility() {
             const wrap = document.getElementById("txManualFxWrap");
             const type = document.getElementById("txType").value;
@@ -13431,13 +13618,23 @@
             wrap.style.display = "block";
             document.getElementById("txManualFxRateLabel").textContent = `Rate (1 ${txCurr} = ? ${account.currency})`;
             const liveRate = convertCurrency(1, txCurr, account.currency);
+            if (document.getElementById("txId").value === "" && !txManualFxTouched && isFinite(liveRate) && liveRate > 0) {
+                document.getElementById("txManualFxToggle").checked = true;
+                document.getElementById("txManualFxRateRow").style.display = "block";
+                const rateEl = document.getElementById("txManualFxRate");
+                if (!rateEl.value || rateEl.value === txManualFxLastAuto) {
+                    txManualFxLastAuto = fmtFxRateInput(liveRate);
+                    rateEl.value = txManualFxLastAuto;
+                }
+            }
             document.getElementById("txManualFxAutoHint").textContent = document.getElementById("txManualFxToggle").checked
-                ? ""
+                ? "🔒 Locked: later changes in Currency & FX Rates will not touch this entry. If you know the rate your bank/card really used, type it in. Untick to follow the live rate instead."
                 : `Auto: currently ${liveRate.toFixed(4)} (today's rate from Currency & FX Rates). This is recalculated live — if that rate changes later, this transaction's effect on the account balance changes with it.`;
             recalcTxManualFxPreview();
         }
 
         function toggleTxManualFx() {
+            txManualFxTouched = true;
             const on = document.getElementById("txManualFxToggle").checked;
             document.getElementById("txManualFxRateRow").style.display = on ? "block" : "none";
             if (on && !document.getElementById("txManualFxRate").value) {
@@ -13445,7 +13642,7 @@
                 readAllDB(STORES.ACCOUNTS).then(accounts => {
                     const account = accounts.find(a => a.id === document.getElementById("srcAccount").value);
                     if (account) {
-                        document.getElementById("txManualFxRate").value = convertCurrency(1, txCurr, account.currency).toFixed(6);
+                        document.getElementById("txManualFxRate").value = fmtFxRateInput(convertCurrency(1, txCurr, account.currency));
                         recalcTxManualFxPreview();
                     }
                 });
@@ -13866,7 +14063,7 @@
             if (document.getElementById("txManualFxWrap").style.display !== "none" && document.getElementById("txManualFxToggle").checked) {
                 const manualRateVal = parseFloat(document.getElementById("txManualFxRate").value);
                 if (isNaN(manualRateVal) || manualRateVal <= 0) {
-                    alert("Please enter a valid manual FX rate greater than zero, or turn off manual FX to use the auto rate.");
+                    alert("Please enter a valid manual FX rate greater than zero, or untick the lock to use the live rate.");
                     return;
                 }
             }
@@ -19531,6 +19728,7 @@
                 ${splitBreakdownHTML}
                 <div>Account: ${accountName(tx.src)}</div>
                 ${destLine}
+                ${fxRateLineHTML(tx, accounts)}
                 ${(!splitInfo && tx.cat) ? `<div>Category: ${escapeHtml(tx.cat)}</div>` : ""}
                 <div>Notes: ${tx.notes ? escapeHtml(tx.notes) : "-"}</div>
                 ${tagsLineHTML}
@@ -21420,9 +21618,7 @@
                 // own Activity history too. fdResolved placements keep showing their maturity
                 // date for reference even though the ✅ Closed badge already covers status.
                 const maturityText = t.fdMaturityDate ? ` · Matures ${escapeHtml(t.fdMaturityDate)}` : '';
-                const manualFxBadge = (t.manualFxRate || (t.type === "transfer" && t.destAmount != null))
-                    ? `<span style="font-size:0.62rem; font-weight:700; color:#c2410c; background:#ffedd5; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;">✏️ Manual FX</span>`
-                    : '';
+                const manualFxBadge = txFxLockBadgeHTML(t, accounts); // v547: 🔒 replaces the orange Manual FX pill
 
                 // What to show as the headline amount for this row. For a cross-currency Transfer
                 // viewed from its destination account specifically, showing the source amount/
@@ -22697,7 +22893,7 @@
                 return `
                     <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
-                            <span class="item-name">${t.cat ? getCategoryIcon(t.cat, t.type) : "🧾"} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}${txAttachBadgeHTML(t)}</span>
+                            <span class="item-name">${t.cat ? getCategoryIcon(t.cat, t.type) : "🧾"} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}${txAttachBadgeHTML(t)}${txFxLockBadgeHTML(t, accounts)}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(t.cat || (t.type === "transfer" ? "Claims Receivable" : ""))}]</span>
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}</span>
                         </div>
@@ -26138,6 +26334,9 @@
             handleLedgerBackClick: () => handleLedgerBackClick(),
             navigateToWorkspace: () => navigateToWorkspace(),
             saveFxRates: () => saveFxRates(),
+            fxLockPreview: () => fxLockPreview(),
+            fxLockConfirm: () => fxLockConfirm(),
+            fxLockUndo: () => fxLockUndo(),
             addMultiCurrencyRow: () => addMultiCurrencyRow(),
             addFdPlacementRow: () => addFdPlacementRow(),
             handleCreateAccountMobile: () => handleCreateAccountMobile(),
@@ -26375,6 +26574,8 @@
             resetSavingsPageAndRender: () => renderSavingsStatement(),
             savingsMonthSelectChange: (el) => savingsMonthSelectChange(el),
             toggleTxManualFx: () => toggleTxManualFx(),
+            fxLockSelectionChanged: () => fxLockSelectionChanged(),
+            fxLockInvalidate: () => fxLockInvalidate(),
             recalcTxManualFxPreview: () => recalcTxManualFxPreview(),
             renderSpendingBreakdownPage: () => renderSpendingBreakdownPage(),
             renderIncomeBreakdownPage: () => renderIncomeBreakdownPage(),
@@ -26436,6 +26637,7 @@
             recalcResolveFdMaturity: () => recalcResolveFdMaturity(),
             recalcFdOpeningRowMaturity: (el) => recalcFdOpeningRowMaturity(el.dataset.rowId),
             recalcTxManualFxPreview: () => recalcTxManualFxPreview(),
+            fxLockInvalidate: () => fxLockInvalidate(),
             recalcTransferFxFromRate: () => recalcTransferFxFromRate(),
             recalcTransferFxFromDestAmount: () => recalcTransferFxFromDestAmount(),
             recalcFundTxTotal: () => recalcFundTxTotal(),

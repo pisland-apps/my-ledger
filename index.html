@@ -5962,6 +5962,29 @@
                 <div id="fxRatesFormContainer"></div>
                 <button type="button" data-click="saveFxRates" class="submit-btn" style="margin-top:10px;">Save FX Values</button>
             </div>
+
+            <!-- v547: bulk-lock past foreign-currency records at a rate the user types (never today's rate). -->
+            <div class="widget-setting-card" id="fxLockCard">
+                <p style="font-size:0.75rem; font-weight:700; color:var(--text-muted); margin:0 0 8px;">🔒 LOCK RATE ON PAST RECORDS</p>
+                <p style="font-size:0.72rem; color:var(--text-muted); margin:0 0 10px;">Freeze existing foreign-currency Income/Expense records (e.g. a trip) at the rate you actually paid, so saving new FX values no longer changes them. Nothing is stamped with today's rate: you type it. Only records that are not locked yet are touched.</p>
+                <div style="display:flex; gap:8px; margin-bottom:8px;">
+                    <div style="flex:1;"><label style="font-size:0.7rem; font-weight:700;">Entry currency</label><select id="fxLockCur" class="form-input" data-change="fxLockSelectionChanged"></select></div>
+                    <div style="flex:1;"><label style="font-size:0.7rem; font-weight:700;">Account currency</label><select id="fxLockAcctCur" class="form-input" data-change="fxLockSelectionChanged"></select></div>
+                </div>
+                <div style="display:flex; gap:8px; margin-bottom:8px;">
+                    <div style="flex:1;"><label style="font-size:0.7rem; font-weight:700;">From</label><input type="date" id="fxLockFrom" class="form-input" data-change="fxLockInvalidate"></div>
+                    <div style="flex:1;"><label style="font-size:0.7rem; font-weight:700;">To</label><input type="date" id="fxLockTo" class="form-input" data-change="fxLockInvalidate"></div>
+                </div>
+                <div style="display:flex; gap:8px; margin-bottom:6px;">
+                    <div style="flex:1;"><label style="font-size:0.7rem; font-weight:700;">Rate direction</label><select id="fxLockDir" class="form-input" data-change="fxLockInvalidate"></select></div>
+                    <div style="flex:1;"><label style="font-size:0.7rem; font-weight:700;">Rate you paid</label><input type="number" id="fxLockRate" class="form-input" step="any" min="0" inputmode="decimal" placeholder="e.g. 337.27" data-input="fxLockInvalidate"></div>
+                </div>
+                <p id="fxLockHint" style="font-size:0.7rem; color:var(--text-muted); margin:0 0 8px;"></p>
+                <button type="button" class="btn-util" data-click="fxLockPreview" style="width:100%;">🔍 Preview</button>
+                <div id="fxLockPreview"></div>
+                <button type="button" id="fxLockConfirmBtn" class="submit-btn" data-click="fxLockConfirm" style="display:none; margin-top:10px;">🔒 Lock</button>
+                <div id="fxLockUndoBox" style="margin-top:10px;"></div>
+            </div>
         </div>
         </div>
     </div>
@@ -6855,7 +6878,7 @@
                      retroactively change what this specific past transaction did to the account. -->
                 <div id="txManualFxWrap" style="display:none; background:#fff7ed; border:1px solid #fed7aa; border-radius:10px; padding:10px; margin-bottom:10px;">
                     <div class="toggle-switch-row" style="margin:0 0 8px;">
-                        <span class="toggle-switch-label" style="font-size:0.75rem;">✏️ Manually enter FX rate</span>
+                        <span class="toggle-switch-label" style="font-size:0.75rem;">🔒 Lock FX rate (new entries are locked by default)</span>
                         <label class="toggle-switch">
                             <input type="checkbox" id="txManualFxToggle" data-change="toggleTxManualFx">
                             <span class="toggle-slider"></span>
@@ -6863,7 +6886,7 @@
                     </div>
                     <div class="form-row" id="txManualFxRateRow" style="display:none; margin-bottom:0;">
                         <label id="txManualFxRateLabel">Rate (1 unit = ? in account currency)</label>
-                        <input type="number" id="txManualFxRate" step="0.000001" min="0" data-input="recalcTxManualFxPreview" data-change="recalcTxManualFxPreview">
+                        <input type="number" id="txManualFxRate" step="any" min="0" data-input="recalcTxManualFxPreview" data-change="recalcTxManualFxPreview">
                         <p id="txManualFxPreview" style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;"></p>
                     </div>
                     <p id="txManualFxAutoHint" style="font-size:0.7rem; color:var(--text-muted); margin:0;"></p>

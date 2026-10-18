@@ -4110,3 +4110,6 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 ## v550: Spending by Tag — notes moved to the last line of each row
 - Row order is now title → date · category (· account) → notes (italic). `APP_VERSION` / `CACHE_NAME` -> v550.
+
+## v551: Inventory shows the base-currency value of foreign-currency items
+- A foreign-currency item now shows its base value under the price ("≈ RM272.25" live, or "🔒 RM…" when the item was created from a rate-locked expense via `linkedTxId` and that account is in the base currency). The Total Value footer uses the same per-item value (`invBase`), so rows and footer agree. Items without a linked/locked expense follow the live FX table. `APP_VERSION` / `CACHE_NAME` -> v551.

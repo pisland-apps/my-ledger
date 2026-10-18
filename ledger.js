@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v550";
+        const APP_VERSION = "v551";
         const APP_VERSION_DATE = "2026-10-16";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -14681,7 +14681,23 @@
             // Purchase Price across whatever's currently filtered (All/Active/Disposed/Lost),
             // converted to base currency at today's live rate (purchase-time FX isn't stored on
             // an inventory item, unlike a transaction's optional manualFxRate).
-            const totalBase = filtered.reduce((sum, it) => sum + convertCurrency(it.purchasePrice || 0, it.currency || baseCurrency, baseCurrency), 0);
+            // v551: base-currency value per item. An item created from a rate-locked expense (linkedTxId) uses that
+            // locked rate (shown with 🔒); everything else is a live conversion (shown with ≈). Row and footer share it.
+            const txsForInv = items.some(it => it.linkedTxId && (it.currency || baseCurrency) !== baseCurrency) ? await readAllDB(STORES.TRANSACTIONS) : [];
+            const txById = new Map(txsForInv.map(t => [String(t.id), t]));
+            const invBase = it => {
+                const cur = it.currency || baseCurrency, price = it.purchasePrice || 0;
+                if (cur === baseCurrency) return { base: price, locked: true, foreign: false };
+                const tx = it.linkedTxId ? txById.get(String(it.linkedTxId)) : null;
+                if (tx && tx.manualFxRate && tx.currency === cur) {
+                    const acc = accounts.find(a => a.id === tx.src);
+                    if (acc && acc.type !== "multi" && acc.type !== "fd" && acc.currency && acc.currency !== cur) {
+                        return { base: convertCurrency(price * tx.manualFxRate, acc.currency, baseCurrency), locked: acc.currency === baseCurrency, foreign: true };
+                    }
+                }
+                return { base: convertCurrency(price, cur, baseCurrency), locked: false, foreign: true };
+            };
+            const totalBase = filtered.reduce((sum, it) => sum + invBase(it).base, 0);
             footerEl.style.display = "flex";
             footerEl.innerHTML = `
                 <span style="font-family:'Kalam', cursive; font-size:1rem; color:var(--text-muted); font-weight:800;">Total Value (${INV_STATUS_LABELS[inventoryStatusFilter] || "All"})</span>
@@ -14737,7 +14753,10 @@
                                 ${warrantyHTML}
                             </div>
                             <div class="item-right">
-                                <div class="item-value" style="font-weight:bold;">${formatCurrency(it.purchasePrice || 0, it.currency || baseCurrency)}</div>
+                                <div style="text-align:right;">
+                                    <div class="item-value" style="font-weight:bold;">${formatCurrency(it.purchasePrice || 0, it.currency || baseCurrency)}</div>
+                                    ${(() => { const v = invBase(it); return v.foreign ? `<span class="converted-subtext tagrep-amt">${v.locked ? "🔒 " : "≈ "}${formatCurrency(v.base, baseCurrency)}</span>` : ""; })()}
+                                </div>
                                 <span style="font-size:0.68rem; font-weight:700; color:${INV_STATUS_COLORS[it.status] || "var(--text-muted)"}; text-transform:uppercase;">${INV_STATUS_LABELS[it.status] || it.status}</span>
                             </div>
                         </div>

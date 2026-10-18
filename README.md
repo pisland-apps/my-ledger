@@ -4112,4 +4112,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Row order is now title → date · category (· account) → notes (italic). `APP_VERSION` / `CACHE_NAME` -> v550.
 
 ## v551: Inventory shows the base-currency value of foreign-currency items
-- A foreign-currency item now shows its base value under the price ("≈ RM272.25" live, or "🔒 RM…" when the item was created from a rate-locked expense via `linkedTxId` and that account is in the base currency). The Total Value footer uses the same per-item value (`invBase`), so rows and footer agree. Items without a linked/locked expense follow the live FX table. `APP_VERSION` / `CACHE_NAME` -> v551.
+- A foreign-currency item now shows its base value under the price ("≈ RM272.25" live, or "🔒 RM…" when the item was created from a rate-locked expense and that account is in the base currency). The Total Value footer uses the same per-item value (`invBase`), so rows and footer agree. Items without a linked/locked expense follow the live FX table. `APP_VERSION` / `CACHE_NAME` -> v551.
+
+## v552: Inventory lock lookup fixed (items never stored linkedTxId)
+- v551 looked the source expense up through `linkedTxId`, but that field is always null (the new transaction's id is unknown when the item is created), so items always showed the live "≈" value. The source expense is now matched by content: same account + purchase date + currency + amount (`t.amount === it.purchasePrice`), preferring same vendor = description and name = notes; if only the loose match applies it is used only when exactly one rate-locked expense fits. `APP_VERSION` / `CACHE_NAME` -> v552.

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v551";
+        const APP_VERSION = "v552";
         const APP_VERSION_DATE = "2026-10-16";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -14683,12 +14683,28 @@
             // an inventory item, unlike a transaction's optional manualFxRate).
             // v551: base-currency value per item. An item created from a rate-locked expense (linkedTxId) uses that
             // locked rate (shown with 🔒); everything else is a live conversion (shown with ≈). Row and footer share it.
-            const txsForInv = items.some(it => it.linkedTxId && (it.currency || baseCurrency) !== baseCurrency) ? await readAllDB(STORES.TRANSACTIONS) : [];
-            const txById = new Map(txsForInv.map(t => [String(t.id), t]));
+            // NOTE: linkedTxId is never actually filled in (the new transaction's id isn't known when the item is
+            // created — see handleTransactionSubmit's v318 comment), so the source expense is found by content:
+            // same account + date + currency + amount, and preferably the same vendor/description + name/notes.
+            const needsTx = items.some(it => (it.currency || baseCurrency) !== baseCurrency);
+            const lockedExpenses = needsTx
+                ? (await readAllDB(STORES.TRANSACTIONS)).filter(t => t.type === "expense" && !t.isRefund && t.manualFxRate)
+                : [];
+            const findSourceTx = it => {
+                const cur = it.currency || baseCurrency;
+                if (it.linkedTxId) {
+                    const byId = lockedExpenses.find(t => String(t.id) === String(it.linkedTxId));
+                    if (byId) return byId;
+                }
+                const base = lockedExpenses.filter(t => t.src === it.srcAccountId && t.date === it.purchaseDate && t.currency === cur && t.amount === it.purchasePrice);
+                const strict = base.filter(t => (t.desc || "") === (it.vendor || "") && (t.notes || "").trim() === (it.name || "").trim());
+                if (strict.length) return strict[0];
+                return base.length === 1 ? base[0] : null;
+            };
             const invBase = it => {
                 const cur = it.currency || baseCurrency, price = it.purchasePrice || 0;
                 if (cur === baseCurrency) return { base: price, locked: true, foreign: false };
-                const tx = it.linkedTxId ? txById.get(String(it.linkedTxId)) : null;
+                const tx = findSourceTx(it);
                 if (tx && tx.manualFxRate && tx.currency === cur) {
                     const acc = accounts.find(a => a.id === tx.src);
                     if (acc && acc.type !== "multi" && acc.type !== "fd" && acc.currency && acc.currency !== cur) {

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v556";
+        const APP_VERSION = "v557";
         const APP_VERSION_DATE = "2026-10-18";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -5700,7 +5700,6 @@
         // Only records with NO manualFxRate are touched, so "Undo" simply returns them to following the live
         // rate (their state before) — records that were already locked are never modified by either action.
         let fxLockPending = null;
-        const FX_LOCK_UNDO_KEY = "fxLockUndo";
         function fxLockEls() {
             return { cur: document.getElementById("fxLockCur"), acct: document.getElementById("fxLockAcctCur"),
                 from: document.getElementById("fxLockFrom"), to: document.getElementById("fxLockTo"),
@@ -5738,15 +5737,49 @@
             fxLockSelectionChanged();
             await fxLockRenderUndo();
         }
+        // v557: "Currently locked" panel. Derived from the transactions themselves (every record that carries a
+        // manualFxRate), grouped by entry currency -> account currency at one exact rate, so EVERY earlier bulk
+        // lock stays visible and can be unlocked on its own. (Before v557 this was a single "last bulk lock"
+        // slot that each new lock overwrote, which hid the earlier batches.) Groups of 1 are individually
+        // locked records (rate typed on the entry itself) — summarised in one line, never offered for unlock.
+        function fxLockedInfo(t, accById) {
+            if ((t.type !== "income" && t.type !== "expense") || t.fundId || !t.manualFxRate) return null;
+            const acc = accById.get(t.src);
+            if (!acc || !acc.currency || acc.currency === t.currency) return null;
+            return { cur: t.currency, acctCur: acc.currency, rate: t.manualFxRate };
+        }
         async function fxLockRenderUndo() {
             const box = document.getElementById("fxLockUndoBox");
             if (!box) return;
-            let rec = null;
-            try { rec = await readKeyDB("settings", FX_LOCK_UNDO_KEY); } catch (err) { rec = null; }
-            const u = rec && rec.value;
-            if (!u || !Array.isArray(u.ids) || !u.ids.length) { box.innerHTML = ""; return; }
-            box.innerHTML = `<p style="font-size:0.72rem; color:var(--text-muted); margin:0 0 6px;">Last bulk lock: ${u.ids.length} record${u.ids.length === 1 ? "" : "s"} (${escapeHtml(u.cur)} → ${escapeHtml(u.acctCur)}, ${escapeHtml(u.from)} to ${escapeHtml(u.to)}, ${escapeHtml(fxQuote(u.cur, u.acctCur, u.rate))}). Undo sends them back to following the live rate.</p>
-                <button type="button" class="btn-util" data-click="fxLockUndo" style="width:100%;">↩ Undo last bulk lock</button>`;
+            const [txs, accounts] = await Promise.all([readAllDB(STORES.TRANSACTIONS), readAllDB(STORES.ACCOUNTS)]);
+            const accById = new Map(accounts.map(a => [a.id, a]));
+            const groups = new Map();
+            txs.forEach(t => {
+                const k = fxLockedInfo(t, accById);
+                if (!k) return;
+                const key = `${k.cur}|${k.acctCur}|${k.rate}`;
+                const g = groups.get(key) || { ...k, n: 0, min: "9999", max: "" };
+                const d = String(t.date || "").slice(0, 10);
+                g.n++;
+                if (d < g.min) g.min = d;
+                if (d > g.max) g.max = d;
+                groups.set(key, g);
+            });
+            const batches = [...groups.values()].filter(g => g.n >= 2).sort((x, y) => y.n - x.n);
+            const singles = [...groups.values()].filter(g => g.n < 2).reduce((n, g) => n + g.n, 0);
+            if (!batches.length && !singles) { box.innerHTML = ""; return; }
+            const rowsHtml = batches.map(g => `
+                <div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-top:1px solid var(--border-color);">
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:0.82rem; font-weight:700;">${escapeHtml(g.cur)} → ${escapeHtml(g.acctCur)} · ${g.n} records</div>
+                        <div style="font-size:0.72rem; color:var(--text-muted);">${escapeHtml(g.min)} to ${escapeHtml(g.max)} · ${escapeHtml(fxQuote(g.cur, g.acctCur, g.rate))}</div>
+                    </div>
+                    <button type="button" class="btn-util" data-click="fxLockUndo" data-cur="${escapeHtml(g.cur)}" data-acct="${escapeHtml(g.acctCur)}" data-rate="${g.rate}" style="width:auto; padding:6px 10px; font-size:0.75rem;">↩ Unlock</button>
+                </div>`).join("");
+            box.innerHTML = `<p style="font-size:0.72rem; font-weight:800; color:var(--text-muted); margin:0 0 2px; letter-spacing:0.04em;">CURRENTLY LOCKED</p>
+                ${rowsHtml}
+                ${singles ? `<p style="font-size:0.72rem; color:var(--text-muted); margin:6px 0 0; border-top:1px solid var(--border-color); padding-top:8px;">+ ${singles} individually locked record${singles === 1 ? "" : "s"} (rate set on the entry itself).</p>` : ""}
+                <p style="font-size:0.7rem; color:var(--text-muted); margin:6px 0 0;">Unlock sends a batch back to following the live rate. Records locked at other rates are not touched.</p>`;
         }
         async function fxLockPreview() {
             const e = fxLockEls();
@@ -5808,32 +5841,30 @@
                     await writeDB(STORES.TRANSACTIONS, t);
                     done.push(t.id);
                 }
-                await writeDB(STORES.SETTINGS, { key: FX_LOCK_UNDO_KEY, value: { ids: done, rate: p.rate, cur: p.cur, acctCur: p.acctCur, from: p.from, to: p.to, at: new Date().toISOString() } });
             } catch (err) {
-                alert("Bulk lock stopped part-way: " + (err && err.message ? err.message : err) + (done.length ? ` (${done.length} record(s) were already locked; use Undo to revert them.)` : ""));
+                alert("Bulk lock stopped part-way: " + (err && err.message ? err.message : err) + (done.length ? ` (${done.length} record(s) were already locked; use Unlock under "Currently locked" to revert them.)` : ""));
             }
             fxLockInvalidate();
             showToast(`Locked ${done.length} record${done.length === 1 ? "" : "s"}`);
             await fxLockRenderUndo();
             renderApp();
         }
-        async function fxLockUndo() {
-            let rec = null;
-            try { rec = await readKeyDB("settings", FX_LOCK_UNDO_KEY); } catch (err) { rec = null; }
-            const u = rec && rec.value;
-            if (!u || !Array.isArray(u.ids) || !u.ids.length) return;
-            if (!confirm(`Undo the last bulk lock?\n\n${u.ids.length} record(s) go back to following the live rate (they were not locked before). Records you have edited since are left alone.`)) return;
-            const idSet = new Set(u.ids);
-            const txs = await readAllDB(STORES.TRANSACTIONS);
-            let n = 0;
-            for (const t of txs) {
-                if (!idSet.has(t.id) || t.manualFxRate !== u.rate) continue;
+        async function fxLockUndo(el) {
+            const cur = el && el.dataset.cur, acctCur = el && el.dataset.acct, rate = Number(el && el.dataset.rate);
+            if (!cur || !acctCur || !(rate > 0)) return;
+            const [txs, accounts] = await Promise.all([readAllDB(STORES.TRANSACTIONS), readAllDB(STORES.ACCOUNTS)]);
+            const accById = new Map(accounts.map(a => [a.id, a]));
+            const hits = txs.filter(t => {
+                const k = fxLockedInfo(t, accById);
+                return k && k.cur === cur && k.acctCur === acctCur && k.rate === rate;
+            });
+            if (!hits.length) { await fxLockRenderUndo(); return; }
+            if (!confirm(`Unlock ${hits.length} ${cur} record${hits.length === 1 ? "" : "s"} (${cur} → ${acctCur}, ${fxQuote(cur, acctCur, rate)})?\n\nThey go back to following the live rate. Records locked at other rates are not touched.`)) return;
+            for (const t of hits) {
                 t.manualFxRate = null;
                 await writeDB(STORES.TRANSACTIONS, t);
-                n++;
             }
-            await writeDB(STORES.SETTINGS, { key: FX_LOCK_UNDO_KEY, value: null });
-            showToast(`Unlocked ${n} record${n === 1 ? "" : "s"}`);
+            showToast(`Unlocked ${hits.length} record${hits.length === 1 ? "" : "s"}`);
             await fxLockRenderUndo();
             renderApp();
         }
@@ -26568,7 +26599,7 @@
             saveFxRates: () => saveFxRates(),
             fxLockPreview: () => fxLockPreview(),
             fxLockConfirm: () => fxLockConfirm(),
-            fxLockUndo: () => fxLockUndo(),
+            fxLockUndo: (el) => fxLockUndo(el),
             addMultiCurrencyRow: () => addMultiCurrencyRow(),
             addFdPlacementRow: () => addFdPlacementRow(),
             handleCreateAccountMobile: () => handleCreateAccountMobile(),

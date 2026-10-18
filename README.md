@@ -4144,3 +4144,11 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 - `exportTagReportCsv` had been registered in `CHANGE_ACTIONS` instead of `CLICK_ACTIONS`, so the 📤 button
   (`data-click`) found no handler. Moved to `CLICK_ACTIONS`. Bumped `APP_VERSION` and `CACHE_NAME` to v556.
+
+## v557: Currency Setting ▸ Lock Rate — all locked batches visible
+
+- The old "Last bulk lock / Undo last bulk lock" kept ONE slot that each new lock overwrote, so earlier
+  batches (e.g. KRW after a later CNY lock) disappeared from the UI although they stayed locked.
+- Now a "Currently locked" list is derived from the transactions (grouped entry currency → account currency
+  at one exact rate, ≥2 records) with a per-batch Unlock button; single individually-locked records are
+  summarised in one line. The `fxLockUndo` settings key is no longer used. Bumped to v557.

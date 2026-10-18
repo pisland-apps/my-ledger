@@ -4152,3 +4152,14 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Now a "Currently locked" list is derived from the transactions (grouped entry currency → account currency
   at one exact rate, ≥2 records) with a per-batch Unlock button; single individually-locked records are
   summarised in one line. The `fxLockUndo` settings key is no longer used. Bumped to v557.
+
+## v558: Inventory — categories + grouped view
+
+- New optional `category` on inventory items (Electronics, Appliances, Furniture & Storage, Musical Instruments,
+  Luggage & Travel, Tools, Kitchen & Dining, Home Accessories, Other). Settable in the item modal and when
+  adding an item from an expense; included as a column in the Inventory CSV export.
+- Inventory page: "By date" (default) / "By category" toggle (remembered). Category view = one collapsible
+  card per category (count, share of total, subtotal), biggest first; uncategorised items last, each with an
+  inline "Set category…" picker.
+- Rows: account is shown only when it differs from the majority (one line above the list says it once); the
+  status badge/side bar only for Disposed/Lost. Bumped to v558.

@@ -2256,6 +2256,9 @@
         .tagrep-incnet { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-color); }
         .tagrep-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
         .tagrep-month { margin-bottom: 16px; background: var(--card-bg); border: 1.5px solid var(--border-color); border-top-color: var(--card-top-border); border-radius: 16px; overflow: hidden; box-shadow: var(--card-shadow); }
+        /* v558: Inventory grouped by category reuses the .tagrep-month card + header; rows sit in .tagrep-rows */
+        .tagrep-rows > .ledger-item:last-child { border-bottom: none; }
+        .inv-quickcat { width: 100%; margin-top: 8px; padding: 6px 8px; font-size: 0.78rem; font-weight: 600; border-radius: 8px; }
         .tagrep-month-head { background: var(--active-bg); border-bottom: 1.5px solid var(--active-border); padding: 12px 16px 0; }
         .tagrep-mh-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 10px; }
         .tagrep-mh-name { font-size: 1rem; font-weight: 800; color: var(--text-main); line-height: 1.25; }
@@ -4449,6 +4452,12 @@
             <button type="button" class="nav-view-toggle-btn" data-click="inventorySetStatusFilter" data-status="lost" style="flex:1;">Lost</button>
         </div>
 
+        <!-- v558: group the list by date (default, warranty-friendly) or by category -->
+        <div class="nav-view-toggle" id="inventoryGroupToggle" style="margin:-6px 0 14px;">
+            <button type="button" class="nav-view-toggle-btn active" data-click="inventorySetGroupMode" data-mode="date" style="flex:1;">By date</button>
+            <button type="button" class="nav-view-toggle-btn" data-click="inventorySetGroupMode" data-mode="category" style="flex:1;">By category</button>
+        </div>
+
         <div id="inventoryPageList"></div>
         <div id="inventoryPageFooter" style="display:none; justify-content:space-between; align-items:center; padding:14px 4px 88px; margin-top:6px; border-top:2px dashed var(--border-color);"></div>
 
@@ -4897,6 +4906,10 @@
                 </div>
                 <div class="form-row form-row-icon"><span class="field-icon" aria-hidden="true">📦</span><input type="text" id="invName" required placeholder="Item name" aria-label="Item name"></div>
                 <div class="form-row form-row-icon"><span class="field-icon" aria-hidden="true">📝</span><input type="text" id="invNote" placeholder="Note (Optional)" aria-label="Note"></div>
+                <div class="form-row">
+                    <label>Category (Optional)</label>
+                    <select id="invCategory" class="form-input"></select>
+                </div>
 
                 <div class="form-row-inline">
                     <div>
@@ -7002,6 +7015,10 @@
                     </div>
                     <div id="txInventoryFieldsWrap" style="display:none;">
                         <p class="tx-inv-hint">Item name comes from Notes above. Vendor/Date/Price/attachments are taken from this entry automatically.</p>
+                        <div class="form-row">
+                            <label>Category (Optional)</label>
+                            <select id="txInvCategory" class="form-input"></select>
+                        </div>
                         <div class="form-row-inline">
                             <div>
                                 <label>Serial Number (Optional)</label>

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v557";
+        const APP_VERSION = "v558";
         const APP_VERSION_DATE = "2026-10-18";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -12385,6 +12385,7 @@
                 document.getElementById("txInventoryFieldsWrap").style.display = "none";
                 document.getElementById("txInvSerialNumber").value = "";
                 document.getElementById("txInvModel").value = "";
+                fillInvCategorySelect("txInvCategory", "");
                 document.getElementById("txInvWarrantyRows").innerHTML = "";
                 updateTxTagsRowVisibility();
                 resetTxTagsChips([]);
@@ -14400,6 +14401,7 @@
                         vendor: desc,
                         name: document.getElementById("txNotes").value.trim(),
                         note: null,
+                        category: document.getElementById("txInvCategory").value || null,
                         purchaseDate: dateVal,
                         purchasePrice: parsedAmount,
                         currency: record.currency,
@@ -14659,22 +14661,63 @@
         // --- Inventory page ---
 
         let inventoryStatusFilter = "all"; // "all" | "active" | "disposed" | "lost"
+        // v558: category field + grouping. Categories are a fixed list (stored as the plain name on
+        // item.category; an item whose stored name is not in the list still groups under that name).
+        const INV_CATEGORIES = ["Electronics", "Appliances", "Furniture & Storage", "Musical Instruments", "Luggage & Travel", "Tools", "Kitchen & Dining", "Home Accessories", "Other"];
+        const INV_CATEGORY_ICONS = { "Electronics": "💻", "Appliances": "🔌", "Furniture & Storage": "🪑", "Musical Instruments": "🎹", "Luggage & Travel": "🧳", "Tools": "🔧", "Kitchen & Dining": "🍽️", "Home Accessories": "🏡", "Other": "📦" };
+        let inventoryGroupMode = (() => { try { return localStorage.getItem("invGroupMode") === "category" ? "category" : "date"; } catch (e) { return "date"; } })();
+        const invCollapsedCats = new Set();
+        function fillInvCategorySelect(id, selected) {
+            const sel = document.getElementById(id);
+            if (!sel) return;
+            const extra = selected && !INV_CATEGORIES.includes(selected) ? `<option value="${escapeHtml(selected)}">${escapeHtml(selected)}</option>` : "";
+            sel.innerHTML = `<option value="">— None —</option>` + INV_CATEGORIES.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("") + extra;
+            sel.value = selected || "";
+        }
+        function syncInventoryGroupToggle() {
+            document.querySelectorAll("#inventoryGroupToggle .nav-view-toggle-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === inventoryGroupMode));
+        }
+        function inventorySetGroupMode(el) {
+            inventoryGroupMode = el.dataset.mode === "category" ? "category" : "date";
+            try { localStorage.setItem("invGroupMode", inventoryGroupMode); } catch (e) { /* private mode: keep in memory */ }
+            syncInventoryGroupToggle();
+            renderInventoryPage();
+        }
+        function inventoryToggleCategory(el) {
+            const k = el.dataset.cat;
+            if (invCollapsedCats.has(k)) invCollapsedCats.delete(k); else invCollapsedCats.add(k);
+            renderInventoryPage();
+        }
+        // Inline "set category" on an uncategorised row (category view) — quick one-tap sorting of old items.
+        async function inventorySetCategory(el) {
+            const val = el.value;
+            if (!val) return;
+            const items = await readAllDB(STORES.INVENTORY);
+            const it = items.find(x => x.id === el.dataset.id);
+            if (!it) return;
+            it.category = val;
+            it.updated = todayLocalStr();
+            await writeDB(STORES.INVENTORY, it);
+            showToast(`${INV_CATEGORY_ICONS[val] || "📦"} ${it.name || "Item"} → ${val}`);
+            renderInventoryPage();
+        }
 
         function navigateToInventoryPage() {
             showPage("page-inventory");
             pushVirtualState("inventory");
+            syncInventoryGroupToggle();
             renderInventoryPage();
         }
 
         function inventorySetStatusFilter(el) {
             inventoryStatusFilter = el.dataset.status;
-            document.querySelectorAll('#page-inventory .nav-view-toggle-btn').forEach(b => b.classList.toggle("active", b.dataset.status === inventoryStatusFilter));
+            document.querySelectorAll('#page-inventory .nav-view-toggle-btn[data-status]').forEach(b => b.classList.toggle("active", b.dataset.status === inventoryStatusFilter));
             renderInventoryPage();
         }
 
         function inventoryWarrantyStripTap() {
             inventoryStatusFilter = "active";
-            document.querySelectorAll('#page-inventory .nav-view-toggle-btn').forEach(b => b.classList.toggle("active", b.dataset.status === "active"));
+            document.querySelectorAll('#page-inventory .nav-view-toggle-btn[data-status]').forEach(b => b.classList.toggle("active", b.dataset.status === "active"));
             renderInventoryPage();
         }
 
@@ -14751,14 +14794,23 @@
                 <span style="font-family:'Kalam', cursive; font-size:1.15rem; font-weight:700; color:var(--text-main);">${formatCurrency(totalBase, baseCurrency)}</span>
             `;
 
-            listEl.innerHTML = filtered.map(it => {
+            // v558: account is printed per row only when it differs from the (clear) majority — otherwise a single
+            // line above the list says it once. Category is printed per row in date view only.
+            const catOf = it => (it.category && String(it.category).trim()) || "";
+            const accCount = {};
+            filtered.forEach(it => { const k = it.srcAccountId || ""; accCount[k] = (accCount[k] || 0) + 1; });
+            const domAcc = Object.keys(accCount).sort((x, y) => accCount[y] - accCount[x])[0];
+            const hideDomAcc = !!domAcc && filtered.length >= 3 && accCount[domAcc] / filtered.length >= 0.6;
+            const quickCatHTML = it => `<div data-click="invNoop"><select class="form-input inv-quickcat" data-change="inventorySetCategory" data-id="${escapeHtml(it.id)}" aria-label="Set category"><option value="">＋ Set category…</option>${INV_CATEGORIES.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("")}</select></div>`;
+            const rowHTML = (it, ctx) => {
                 const specsBits = [];
                 if (it.model) specsBits.push(escapeHtml(it.model));
                 if (it.serialNumber) specsBits.push("SN " + escapeHtml(it.serialNumber));
                 const specsLine = specsBits.length ? `<span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">${specsBits.join(" · ")}</span>` : "";
 
                 const accName = accountName(it.srcAccountId);
-                const accountLine = accName ? ` · 🏠 ${accName}` : "";
+                const accountLine = (accName && !(hideDomAcc && it.srcAccountId === domAcc)) ? ` · 🏠 ${accName}` : "";
+                const catLine = (ctx.showCat && catOf(it)) ? ` · ${INV_CATEGORY_ICONS[catOf(it)] || "🏷️"} ${escapeHtml(catOf(it))}` : "";
 
                 const noteLine = it.note ? `<span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">📝 ${escapeHtml(it.note)}</span>` : "";
 
@@ -14792,24 +14844,56 @@
                         <div class="tx-row-body">
                             <div class="item-left">
                                 <span class="item-name">${escapeHtml(it.name || "(unnamed item)")}</span>
-                                <span class="item-meta">[${escapeHtml(it.vendor || "—")}]${accountLine}</span>
+                                <span class="item-meta">[${escapeHtml(it.vendor || "—")}]${accountLine}${catLine}</span>
                                 ${specsLine}
                                 <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🗓️ ${escapeHtml(it.purchaseDate || "—")}</span>
                                 ${noteLine}
                                 ${attLine}
                                 ${warrantyHTML}
+                                ${ctx.quickCat && !catOf(it) ? quickCatHTML(it) : ""}
                             </div>
                             <div class="item-right">
                                 <div style="text-align:right;">
                                     <div class="item-value" style="font-weight:bold;">${formatCurrency(it.purchasePrice || 0, it.currency || baseCurrency)}</div>
                                     ${(() => { const v = invBase(it); return v.foreign ? `<span class="converted-subtext tagrep-amt">${v.locked ? "🔒 " : "≈ "}${formatCurrency(v.base, baseCurrency)}</span>` : ""; })()}
                                 </div>
-                                <span style="font-size:0.68rem; font-weight:700; color:${INV_STATUS_COLORS[it.status] || "var(--text-muted)"}; text-transform:uppercase;">${INV_STATUS_LABELS[it.status] || it.status}</span>
+                                ${it.status && it.status !== "active" ? `<span style="font-size:0.68rem; font-weight:700; color:${INV_STATUS_COLORS[it.status] || "var(--text-muted)"}; text-transform:uppercase;">${INV_STATUS_LABELS[it.status] || it.status}</span>` : ""}
                             </div>
                         </div>
-                        <span class="tx-side-bar" style="background:${INV_STATUS_COLORS[it.status] || "var(--text-muted)"};"></span>
+                        ${it.status && it.status !== "active" ? `<span class="tx-side-bar" style="background:${INV_STATUS_COLORS[it.status] || "var(--text-muted)"};"></span>` : ""}
                     </div>
                 `;
+            };
+
+            const hintHTML = hideDomAcc ? `<p style="font-size:0.72rem; color:var(--text-muted); margin:0 4px 10px;">🏠 Paid from ${accountName(domAcc)} unless shown on the item.</p>` : "";
+            if (inventoryGroupMode !== "category") {
+                listEl.innerHTML = hintHTML + filtered.map(it => rowHTML(it, { showCat: true, quickCat: false })).join("");
+                return;
+            }
+
+            // v558: By category — one card per category (header: name, count, share of total, subtotal; tap to
+            // collapse), biggest subtotal first, "Uncategorised" always last with an inline picker per row.
+            const buckets = new Map();
+            filtered.forEach(it => { const c = catOf(it); if (!buckets.has(c)) buckets.set(c, []); buckets.get(c).push(it); });
+            const cats = [...buckets.entries()]
+                .map(([c, its]) => ({ c, its, total: its.reduce((sum, it) => sum + invBase(it).base, 0) }))
+                .sort((x, y) => ((x.c === "") - (y.c === "")) || (y.total - x.total));
+            listEl.innerHTML = hintHTML + cats.map(g => {
+                const key = g.c || "__none__";
+                const collapsed = invCollapsedCats.has(key);
+                const pct = totalBase > 0 ? Math.min(100, (g.total / totalBase) * 100) : null;
+                const name = g.c ? `${INV_CATEGORY_ICONS[g.c] || "🏷️"} ${escapeHtml(g.c)}` : "🗂️ Uncategorised";
+                const sub = `${g.its.length} item${g.its.length === 1 ? "" : "s"}${pct === null ? "" : ` · ${pct < 1 ? "<1" : Math.round(pct)}% of total`}${g.c ? "" : " · set a category below"}`;
+                return `<div class="tagrep-month">
+                    <div class="tagrep-month-head" data-click="inventoryToggleCategory" data-cat="${escapeHtml(key)}" style="cursor:pointer;${collapsed ? " border-bottom:none;" : ""}">
+                        <div class="tagrep-mh-top">
+                            <div><div class="tagrep-mh-name">${collapsed ? "▸" : "▾"} ${name}</div><div class="tagrep-mh-sub">${sub}</div></div>
+                            <b>${escapeHtml(formatCurrency(g.total, baseCurrency))}</b>
+                        </div>
+                        ${pct === null ? "" : `<div class="tagrep-share"><i style="width:${pct.toFixed(1)}%"></i></div>`}
+                    </div>
+                    ${collapsed ? "" : `<div class="tagrep-rows">${g.its.map(it => rowHTML(it, { showCat: false, quickCat: !g.c })).join("")}</div>`}
+                </div>`;
             }).join("");
         }
 
@@ -14839,9 +14923,10 @@
                 .map(w => `${w.label || "Warranty"} (ends ${w.endDate || "?"})`)
                 .join("; ");
 
-            const header = ["Name", "Vendor", "Model", "Serial Number", "Purchase Date", "Purchase Price", "Currency", "Status", "Paid From", "Note", "Warranty", "Attachments"];
+            const header = ["Name", "Category", "Vendor", "Model", "Serial Number", "Purchase Date", "Purchase Price", "Currency", "Status", "Paid From", "Note", "Warranty", "Attachments"];
             const rows = filtered.map(it => [
                 it.name || "",
+                it.category || "",
                 it.vendor || "",
                 it.model || "",
                 it.serialNumber || "",
@@ -14899,6 +14984,7 @@
                 document.getElementById("invVendor").value = it.vendor || "";
                 document.getElementById("invName").value = it.name || "";
                 document.getElementById("invNote").value = it.note || "";
+                fillInvCategorySelect("invCategory", it.category || "");
                 document.getElementById("invPurchaseDate").value = it.purchaseDate || "";
                 document.getElementById("invPurchasePrice").value = it.purchasePrice != null ? it.purchasePrice : "";
                 document.getElementById("invSerialNumber").value = it.serialNumber || "";
@@ -14915,6 +15001,7 @@
                 document.getElementById("invVendor").value = "";
                 document.getElementById("invName").value = "";
                 document.getElementById("invNote").value = "";
+                fillInvCategorySelect("invCategory", "");
                 document.getElementById("invPurchaseDate").value = todayLocalStr();
                 document.getElementById("invPurchasePrice").value = "";
                 document.getElementById("invSerialNumber").value = "";
@@ -14939,6 +15026,7 @@
                 vendor: document.getElementById("invVendor").value.trim() || null,
                 name,
                 note: document.getElementById("invNote").value.trim() || null,
+                category: document.getElementById("invCategory").value || null,
                 purchaseDate: document.getElementById("invPurchaseDate").value || null,
                 purchasePrice: parseFloat(document.getElementById("invPurchasePrice").value) || 0,
                 currency: baseCurrency,
@@ -26720,6 +26808,9 @@
             navigateToInventoryPage: () => navigateToInventoryPage(),
             navigateToPlannedPaymentsPage: () => navigateToPlannedPaymentsPage(),
             inventorySetStatusFilter: (el) => inventorySetStatusFilter(el),
+            inventorySetGroupMode: (el) => inventorySetGroupMode(el), // v558
+            inventoryToggleCategory: (el) => inventoryToggleCategory(el), // v558
+            invNoop: () => {}, // v558: swallows clicks on the inline category picker so the row's own tap (open item) doesn't fire
             inventoryWarrantyStripTap: () => inventoryWarrantyStripTap(),
             inventoryItemCardTap: (el) => openInventoryItemModal(el.dataset.id),
             openInventoryItemModalNew: () => openInventoryItemModal(null),
@@ -26804,6 +26895,7 @@
         };
 
         const CHANGE_ACTIONS = {
+            inventorySetCategory: (el) => inventorySetCategory(el), // v558
             resetLedgerPageAndRender: () => { ledgerRenderLimit = LEDGER_PAGE_SIZE; renderApp(); },
             renderTagReportPage: () => renderTagReportPage(),
             renderAttachmentReviewPage: () => renderAttachmentReviewPage(),

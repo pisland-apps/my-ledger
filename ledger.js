@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v545";
+        const APP_VERSION = "v546";
         const APP_VERSION_DATE = "2026-10-16";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2549,7 +2549,7 @@
                 return `
                     <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
-                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}</span>
+                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}${txAttachBadgeHTML(t)}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(displayCat)}]</span>
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}</span>
                             ${notesLine}
@@ -3194,6 +3194,16 @@
             return convertCurrency(t.amount, t.currency, baseCurrency);
         }
 
+        // v546: shared 📎 badge for a transaction row — same markup/behaviour as the main ledger
+        // list's receiptBadge (tap = open the attachment, or the picker when there are several;
+        // openTxAttachmentsBadge() stops propagation so the row's own Quick View doesn't also open).
+        // Returns "" when the record has no attachment, so rows without one are unchanged.
+        function txAttachBadgeHTML(t) {
+            const n = (Array.isArray(t.attachments) ? t.attachments.length : 0) + (t.image ? 1 : 0);
+            if (!n) return "";
+            return `<span data-click="openTxAttachmentsBadge" data-id="${escapeHtml(t.id)}" data-attachments="${escapeHtml(JSON.stringify(t.attachments || []))}" ${t.image ? `data-legacy-image="${escapeHtml(t.image)}"` : ''} style="cursor:pointer; margin-left:4px;" title="View attachment${n > 1 ? 's' : ''}">📎${n > 1 ? `<span style="font-size:0.6rem; vertical-align:top;">×${n}</span>` : ''}</span>`;
+        }
+
         function openModal(id) { 
             document.getElementById(id).classList.add("active"); 
             modalStack.push(id);
@@ -3692,7 +3702,7 @@
                         <div class="tx-icon-circle" style="background:${txIconBg};"><span style="line-height:1;">${iconBadge}</span></div>
                         <div class="tx-row-body">
                             <div class="item-left">
-                                <span class="item-name">${escapeHtml(t.desc)}</span>
+                                <span class="item-name">${escapeHtml(t.desc)}${txAttachBadgeHTML(t)}</span>
                                 <span class="item-meta">[${escapeHtml(splitInfo ? splitInfo.catLabel : (t.cat || 'Transfer'))}]</span>
                                 <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">${accountText}</span>
                             </div>
@@ -7251,7 +7261,7 @@
                 return `
                     <div class="ledger-item" data-click="openTxQuickView" data-type="${escapeHtml(t.type)}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
-                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}</span>
+                            <span class="item-name">${iconBadge} ${escapeHtml(t.desc)}${txAttachBadgeHTML(t)}</span>
                             <span class="item-meta">${escapeHtml(t.date)} [${escapeHtml(displayCat)}]${referenceText}</span>
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">${accountText}</span>
                             ${notesLine}
@@ -22687,7 +22697,7 @@
                 return `
                     <div class="ledger-item" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
                         <div class="item-left">
-                            <span class="item-name">${t.cat ? getCategoryIcon(t.cat, t.type) : "🧾"} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}</span>
+                            <span class="item-name">${t.cat ? getCategoryIcon(t.cat, t.type) : "🧾"} ${escapeHtml(t.desc)}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}${txAttachBadgeHTML(t)}</span>
                             <span class="item-meta">${t.date} [${escapeHtml(t.cat || (t.type === "transfer" ? "Claims Receivable" : ""))}]</span>
                             <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🏦 ${acc ? escapeHtml(accountOptionLabel(acc, accounts)) : "(deleted account)"}</span>
                         </div>

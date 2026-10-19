@@ -519,6 +519,11 @@
            active-filter-btn is added/removed by JS. */
         .text-btn.active-filter-btn { background: var(--primary); color: #fff; }
         .text-btn.active-filter-btn:hover { background: var(--primary); color: #fff; opacity: 0.9; }
+        /* v568: Monthly Trend header buttons — icon-only on phones (on/off is shown by the highlight), so both fit on one row */
+        @media (max-width: 480px) {
+            #monthlyTrendStyleToggle .mt-btn-tx, #monthlyTrendAutoScaleToggle .mt-btn-tx { display: none; }
+            #monthlyTrendStyleToggle, #monthlyTrendAutoScaleToggle { padding: 6px 10px !important; font-size: 0.95rem !important; line-height: 1; min-width: 36px; }
+        }
 
         .actions-bar {
             display: grid;
@@ -3936,8 +3941,8 @@
                 </span>
             </span>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-                <button type="button" id="monthlyTrendStyleToggle" class="text-btn" data-click="toggleMonthlyTrendStyle" style="white-space:nowrap; padding:6px 10px; font-size:0.75rem;" title="Mirrored view: one column per month, income up and expense down from a centre line (same scale).">⇅ Mirrored</button>
-                <button type="button" id="monthlyTrendAutoScaleToggle" class="text-btn" data-click="toggleMonthlyTrendAutoScale" style="white-space:nowrap; padding:6px 10px; font-size:0.75rem;" title="Rescale the axis to the second-highest bar so one outlier month doesn't flatten the rest — the outlier bar still shows, just clipped with a notch; tap/hover it for its real value.">⤢ Auto-scale</button>
+                <button type="button" id="monthlyTrendStyleToggle" class="text-btn" data-click="toggleMonthlyTrendStyle" style="white-space:nowrap; padding:6px 10px; font-size:0.75rem;" title="Mirrored view: one column per month, income up and expense down from a centre line (same scale)." aria-label="Mirrored view"><span class="mt-btn-ic">⇅</span><span class="mt-btn-tx"> Mirrored</span></button>
+                <button type="button" id="monthlyTrendAutoScaleToggle" class="text-btn" data-click="toggleMonthlyTrendAutoScale" style="white-space:nowrap; padding:6px 10px; font-size:0.75rem;" title="Rescale the axis to the second-highest bar so one outlier month doesn't flatten the rest — the outlier bar still shows, just clipped with a notch; tap/hover it for its real value." aria-label="Auto-scale"><span class="mt-btn-ic">⤢</span><span class="mt-btn-tx"> Auto-scale</span></button>
                 <select id="monthlyTrendYearSelect" class="period-select" data-change="changeMonthlyTrendYear"></select>
             </div>
         </div>

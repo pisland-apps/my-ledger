@@ -4233,3 +4233,9 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   bar gets its notch at its outer end). Gridlines at 0, ±1/2, ±full scale, both halves labelled with the positive amount.
 - Persisted in SETTINGS as `monthlyTrendStyle` ("grouped" | "mirrored"); loaded at start and applied on settings restore.
   New code: `buildMonthlyTrendMirroredSVG`, `bottomRoundedBarPath`, `toggleMonthlyTrendStyle`. Bumped to v567.
+
+## v568: Monthly Trend — icon-only toggle buttons on phones
+
+- At widths <= 480px the "Mirrored" and "Auto-scale" buttons show only their icon (⇅ / ⤢); the highlight shows on/off, tap again
+  to turn off. Text labels (incl. ": On") stay on wider screens. Words live in `.mt-btn-tx` (hidden by CSS on phones);
+  title/aria-label kept, plus aria-pressed. Both buttons now fit on one row with the year selector. Bumped to v568.

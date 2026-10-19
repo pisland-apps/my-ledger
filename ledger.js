@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v567";
+        const APP_VERSION = "v568";
         const APP_VERSION_DATE = "2026-10-19";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -5338,12 +5338,14 @@
                 : '<p style="font-size:0.75rem; text-align:center; color:var(--text-muted); padding: 40px 0;">No transactions logged for this year yet.</p>';
             const toggleBtn = document.getElementById("monthlyTrendAutoScaleToggle");
             if (toggleBtn) {
-                toggleBtn.textContent = monthlyTrendAutoScale ? "⤢ Auto-scale: On" : "⤢ Auto-scale";
+                toggleBtn.innerHTML = `<span class="mt-btn-ic">⤢</span><span class="mt-btn-tx"> ${monthlyTrendAutoScale ? "Auto-scale: On" : "Auto-scale"}</span>`;
+                toggleBtn.setAttribute("aria-pressed", monthlyTrendAutoScale ? "true" : "false");
                 toggleBtn.classList.toggle("active-filter-btn", monthlyTrendAutoScale);
             }
             const styleBtn = document.getElementById("monthlyTrendStyleToggle");
             if (styleBtn) {
-                styleBtn.textContent = monthlyTrendStyle === "mirrored" ? "⇅ Mirrored: On" : "⇅ Mirrored";
+                styleBtn.innerHTML = `<span class="mt-btn-ic">⇅</span><span class="mt-btn-tx"> ${monthlyTrendStyle === "mirrored" ? "Mirrored: On" : "Mirrored"}</span>`;
+                styleBtn.setAttribute("aria-pressed", monthlyTrendStyle === "mirrored" ? "true" : "false");
                 styleBtn.classList.toggle("active-filter-btn", monthlyTrendStyle === "mirrored");
             }
             renderMonthlyTrendTable(months);

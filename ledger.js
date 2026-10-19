@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v564";
+        const APP_VERSION = "v565";
         const APP_VERSION_DATE = "2026-10-19";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -14867,9 +14867,9 @@
             if (inventoryCategoryFilter && !cats.some(g => g.key === inventoryCategoryFilter)) inventoryCategoryFilter = ""; // chosen category empty under this status
             const chipEl = document.getElementById("inventoryCatChips");
             if (chipEl) {
-                const chip = (key, label, n) => `<button type="button" class="inv-chip${inventoryCategoryFilter === key ? " active" : ""}" data-click="inventoryCategoryChip" data-cat="${escapeHtml(key)}">${label}<span class="inv-chip-n">${n}</span></button>`;
+                const chip = (key, label, n, plainName) => `<button type="button" class="inv-chip${inventoryCategoryFilter === key ? " active" : ""}" data-click="inventoryCategoryChip" data-cat="${escapeHtml(key)}"${plainName ? ` title="${escapeHtml(plainName)}" aria-label="${escapeHtml(plainName)} (${n})"` : ""}>${label}<span class="inv-chip-n">${n}</span></button>`;
                 chipEl.innerHTML = cats.length > 1 || inventoryCategoryFilter
-                    ? `<span class="inv-chips-label">Category</span>` + chip("", "All", filtered.length) + cats.map(g => chip(g.key, g.c ? `${INV_CATEGORY_ICONS[g.c] || "🏷️"} ${escapeHtml(g.c)}` : "🗂️ Uncategorised", g.its.length)).join("")
+                    ? `<span class="inv-chips-label">Category</span>` + chip("", "All", filtered.length) + cats.map(g => chip(g.key, g.c ? `<span class="inv-chip-ic">${INV_CATEGORY_ICONS[g.c] || "🏷️"}</span><span class="inv-chip-nm"> ${escapeHtml(g.c)}</span>` : `<span class="inv-chip-ic">🗂️</span><span class="inv-chip-nm"> Uncategorised</span>`, g.its.length, g.c || "Uncategorised")).join("")
                     : "";
             }
 

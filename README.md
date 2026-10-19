@@ -4211,3 +4211,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   still ties out to the grand total since hidden rows are zero. If every row is zero, a short "All members are
   at 0.00." line shows instead of an empty box. Rows reappear automatically once their balance is non-zero.
   Bumped to v564.
+
+## v565: Inventory — icon-only category pills on phone view
+
+- At widths <= 767px (the same breakpoint the Inventory page already uses for phone layout) the category pills show
+  icon + count only; the category name and the "CATEGORY" caption are hidden via CSS (`.inv-chip-nm`). The name stays
+  in each pill's `title`/`aria-label`. "All" keeps its text. Wider screens are unchanged.
+  Bumped to v565.

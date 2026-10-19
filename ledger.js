@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v560";
+        const APP_VERSION = "v561";
         const APP_VERSION_DATE = "2026-10-18";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -14862,38 +14862,10 @@
             if (inventoryCategoryFilter && !cats.some(g => g.key === inventoryCategoryFilter)) inventoryCategoryFilter = ""; // chosen category empty under this status
             const chipEl = document.getElementById("inventoryCatChips");
             if (chipEl) {
-                const keepScroll = chipEl.scrollLeft;
                 const chip = (key, label, n) => `<button type="button" class="inv-chip${inventoryCategoryFilter === key ? " active" : ""}" data-click="inventoryCategoryChip" data-cat="${escapeHtml(key)}">${label}<span class="inv-chip-n">${n}</span></button>`;
                 chipEl.innerHTML = cats.length > 1 || inventoryCategoryFilter
-                    ? chip("", "All categories", filtered.length) + cats.map(g => chip(g.key, g.c ? `${INV_CATEGORY_ICONS[g.c] || "🏷️"} ${escapeHtml(g.c)}` : "🗂️ Uncategorised", g.its.length)).join("")
+                    ? `<span class="inv-chips-label">Category</span>` + chip("", "All", filtered.length) + cats.map(g => chip(g.key, g.c ? `${INV_CATEGORY_ICONS[g.c] || "🏷️"} ${escapeHtml(g.c)}` : "🗂️ Uncategorised", g.its.length)).join("")
                     : "";
-                chipEl.scrollLeft = keepScroll;
-                const updateFade = () => {
-                    chipEl.classList.toggle("fade-l", chipEl.scrollLeft > 2);
-                    chipEl.classList.toggle("fade-r", chipEl.scrollLeft + chipEl.clientWidth < chipEl.scrollWidth - 2);
-                };
-                if (!chipEl.dataset.bound) {
-                    chipEl.dataset.bound = "1";
-                    chipEl.addEventListener("scroll", updateFade, { passive: true });
-                    // a mouse wheel has no horizontal axis: turn it into sideways scrolling while the pointer is on the row
-                    // (but let the page scroll normally once the row is at its start/end)
-                    chipEl.addEventListener("wheel", e => {
-                        if (chipEl.scrollWidth <= chipEl.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
-                        const atStart = chipEl.scrollLeft <= 0 && e.deltaY < 0;
-                        const atEnd = chipEl.scrollLeft + chipEl.clientWidth >= chipEl.scrollWidth - 1 && e.deltaY > 0;
-                        if (atStart || atEnd) return;
-                        e.preventDefault();
-                        chipEl.scrollLeft += e.deltaY;
-                    }, { passive: false });
-                }
-                // keep the active chip in view (e.g. after switching the status tab re-sorted the chips)
-                const act = chipEl.querySelector(".inv-chip.active");
-                if (act) {
-                    const cr = chipEl.getBoundingClientRect(), ar = act.getBoundingClientRect();
-                    if (ar.left < cr.left) chipEl.scrollLeft += ar.left - cr.left - 8;
-                    else if (ar.right > cr.right) chipEl.scrollLeft += ar.right - cr.right + 8;
-                }
-                updateFade();
             }
 
             const sel = inventoryCategoryFilter ? cats.find(g => g.key === inventoryCategoryFilter) : null;
@@ -14909,15 +14881,14 @@
                 listEl.innerHTML = hintHTML + filtered.map(it => rowHTML(it, { showCat: true, quickCat: false })).join("");
                 return;
             }
-            // one category selected: a single card — slim header (count, share of total, subtotal; the name is on the
-            // active chip already) + its rows
+            // one category selected: a single card — slim header (count + share of total; the name is on the active
+            // pill and the amount is in the Total Value footer, so neither is repeated here) + its rows
             const pct = totalBase > 0 ? Math.min(100, (sel.total / totalBase) * 100) : null;
             const sub = `${sel.its.length} item${sel.its.length === 1 ? "" : "s"}${pct === null ? "" : ` · ${pct < 1 ? "<1" : Math.round(pct)}% of total`}${sel.c ? "" : " · set a category below"}`;
             listEl.innerHTML = hintHTML + `<div class="tagrep-month">
                 <div class="tagrep-month-head">
                     <div class="tagrep-mh-top">
                         <div class="tagrep-mh-sub" style="margin:0; font-size:0.8rem;">${sub}</div>
-                        <b>${escapeHtml(formatCurrency(sel.total, baseCurrency))}</b>
                     </div>
                     ${pct === null ? "" : `<div class="tagrep-share"><i style="width:${pct.toFixed(1)}%"></i></div>`}
                 </div>

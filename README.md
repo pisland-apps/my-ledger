@@ -4181,3 +4181,11 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   "All categories" (it was confusable with the status "All"); one neutral count-badge style; compact chips.
 - Selected-category card header is slimmer (count, % of total, subtotal; the name is already on the chip).
   Bumped to v560.
+
+## v561: Inventory — category pills wrap, no duplicate total
+
+- The category chips no longer scroll sideways (could not reach the last ones on a mouse): they are small pills
+  that wrap onto as many rows as needed, with a "CATEGORY" label, like the Insurance page's SHOW row.
+  Removed the scroll/fade/wheel code from v560.
+- The selected-category card header no longer repeats the amount (count + % of total + share bar only);
+  the Total Value footer shows it once. Bumped to v561.

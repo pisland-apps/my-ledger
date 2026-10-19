@@ -4171,3 +4171,13 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   subtotal first, Uncategorised last). A chip shows just that category as one card (count, share, subtotal).
 - Rows: purchase date and attachments share one line; warranty bar is green >180d, amber 91–180d, red ≤90d.
   Category subtotal is larger. Bumped to v559.
+
+## v560: Inventory — chip row polish, footer + export follow the category
+
+- Total Value footer now follows the list (status AND category, e.g. "Total Value (Active · Musical
+  Instruments)"); its amount uses the normal bold font (the handwriting font's 5 looked like S).
+- CSV export respects the selected category chip too (filename gets the category).
+- Chip row: no scrollbar — edge fade shows there is more, mouse wheel scrolls it sideways; first chip renamed
+  "All categories" (it was confusable with the status "All"); one neutral count-badge style; compact chips.
+- Selected-category card header is slimmer (count, % of total, subtotal; the name is already on the chip).
+  Bumped to v560.

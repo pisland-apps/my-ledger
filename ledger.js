@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v559";
+        const APP_VERSION = "v560";
         const APP_VERSION_DATE = "2026-10-18";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -14780,10 +14780,6 @@
             };
             const totalBase = filtered.reduce((sum, it) => sum + invBase(it).base, 0);
             footerEl.style.display = "flex";
-            footerEl.innerHTML = `
-                <span style="font-family:'Kalam', cursive; font-size:1rem; color:var(--text-muted); font-weight:800;">Total Value (${INV_STATUS_LABELS[inventoryStatusFilter] || "All"})</span>
-                <span style="font-family:'Kalam', cursive; font-size:1.15rem; font-weight:700; color:var(--text-main);">${formatCurrency(totalBase, baseCurrency)}</span>
-            `;
 
             // v558: account is printed per row only when it differs from the (clear) majority — otherwise a single
             // line above the list says it once. Category is printed per row in date view only.
@@ -14869,24 +14865,58 @@
                 const keepScroll = chipEl.scrollLeft;
                 const chip = (key, label, n) => `<button type="button" class="inv-chip${inventoryCategoryFilter === key ? " active" : ""}" data-click="inventoryCategoryChip" data-cat="${escapeHtml(key)}">${label}<span class="inv-chip-n">${n}</span></button>`;
                 chipEl.innerHTML = cats.length > 1 || inventoryCategoryFilter
-                    ? chip("", "All", filtered.length) + cats.map(g => chip(g.key, g.c ? `${INV_CATEGORY_ICONS[g.c] || "🏷️"} ${escapeHtml(g.c)}` : "🗂️ Uncategorised", g.its.length)).join("")
+                    ? chip("", "All categories", filtered.length) + cats.map(g => chip(g.key, g.c ? `${INV_CATEGORY_ICONS[g.c] || "🏷️"} ${escapeHtml(g.c)}` : "🗂️ Uncategorised", g.its.length)).join("")
                     : "";
                 chipEl.scrollLeft = keepScroll;
+                const updateFade = () => {
+                    chipEl.classList.toggle("fade-l", chipEl.scrollLeft > 2);
+                    chipEl.classList.toggle("fade-r", chipEl.scrollLeft + chipEl.clientWidth < chipEl.scrollWidth - 2);
+                };
+                if (!chipEl.dataset.bound) {
+                    chipEl.dataset.bound = "1";
+                    chipEl.addEventListener("scroll", updateFade, { passive: true });
+                    // a mouse wheel has no horizontal axis: turn it into sideways scrolling while the pointer is on the row
+                    // (but let the page scroll normally once the row is at its start/end)
+                    chipEl.addEventListener("wheel", e => {
+                        if (chipEl.scrollWidth <= chipEl.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+                        const atStart = chipEl.scrollLeft <= 0 && e.deltaY < 0;
+                        const atEnd = chipEl.scrollLeft + chipEl.clientWidth >= chipEl.scrollWidth - 1 && e.deltaY > 0;
+                        if (atStart || atEnd) return;
+                        e.preventDefault();
+                        chipEl.scrollLeft += e.deltaY;
+                    }, { passive: false });
+                }
+                // keep the active chip in view (e.g. after switching the status tab re-sorted the chips)
+                const act = chipEl.querySelector(".inv-chip.active");
+                if (act) {
+                    const cr = chipEl.getBoundingClientRect(), ar = act.getBoundingClientRect();
+                    if (ar.left < cr.left) chipEl.scrollLeft += ar.left - cr.left - 8;
+                    else if (ar.right > cr.right) chipEl.scrollLeft += ar.right - cr.right + 8;
+                }
+                updateFade();
             }
 
             const sel = inventoryCategoryFilter ? cats.find(g => g.key === inventoryCategoryFilter) : null;
+            // v560: the Total Value footer follows what the list shows (status AND category). The amount uses the app's
+            // normal bold digits — the handwriting font's "5" looks like an "S" (RM51,073.45 read as "RMS1,073.45").
+            const scopeBits = [INV_STATUS_LABELS[inventoryStatusFilter] || "All"];
+            if (sel) scopeBits.push(sel.c || "Uncategorised");
+            footerEl.innerHTML = `
+                <span style="font-family:'Kalam', cursive; font-size:1rem; color:var(--text-muted); font-weight:800; flex:1; min-width:0; padding-right:12px;">Total Value (${escapeHtml(scopeBits.join(" · "))})</span>
+                <span style="font-size:1.15rem; font-weight:800; font-variant-numeric:tabular-nums; color:var(--text-main); white-space:nowrap;">${escapeHtml(formatCurrency(sel ? sel.total : totalBase, baseCurrency))}</span>
+            `;
             if (!sel) {
                 listEl.innerHTML = hintHTML + filtered.map(it => rowHTML(it, { showCat: true, quickCat: false })).join("");
                 return;
             }
-            // one category selected: a single card — header (name, count, share of total, subtotal) + its rows
+            // one category selected: a single card — slim header (count, share of total, subtotal; the name is on the
+            // active chip already) + its rows
             const pct = totalBase > 0 ? Math.min(100, (sel.total / totalBase) * 100) : null;
-            const name = sel.c ? `${INV_CATEGORY_ICONS[sel.c] || "🏷️"} ${escapeHtml(sel.c)}` : "🗂️ Uncategorised";
             const sub = `${sel.its.length} item${sel.its.length === 1 ? "" : "s"}${pct === null ? "" : ` · ${pct < 1 ? "<1" : Math.round(pct)}% of total`}${sel.c ? "" : " · set a category below"}`;
             listEl.innerHTML = hintHTML + `<div class="tagrep-month">
                 <div class="tagrep-month-head">
                     <div class="tagrep-mh-top">
-                        <div><div class="tagrep-mh-name">${name}</div><div class="tagrep-mh-sub">${sub}</div></div>
+                        <div class="tagrep-mh-sub" style="margin:0; font-size:0.8rem;">${sub}</div>
                         <b>${escapeHtml(formatCurrency(sel.total, baseCurrency))}</b>
                     </div>
                     ${pct === null ? "" : `<div class="tagrep-share"><i style="width:${pct.toFixed(1)}%"></i></div>`}
@@ -14909,7 +14939,9 @@
             ]);
             const accountName = id => { if (!id) return ""; const a = accounts.find(acc => acc.id === id); return a ? accountOptionLabel(a, accounts) : "(deleted account)"; };
 
+            const catWanted = inventoryCategoryFilter === "__none__" ? "" : inventoryCategoryFilter;
             const filtered = items.filter(it => inventoryStatusFilter === "all" || it.status === inventoryStatusFilter)
+                .filter(it => !inventoryCategoryFilter || ((it.category && String(it.category).trim()) || "") === catWanted) // v560: same scope as the page
                 .sort((a, b) => (b.purchaseDate || "").localeCompare(a.purchaseDate || ""));
 
             if (filtered.length === 0) {
@@ -14943,7 +14975,8 @@
             // correctly instead of garbling non-ASCII text (e.g. a vendor name or note).
             const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
             const url = URL.createObjectURL(blob);
-            const scopeLabel = inventoryStatusFilter === "all" ? "all" : inventoryStatusFilter;
+            const catSlug = inventoryCategoryFilter ? "_" + (inventoryCategoryFilter === "__none__" ? "uncategorised" : inventoryCategoryFilter).replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").toLowerCase() : "";
+            const scopeLabel = (inventoryStatusFilter === "all" ? "all" : inventoryStatusFilter) + catSlug;
             const a = document.createElement("a");
             a.href = url;
             a.download = `inventory_export_${scopeLabel}_${todayLocalStr()}.csv`;

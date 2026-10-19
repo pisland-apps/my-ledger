@@ -2258,11 +2258,17 @@
         .tagrep-month { margin-bottom: 16px; background: var(--card-bg); border: 1.5px solid var(--border-color); border-top-color: var(--card-top-border); border-radius: 16px; overflow: hidden; box-shadow: var(--card-shadow); }
         /* v558: Inventory grouped by category reuses the .tagrep-month card + header; rows sit in .tagrep-rows */
         .tagrep-rows > .ledger-item:last-child { border-bottom: none; }
-        .inv-chips { display: flex; gap: 8px; overflow-x: auto; margin: -4px -4px 12px; padding: 4px 4px 8px; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+        /* v560: chip row — no scrollbar (a fade at the clipped edge says "more →"), compact chips (smaller than
+           the status tabs above so status reads as the main filter), one neutral count style. */
+        .inv-chips { display: flex; gap: 8px; overflow-x: auto; margin: 2px -4px 12px; padding: 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+        .inv-chips::-webkit-scrollbar { display: none; }
         .inv-chips:empty { display: none; }
-        .inv-chip { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.8rem; font-weight: 700; white-space: nowrap; cursor: pointer; }
+        .inv-chips.fade-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
+        .inv-chips.fade-l { -webkit-mask-image: linear-gradient(to right, transparent, #000 28px); mask-image: linear-gradient(to right, transparent, #000 28px); }
+        .inv-chips.fade-l.fade-r { -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 36px), transparent); }
+        .inv-chip { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 6px 5px 12px; border-radius: 999px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.78rem; font-weight: 700; white-space: nowrap; cursor: pointer; }
         .inv-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
-        .inv-chip-n { font-size: 0.68rem; font-weight: 800; padding: 1px 6px; border-radius: 999px; background: var(--active-bg); color: var(--primary); }
+        .inv-chip-n { min-width: 20px; text-align: center; font-size: 0.68rem; font-weight: 800; padding: 2px 6px; border-radius: 999px; background: var(--hover-bg); color: var(--text-muted); }
         .inv-chip.active .inv-chip-n { background: rgba(255, 255, 255, 0.25); color: #fff; }
         .inv-quickcat { width: 100%; margin-top: 8px; padding: 6px 8px; font-size: 0.78rem; font-weight: 600; border-radius: 8px; }
         .tagrep-month-head { background: var(--active-bg); border-bottom: 1.5px solid var(--active-border); padding: 12px 16px 0; }
@@ -4451,7 +4457,7 @@
             <span style="color:var(--text-muted); font-weight:700;">›</span>
         </div>
 
-        <div class="nav-view-toggle" style="margin:0 0 14px;">
+        <div class="nav-view-toggle" style="margin:0 0 16px;">
             <button type="button" class="nav-view-toggle-btn active" data-click="inventorySetStatusFilter" data-status="all" style="flex:1;">All</button>
             <button type="button" class="nav-view-toggle-btn" data-click="inventorySetStatusFilter" data-status="active" style="flex:1;">Active</button>
             <button type="button" class="nav-view-toggle-btn" data-click="inventorySetStatusFilter" data-status="disposed" style="flex:1;">Disposed</button>

@@ -2271,6 +2271,8 @@
         .tagrep-month-head { background: var(--active-bg); border-bottom: 1.5px solid var(--active-border); padding: 12px 16px 0; }
         .tagrep-mh-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 10px; }
         .tagrep-mh-name { font-size: 1rem; font-weight: 800; color: var(--text-main); line-height: 1.25; }
+        /* v563: only the YEAR is muted (the month name stays full-strength so the card header does not look disabled) */
+        .tagrep-mh-yr { color: var(--text-muted); font-weight: 600; }
         .tagrep-mh-sub { margin-top: 2px; font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
         .tagrep-mh-top b { font-size: 1.2rem; font-weight: 800; color: var(--text-main); font-variant-numeric: tabular-nums; white-space: nowrap; }
         .tagrep-share { height: 4px; margin: 0 -16px; background: var(--active-border); }
@@ -2288,11 +2290,11 @@
         .tagrep-date b { display: block; font-size: 1.15rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--text-main); }
         .tagrep-date span { display: block; margin-top: 2px; font-size: 0.62rem; font-weight: 700; color: var(--text-muted); }
         .tagrep-main { flex: 1; min-width: 0; }
-        .tagrep-title { font-size: 0.95rem; font-weight: 600; line-height: 1.35; color: var(--text-main); overflow-wrap: anywhere; }
+        .tagrep-title { font-size: 0.95rem; font-weight: 500; line-height: 1.35; color: var(--text-main); overflow-wrap: anywhere; }
         .tagrep-note { margin-top: 2px; font-size: 0.8rem; line-height: 1.4; color: var(--text-muted); overflow-wrap: anywhere; }
         .tagrep-meta { margin-top: 3px; font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
         .tagrep-amtcol { flex-shrink: 0; margin-left: auto; text-align: right; }
-        .tagrep-val { font-size: 0.95rem; font-weight: 700; line-height: 1.35; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .tagrep-val { font-size: 0.95rem; font-weight: 600; line-height: 1.35; font-variant-numeric: tabular-nums; white-space: nowrap; }
         .tagrep-val i { font-style: normal; font-weight: 600; color: var(--text-muted); margin-right: 2px; }
         .tagrep-sub { margin-top: 1px; font-size: 0.68rem; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
         .trash-btn { background: none; border: none; color: #cbd5e1; cursor: pointer; padding: 8px; font-size: 1.1rem; }

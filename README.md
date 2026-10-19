@@ -4195,3 +4195,11 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Whole footer row in the normal app font (no handwriting font): amount 1.25rem/800, "Total Value" muted, and the
   scope on its own small line ("All items", "Active items", "Luggage & Travel", "Active · Luggage & Travel").
   Bumped to v562.
+
+## v563: Spending by Tag — row typography hierarchy
+
+- Row titles 600 -> 500: the system Chinese fallback font (Microsoft YaHei) only has Regular/Bold, so 600 rendered
+  Chinese as Bold while Latin text (Segoe UI) was Semibold. At 500 both scripts render as Regular and look the same.
+- Row amounts 700 -> 600 (Latin digits, real Semibold), so the month total (800) and the tag total stand out.
+- Month header: only the year is muted grey (`.tagrep-mh-yr`); the month name stays full strength.
+  Bumped to v563.

@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v562";
-        const APP_VERSION_DATE = "2026-10-18";
+        const APP_VERSION = "v563";
+        const APP_VERSION_DATE = "2026-10-19";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -23188,7 +23188,7 @@
             };
             document.getElementById("tagReportTxList").innerHTML = groups.length ? groups.map(g => {
                 const mi = parseInt(g.ym.slice(5, 7), 10) - 1;
-                const label = (mi >= 0 && mi < 12) ? `${MONTHS[mi]} ${g.ym.slice(0, 4)}` : (g.ym || "No date");
+                const labelHtml = (mi >= 0 && mi < 12) ? `${escapeHtml(MONTHS[mi])} <span class="tagrep-mh-yr">${escapeHtml(g.ym.slice(0, 4))}</span>` : escapeHtml(g.ym || "No date");
                 const totalTxt = [g.spent !== 0 ? formatCurrency(g.spent, base) : "", g.inc > 0 ? "+" + formatCurrency(g.inc, base) : ""].filter(Boolean).join(" · ");
                 // share of the tag's total spend that landed in this month
                 const pct = (expenseTotal > 0 && g.spent > 0) ? Math.min(100, (g.spent / expenseTotal) * 100) : null;
@@ -23196,7 +23196,7 @@
                 return `<div class="tagrep-month">
                     <div class="tagrep-month-head">
                         <div class="tagrep-mh-top">
-                            <div><div class="tagrep-mh-name">${escapeHtml(label)}</div><div class="tagrep-mh-sub">${g.items.length} ${g.items.length === 1 ? "entry" : "entries"}${pctTxt}</div></div>
+                            <div><div class="tagrep-mh-name">${labelHtml}</div><div class="tagrep-mh-sub">${g.items.length} ${g.items.length === 1 ? "entry" : "entries"}${pctTxt}</div></div>
                             <b>${escapeHtml(totalTxt)}</b>
                         </div>
                         ${pct === null ? "" : `<div class="tagrep-share"><i style="width:${pct.toFixed(1)}%"></i></div>`}

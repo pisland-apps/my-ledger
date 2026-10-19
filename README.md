@@ -4218,3 +4218,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   icon + count only; the category name and the "CATEGORY" caption are hidden via CSS (`.inv-chip-nm`). The name stays
   in each pill's `title`/`aria-label`. "All" keeps its text. Wider screens are unchanged.
   Bumped to v565.
+
+## v566: Inventory — selected category pill shows its name (phone view)
+
+- In phone view (<= 767px) the active category pill expands to icon + name + count; the other pills stay icon + count.
+  CSS only (`.inv-chip.active .inv-chip-nm`). Bumped to v566.

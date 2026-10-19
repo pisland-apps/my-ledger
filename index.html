@@ -2271,6 +2271,8 @@
         @media (max-width: 767px) {
             #inventoryCatChips .inv-chips-label, #inventoryCatChips .inv-chip-nm { display: none; }
             #inventoryCatChips .inv-chip { padding: 3px 5px 3px 8px; gap: 4px; }
+            /* v566: the selected pill expands to show its name */
+            #inventoryCatChips .inv-chip.active .inv-chip-nm { display: inline; }
         }
         .inv-quickcat { width: 100%; margin-top: 8px; padding: 6px 8px; font-size: 0.78rem; font-weight: 600; border-radius: 8px; }
         .tagrep-month-head { background: var(--active-bg); border-bottom: 1.5px solid var(--active-border); padding: 12px 16px 0; }

@@ -4203,3 +4203,11 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Row amounts 700 -> 600 (Latin digits, real Semibold), so the month total (800) and the tag total stand out.
 - Month header: only the year is muted grey (`.tagrep-mh-yr`); the month name stays full strength.
   Bumped to v563.
+
+## v564: Dashboard — Net Worth by Member hides zero rows
+
+- A member row (and a joint-owned group row) is hidden when its net worth displays as 0.00 (rounds to zero at 2
+  decimals, `isZeroAmount()`). The "Unassigned" row is unchanged (its hint is still useful), and the breakdown
+  still ties out to the grand total since hidden rows are zero. If every row is zero, a short "All members are
+  at 0.00." line shows instead of an empty box. Rows reappear automatically once their balance is non-zero.
+  Bumped to v564.

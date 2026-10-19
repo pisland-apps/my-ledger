@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v563";
+        const APP_VERSION = "v564";
         const APP_VERSION_DATE = "2026-10-19";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -10136,6 +10136,9 @@
         // Draws the dashboard's "Net Worth by Member" report: one row per member (solo-owned
         // accounts only), one row per distinct joint-owned account group, and — only if any exist
         // — a final "Unassigned" row so the breakdown always ties out to the grand total above it.
+        // v564: true when an amount would be DISPLAYED as 0.00 (rounds to zero at 2 decimals; also covers -0.00 and float dust).
+        function isZeroAmount(n) { return !Number.isFinite(n) || Math.abs(n) < 0.005; }
+
         function renderMemberNetWorthRows(accounts, nativeBalances) {
             const section = document.getElementById("memberNetWorthSection");
             // With only 0 or 1 members configured, this breakdown is either empty or a pointless
@@ -10154,6 +10157,7 @@
             membersCache.forEach(m => {
                 const subset = filterAccountsByOwnership(accounts, "member", [m.id]);
                 const { total } = summarizeAccountsNetWorth(subset, nativeBalances, m.id);
+                if (isZeroAmount(total)) return; // v564: hide members whose amount shows as 0.00
                 html += `
                     <div class="member-networth-row" data-click="sidebarGoMember" data-key="m:${m.id}">
                         <div class="member-row-left">
@@ -10178,6 +10182,7 @@
                 const ids = key.split(",");
                 const subset = filterAccountsByOwnership(accounts, "joint", ids);
                 const { total } = summarizeAccountsNetWorth(subset, nativeBalances);
+                if (isZeroAmount(total)) return; // v564: same rule for joint groups
                 html += `
                     <div class="member-networth-row" data-click="sidebarGoMember" data-key="j:${key}">
                         <div class="member-row-left">
@@ -10209,7 +10214,7 @@
                 `;
             }
 
-            wrap.innerHTML = html;
+            wrap.innerHTML = html || `<div class="member-row-sub" style="padding:10px 4px;">All members are at 0.00.</div>`;
         }
 
         // Renders page-member: the filtered net worth card (with an optional per-currency

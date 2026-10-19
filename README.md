@@ -4189,3 +4189,9 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   Removed the scroll/fade/wheel code from v560.
 - The selected-category card header no longer repeats the amount (count + % of total + share bar only);
   the Total Value footer shows it once. Bumped to v561.
+
+## v562: Inventory — Total Value footer typography
+
+- Whole footer row in the normal app font (no handwriting font): amount 1.25rem/800, "Total Value" muted, and the
+  scope on its own small line ("All items", "Active items", "Luggage & Travel", "Active · Luggage & Travel").
+  Bumped to v562.

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v561";
+        const APP_VERSION = "v562";
         const APP_VERSION_DATE = "2026-10-18";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -14869,13 +14869,19 @@
             }
 
             const sel = inventoryCategoryFilter ? cats.find(g => g.key === inventoryCategoryFilter) : null;
-            // v560: the Total Value footer follows what the list shows (status AND category). The amount uses the app's
-            // normal bold digits — the handwriting font's "5" looks like an "S" (RM51,073.45 read as "RMS1,073.45").
-            const scopeBits = [INV_STATUS_LABELS[inventoryStatusFilter] || "All"];
-            if (sel) scopeBits.push(sel.c || "Uncategorised");
+            // v560/v562: the Total Value footer follows what the list shows (status AND category). Plain app font for the
+            // whole row — the handwriting font's "5" looks like an "S" (RM51,073.45 read as "RMS1,073.45") and mixing it
+            // with a plain amount looked inconsistent. Hierarchy: amount strongest, "Total Value" next, scope weakest.
+            const statusPart = inventoryStatusFilter === "all" ? "" : (INV_STATUS_LABELS[inventoryStatusFilter] || inventoryStatusFilter);
+            const scopeText = sel
+                ? [statusPart, sel.c || "Uncategorised"].filter(Boolean).join(" · ")
+                : (statusPart ? `${statusPart} items` : "All items");
             footerEl.innerHTML = `
-                <span style="font-family:'Kalam', cursive; font-size:1rem; color:var(--text-muted); font-weight:800; flex:1; min-width:0; padding-right:12px;">Total Value (${escapeHtml(scopeBits.join(" · "))})</span>
-                <span style="font-size:1.15rem; font-weight:800; font-variant-numeric:tabular-nums; color:var(--text-main); white-space:nowrap;">${escapeHtml(formatCurrency(sel ? sel.total : totalBase, baseCurrency))}</span>
+                <div style="flex:1; min-width:0; padding-right:12px;">
+                    <div style="font-size:0.95rem; font-weight:700; color:var(--text-muted);">Total Value</div>
+                    <div style="font-size:0.75rem; font-weight:600; color:var(--text-muted); opacity:0.85; margin-top:1px;">${escapeHtml(scopeText)}</div>
+                </div>
+                <span style="font-size:1.25rem; font-weight:800; font-variant-numeric:tabular-nums; color:var(--text-main); white-space:nowrap;">${escapeHtml(formatCurrency(sel ? sel.total : totalBase, baseCurrency))}</span>
             `;
             if (!sel) {
                 listEl.innerHTML = hintHTML + filtered.map(it => rowHTML(it, { showCat: true, quickCat: false })).join("");

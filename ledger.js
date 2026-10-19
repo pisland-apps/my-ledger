@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v558";
+        const APP_VERSION = "v559";
         const APP_VERSION_DATE = "2026-10-18";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -14665,8 +14665,7 @@
         // item.category; an item whose stored name is not in the list still groups under that name).
         const INV_CATEGORIES = ["Electronics", "Appliances", "Furniture & Storage", "Musical Instruments", "Luggage & Travel", "Tools", "Kitchen & Dining", "Home Accessories", "Other"];
         const INV_CATEGORY_ICONS = { "Electronics": "💻", "Appliances": "🔌", "Furniture & Storage": "🪑", "Musical Instruments": "🎹", "Luggage & Travel": "🧳", "Tools": "🔧", "Kitchen & Dining": "🍽️", "Home Accessories": "🏡", "Other": "📦" };
-        let inventoryGroupMode = (() => { try { return localStorage.getItem("invGroupMode") === "category" ? "category" : "date"; } catch (e) { return "date"; } })();
-        const invCollapsedCats = new Set();
+        let inventoryCategoryFilter = ""; // "" = All | a category name | "__none__" = Uncategorised
         function fillInvCategorySelect(id, selected) {
             const sel = document.getElementById(id);
             if (!sel) return;
@@ -14674,18 +14673,8 @@
             sel.innerHTML = `<option value="">— None —</option>` + INV_CATEGORIES.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("") + extra;
             sel.value = selected || "";
         }
-        function syncInventoryGroupToggle() {
-            document.querySelectorAll("#inventoryGroupToggle .nav-view-toggle-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === inventoryGroupMode));
-        }
-        function inventorySetGroupMode(el) {
-            inventoryGroupMode = el.dataset.mode === "category" ? "category" : "date";
-            try { localStorage.setItem("invGroupMode", inventoryGroupMode); } catch (e) { /* private mode: keep in memory */ }
-            syncInventoryGroupToggle();
-            renderInventoryPage();
-        }
-        function inventoryToggleCategory(el) {
-            const k = el.dataset.cat;
-            if (invCollapsedCats.has(k)) invCollapsedCats.delete(k); else invCollapsedCats.add(k);
+        function inventoryCategoryChip(el) {
+            inventoryCategoryFilter = el.dataset.cat || "";
             renderInventoryPage();
         }
         // Inline "set category" on an uncategorised row (category view) — quick one-tap sorting of old items.
@@ -14705,7 +14694,7 @@
         function navigateToInventoryPage() {
             showPage("page-inventory");
             pushVirtualState("inventory");
-            syncInventoryGroupToggle();
+            inventoryCategoryFilter = "";
             renderInventoryPage();
         }
 
@@ -14743,6 +14732,8 @@
             const listEl = document.getElementById("inventoryPageList");
             const footerEl = document.getElementById("inventoryPageFooter");
             if (filtered.length === 0) {
+                const chipEl0 = document.getElementById("inventoryCatChips");
+                if (chipEl0) chipEl0.innerHTML = "";
                 listEl.innerHTML = `<p style="text-align:center; color:var(--text-muted); font-size:0.85rem; padding:40px 0;">No inventory items yet. Add one from an Expense entry ("📦 Add to Inventory"), or tap + below.</p>`;
                 footerEl.style.display = "none";
                 return;
@@ -14815,7 +14806,7 @@
                 const noteLine = it.note ? `<span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">📝 ${escapeHtml(it.note)}</span>` : "";
 
                 const attCount = (it.attachments || []).length;
-                const attLine = attCount ? `<span class="item-meta" data-click="openInvAttachmentsBadge" data-attachments="${escapeHtml(JSON.stringify(it.attachments || []))}" style="display:block; margin-top:2px; color:var(--primary); cursor:pointer; text-decoration:underline; text-underline-offset:2px;">📎 ${attCount} attachment${attCount === 1 ? "" : "s"}</span>` : "";
+                const attBadge = attCount ? ` · <span data-click="openInvAttachmentsBadge" data-attachments="${escapeHtml(JSON.stringify(it.attachments || []))}" style="color:var(--primary); cursor:pointer; text-decoration:underline; text-underline-offset:2px;">📎 ${attCount} attachment${attCount === 1 ? "" : "s"}</span>` : "";
 
                 const w = getRepresentativeWarranty(it);
                 let warrantyHTML = "";
@@ -14830,7 +14821,7 @@
                             <span style="display:inline-block; margin-top:6px; padding:3px 9px; border-radius:999px; background:#fee2e2; color:#b91c1c; font-size:0.7rem; font-weight:700;">⏱️ ${escapeHtml(w.label)} expired ${Math.abs(info.daysLeft)}d ago</span>
                         `;
                     } else {
-                        const barColor = info.expiringSoon ? "var(--expense-color)" : "var(--income-color)";
+                        const barColor = info.daysLeft > 180 ? "var(--income-color)" : info.daysLeft > 90 ? "#f59e0b" : "var(--expense-color)"; // v559: >180d green, 91–180d amber, ≤90d red
                         const statusText = `${w.label} — ${info.daysLeft}d left (ends ${w.endDate})`;
                         warrantyHTML = `
                             <div class="progress-bar-container" style="height:6px; margin-top:6px;"><div class="progress-bar-fill" style="width:${info.pct}%; background:${barColor};"></div></div>
@@ -14846,9 +14837,8 @@
                                 <span class="item-name">${escapeHtml(it.name || "(unnamed item)")}</span>
                                 <span class="item-meta">[${escapeHtml(it.vendor || "—")}]${accountLine}${catLine}</span>
                                 ${specsLine}
-                                <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🗓️ ${escapeHtml(it.purchaseDate || "—")}</span>
+                                <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">🗓️ ${escapeHtml(it.purchaseDate || "—")}${attBadge}</span>
                                 ${noteLine}
-                                ${attLine}
                                 ${warrantyHTML}
                                 ${ctx.quickCat && !catOf(it) ? quickCatHTML(it) : ""}
                             </div>
@@ -14866,35 +14856,43 @@
             };
 
             const hintHTML = hideDomAcc ? `<p style="font-size:0.72rem; color:var(--text-muted); margin:0 4px 10px;">🏠 Paid from ${accountName(domAcc)} unless shown on the item.</p>` : "";
-            if (inventoryGroupMode !== "category") {
-                listEl.innerHTML = hintHTML + filtered.map(it => rowHTML(it, { showCat: true, quickCat: false })).join("");
-                return;
-            }
-
-            // v558: By category — one card per category (header: name, count, share of total, subtotal; tap to
-            // collapse), biggest subtotal first, "Uncategorised" always last with an inline picker per row.
+            // v559: category chips (All + one per category present under the current status filter, biggest
+            // subtotal first, Uncategorised last). A chip filters the list to that category.
             const buckets = new Map();
             filtered.forEach(it => { const c = catOf(it); if (!buckets.has(c)) buckets.set(c, []); buckets.get(c).push(it); });
             const cats = [...buckets.entries()]
-                .map(([c, its]) => ({ c, its, total: its.reduce((sum, it) => sum + invBase(it).base, 0) }))
+                .map(([c, its]) => ({ c, its, key: c || "__none__", total: its.reduce((sum, it) => sum + invBase(it).base, 0) }))
                 .sort((x, y) => ((x.c === "") - (y.c === "")) || (y.total - x.total));
-            listEl.innerHTML = hintHTML + cats.map(g => {
-                const key = g.c || "__none__";
-                const collapsed = invCollapsedCats.has(key);
-                const pct = totalBase > 0 ? Math.min(100, (g.total / totalBase) * 100) : null;
-                const name = g.c ? `${INV_CATEGORY_ICONS[g.c] || "🏷️"} ${escapeHtml(g.c)}` : "🗂️ Uncategorised";
-                const sub = `${g.its.length} item${g.its.length === 1 ? "" : "s"}${pct === null ? "" : ` · ${pct < 1 ? "<1" : Math.round(pct)}% of total`}${g.c ? "" : " · set a category below"}`;
-                return `<div class="tagrep-month">
-                    <div class="tagrep-month-head" data-click="inventoryToggleCategory" data-cat="${escapeHtml(key)}" style="cursor:pointer;${collapsed ? " border-bottom:none;" : ""}">
-                        <div class="tagrep-mh-top">
-                            <div><div class="tagrep-mh-name">${collapsed ? "▸" : "▾"} ${name}</div><div class="tagrep-mh-sub">${sub}</div></div>
-                            <b>${escapeHtml(formatCurrency(g.total, baseCurrency))}</b>
-                        </div>
-                        ${pct === null ? "" : `<div class="tagrep-share"><i style="width:${pct.toFixed(1)}%"></i></div>`}
+            if (inventoryCategoryFilter && !cats.some(g => g.key === inventoryCategoryFilter)) inventoryCategoryFilter = ""; // chosen category empty under this status
+            const chipEl = document.getElementById("inventoryCatChips");
+            if (chipEl) {
+                const keepScroll = chipEl.scrollLeft;
+                const chip = (key, label, n) => `<button type="button" class="inv-chip${inventoryCategoryFilter === key ? " active" : ""}" data-click="inventoryCategoryChip" data-cat="${escapeHtml(key)}">${label}<span class="inv-chip-n">${n}</span></button>`;
+                chipEl.innerHTML = cats.length > 1 || inventoryCategoryFilter
+                    ? chip("", "All", filtered.length) + cats.map(g => chip(g.key, g.c ? `${INV_CATEGORY_ICONS[g.c] || "🏷️"} ${escapeHtml(g.c)}` : "🗂️ Uncategorised", g.its.length)).join("")
+                    : "";
+                chipEl.scrollLeft = keepScroll;
+            }
+
+            const sel = inventoryCategoryFilter ? cats.find(g => g.key === inventoryCategoryFilter) : null;
+            if (!sel) {
+                listEl.innerHTML = hintHTML + filtered.map(it => rowHTML(it, { showCat: true, quickCat: false })).join("");
+                return;
+            }
+            // one category selected: a single card — header (name, count, share of total, subtotal) + its rows
+            const pct = totalBase > 0 ? Math.min(100, (sel.total / totalBase) * 100) : null;
+            const name = sel.c ? `${INV_CATEGORY_ICONS[sel.c] || "🏷️"} ${escapeHtml(sel.c)}` : "🗂️ Uncategorised";
+            const sub = `${sel.its.length} item${sel.its.length === 1 ? "" : "s"}${pct === null ? "" : ` · ${pct < 1 ? "<1" : Math.round(pct)}% of total`}${sel.c ? "" : " · set a category below"}`;
+            listEl.innerHTML = hintHTML + `<div class="tagrep-month">
+                <div class="tagrep-month-head">
+                    <div class="tagrep-mh-top">
+                        <div><div class="tagrep-mh-name">${name}</div><div class="tagrep-mh-sub">${sub}</div></div>
+                        <b>${escapeHtml(formatCurrency(sel.total, baseCurrency))}</b>
                     </div>
-                    ${collapsed ? "" : `<div class="tagrep-rows">${g.its.map(it => rowHTML(it, { showCat: false, quickCat: !g.c })).join("")}</div>`}
-                </div>`;
-            }).join("");
+                    ${pct === null ? "" : `<div class="tagrep-share"><i style="width:${pct.toFixed(1)}%"></i></div>`}
+                </div>
+                <div class="tagrep-rows">${sel.its.map(it => rowHTML(it, { showCat: false, quickCat: !sel.c })).join("")}</div>
+            </div>`;
         }
 
         // v329: CSV export for Inventory — same csvEscape()/BOM convention as exportLedgerCsv()
@@ -26808,8 +26806,7 @@
             navigateToInventoryPage: () => navigateToInventoryPage(),
             navigateToPlannedPaymentsPage: () => navigateToPlannedPaymentsPage(),
             inventorySetStatusFilter: (el) => inventorySetStatusFilter(el),
-            inventorySetGroupMode: (el) => inventorySetGroupMode(el), // v558
-            inventoryToggleCategory: (el) => inventoryToggleCategory(el), // v558
+            inventoryCategoryChip: (el) => inventoryCategoryChip(el), // v559
             invNoop: () => {}, // v558: swallows clicks on the inline category picker so the row's own tap (open item) doesn't fire
             inventoryWarrantyStripTap: () => inventoryWarrantyStripTap(),
             inventoryItemCardTap: (el) => openInventoryItemModal(el.dataset.id),

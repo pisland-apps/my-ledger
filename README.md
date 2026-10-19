@@ -4163,3 +4163,11 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   inline "Set category…" picker.
 - Rows: account is shown only when it differs from the majority (one line above the list says it once); the
   status badge/side bar only for Disposed/Lost. Bumped to v558.
+
+## v559: Inventory — category chips
+
+- The v558 "By date / By category" switch is replaced by a horizontally scrollable chip row: **All** (every
+  item, newest first) + one chip per category under the current status filter (icon, name, count; biggest
+  subtotal first, Uncategorised last). A chip shows just that category as one card (count, share, subtotal).
+- Rows: purchase date and attachments share one line; warranty bar is green >180d, amber 91–180d, red ≤90d.
+  Category subtotal is larger. Bumped to v559.

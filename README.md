@@ -4223,3 +4223,13 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 - In phone view (<= 767px) the active category pill expands to icon + name + count; the other pills stay icon + count.
   CSS only (`.inv-chip.active .inv-chip-nm`). Bumped to v566.
+
+## v567: Monthly Trend — optional "Mirrored" chart style
+
+- New "⇅ Mirrored" toggle beside Auto-scale (Dashboard + Monthly Trend page, same section). Off (default) = the
+  original side-by-side bars. On = one column per month, income UP / expense DOWN from a centre line on one shared
+  scale, rounded outer ends, flat on the axis. Colours stay green (income) / red (expense).
+- Same tooltip/tap (data-* attributes), year selector, phone layout and table; Auto-scale works in both styles (a clipped
+  bar gets its notch at its outer end). Gridlines at 0, ±1/2, ±full scale, both halves labelled with the positive amount.
+- Persisted in SETTINGS as `monthlyTrendStyle` ("grouped" | "mirrored"); loaded at start and applied on settings restore.
+  New code: `buildMonthlyTrendMirroredSVG`, `bottomRoundedBarPath`, `toggleMonthlyTrendStyle`. Bumped to v567.

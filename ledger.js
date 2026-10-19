@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v566";
+        const APP_VERSION = "v567";
         const APP_VERSION_DATE = "2026-10-19";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1759,6 +1759,9 @@
         // height), so tapping a clipped bar is how you see the true number on any screen size —
         // one mechanism instead of two, and it already works on mobile since v215.
         let monthlyTrendAutoScale = false;
+        // v567: Monthly Trend chart style — "grouped" (income/expense side by side, the original look) or
+        // "mirrored" (one column per month: income up, expense down around a centre line). Persisted in SETTINGS.
+        let monthlyTrendStyle = "grouped";
         // v373: persisted show/hide for the Month/Income/Expense/Balance table under the Monthly
         // Trend chart (toggled by clicking the "Monthly Trend" title) — this initial value only
         // matters before bootstrap() runs its own width-aware default (see storedMonthlyTrendTableExpanded
@@ -5229,6 +5232,98 @@
             }
         }
 
+        // v567: bar with rounded BOTTOM corners and a flat top edge (the expense half of the mirrored chart).
+        function bottomRoundedBarPath(x, y, width, height, r) {
+            const rr = Math.max(0, Math.min(r, width / 2, height));
+            if (rr <= 0.05) return `M${x},${y} h${width} v${height} h${-width} Z`;
+            return `M${x},${y} V${y + height - rr} Q${x},${y + height} ${x + rr},${y + height} H${x + width - rr} Q${x + width},${y + height} ${x + width},${y + height - rr} V${y} Z`;
+        }
+
+        // v567: "Mirrored" Monthly Trend — ONE column per month: income grows UP from a centre line, expense grows DOWN
+        // from it, both on the SAME scale (so the two halves are directly comparable). Same data-* attributes, tooltip,
+        // Auto-scale (clipped bars get the notch at their outer end), mobile layout and colours as the grouped chart.
+        function buildMonthlyTrendMirroredSVG(months, isMobile, autoScale) {
+            const w = isMobile ? 480 : 680;
+            const h = isMobile ? 300 : 260;
+            const padLeft = isMobile ? 54 : 46, padRight = 10, padTop = isMobile ? 40 : 34, padBottom = isMobile ? 34 : 26;
+            const axisFontSize = isMobile ? 13 : 9;
+            const monthFontSize = isMobile ? 13 : 9;
+            const legendFontSize = isMobile ? 14 : 10;
+            const plotW = w - padLeft - padRight, plotH = h - padTop - padBottom;
+            const centreGap = 1.5; // hairline gap between the up bar and the down bar of the same month
+            // Shared scale for both halves: same "nice" axis ceiling logic as the grouped chart.
+            const allVals = months.flatMap(mo => [mo.income, mo.expense]).filter(v => v > 0).sort((a, b) => b - a);
+            const trueMax = Math.max(allVals[0] || 0, 0.01);
+            const scaleBasis = (autoScale && allVals.length > 1) ? allVals[1] : trueMax;
+            const magnitude = Math.pow(10, Math.floor(Math.log10(scaleBasis || 1)));
+            let axisMax = magnitude * 10;
+            for (const step of [1, 2, 2.5, 5, 10]) {
+                if (scaleBasis <= magnitude * step) { axisMax = magnitude * step; break; }
+            }
+            // ONE scale for both halves (same pixels per RM above and below), but the centre line sits where the
+            // data needs it: each half only gets as many grid steps as its own biggest bar needs (1 or 2 steps of
+            // axisMax/2), so a month-range with small expenses doesn't waste half the chart on empty space.
+            const step = axisMax / 2;
+            const maxInc = Math.min(Math.max(0, ...months.map(mo => mo.income)), axisMax);
+            const maxExp = Math.min(Math.max(0, ...months.map(mo => mo.expense)), axisMax);
+            const upUnits = Math.max(1, Math.ceil(maxInc / step - 1e-9));
+            const downUnits = Math.max(1, Math.ceil(maxExp / step - 1e-9));
+            const ppu = (plotH - 2 * centreGap) / (upUnits + downUnits); // pixels per grid step
+            const midY = padTop + upUnits * ppu + centreGap;
+            const upBase = midY - centreGap, downBase = midY + centreGap;
+            let gridlinesSVG = "";
+            for (let k = -downUnits; k <= upUnits; k++) {
+                const y = k === 0 ? midY : (k > 0 ? upBase - k * ppu : downBase - k * ppu);
+                gridlinesSVG += `
+                    <line x1="${padLeft}" y1="${y.toFixed(1)}" x2="${w - padRight}" y2="${y.toFixed(1)}" stroke="${k === 0 ? "#cbd5e1" : "#e2e8f0"}" stroke-width="1"></line>
+                    <text x="${padLeft - 8}" y="${(y + 3).toFixed(1)}" font-size="${axisFontSize}" text-anchor="end" fill="#94a3b8">${k === 0 ? "0" : formatCompactAxisNumber(Math.abs(k) * step)}</text>
+                `;
+            }
+            const groupW = plotW / 12;
+            const barW = groupW * 0.62;
+            const minVisibleH = 3;
+            let barsSVG = "";
+            let notchesSVG = "";
+            months.forEach((mo, i) => {
+                const x = padLeft + i * groupW + (groupW - barW) / 2;
+                if (mo.income > 0) {
+                    const clipped = mo.income > axisMax;
+                    const hh = clipped ? upUnits * ppu : Math.max(minVisibleH, (ppu * mo.income) / step);
+                    const y = upBase - hh;
+                    barsSVG += `<path d="${topRoundedBarPath(x, y, barW, hh, 4)}" fill="#22c55e" class="mtrend-bar" data-label="${escapeHtml(mo.label)}" data-type="Income" data-val="${mo.income.toFixed(2)}" data-click="monthlyTrendBarTap"></path>`;
+                    if (clipped) notchesSVG += clipNotchSVG(x, y, barW);
+                }
+                if (mo.expense > 0) {
+                    const clipped = mo.expense > axisMax;
+                    const hh = clipped ? downUnits * ppu : Math.max(minVisibleH, (ppu * mo.expense) / step);
+                    const y = downBase;
+                    barsSVG += `<path d="${bottomRoundedBarPath(x, y, barW, hh, 4)}" fill="#ef4444" class="mtrend-bar" data-label="${escapeHtml(mo.label)}" data-type="Expense" data-val="${mo.expense.toFixed(2)}" data-click="monthlyTrendBarTap"></path>`;
+                    if (clipped) notchesSVG += clipNotchSVG(x, y + hh - 13, barW); // notch sits at the OUTER (bottom) end
+                }
+                barsSVG += `<text x="${(padLeft + i * groupW + groupW / 2).toFixed(1)}" y="${h - (isMobile ? 8 : 6)}" font-size="${monthFontSize}" text-anchor="middle" fill="#64748b">${escapeHtml(mo.label)}</text>`;
+            });
+            return `
+                <svg viewBox="0 0 ${w} ${h}" style="width:100%; display:block;" data-click="hideMonthlyTrendTooltip">
+                    <g>
+                        <rect x="0" y="0" width="12" height="12" fill="#22c55e" rx="2" transform="translate(${padLeft}, 4)"></rect>
+                        <text x="${padLeft + 16}" y="14" font-size="${legendFontSize}" fill="#334155">Income</text>
+                        <rect x="0" y="0" width="12" height="12" fill="#ef4444" rx="2" transform="translate(${padLeft + (isMobile ? 78 : 66)}, 4)"></rect>
+                        <text x="${padLeft + (isMobile ? 94 : 82)}" y="14" font-size="${legendFontSize}" fill="#334155">Expense</text>
+                    </g>
+                    ${gridlinesSVG}
+                    ${barsSVG}
+                    ${notchesSVG}
+                </svg>
+            `;
+        }
+
+        async function toggleMonthlyTrendStyle() {
+            monthlyTrendStyle = monthlyTrendStyle === "mirrored" ? "grouped" : "mirrored";
+            await writeDB(STORES.SETTINGS, { key: "monthlyTrendStyle", value: monthlyTrendStyle });
+            const { accounts, txs } = await computeAccountBalances();
+            renderMonthlyTrendChart(txs, accounts);
+        }
+
         function renderMonthlyTrendChart(txs, accounts) {
             populateMonthlyTrendYearOptions(txs);
             const year = parseInt(document.getElementById("monthlyTrendYearSelect").value, 10);
@@ -5239,12 +5334,17 @@
             // was true on first paint.
             const isMobile = window.innerWidth <= 480;
             document.getElementById("monthlyTrendChartWrap").innerHTML = hasAnyData
-                ? buildMonthlyTrendBarSVG(months, isMobile, monthlyTrendAutoScale)
+                ? (monthlyTrendStyle === "mirrored" ? buildMonthlyTrendMirroredSVG : buildMonthlyTrendBarSVG)(months, isMobile, monthlyTrendAutoScale)
                 : '<p style="font-size:0.75rem; text-align:center; color:var(--text-muted); padding: 40px 0;">No transactions logged for this year yet.</p>';
             const toggleBtn = document.getElementById("monthlyTrendAutoScaleToggle");
             if (toggleBtn) {
                 toggleBtn.textContent = monthlyTrendAutoScale ? "⤢ Auto-scale: On" : "⤢ Auto-scale";
                 toggleBtn.classList.toggle("active-filter-btn", monthlyTrendAutoScale);
+            }
+            const styleBtn = document.getElementById("monthlyTrendStyleToggle");
+            if (styleBtn) {
+                styleBtn.textContent = monthlyTrendStyle === "mirrored" ? "⇅ Mirrored: On" : "⇅ Mirrored";
+                styleBtn.classList.toggle("active-filter-btn", monthlyTrendStyle === "mirrored");
             }
             renderMonthlyTrendTable(months);
             renderMonthlyTrendMascotIcon();
@@ -24296,6 +24396,8 @@
 
             const storedMonthlyTrendAutoScale = await readKeyDB("settings", "monthlyTrendAutoScale");
             if (storedMonthlyTrendAutoScale) monthlyTrendAutoScale = !!storedMonthlyTrendAutoScale.value;
+            const storedMonthlyTrendStyle = await readKeyDB("settings", "monthlyTrendStyle");
+            if (storedMonthlyTrendStyle) monthlyTrendStyle = storedMonthlyTrendStyle.value === "mirrored" ? "mirrored" : "grouped";
 
             const storedMonthlyTrendTableExpanded = await readKeyDB("settings", "monthlyTrendTableExpanded");
             // v374: only when nothing's been explicitly saved yet does the initial default depend
@@ -25014,6 +25116,7 @@
                                 case "reportCardPeriod2": reportCardPeriod2 = rec.value || "thisMonth"; break;
                                 case "monthlyTrendYear": monthlyTrendYear = rec.value || new Date().getFullYear().toString(); break;
                                 case "monthlyTrendAutoScale": monthlyTrendAutoScale = !!rec.value; break;
+                                case "monthlyTrendStyle": monthlyTrendStyle = rec.value === "mirrored" ? "mirrored" : "grouped"; break;
                                 case "monthlyTrendTableExpanded": monthlyTrendTableExpanded = rec.value !== false; break;
                                 case "defaultIncomeCategory": defaultIncomeCategory = rec.value || ""; break;
                                 case "defaultExpenseCategory": defaultExpenseCategory = rec.value || ""; break;
@@ -26504,6 +26607,7 @@
             monthlyTrendBarTap: (el, e) => { e.stopPropagation(); showMonthlyTrendTooltip(e, el); },
             hideMonthlyTrendTooltip: () => hideMonthlyTrendTooltip(),
             toggleMonthlyTrendAutoScale: () => toggleMonthlyTrendAutoScale(),
+            toggleMonthlyTrendStyle: () => toggleMonthlyTrendStyle(),
             toggleMonthlyTrendTable: () => toggleMonthlyTrendTable(),
             navigateToNetWorthStatementPage: () => navigateToNetWorthStatementPage(),
             // v249: replaces navigateToNetWorthStatementPage as the net-worth card's own

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v569";
+        const APP_VERSION = "v570";
         const APP_VERSION_DATE = "2026-10-19";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -5127,6 +5127,14 @@
         // on a phone screen — no more demoting Balance to its own line (v376). The currency is
         // stated once instead, in a small caption under the table, same idea as the "Figures are
         // in ... base currency" caption already used on the Total Bill Summary report page.
+        // v570: the table's Balance cell. A month with activity (and the Total row) is tappable and opens the Savings Statement
+        // scoped to that month / the whole year (same drill-in as the Dashboard report cards). Months with nothing logged stay plain.
+        function monthlyTrendBalanceCell(opts, income, expense, padding, balanceText, color, weight) {
+            const base = `padding:${padding}; text-align:right; color:${color}; ${weight}`;
+            if (opts.monthIdx === undefined || (income === 0 && expense === 0)) return `<td style="${base}">${balanceText}</td>`;
+            return `<td class="mt-bal-tap" style="${base}" data-click="monthlyTrendBalanceClick" data-month="${opts.monthIdx}" data-year="${escapeHtml(monthlyTrendYear)}" title="Open Net Savings Statement"><span class="mt-bal-num">${balanceText}</span><span class="mt-bal-chev">›</span></td>`;
+        }
+
         function renderMonthlyTrendTable(months) {
             const wrap = document.getElementById("monthlyTrendTableWrap");
             if (!wrap) return;
@@ -5148,11 +5156,11 @@
                             <td style="padding:8px 6px; ${weight}">${escapeHtml(label)}</td>
                             <td style="padding:8px 6px; text-align:right; color:var(--income-color); ${weight}">${formatCurrencyNumberOnly(income)}</td>
                             <td style="padding:8px 6px; text-align:right; color:var(--expense-color); ${weight}">${formatCurrencyNumberOnly(expense)}</td>
-                            <td style="padding:8px 6px; text-align:right; color:${balanceColor(balance)}; ${weight}">${formatCurrencyNumberOnly(balance)}</td>
+                            ${monthlyTrendBalanceCell(opts, income, expense, "8px 6px", formatCurrencyNumberOnly(balance), balanceColor(balance), weight)}
                         </tr>`;
                 };
-                let rows = months.map(mo => row(mo.label, mo.income, mo.expense)).join("");
-                rows += row("Total", totalIncome, totalExpense, { bold: true });
+                let rows = months.map((mo, i) => row(mo.label, mo.income, mo.expense, { monthIdx: String(i) })).join("");
+                rows += row("Total", totalIncome, totalExpense, { bold: true, monthIdx: "all" });
                 wrap.innerHTML = `
                     <table style="width:100%; border-collapse:collapse; font-size:0.78rem;">
                         <thead>
@@ -5178,12 +5186,12 @@
                         <td style="padding:8px 10px; ${weight}">${escapeHtml(label)}</td>
                         <td style="padding:8px 10px; text-align:right; color:var(--income-color); ${weight}">${formatCurrency(income, baseCurrency)}</td>
                         <td style="padding:8px 10px; text-align:right; color:var(--expense-color); ${weight}">${formatCurrency(expense, baseCurrency)}</td>
-                        <td style="padding:8px 10px; text-align:right; color:${balanceColor(balance)}; ${weight}">${formatCurrency(balance, baseCurrency)}</td>
+                        ${monthlyTrendBalanceCell(opts, income, expense, "8px 10px", formatCurrency(balance, baseCurrency), balanceColor(balance), weight)}
                     </tr>`;
             };
 
-            let rows = months.map(mo => row(mo.label, mo.income, mo.expense)).join("");
-            rows += row("Total", totalIncome, totalExpense, { bold: true });
+            let rows = months.map((mo, i) => row(mo.label, mo.income, mo.expense, { monthIdx: String(i) })).join("");
+            rows += row("Total", totalIncome, totalExpense, { bold: true, monthIdx: "all" });
 
             wrap.innerHTML = `
                 <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
@@ -22609,11 +22617,14 @@
 
             let incBaseTotal = 0, expBaseTotal = 0;
             txs.forEach(t => {
-                if (filterY !== "all" && new Date(t.date).getFullYear().toString() !== filterY) return;
+                // v570: parse as a LOCAL date (same as computeMonthlyTrendData) so a "YYYY-MM-DD" on the 1st can't slip into the
+                // previous month on a device whose timezone is west of UTC — keeps this page's month net equal to the table's Balance.
+                const tLocal = new Date(t.date + "T00:00:00");
+                if (filterY !== "all" && tLocal.getFullYear().toString() !== filterY) return;
                 // v148: report card "Total" click may also carry a specific month (see
                 // navigateToSavingsPage/savingsFilterMonth) — "all" the rest of the time, so this
                 // page filters by year alone exactly as before for every other visit.
-                if (savingsFilterMonth !== "all" && new Date(t.date).getMonth().toString() !== savingsFilterMonth) return;
+                if (savingsFilterMonth !== "all" && tLocal.getMonth().toString() !== savingsFilterMonth) return;
 
                 const tBase = convertTxAmountToBase(t, accounts);
                 if (t.type === "income" && t.isRefund) {
@@ -26610,6 +26621,7 @@
             hideMonthlyTrendTooltip: () => hideMonthlyTrendTooltip(),
             toggleMonthlyTrendAutoScale: () => toggleMonthlyTrendAutoScale(),
             toggleMonthlyTrendStyle: () => toggleMonthlyTrendStyle(),
+            monthlyTrendBalanceClick: (el) => navigateToSavingsPage(el.dataset.year, el.dataset.month),
             toggleMonthlyTrendTable: () => toggleMonthlyTrendTable(),
             navigateToNetWorthStatementPage: () => navigateToNetWorthStatementPage(),
             // v249: replaces navigateToNetWorthStatementPage as the net-worth card's own

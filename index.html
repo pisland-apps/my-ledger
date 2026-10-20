@@ -519,6 +519,11 @@
            active-filter-btn is added/removed by JS. */
         .text-btn.active-filter-btn { background: var(--primary); color: #fff; }
         .text-btn.active-filter-btn:hover { background: var(--primary); color: #fff; opacity: 0.9; }
+        /* v570: tappable Balance cells in the Monthly Trend table (open the Net Savings Statement for that month) */
+        .mt-bal-tap { cursor: pointer; white-space: nowrap; }
+        .mt-bal-tap:active { background: rgba(127,127,127,0.12); }
+        .mt-bal-num { text-decoration: underline dotted; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+        .mt-bal-chev { color: var(--text-muted); font-weight: 400; margin-left: 3px; }
         /* v568: Monthly Trend header buttons — icon-only on phones (on/off is shown by the highlight), so both fit on one row */
         @media (max-width: 480px) {
             #monthlyTrendStyleToggle .mt-btn-tx, #monthlyTrendAutoScaleToggle .mt-btn-tx { display: none; }

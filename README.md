@@ -4246,3 +4246,13 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   ("Mirror", "Auto-scale") — no ": On". Wider screens still show "Mirrored: On" / "Auto-scale: On". If both are on and the
   row is too narrow, the button group wraps under the title (right-aligned, with the year selector) via `.mt-header`.
   Name pieces: `.mt-btn-ed` ("ed"), `.mt-btn-on` (": On") are hidden on phones. Bumped to v569.
+
+## v570: Monthly Trend table — tap a Balance to open the Net Savings Statement for that month
+
+- In the Monthly Trend table (Dashboard + Monthly Trend page, phone + desktop) each month's Balance cell (when that month has
+  activity) and the Total row's Balance are tappable (dotted underline + ›): they call `navigateToSavingsPage(year, month)`
+  with the table's selected year — month index "0".."11", or "all" for the Total row. Back returns to the Dashboard (existing
+  scroll restore). Months with nothing logged stay plain. Handler: `monthlyTrendBalanceClick`; cell builder:
+  `monthlyTrendBalanceCell`.
+- The Savings Statement tally now parses `t.date` as a local date (`T00:00:00`), like `computeMonthlyTrendData`, so the month
+  net equals the table's Balance in every timezone. Bumped to v570.

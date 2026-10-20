@@ -195,6 +195,16 @@
             src: url("./fonts/kalam-700.woff2") format("woff2");
         }
 
+        /* v577: second self-hosted handwriting font for the Settings > Background Theme > "App font"
+           picker (OFL, latin subset, ./fonts/). Same offline-first reasoning as Kalam above. */
+        @font-face {
+            font-family: "Shadows Into Light Two";
+            font-style: normal;
+            font-weight: 400;
+            font-display: swap;
+            src: url("./fonts/shadows-into-light-two-400.woff2") format("woff2");
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -3411,6 +3421,27 @@
         html[data-bg-theme="crayon"][data-crayon-font="kalam"] * {
             font-family: "Kalam", cursive;
         }
+        /* v577: global "App font" choice (Settings > Background Theme > App font), independent of
+           the theme preset. data-app-font is "default" (no rule here), "kalam" or "shadows".
+           html:root:root + the attribute repeated gives specificity above the crayon rule right
+           above, so an explicit pick always beats the crayon toggle. Elements that set their own
+           font by ID (#noteSummaryModal, #ledgerCalendarDayCard) or inline still keep it, and
+           @media screen leaves printed reports / PDF exports on their normal fonts. */
+        @media screen {
+            html:root:root[data-app-font="kalam"][data-app-font="kalam"] * { font-family: "Kalam", cursive; }
+            html:root:root[data-app-font="shadows"][data-app-font="shadows"] * { font-family: "Shadows Into Light Two", "Kalam", cursive; }
+            /* this font is thin and small for its size — nudge the base size up a little */
+            html:root:root[data-app-font="shadows"] body { font-size: 1.08em; }
+        }
+        .app-font-opt {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            width: 100%; padding: 10px 14px; border-radius: 12px; cursor: pointer;
+            background: var(--card-bg); color: var(--text-main);
+            border: 2px solid var(--border-color); text-align: left;
+        }
+        .app-font-opt.selected { border-color: var(--primary); }
+        .app-font-opt-name { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
+        .app-font-opt-sample { font-size: 1.05rem; font-weight: 700; }
         /* Settings row for the toggle above only means anything for this one preset — hidden
            for every other preset's panel instead of showing a control with no visible effect. */
         #crayonFontToggleRow { display: none; }
@@ -5958,6 +5989,22 @@
                     <input type="checkbox" id="crayonFontToggle" data-change="handleCrayonFontToggleChange">
                     <span class="toggle-slider"></span>
                 </label>
+            </div>
+            <!-- v577: global font choice — applies to the whole app under any theme preset. -->
+            <div id="appFontPicker" style="display:flex; flex-direction:column; gap:8px; margin-top:6px;">
+                <span class="toggle-switch-label">🔤 App font</span>
+                <button type="button" class="app-font-opt" data-click="selectAppFont" data-font="default">
+                    <span class="app-font-opt-sample" style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">Selamat Hari Lahir 123</span>
+                    <span class="app-font-opt-name">Default</span>
+                </button>
+                <button type="button" class="app-font-opt" data-click="selectAppFont" data-font="kalam">
+                    <span class="app-font-opt-sample" style="font-family:'Kalam', cursive;">Selamat Hari Lahir 123</span>
+                    <span class="app-font-opt-name">Kalam</span>
+                </button>
+                <button type="button" class="app-font-opt" data-click="selectAppFont" data-font="shadows">
+                    <span class="app-font-opt-sample" style="font-family:'Shadows Into Light Two', 'Kalam', cursive; font-size:1.25rem;">Selamat Hari Lahir 123</span>
+                    <span class="app-font-opt-name">Shadows Into Light Two</span>
+                </button>
             </div>
         </div>
         </div>

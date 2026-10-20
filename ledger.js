@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v576";
+        const APP_VERSION = "v577";
         const APP_VERSION_DATE = "2026-10-20";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -9301,6 +9301,7 @@
             // font="kalam"]), so re-asserting it here on every theme apply is harmless for every
             // other preset and keeps it correctly set even right after a fresh selectBgTheme().
             applyCrayonFontAttr();
+            applyAppFontAttr(); // v577: re-assert the global App font too (cheap, idempotent)
             if (save) {
                 try {
                     localStorage.setItem(BG_THEME_STORAGE_KEY, JSON.stringify(theme));
@@ -9381,6 +9382,7 @@
             if (autoToggle) autoToggle.checked = isBgThemeAutoEnabled();
             const fontToggle = document.getElementById("crayonFontToggle");
             if (fontToggle) fontToggle.checked = isCrayonFontEnabled();
+            applyAppFontAttr();
         }
 
         function selectBgTheme(el) {
@@ -9940,6 +9942,28 @@
         function handleCrayonFontToggleChange() {
             const toggle = document.getElementById("crayonFontToggle");
             setCrayonFontEnabled(!!(toggle && toggle.checked));
+        }
+
+        // v577: global "App font" picker (Settings > Background Theme > App font) — "default"
+        // (the app's normal sans-serif), "kalam" or "shadows" (Shadows Into Light Two). Applied as
+        // html[data-app-font] (see the CSS next to the crayon font rule in index.html), and mirrored
+        // in theme-init.js so the saved font is already active on first paint.
+        const APP_FONT_KEY = "ledgerAppFont";
+        const APP_FONT_CHOICES = ["default", "kalam", "shadows"];
+        function getAppFont() {
+            let v = null;
+            try { v = localStorage.getItem(APP_FONT_KEY); } catch (e) {}
+            return APP_FONT_CHOICES.includes(v) ? v : "default";
+        }
+        function applyAppFontAttr() {
+            document.documentElement.setAttribute("data-app-font", getAppFont());
+            const cur = getAppFont();
+            document.querySelectorAll("#appFontPicker .app-font-opt").forEach(b => b.classList.toggle("selected", b.dataset.font === cur));
+        }
+        function selectAppFont(el) {
+            const v = el && el.dataset ? el.dataset.font : "default";
+            try { localStorage.setItem(APP_FONT_KEY, APP_FONT_CHOICES.includes(v) ? v : "default"); } catch (e) {}
+            applyAppFontAttr();
         }
 
         // v250: Privacy Mode — see the CSS comment on html[data-privacy-mode="on"] in
@@ -27495,6 +27519,7 @@
             changeMonthlyTrendYear: (el) => changeMonthlyTrendYear(el),
             handleBgThemeAutoToggleChange: () => handleBgThemeAutoToggleChange(),
             handleCrayonFontToggleChange: () => handleCrayonFontToggleChange(),
+            selectAppFont: (el) => selectAppFont(el), // v577
             // v318: INVENTORY
             toggleTxInventoryFields: () => toggleTxInventoryFields(),
             // v468: INSURANCE — category change may reveal/hide the Policy row; currency change re-labels the payment total

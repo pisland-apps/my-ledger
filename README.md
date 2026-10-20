@@ -4320,3 +4320,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v576: Fix right Insights rail shaking when stepping through Accounts cards (PC)
 - Cause: each card's detail panel has a different height, so the page's vertical scrollbar appeared/disappeared while stepping ‹ ›, changing the viewport width by ~15px; the centred `#contentRow` layout then shifted the Insights rail sideways.
 - Fix: at 1400px+, `html { scrollbar-gutter: stable; overflow-y: scroll; }` keeps the scrollbar gutter permanently reserved. Bumped to v576.
+
+## v577: Settings > Background Theme > "App font" (Default / Kalam / Shadows Into Light Two)
+- New global font picker (works under every theme preset, and beats the 蠟筆小新 Kalam toggle when set to a non-default choice). Stored in `localStorage["ledgerAppFont"]` (`default` | `kalam` | `shadows`), applied as `html[data-app-font]` (CSS beside the crayon font rule in index.html; mirrored in `theme-init.js` for first paint; re-asserted in `applyBgTheme()`).
+- New self-hosted font `fonts/shadows-into-light-two-400.woff2` (OFL, latin subset), added to the service-worker precache. Cache bumped to v577.
+- Screen only (`@media screen`): printed reports/PDF exports keep their normal fonts. Elements with an ID-scoped or inline font (Description Summary modal, Ledger Calendar day card, Kalam amounts) are unchanged.

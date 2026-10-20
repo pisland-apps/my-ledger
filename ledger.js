@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v572";
+        const APP_VERSION = "v573";
         const APP_VERSION_DATE = "2026-10-20";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7209,7 +7209,31 @@
             try { localStorage.setItem(ACCOUNTS_VIEW_MODE_KEY, mode); } catch (e) { /* private mode: just not remembered */ }
             renderAccountsPage();
         }
+        // v572b: re-rendering rebuilt the chip rows, which reset their sideways scroll to the first chip —
+        // tapping a pill in the middle of a scrolled row made the row jump back to the start. The scroll
+        // position is saved before the re-render and restored (and the active chip kept in view) after it.
+        let accountsChipScroll = { group: 0, sub: 0 };
+        function saveAccountsChipScroll() {
+            document.querySelectorAll("#accountsPageList .acct-chips").forEach(r => {
+                if (r.dataset.chiprow) accountsChipScroll[r.dataset.chiprow] = r.scrollLeft;
+            });
+        }
+        function restoreAccountsChipScroll() {
+            document.querySelectorAll("#accountsPageList .acct-chips").forEach(r => {
+                const key = r.dataset.chiprow;
+                if (!key) return;
+                r.scrollLeft = accountsChipScroll[key] || 0;
+                const act = r.querySelector(".acct-chip.active");
+                if (act) {
+                    const left = act.offsetLeft, right = left + act.offsetWidth;
+                    if (left < r.scrollLeft) r.scrollLeft = Math.max(0, left - 8);
+                    else if (right > r.scrollLeft + r.clientWidth) r.scrollLeft = right - r.clientWidth + 8;
+                }
+            });
+        }
         function selectAccountsCardGroup(el) {
+            saveAccountsChipScroll();
+            accountsChipScroll.sub = 0; // a different group has a different sub-group row — start it at the left
             accountsCardGroup = el.dataset.group || "all";
             accountsCardSubgroup = "all";
             accountsCardSelectedId = null;
@@ -7217,6 +7241,7 @@
         }
         // v572: second chip row — sub-groups of the selected group (Bank/Cash > Savings Account, Investment > KWSP, ...)
         function selectAccountsCardSubgroup(el) {
+            saveAccountsChipScroll();
             accountsCardSubgroup = el.dataset.sub || "all";
             accountsCardSelectedId = null;
             renderAccountsPage();
@@ -7395,14 +7420,14 @@
             if (!visible.some(a => a.id === accountsCardSelectedId)) accountsCardSelectedId = visible[0].id;
 
             const chips = groups.length > 1
-                ? `<div class="acct-chips">
+                ? `<div class="acct-chips" data-chiprow="group">
                     <button type="button" class="acct-chip${accountsCardGroup === "all" ? " active" : ""}" data-click="selectAccountsCardGroup" data-group="all">All <span class="acct-chip-n">${sorted.length}</span></button>
                     ${groups.map(g => `<button type="button" class="acct-chip${accountsCardGroup === g ? " active" : ""}" data-click="selectAccountsCardGroup" data-group="${escapeHtml(g)}">${escapeHtml(g)} <span class="acct-chip-n">${sorted.filter(a => groupOf(a) === g).length}</span></button>`).join("")}
                    </div>`
                 : "";
             const subLabel = s => s === "__none" ? "(No sub-group)" : s;
             const subRow = subChips.length
-                ? `<div class="acct-chips acct-chips-sub">
+                ? `<div class="acct-chips acct-chips-sub" data-chiprow="sub">
                     <button type="button" class="acct-chip sub${accountsCardSubgroup === "all" ? " active" : ""}" data-click="selectAccountsCardSubgroup" data-sub="all">All <span class="acct-chip-n">${inGroup.length}</span></button>
                     ${subChips.map(s => `<button type="button" class="acct-chip sub${accountsCardSubgroup === s ? " active" : ""}" data-click="selectAccountsCardSubgroup" data-sub="${escapeHtml(s)}">${escapeHtml(subLabel(s))} <span class="acct-chip-n">${inGroup.filter(a => subKey(a) === s).length}</span></button>`).join("")}
                    </div>`
@@ -7437,6 +7462,7 @@
 
         // Centres the selected card on first paint and keeps the selection in step with swiping.
         function wireAccountsCardsTrack() {
+            restoreAccountsChipScroll();
             const track = document.getElementById("acctCardsTrack");
             if (!track) return;
             const centerSlot = (slot, smooth) => {

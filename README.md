@@ -4292,3 +4292,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   card is flipped back automatically when you move to another card. Fix for the ↩ button doing nothing: only the visible face now
   takes taps (`pointer-events` on the front/back face), since the hidden front face's button sat in the same corner.
 - Bumped to v572 (APP_VERSION + sw.js CACHE_NAME).
+
+## v573: Cards view — chip rows keep their scroll position
+
+- Tapping a group / sub-group pill in the middle of a scrolled chip row made the row jump back to the first chip (the view is
+  re-rendered, which rebuilt the row at scroll 0). The row's sideways scroll is now saved before the re-render and restored after
+  it (`saveAccountsChipScroll` / `restoreAccountsChipScroll`), and the active pill is kept in view. Picking a different group
+  starts the new sub-group row at the left. Bumped to v573.

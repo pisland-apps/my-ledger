@@ -523,6 +523,14 @@
         @media (max-width: 480px) {
             #monthlyTrendStyleToggle .mt-btn-tx, #monthlyTrendAutoScaleToggle .mt-btn-tx { display: none; }
             #monthlyTrendStyleToggle, #monthlyTrendAutoScaleToggle { padding: 6px 10px !important; font-size: 0.95rem !important; line-height: 1; min-width: 36px; }
+            /* v569: like the Inventory pills — an ON button expands to show its (short) name, no ": On"; if both are on and
+               the row is too narrow, the button group wraps neatly under the title, right-aligned with the year selector */
+            #monthlyTrendStyleToggle.active-filter-btn .mt-btn-tx, #monthlyTrendAutoScaleToggle.active-filter-btn .mt-btn-tx { display: inline; }
+            #monthlyTrendStyleToggle .mt-btn-ed, #monthlyTrendAutoScaleToggle .mt-btn-on { display: none; }
+            #monthlyTrendStyleToggle .mt-btn-on { display: none; }
+            #monthlyTrendStyleToggle.active-filter-btn, #monthlyTrendAutoScaleToggle.active-filter-btn { font-size: 0.75rem !important; }
+            .mt-header { flex-wrap: wrap; row-gap: 8px; }
+            .mt-header > div { flex: 1 1 auto; }
         }
 
         .actions-bar {
@@ -3920,7 +3928,7 @@
              to keep in sync. See placeMonthlyTrendSection() / applyMonthlyTrendDashboardVisibility(). -->
         <div id="monthlyTrendDashboardSlot">
             <div id="monthlyTrendSection">
-        <div class="section-header">
+        <div class="section-header mt-header">
             <span class="section-title" data-click="toggleMonthlyTrendTable" style="display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;" title="Tap to show/hide the monthly table">
                 Monthly Trend
                 <!-- v372: mirrors whatever's currently picked in Settings > Companion (applyCompanionPet());
@@ -3941,7 +3949,7 @@
                 </span>
             </span>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-                <button type="button" id="monthlyTrendStyleToggle" class="text-btn" data-click="toggleMonthlyTrendStyle" style="white-space:nowrap; padding:6px 10px; font-size:0.75rem;" title="Mirrored view: one column per month, income up and expense down from a centre line (same scale)." aria-label="Mirrored view"><span class="mt-btn-ic">⇅</span><span class="mt-btn-tx"> Mirrored</span></button>
+                <button type="button" id="monthlyTrendStyleToggle" class="text-btn" data-click="toggleMonthlyTrendStyle" style="white-space:nowrap; padding:6px 10px; font-size:0.75rem;" title="Mirrored view: one column per month, income up and expense down from a centre line (same scale)." aria-label="Mirrored view"><span class="mt-btn-ic">⇅</span><span class="mt-btn-tx"> Mirror<span class="mt-btn-ed">ed</span></span></button>
                 <button type="button" id="monthlyTrendAutoScaleToggle" class="text-btn" data-click="toggleMonthlyTrendAutoScale" style="white-space:nowrap; padding:6px 10px; font-size:0.75rem;" title="Rescale the axis to the second-highest bar so one outlier month doesn't flatten the rest — the outlier bar still shows, just clipped with a notch; tap/hover it for its real value." aria-label="Auto-scale"><span class="mt-btn-ic">⤢</span><span class="mt-btn-tx"> Auto-scale</span></button>
                 <select id="monthlyTrendYearSelect" class="period-select" data-change="changeMonthlyTrendYear"></select>
             </div>

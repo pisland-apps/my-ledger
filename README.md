@@ -4239,3 +4239,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - At widths <= 480px the "Mirrored" and "Auto-scale" buttons show only their icon (⇅ / ⤢); the highlight shows on/off, tap again
   to turn off. Text labels (incl. ": On") stay on wider screens. Words live in `.mt-btn-tx` (hidden by CSS on phones);
   title/aria-label kept, plus aria-pressed. Both buttons now fit on one row with the year selector. Bumped to v568.
+
+## v569: Monthly Trend — phone buttons expand to a short name when ON (no ": On"), header wraps
+
+- At widths <= 480px the Mirror / Auto-scale buttons are icon-only when OFF; when ON they highlight AND show a short name
+  ("Mirror", "Auto-scale") — no ": On". Wider screens still show "Mirrored: On" / "Auto-scale: On". If both are on and the
+  row is too narrow, the button group wraps under the title (right-aligned, with the year selector) via `.mt-header`.
+  Name pieces: `.mt-btn-ed` ("ed"), `.mt-btn-on` (": On") are hidden on phones. Bumped to v569.

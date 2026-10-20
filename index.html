@@ -2111,6 +2111,11 @@
            becomes the flex row that does the actual centering, with #pagesWrapper (not body)
            carrying the 720px cap that used to live on body. */
         @media (min-width: 1400px) {
+            /* v576: reserve the page scrollbar's gutter permanently. Switching Accounts cards swaps
+               the detail panel underneath (different height per account), which made the page
+               scrollbar appear/disappear, changed the viewport width by ~15px and — because
+               #contentRow centres its children — nudged the Insights rail sideways every time. */
+            html { scrollbar-gutter: stable; overflow-y: scroll; }
             body { margin-left: 336px; margin-right: 0; max-width: none; }
             #contentRow { display: flex; justify-content: center; gap: 32px; align-items: flex-start; }
             #pagesWrapper { width: 100%; max-width: 720px; }

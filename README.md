@@ -4316,3 +4316,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   the same one-row carousel as the phone (fixed 280px cards, first / last card can still centre), with **‹ ›** buttons beside the
   counter and **←/→** keys (focus a card first); the counter list, ↺ First and the chips work the same way. Phone unchanged.
   `isAccountsCarouselMode()` is now always true; step action `accountsCardStep`. Bumped to v575.
+
+## v576: Fix right Insights rail shaking when stepping through Accounts cards (PC)
+- Cause: each card's detail panel has a different height, so the page's vertical scrollbar appeared/disappeared while stepping ‹ ›, changing the viewport width by ~15px; the centred `#contentRow` layout then shifted the Insights rail sideways.
+- Fix: at 1400px+, `html { scrollbar-gutter: stable; overflow-y: scroll; }` keeps the scrollbar gutter permanently reserved. Bumped to v576.

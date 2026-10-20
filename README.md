@@ -4278,3 +4278,17 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   (tap one to open it). "+ Add entry" is hidden for Fixed Deposit and Unit Trust accounts (they use their own flows).
 - Code: `buildAccountsCardsHTML`, `accountCardFaceHTML`, `accountCardDetailHTML`, `wireAccountsCardsTrack`, `selectAccountCard`,
   `setAccountsViewMode`; branch at the top of `renderAccountsPage`. Bumped to v571 (APP_VERSION + sw.js CACHE_NAME).
+
+## v572: Cards view — sub-group chips, jump controls, flip-back fix
+
+- **Sub-group chips:** when one group is selected and it has 2+ sub-groups with accounts, a second chip row appears
+  (Bank/Cash: Current / Savings / Cash Account; Investment: Fixed Deposit, KWSP, CPF, ASNB, PTPTN, Unit Trust, Stocks/ETF, Gold)
+  with counts, in the app's own sub-group order; accounts with no sub-group get "(No sub-group)". The total line follows the
+  selection ("Sub-group total · KWSP"). Picking a group resets the sub-group to All. State: `accountsCardSubgroup`.
+- **Jumping around a long list (no auto-loop):** the "n / N" counter is now a button that opens a name list to jump to any card;
+  on the last card a "↺ First" button appears that scrolls back to card 1. Actions: `accountsCardCounterTap`,
+  `accountsCardJump`, `accountsCardGoFirst`.
+- **Flip back:** tapping anywhere on the back of a card flips it back (hint text at the bottom), the ↩ button is larger, and a
+  card is flipped back automatically when you move to another card. Fix for the ↩ button doing nothing: only the visible face now
+  takes taps (`pointer-events` on the front/back face), since the hidden front face's button sat in the same corner.
+- Bumped to v572 (APP_VERSION + sw.js CACHE_NAME).

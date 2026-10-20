@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v571";
+        const APP_VERSION = "v572";
         const APP_VERSION_DATE = "2026-10-20";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -483,6 +483,7 @@
         let accountsViewMode = (() => { try { return localStorage.getItem(ACCOUNTS_VIEW_MODE_KEY) === "cards" ? "cards" : "list"; } catch (e) { return "list"; } })();
         let accountsCardGroup = "all";       // "all" or an ACCOUNT_GROUPS name
         let accountsCardSelectedId = null;   // account id of the card currently selected
+        let accountsCardSubgroup = "all";    // v572: "all" | sub-group name | "__none" (accounts with no sub-group)
         let accountsPageTypeFilter = null;
         // v222 fix: where the Accounts page's "← Back" (and hardware/gesture back) should
         // return to. Every pre-v222 entry point (sidebar, dashboard, delete-account flow)
@@ -7210,8 +7211,31 @@
         }
         function selectAccountsCardGroup(el) {
             accountsCardGroup = el.dataset.group || "all";
+            accountsCardSubgroup = "all";
             accountsCardSelectedId = null;
             renderAccountsPage();
+        }
+        // v572: second chip row — sub-groups of the selected group (Bank/Cash > Savings Account, Investment > KWSP, ...)
+        function selectAccountsCardSubgroup(el) {
+            accountsCardSubgroup = el.dataset.sub || "all";
+            accountsCardSelectedId = null;
+            renderAccountsPage();
+        }
+        // v572: counter button opens/closes a name list to jump straight to any card
+        function accountsCardCounterTap() {
+            const list = document.getElementById("acctJumpList");
+            if (list) list.classList.toggle("hidden");
+        }
+        function accountsCardJump(el) {
+            const list = document.getElementById("acctJumpList");
+            if (list) list.classList.add("hidden");
+            selectAccountCard(el.dataset.id, false);
+        }
+        // v572: on the last card, "↺ First" scrolls back to card 1 (no auto-loop, so the end of the list stays visible)
+        function accountsCardGoFirst() {
+            const track = document.getElementById("acctCardsTrack");
+            if (!track || !track.children.length) return;
+            selectAccountCard(track.children[0].dataset.acctId, false);
         }
 
         function accountCardFaceHTML(a, accounts, nativeBalances) {
@@ -7264,12 +7288,13 @@
             if (a.includeInNetWorth === false) rows.push(["Net Worth", "Excluded"]);
             const extra = accountExtraInfoLine(a, nativeBalances, false, accounts);
             const back = `
-                <div class="acct-card-face acct-card-back">
+                <div class="acct-card-face acct-card-back" data-click="flipAccountCard" data-id="${escapeHtml(a.id)}">
                     <div class="acct-back-title"><span>${escapeHtml(a.name)}</span>
                         <button type="button" class="acct-flip-btn" data-click="flipAccountCard" data-id="${escapeHtml(a.id)}" aria-label="Back to card" title="Back">\u21a9</button>
                     </div>
                     ${rows.map(r => `<div class="acct-back-row"><span>${escapeHtml(r[0])}</span><span>${escapeHtml(r[1])}</span></div>`).join("")}
                     ${extra ? `<div>${extra.replace(/^<br>/, "")}</div>` : ""}
+                    <div class="acct-back-hint">Tap anywhere to flip back</div>
                 </div>`;
             return `<div class="acct-card-flip">${front}${back}</div>`;
         }
@@ -7354,7 +7379,19 @@
             const groupOf = a => a.group || DEFAULT_ACCOUNT_GROUP;
             const groups = ACCOUNT_GROUPS.filter(g => sorted.some(a => groupOf(a) === g));
             if (accountsCardGroup !== "all" && !groups.includes(accountsCardGroup)) accountsCardGroup = "all";
-            const visible = accountsCardGroup === "all" ? sorted : sorted.filter(a => groupOf(a) === accountsCardGroup);
+            const inGroup = accountsCardGroup === "all" ? sorted : sorted.filter(a => groupOf(a) === accountsCardGroup);
+            // v572: sub-groups actually present in the selected group, in the app's own sub-group order
+            let subChips = [];
+            if (accountsCardGroup !== "all") {
+                const order = subgroupsForGroup(accountsCardGroup);
+                const present = Array.from(new Set(inGroup.map(a => a.subgroup || "")));
+                subChips = present.filter(s => s !== "").sort((x, y) => order.indexOf(x) - order.indexOf(y));
+                if (present.includes("") && subChips.length > 0) subChips.push("__none");
+                if (subChips.length < 2) subChips = [];
+            }
+            if (accountsCardSubgroup !== "all" && !subChips.includes(accountsCardSubgroup)) accountsCardSubgroup = "all";
+            const subKey = a => a.subgroup || "__none";
+            const visible = (subChips.length && accountsCardSubgroup !== "all") ? inGroup.filter(a => subKey(a) === accountsCardSubgroup) : inGroup;
             if (!visible.some(a => a.id === accountsCardSelectedId)) accountsCardSelectedId = visible[0].id;
 
             const chips = groups.length > 1
@@ -7363,8 +7400,16 @@
                     ${groups.map(g => `<button type="button" class="acct-chip${accountsCardGroup === g ? " active" : ""}" data-click="selectAccountsCardGroup" data-group="${escapeHtml(g)}">${escapeHtml(g)} <span class="acct-chip-n">${sorted.filter(a => groupOf(a) === g).length}</span></button>`).join("")}
                    </div>`
                 : "";
+            const subLabel = s => s === "__none" ? "(No sub-group)" : s;
+            const subRow = subChips.length
+                ? `<div class="acct-chips acct-chips-sub">
+                    <button type="button" class="acct-chip sub${accountsCardSubgroup === "all" ? " active" : ""}" data-click="selectAccountsCardSubgroup" data-sub="all">All <span class="acct-chip-n">${inGroup.length}</span></button>
+                    ${subChips.map(s => `<button type="button" class="acct-chip sub${accountsCardSubgroup === s ? " active" : ""}" data-click="selectAccountsCardSubgroup" data-sub="${escapeHtml(s)}">${escapeHtml(subLabel(s))} <span class="acct-chip-n">${inGroup.filter(a => subKey(a) === s).length}</span></button>`).join("")}
+                   </div>`
+                : "";
+            const totalLabel = (subChips.length && accountsCardSubgroup !== "all") ? `Sub-group total \u00b7 ${subLabel(accountsCardSubgroup)}` : `Group total \u00b7 ${accountsCardGroup}`;
             const groupTotal = accountsCardGroup !== "all"
-                ? `<div class="acct-group-total">Group total \u00b7 ${escapeHtml(accountsCardGroup)}: ${formatBalanceHTML(visible.reduce((s, a) => s + accountBaseValue(a, nativeBalances), 0), baseCurrency)}</div>`
+                ? `<div class="acct-group-total">${escapeHtml(totalLabel)}: ${formatBalanceHTML(visible.reduce((s, a) => s + accountBaseValue(a, nativeBalances), 0), baseCurrency)}</div>`
                 : "";
             const slots = visible.map(a => `
                 <div class="acct-card-slot${a.id === accountsCardSelectedId ? " selected" : ""}" role="button" tabindex="0" aria-label="${escapeHtml(a.name)}" data-acct-id="${escapeHtml(a.id)}" data-click="selectAccountCard" data-id="${escapeHtml(a.id)}">
@@ -7375,9 +7420,18 @@
                 ? `<div class="acct-dots" id="acctDots">${visible.map((a, i) => `<span class="acct-dot${i === selIdx ? " on" : ""}"></span>`).join("")}</div>`
                 : "";
             const details = visible.map(a => accountCardDetailHTML(a, accounts, txs, nativeBalances, fundsByAccountId, fdPlacementsByAccountId, a.id === accountsCardSelectedId)).join("");
-            return `${chips}${groupTotal}
+            const isLast = selIdx === visible.length - 1 && visible.length > 1;
+            const jump = visible.length > 1
+                ? `<div class="acct-jump hidden" id="acctJumpList">${visible.map(a => `<button type="button" class="acct-jump-item" data-click="accountsCardJump" data-id="${escapeHtml(a.id)}">${escapeHtml(a.name)}</button>`).join("")}</div>`
+                : "";
+            return `${chips}${subRow}${groupTotal}
                 <div class="acct-cards-track" id="acctCardsTrack">${slots}</div>
-                <div class="acct-cards-meta"><span id="acctCardsCounter">${selIdx + 1} / ${visible.length}</span>${dots}</div>
+                <div class="acct-cards-meta">
+                    <button type="button" class="acct-counter-btn" id="acctCardsCounter" data-click="accountsCardCounterTap" aria-label="Choose a card from the list">${selIdx + 1} / ${visible.length}</button>
+                    ${dots}
+                    <button type="button" class="acct-first-btn${isLast ? "" : " hidden"}" id="acctFirstBtn" data-click="accountsCardGoFirst">\u21ba First</button>
+                </div>
+                ${jump}
                 ${details}`;
         }
 
@@ -7421,11 +7475,16 @@
             const track = document.getElementById("acctCardsTrack");
             if (!track) return;
             const slots = Array.from(track.children);
-            slots.forEach(s => s.classList.toggle("selected", s.dataset.acctId === id));
+            slots.forEach(s => {
+                s.classList.toggle("selected", s.dataset.acctId === id);
+                if (s.dataset.acctId !== id) s.classList.remove("flipped"); // v572: a card never stays turned over once you leave it
+            });
             document.querySelectorAll("#accountsPageList .acct-detail").forEach(d => d.classList.toggle("hidden", d.dataset.detailId !== id));
             const idx = slots.findIndex(s => s.dataset.acctId === id);
             const counter = document.getElementById("acctCardsCounter");
             if (counter) counter.textContent = `${idx + 1} / ${slots.length}`;
+            const firstBtn = document.getElementById("acctFirstBtn");
+            if (firstBtn) firstBtn.classList.toggle("hidden", !(slots.length > 1 && idx === slots.length - 1));
             document.querySelectorAll("#acctDots .acct-dot").forEach((d, i) => d.classList.toggle("on", i === idx));
             if (!fromScroll && isAccountsCarouselMode() && idx >= 0) {
                 const slot = slots[idx];
@@ -27082,6 +27141,10 @@
             selectAccountCard: (el) => selectAccountCard(el.dataset.id, false), // v571
             flipAccountCard: (el) => flipAccountCard(el), // v571
             accountsCardAddEntry: (el) => accountsCardAddEntry(el), // v571
+            selectAccountsCardSubgroup: (el) => selectAccountsCardSubgroup(el), // v572
+            accountsCardCounterTap: () => accountsCardCounterTap(), // v572
+            accountsCardJump: (el) => accountsCardJump(el), // v572
+            accountsCardGoFirst: () => accountsCardGoFirst(), // v572
             exportInventoryCsv: () => exportInventoryCsv(),
             exportTotalSummaryCsv: () => exportTotalSummaryCsv(),
             exportTagReportCsv: () => exportTagReportCsv(), // v555

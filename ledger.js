@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v570";
-        const APP_VERSION_DATE = "2026-10-19";
+        const APP_VERSION = "v571";
+        const APP_VERSION_DATE = "2026-10-20";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -476,6 +476,13 @@
         // restrict the Accounts page list to one group/sub-group at a time, e.g.
         // { group: "Investment", subgroup: "Fixed Deposit", label: "Fixed Deposit" }. null shows
         // every account, same as opening the page from "Financial Accounts" directly.
+        // v571: Accounts page view mode — "list" (the original grouped list) or "cards" (group chips +
+        // swipeable card carousel + detail panel). Per-device on purpose (phone = carousel, PC = grid),
+        // so it lives in localStorage like the sidebar-group state, not in the synced settings store.
+        const ACCOUNTS_VIEW_MODE_KEY = "ledgerAccountsViewMode";
+        let accountsViewMode = (() => { try { return localStorage.getItem(ACCOUNTS_VIEW_MODE_KEY) === "cards" ? "cards" : "list"; } catch (e) { return "list"; } })();
+        let accountsCardGroup = "all";       // "all" or an ACCOUNT_GROUPS name
+        let accountsCardSelectedId = null;   // account id of the card currently selected
         let accountsPageTypeFilter = null;
         // v222 fix: where the Accounts page's "← Back" (and hardware/gesture back) should
         // return to. Every pre-v222 entry point (sidebar, dashboard, delete-account flow)
@@ -6865,6 +6872,16 @@
             // function itself is removed, it's just not shown any more.
             if (hintEl) hintEl.classList.add("hidden");
 
+            // v571: Cards view — same data/filter/sort as the list below, different presentation.
+            syncAccountsViewToggle();
+            const accountsListEl = document.getElementById("accountsPageList");
+            accountsListEl.classList.toggle("acct-cards-mode", accountsViewMode === "cards");
+            if (accountsViewMode === "cards") {
+                accountsListEl.innerHTML = buildAccountsCardsHTML(sorted, accounts, txs, nativeBalances, fundsByAccountId, fdPlacementsByAccountId, filter);
+                wireAccountsCardsTrack();
+                return;
+            }
+
             let html = "";
             let lastGroup = null;
             let lastSubgroup = undefined;
@@ -7157,6 +7174,270 @@
             document.getElementById("accountsPageList").innerHTML = html || (filter
                 ? `<p style="color:var(--text-muted); text-align:center; padding:24px 0; font-size:0.85rem;">No ${escapeHtml(filter.label)} accounts yet.</p>`
                 : `<p style="color:var(--text-muted); text-align:center; padding:24px 0; font-size:0.85rem;">No accounts yet — tap + to add one.</p>`);
+        }
+
+        // ===== v571: Accounts page "Cards" view =====
+        const ACCOUNT_CARD_GRADIENTS = {
+            "Bank/Cash": ["#0f766e", "#2dd4bf"],
+            "Credit Card": ["#9d174d", "#f472b6"],
+            "Multi-Currency": ["#1d4ed8", "#38bdf8"],
+            "Investment": ["#5b21b6", "#a78bfa"],
+            "Real Estate": ["#92400e", "#fbbf24"],
+            "Other Assets": ["#334155", "#94a3b8"],
+            "Bank Loan": ["#7f1d1d", "#f87171"],
+            "Other Liabilities": ["#44403c", "#a8a29e"]
+        };
+        function accountCardGradient(group) {
+            const g = ACCOUNT_CARD_GRADIENTS[group] || ACCOUNT_CARD_GRADIENTS["Other Assets"];
+            return `linear-gradient(135deg, ${g[0]}, ${g[1]})`;
+        }
+        // Plain-text amount (no red span) so it stays readable on a coloured card face.
+        function cardAmountText(amount, curr) {
+            return amount < 0 ? `\u2212${formatCurrency(Math.abs(amount), curr)}` : formatCurrency(amount, curr);
+        }
+        function isAccountsCarouselMode() {
+            return window.matchMedia("(max-width: 820px)").matches;
+        }
+        function syncAccountsViewToggle() {
+            document.querySelectorAll("#accountsViewToggle .nav-view-toggle-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === accountsViewMode));
+        }
+        function setAccountsViewMode(el) {
+            const mode = el.dataset.mode === "cards" ? "cards" : "list";
+            if (mode === accountsViewMode) return;
+            accountsViewMode = mode;
+            try { localStorage.setItem(ACCOUNTS_VIEW_MODE_KEY, mode); } catch (e) { /* private mode: just not remembered */ }
+            renderAccountsPage();
+        }
+        function selectAccountsCardGroup(el) {
+            accountsCardGroup = el.dataset.group || "all";
+            accountsCardSelectedId = null;
+            renderAccountsPage();
+        }
+
+        function accountCardFaceHTML(a, accounts, nativeBalances) {
+            const group = a.group || DEFAULT_ACCOUNT_GROUP;
+            const baseVal = accountBaseValue(a, nativeBalances);
+            const isBasket = a.type === "multi" || a.type === "fd" || a.type === "unittrust";
+            let main, sub = "";
+            if (isBasket) {
+                const baskets = nativeBalances[a.id] || {};
+                const n = Object.keys(baskets).length;
+                if (n === 0) { main = "\u2014"; sub = a.type === "unittrust" ? "No funds yet" : "No balance yet"; }
+                else {
+                    main = `\u2248 ${cardAmountText(baseVal, baseCurrency)}`;
+                    sub = n > 1 ? `${n} currencies` : Object.keys(baskets)[0];
+                }
+            } else {
+                const bal = nativeBalances[a.id] || 0;
+                main = cardAmountText(bal, a.currency);
+                if (a.currency !== baseCurrency) sub = `\u2248 ${cardAmountText(baseVal, baseCurrency)}`;
+            }
+            if (a.type === "creditcard") {
+                const due = Math.max(0, -(nativeBalances[a.id] || 0));
+                if (due > 0.005) { main = cardAmountText(due, a.currency); sub = "Amount due"; }
+            }
+            const typeLabel = a.type === "creditcard" ? "Credit Card" : (a.subgroup || group);
+            const owners = (Array.isArray(a.memberIds) ? a.memberIds : []).map(id => getMemberById(id)?.name).filter(Boolean);
+            const foot = owners.length ? owners.join(" \u00b7 ") : "Unassigned";
+            const excluded = a.includeInNetWorth === false ? `<span class="acct-card-pill dashed">\uD83D\uDEAB Not in Net Worth</span>` : "";
+            const grad = accountCardGradient(group);
+            const front = `
+                <div class="acct-card-face acct-card-front" style="background:${grad};">
+                    <div class="acct-card-top">
+                        ${accountAvatarHTML(a.name, a.logo)}
+                        <div class="acct-card-name">${escapeHtml(a.name)}</div>
+                        <button type="button" class="acct-flip-btn" data-click="flipAccountCard" data-id="${escapeHtml(a.id)}" aria-label="Show card info" title="Card info">i</button>
+                    </div>
+                    <div class="acct-card-badges"><span class="acct-card-pill">${escapeHtml(typeLabel)}</span>${excluded}</div>
+                    <div class="acct-card-bal">${main}</div>
+                    <div class="acct-card-sub">${escapeHtml(sub)}</div>
+                    <div class="acct-card-foot">${escapeHtml(foot)}</div>
+                </div>`;
+            // Back face: the low-frequency details (nothing needed for day-to-day use lives only here).
+            const linkedAcc = a.linkedAccountId ? accounts.find(x => x.id === a.linkedAccountId) : null;
+            const rows = [];
+            if (a.accountRef) rows.push(["Account no.", a.accountRef]);
+            rows.push(["Group", group + (a.subgroup ? ` \u203a ${a.subgroup}` : "")]);
+            if (!isBasket) rows.push(["Currency", a.currency]);
+            if (linkedAcc) rows.push(["Related", accountOptionLabel(linkedAcc, accounts)]);
+            rows.push(["Members", foot]);
+            if (a.includeInNetWorth === false) rows.push(["Net Worth", "Excluded"]);
+            const extra = accountExtraInfoLine(a, nativeBalances, false, accounts);
+            const back = `
+                <div class="acct-card-face acct-card-back">
+                    <div class="acct-back-title"><span>${escapeHtml(a.name)}</span>
+                        <button type="button" class="acct-flip-btn" data-click="flipAccountCard" data-id="${escapeHtml(a.id)}" aria-label="Back to card" title="Back">\u21a9</button>
+                    </div>
+                    ${rows.map(r => `<div class="acct-back-row"><span>${escapeHtml(r[0])}</span><span>${escapeHtml(r[1])}</span></div>`).join("")}
+                    ${extra ? `<div>${extra.replace(/^<br>/, "")}</div>` : ""}
+                </div>`;
+            return `<div class="acct-card-flip">${front}${back}</div>`;
+        }
+
+        function accountCardDetailHTML(a, accounts, txs, nativeBalances, fundsByAccountId, fdPlacementsByAccountId, selected) {
+            const id = a.id;
+            const monthPrefix = todayLocalStr().slice(0, 7);
+            let inSum = 0, outSum = 0;
+            const mine = txs.filter(t => t.src === id || t.dest === id);
+            mine.forEach(t => {
+                if (!t.date || String(t.date).slice(0, 7) !== monthPrefix) return;
+                if (String(t.desc || "").startsWith("Opening")) return;
+                const v = convertCurrency(t.amount || 0, t.currency, baseCurrency);
+                if (t.type === "income" && t.src === id) inSum += v;
+                else if (t.type === "expense" && t.src === id) outSum += v;
+                else if (t.type === "transfer") { if (t.src === id) outSum += v; if (t.dest === id) inSum += v; }
+            });
+            const recent = mine.slice().sort((x, y) => String(y.date || "").localeCompare(String(x.date || "")) || (Number(y.id) || 0) - (Number(x.id) || 0)).slice(0, 5);
+            const recentHTML = recent.length === 0
+                ? `<div class="acct-empty">No entries yet.</div>`
+                : recent.map(t => {
+                    const isIn = t.type === "income" || (t.type === "transfer" && t.dest === id && t.src !== id);
+                    const label = t.desc || t.cat || (t.type === "transfer" ? "Transfer" : t.type);
+                    return `<div class="acct-recent-row" data-click="openTransactionForm" data-type="${escapeHtml(t.type)}" data-id="${escapeHtml(String(t.id))}">
+                        <div class="acct-recent-main"><div class="acct-recent-desc">${escapeHtml(label)}</div><div class="acct-recent-date">${escapeHtml(String(t.date || ""))}</div></div>
+                        <div class="acct-recent-amt ${isIn ? "in" : "out"}">${isIn ? "+" : "\u2212"}${formatCurrency(t.amount || 0, t.currency)}</div>
+                    </div>`;
+                }).join("");
+
+            // Currency / fund / placement breakdown (same targets as the list view's subrows).
+            let subHTML = "";
+            if (a.type === "multi") {
+                const baskets = nativeBalances[a.id] || {};
+                const cur = Object.keys(baskets).sort();
+                if (cur.length) subHTML = cur.map(c => `
+                    <div class="config-item fund-subrow" style="cursor:pointer;" data-click="navigateToCurrencyActivityPage" data-id="${escapeHtml(a.id)}" data-currency="${escapeHtml(c)}" data-back="accounts">
+                        <span style="display:flex; align-items:center; gap:8px;">${currencyIconHTML(c)}<span>${escapeHtml(c)} <span style="color:var(--text-muted); font-weight:600;">\u2014 ${formatBalanceHTML(baskets[c], c)}</span></span></span>
+                        <span style="color:var(--text-muted);">\u203a</span>
+                    </div>`).join("");
+            } else if (a.type === "unittrust") {
+                const funds = (fundsByAccountId[a.id] || []).slice().sort((x, y) => x.name.localeCompare(y.name));
+                subHTML = funds.map(f => `
+                    <div class="config-item fund-subrow" style="cursor:pointer;" data-click="navigateToFundActivityPage" data-id="${escapeHtml(f.id)}" data-back="accounts">
+                        <span>${escapeHtml(f.name)} <span style="color:var(--text-muted); font-weight:600;">\u2014 ${formatBalanceHTML((f.units || 0) * (f.currentNav || 0), f.currency)}</span></span>
+                        <span style="color:var(--text-muted);">\u203a</span>
+                    </div>`).join("");
+            } else if (a.type === "fd") {
+                const pl = (fdPlacementsByAccountId[a.id] || []).slice().sort((x, y) => new Date(y.date) - new Date(x.date));
+                subHTML = pl.map(t => `
+                    <div class="config-item fund-subrow" style="cursor:pointer;" data-click="openTransactionForm" data-type="${escapeHtml(t.type)}" data-id="${escapeHtml(String(t.id))}">
+                        <span>Placement${t.fdReferenceNo ? ` (${escapeHtml(t.fdReferenceNo)})` : ""}<br><span style="color:var(--text-muted); font-weight:600;">${formatBalanceHTML(t.amount, t.currency)} \u00b7 Matures ${escapeHtml(t.fdMaturityDate)}</span></span>
+                        <span style="color:var(--text-muted);">\u203a</span>
+                    </div>`).join("");
+            }
+            const subTitle = a.type === "multi" ? "Currencies" : a.type === "unittrust" ? "Funds" : "Open placements";
+            const due = a.type === "creditcard" ? Math.max(0, -(nativeBalances[a.id] || 0)) : 0;
+            const canAdd = a.type !== "fd" && a.type !== "unittrust";
+            return `
+                <div class="acct-detail${selected ? "" : " hidden"}" data-detail-id="${escapeHtml(id)}">
+                    <div class="acct-detail-stats">
+                        <div class="acct-stat"><span>Money in \u00b7 this month</span><b style="color:var(--income-color);">${formatCurrency(inSum, baseCurrency)}</b></div>
+                        <div class="acct-stat"><span>Money out \u00b7 this month</span><b style="color:var(--expense-color);">${formatCurrency(outSum, baseCurrency)}</b></div>
+                    </div>
+                    <div class="acct-actions">
+                        ${canAdd ? `<button type="button" class="acct-act-btn primary" data-click="accountsCardAddEntry" data-id="${escapeHtml(id)}">+ Add entry</button>` : ""}
+                        ${due > 0.005 ? `<button type="button" class="acct-act-btn pay" data-click="openCreditCardPayment" data-id="${escapeHtml(id)}">\uD83D\uDCB3 Pay</button>` : ""}
+                        <button type="button" class="acct-act-btn" data-click="navigateToLedgerPage" data-id="${escapeHtml(id)}" data-back="accounts">Activity</button>
+                        <button type="button" class="acct-act-btn" data-click="editAccount" data-id="${escapeHtml(id)}">Edit</button>
+                    </div>
+                    ${subHTML ? `<div class="acct-sub-title">${subTitle}</div>${subHTML}` : ""}
+                    <div class="acct-sub-title">Recent</div>
+                    ${recentHTML}
+                </div>`;
+        }
+
+        function buildAccountsCardsHTML(sorted, accounts, txs, nativeBalances, fundsByAccountId, fdPlacementsByAccountId, filter) {
+            if (sorted.length === 0) {
+                return filter
+                    ? `<p style="color:var(--text-muted); text-align:center; padding:24px 0; font-size:0.85rem;">No ${escapeHtml(filter.label)} accounts yet.</p>`
+                    : `<p style="color:var(--text-muted); text-align:center; padding:24px 0; font-size:0.85rem;">No accounts yet \u2014 tap + to add one.</p>`;
+            }
+            const groupOf = a => a.group || DEFAULT_ACCOUNT_GROUP;
+            const groups = ACCOUNT_GROUPS.filter(g => sorted.some(a => groupOf(a) === g));
+            if (accountsCardGroup !== "all" && !groups.includes(accountsCardGroup)) accountsCardGroup = "all";
+            const visible = accountsCardGroup === "all" ? sorted : sorted.filter(a => groupOf(a) === accountsCardGroup);
+            if (!visible.some(a => a.id === accountsCardSelectedId)) accountsCardSelectedId = visible[0].id;
+
+            const chips = groups.length > 1
+                ? `<div class="acct-chips">
+                    <button type="button" class="acct-chip${accountsCardGroup === "all" ? " active" : ""}" data-click="selectAccountsCardGroup" data-group="all">All <span class="acct-chip-n">${sorted.length}</span></button>
+                    ${groups.map(g => `<button type="button" class="acct-chip${accountsCardGroup === g ? " active" : ""}" data-click="selectAccountsCardGroup" data-group="${escapeHtml(g)}">${escapeHtml(g)} <span class="acct-chip-n">${sorted.filter(a => groupOf(a) === g).length}</span></button>`).join("")}
+                   </div>`
+                : "";
+            const groupTotal = accountsCardGroup !== "all"
+                ? `<div class="acct-group-total">Group total \u00b7 ${escapeHtml(accountsCardGroup)}: ${formatBalanceHTML(visible.reduce((s, a) => s + accountBaseValue(a, nativeBalances), 0), baseCurrency)}</div>`
+                : "";
+            const slots = visible.map(a => `
+                <div class="acct-card-slot${a.id === accountsCardSelectedId ? " selected" : ""}" role="button" tabindex="0" aria-label="${escapeHtml(a.name)}" data-acct-id="${escapeHtml(a.id)}" data-click="selectAccountCard" data-id="${escapeHtml(a.id)}">
+                    ${accountCardFaceHTML(a, accounts, nativeBalances)}
+                </div>`).join("");
+            const selIdx = visible.findIndex(a => a.id === accountsCardSelectedId);
+            const dots = visible.length <= 10
+                ? `<div class="acct-dots" id="acctDots">${visible.map((a, i) => `<span class="acct-dot${i === selIdx ? " on" : ""}"></span>`).join("")}</div>`
+                : "";
+            const details = visible.map(a => accountCardDetailHTML(a, accounts, txs, nativeBalances, fundsByAccountId, fdPlacementsByAccountId, a.id === accountsCardSelectedId)).join("");
+            return `${chips}${groupTotal}
+                <div class="acct-cards-track" id="acctCardsTrack">${slots}</div>
+                <div class="acct-cards-meta"><span id="acctCardsCounter">${selIdx + 1} / ${visible.length}</span>${dots}</div>
+                ${details}`;
+        }
+
+        // Centres the selected card on first paint and keeps the selection in step with swiping.
+        function wireAccountsCardsTrack() {
+            const track = document.getElementById("acctCardsTrack");
+            if (!track) return;
+            const centerSlot = (slot, smooth) => {
+                if (!slot || !isAccountsCarouselMode()) return;
+                track.scrollTo({ left: slot.offsetLeft - (track.clientWidth - slot.offsetWidth) / 2, behavior: smooth ? "smooth" : "auto" });
+            };
+            const selSlot = Array.from(track.children).find(s => s.dataset.acctId === accountsCardSelectedId);
+            centerSlot(selSlot, false);
+            let raf = null;
+            track.addEventListener("scroll", () => {
+                if (raf || !isAccountsCarouselMode()) return;
+                raf = requestAnimationFrame(() => {
+                    raf = null;
+                    const mid = track.scrollLeft + track.clientWidth / 2;
+                    let best = null, bestDist = Infinity;
+                    Array.from(track.children).forEach(s => {
+                        const d = Math.abs(s.offsetLeft + s.offsetWidth / 2 - mid);
+                        if (d < bestDist) { bestDist = d; best = s; }
+                    });
+                    if (best && best.dataset.acctId !== accountsCardSelectedId) selectAccountCard(best.dataset.acctId, true);
+                });
+            }, { passive: true });
+            track.addEventListener("keydown", (e) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                const slot = e.target.closest && e.target.closest(".acct-card-slot");
+                if (!slot || e.target !== slot) return;
+                e.preventDefault();
+                selectAccountCard(slot.dataset.acctId, false);
+            });
+        }
+
+        // DOM-only selection change (no re-render): highlight, detail panel, counter, dots.
+        function selectAccountCard(id, fromScroll) {
+            if (!id) return;
+            accountsCardSelectedId = id;
+            const track = document.getElementById("acctCardsTrack");
+            if (!track) return;
+            const slots = Array.from(track.children);
+            slots.forEach(s => s.classList.toggle("selected", s.dataset.acctId === id));
+            document.querySelectorAll("#accountsPageList .acct-detail").forEach(d => d.classList.toggle("hidden", d.dataset.detailId !== id));
+            const idx = slots.findIndex(s => s.dataset.acctId === id);
+            const counter = document.getElementById("acctCardsCounter");
+            if (counter) counter.textContent = `${idx + 1} / ${slots.length}`;
+            document.querySelectorAll("#acctDots .acct-dot").forEach((d, i) => d.classList.toggle("on", i === idx));
+            if (!fromScroll && isAccountsCarouselMode() && idx >= 0) {
+                const slot = slots[idx];
+                track.scrollTo({ left: slot.offsetLeft - (track.clientWidth - slot.offsetWidth) / 2, behavior: "smooth" });
+            }
+        }
+        function flipAccountCard(el) {
+            const slot = el.closest(".acct-card-slot");
+            if (slot) slot.classList.toggle("flipped");
+        }
+        function accountsCardAddEntry(el) {
+            openTransactionForm("expense", null, el.dataset.id);
         }
 
         // Wired to the ▸/▾ caret on an Accounts-page row that has fund/currency/FD-placement
@@ -26796,6 +27077,11 @@
             navigateToLinkedAccountFromLedgerHeader: (el) => { if (el.dataset.id) navigateToLedgerPage(el.dataset.id, "workspace"); },
             exportLedgerCsv: () => exportLedgerCsv(),
             exportAccountsCsv: () => exportAccountsCsv(),
+            setAccountsViewMode: (el) => setAccountsViewMode(el), // v571
+            selectAccountsCardGroup: (el) => selectAccountsCardGroup(el), // v571
+            selectAccountCard: (el) => selectAccountCard(el.dataset.id, false), // v571
+            flipAccountCard: (el) => flipAccountCard(el), // v571
+            accountsCardAddEntry: (el) => accountsCardAddEntry(el), // v571
             exportInventoryCsv: () => exportInventoryCsv(),
             exportTotalSummaryCsv: () => exportTotalSummaryCsv(),
             exportTagReportCsv: () => exportTagReportCsv(), // v555

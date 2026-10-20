@@ -2867,6 +2867,75 @@
             flex-shrink: 0;
         }
         .account-card-metarow { margin-top: 3px; }
+
+        /* ===== v571: Accounts page "Cards" view ===== */
+        #accountsPageList.acct-cards-mode { gap: 0; margin-top: 4px; }
+        .acct-chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 10px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+        .acct-chips::-webkit-scrollbar { display: none; }
+        .acct-chip { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; border: 1.5px solid var(--border-color); background: var(--card-bg); color: var(--text-main); border-radius: 999px; padding: 6px 12px; font-size: 0.8rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+        .acct-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+        .acct-chip-n { font-size: 0.7rem; font-weight: 800; opacity: 0.75; font-variant-numeric: tabular-nums; }
+        .acct-group-total { font-size: 0.8rem; color: var(--text-muted); font-weight: 700; margin: 0 2px 10px; }
+        .acct-cards-track { position: relative; display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 6px 11% 10px; overscroll-behavior-x: contain; }
+        .acct-cards-track::-webkit-scrollbar { display: none; }
+        .acct-card-slot { flex: 0 0 78%; height: 178px; scroll-snap-align: center; perspective: 900px; transform: scale(0.94); opacity: 0.72; transition: transform .25s ease, opacity .25s ease; cursor: pointer; outline-offset: 3px; border-radius: 18px; }
+        .acct-card-slot.selected { transform: scale(1); opacity: 1; }
+        .acct-card-flip { position: relative; width: 100%; height: 100%; transition: transform .5s ease; transform-style: preserve-3d; }
+        .acct-card-slot.flipped .acct-card-flip { transform: rotateY(180deg); }
+        .acct-card-face { position: absolute; inset: 0; border-radius: 18px; padding: 14px 16px; backface-visibility: hidden; -webkit-backface-visibility: hidden; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18); }
+        .acct-card-front { color: #fff; }
+        .acct-card-front::after { content: ""; position: absolute; right: -40px; top: -40px; width: 140px; height: 140px; border-radius: 50%; background: rgba(255,255,255,0.12); pointer-events: none; }
+        .acct-card-back { transform: rotateY(180deg); background: var(--card-bg); color: var(--text-main); border: 1.5px solid var(--border-color); overflow-y: auto; font-size: 0.78rem; gap: 6px; }
+        .acct-card-top { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
+        .acct-card-top .account-avatar { width: 32px; height: 32px; border-radius: 10px; font-size: 0.85rem; box-shadow: 0 0 0 2px rgba(255,255,255,0.35); }
+        .acct-card-name { flex: 1; min-width: 0; font-weight: 800; font-size: 0.95rem; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+        .acct-flip-btn { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,0.6); background: rgba(255,255,255,0.18); color: #fff; font-size: 0.85rem; font-weight: 800; cursor: pointer; line-height: 1; padding: 0; }
+        .acct-card-back .acct-flip-btn { border-color: var(--border-color); background: var(--chip-bg); color: var(--text-main); }
+        .acct-card-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; position: relative; z-index: 1; }
+        .acct-card-pill { font-size: 0.66rem; font-weight: 800; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.22); white-space: nowrap; }
+        .acct-card-pill.dashed { background: transparent; border: 1.5px dashed rgba(255,255,255,0.8); }
+        .acct-card-bal { margin-top: auto; font-size: 1.45rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; position: relative; z-index: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .acct-card-sub { font-size: 0.72rem; font-weight: 700; opacity: 0.88; min-height: 1em; position: relative; z-index: 1; margin-top: 2px; }
+        .acct-card-foot { font-size: 0.7rem; font-weight: 700; opacity: 0.9; margin-top: 4px; position: relative; z-index: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .acct-back-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 800; font-size: 0.85rem; }
+        .acct-back-row { display: flex; justify-content: space-between; gap: 10px; }
+        .acct-back-row span:first-child { color: var(--text-muted); font-weight: 700; flex-shrink: 0; }
+        .acct-back-row span:last-child { font-weight: 700; text-align: right; min-width: 0; word-break: break-word; }
+        .acct-cards-meta { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 0.75rem; color: var(--text-muted); font-weight: 800; padding-bottom: 6px; }
+        .acct-dots { display: flex; gap: 5px; align-items: center; }
+        .acct-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border-color); }
+        .acct-dot.on { width: 16px; border-radius: 3px; background: var(--primary); }
+        .acct-detail { background: var(--card-bg); border: 1.5px solid var(--border-color); border-radius: 16px; padding: 14px; margin-top: 4px; }
+        .acct-detail-stats { display: flex; gap: 8px; margin-bottom: 12px; }
+        .acct-stat { flex: 1; min-width: 0; background: var(--chip-bg); border-radius: 12px; padding: 8px 10px; }
+        .acct-stat span { display: block; font-size: 0.68rem; font-weight: 700; color: var(--text-muted); }
+        .acct-stat b { display: block; font-size: 0.92rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .acct-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+        .acct-act-btn { flex: 1 1 auto; min-width: 84px; border: 1.5px solid var(--border-color); background: var(--card-bg); color: var(--text-main); border-radius: 10px; padding: 9px 10px; font-size: 0.8rem; font-weight: 800; cursor: pointer; }
+        .acct-act-btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+        .acct-act-btn.pay { background: #db2777; border-color: #db2777; color: #fff; }
+        .acct-sub-title { font-size: 0.74rem; font-weight: 800; color: var(--text-muted); margin: 10px 0 4px; }
+        .acct-detail .fund-subrow { margin-top: 6px; }
+        .acct-recent-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border-color); cursor: pointer; }
+        .acct-recent-row:first-of-type { border-top: none; }
+        .acct-recent-main { min-width: 0; }
+        .acct-recent-desc { font-size: 0.85rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .acct-recent-date { font-size: 0.7rem; color: var(--text-muted); font-weight: 600; }
+        .acct-recent-amt { font-size: 0.88rem; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .acct-recent-amt.in { color: var(--income-color); }
+        .acct-recent-amt.out { color: var(--expense-color); }
+        .acct-empty { color: var(--text-muted); font-size: 0.8rem; text-align: center; padding: 10px 0; }
+        @media (min-width: 821px) {
+            /* desktop: swiping makes no sense — cards wrap into a grid, click a card to select it */
+            .acct-cards-track { flex-wrap: wrap; overflow: visible; scroll-snap-type: none; padding: 6px 2px 14px; }
+            .acct-card-slot { flex: 0 0 280px; transform: none; opacity: 1; scroll-snap-align: none; }
+            .acct-card-slot.selected { box-shadow: 0 0 0 3px var(--primary); }
+            .acct-cards-meta { display: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .acct-card-flip, .acct-card-slot { transition: none; }
+        }
+
         /* v164: Account No./Ref — placed right under the name/type badge, ahead of owner tags
            etc. in .account-card-subline below. */
         .account-card-refline {
@@ -4287,6 +4356,12 @@
              #defaultAccountsSettingsPanel in page-datasecurity) — removed from here. -->
         <div class="section-header">
             <span class="section-title" id="accountsPageListTitle">All Accounts</span>
+        </div>
+        <!-- v571: List/Cards view toggle for the Accounts page. Per-device choice (localStorage),
+             see accountsViewMode in ledger.js. -->
+        <div class="nav-view-toggle" id="accountsViewToggle" style="margin:0 0 12px;">
+            <button type="button" class="nav-view-toggle-btn active" data-click="setAccountsViewMode" data-mode="list" style="flex:1;">📋 List</button>
+            <button type="button" class="nav-view-toggle-btn" data-click="setAccountsViewMode" data-mode="cards" style="flex:1;">🗂️ Cards</button>
         </div>
         <div id="accountsPageFilterHint" class="hidden" style="margin:-8px 0 12px; font-size:0.78rem;">
             <button class="text-btn" data-click="clearAccountsPageTypeFilter" style="padding:0;">Show All Accounts</button>

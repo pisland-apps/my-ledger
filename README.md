@@ -4256,3 +4256,25 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   `monthlyTrendBalanceCell`.
 - The Savings Statement tally now parses `t.date` as a local date (`T00:00:00`), like `computeMonthlyTrendData`, so the month
   net equals the table's Balance in every timezone. Bumped to v570.
+
+## v571: Accounts page — Cards view (swipe to choose an account)
+
+- New **List | Cards** toggle under the "All Accounts" title (Sidebar > Financial Accounts, also the type shortcuts). List is
+  unchanged. The choice is remembered **per device** (localStorage key `ledgerAccountsViewMode`, not in the synced settings or
+  Backup) so a phone can stay on Cards while the PC stays on List.
+- Cards view = group chips with counts (All · Bank/Cash · Credit Card · Multi-Currency · …, i.e. the existing account groups;
+  hidden when only one group is on screen, e.g. a sidebar type shortcut) + a group-total line when one group is selected +
+  a card per account + a detail panel for the selected card. Same account set, zero-balance hiding and sort as the list.
+- **Phone (<= 820px):** cards swipe sideways (CSS scroll-snap, neighbours peek in), counter "2 / 5" + dots (dots only up to 10
+  cards); tapping a side card centres it. **PC (> 820px):** cards wrap into a grid, click a card to select it (no carousel).
+- Card front: account name (2-line clamp), group/sub-group pill, balance in the account's own currency (+ base-currency
+  equivalent when different; Multi-Currency / Fixed Deposit / Unit Trust show the base total + "N currencies"), members, dashed
+  "Not in Net Worth" pill, credit cards show Amount due. Colour follows the account group (`ACCOUNT_CARD_GRADIENTS`).
+- **Flip:** the round **i** button (not a tap on the card, which selects) turns the card over to the low-frequency info:
+  account no., group/sub-group, currency, related account, members, plus the usual extra-info lines. **↩** flips back.
+- Detail panel (updates as you swipe, no re-render): money in / money out this month (base currency, transfers counted,
+  Opening Balance entries ignored), action buttons (+ Add entry pre-filled with the account, Pay for a credit card with an amount
+  due, Activity, Edit), currency / fund / FD-placement breakdown rows (same targets as the list), and the 5 most recent entries
+  (tap one to open it). "+ Add entry" is hidden for Fixed Deposit and Unit Trust accounts (they use their own flows).
+- Code: `buildAccountsCardsHTML`, `accountCardFaceHTML`, `accountCardDetailHTML`, `wireAccountsCardsTrack`, `selectAccountCard`,
+  `setAccountsViewMode`; branch at the top of `renderAccountsPage`. Bumped to v571 (APP_VERSION + sw.js CACHE_NAME).

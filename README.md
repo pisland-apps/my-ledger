@@ -4325,3 +4325,6 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - New global font picker (works under every theme preset, and beats the 蠟筆小新 Kalam toggle when set to a non-default choice). Stored in `localStorage["ledgerAppFont"]` (`default` | `kalam` | `shadows`), applied as `html[data-app-font]` (CSS beside the crayon font rule in index.html; mirrored in `theme-init.js` for first paint; re-asserted in `applyBgTheme()`).
 - New self-hosted font `fonts/shadows-into-light-two-400.woff2` (OFL, latin subset), added to the service-worker precache. Cache bumped to v577.
 - Screen only (`@media screen`): printed reports/PDF exports keep their normal fonts. Elements with an ID-scoped or inline font (Description Summary modal, Ledger Calendar day card, Kalam amounts) are unchanged.
+
+## v578: Fix App font buttons not responding
+- `selectAppFont` had been registered in `CHANGE_ACTIONS` instead of `CLICK_ACTIONS`, so the `data-click` buttons did nothing. Moved to `CLICK_ACTIONS`.

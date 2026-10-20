@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v577";
+        const APP_VERSION = "v578";
         const APP_VERSION_DATE = "2026-10-20";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -27161,6 +27161,7 @@
             navigateToDashboardWidgetsPage: () => navigateToDashboardWidgetsPage(),
             navigateToMonthlyTrendPage: () => navigateToMonthlyTrendPage(),
             selectBgTheme: (el) => selectBgTheme(el),
+            selectAppFont: (el) => selectAppFont(el), // v577 (click map — the font buttons use data-click)
             // v403: navigateToCompanionPage() has no data-click of its own anymore (Companion's
             // rail icon/page merged into Net Worth Card's) — it's still called directly from JS
             // by toggleCompanionSettingsFromDashboard()/toggleMonthlyTrendMascotSettingsFromDashboard()
@@ -27519,7 +27520,6 @@
             changeMonthlyTrendYear: (el) => changeMonthlyTrendYear(el),
             handleBgThemeAutoToggleChange: () => handleBgThemeAutoToggleChange(),
             handleCrayonFontToggleChange: () => handleCrayonFontToggleChange(),
-            selectAppFont: (el) => selectAppFont(el), // v577
             // v318: INVENTORY
             toggleTxInventoryFields: () => toggleTxInventoryFields(),
             // v468: INSURANCE — category change may reveal/hide the Policy row; currency change re-labels the payment total

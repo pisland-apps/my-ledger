@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v573";
+        const APP_VERSION = "v574";
         const APP_VERSION_DATE = "2026-10-20";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7200,7 +7200,11 @@
             return window.matchMedia("(max-width: 820px)").matches;
         }
         function syncAccountsViewToggle() {
-            document.querySelectorAll("#accountsViewToggle .nav-view-toggle-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === accountsViewMode));
+            document.querySelectorAll("#accountsViewToggle .acct-view-btn").forEach(b => {
+                const on = b.dataset.mode === accountsViewMode;
+                b.classList.toggle("active", on);
+                b.setAttribute("aria-pressed", on ? "true" : "false");
+            });
         }
         function setAccountsViewMode(el) {
             const mode = el.dataset.mode === "cards" ? "cards" : "list";
@@ -7304,20 +7308,24 @@
                 </div>`;
             // Back face: the low-frequency details (nothing needed for day-to-day use lives only here).
             const linkedAcc = a.linkedAccountId ? accounts.find(x => x.id === a.linkedAccountId) : null;
-            const rows = [];
-            if (a.accountRef) rows.push(["Account no.", a.accountRef]);
-            rows.push(["Group", group + (a.subgroup ? ` \u203a ${a.subgroup}` : "")]);
-            if (!isBasket) rows.push(["Currency", a.currency]);
-            if (linkedAcc) rows.push(["Related", accountOptionLabel(linkedAcc, accounts)]);
-            rows.push(["Members", foot]);
-            if (a.includeInNetWorth === false) rows.push(["Net Worth", "Excluded"]);
+            // Long values (account no., related account) get a full-width line with the label above; short ones
+            // (currency, members) sit side by side. The group is not repeated here — the chips already show it.
+            const field = (lbl, val) => `<div class="acct-back-field"><span class="lbl">${escapeHtml(lbl)}</span><span class="val">${escapeHtml(val)}</span></div>`;
+            const longRows = [];
+            if (a.accountRef) longRows.push(field("Account no.", a.accountRef));
+            if (linkedAcc) longRows.push(field("Related", accountOptionLabel(linkedAcc, accounts)));
+            const shortRows = [];
+            if (!isBasket) shortRows.push(field("Currency", a.currency));
+            shortRows.push(field("Members", foot));
+            if (a.includeInNetWorth === false) shortRows.push(field("Net Worth", "Excluded"));
             const extra = accountExtraInfoLine(a, nativeBalances, false, accounts);
             const back = `
                 <div class="acct-card-face acct-card-back" data-click="flipAccountCard" data-id="${escapeHtml(a.id)}">
                     <div class="acct-back-title"><span>${escapeHtml(a.name)}</span>
                         <button type="button" class="acct-flip-btn" data-click="flipAccountCard" data-id="${escapeHtml(a.id)}" aria-label="Back to card" title="Back">\u21a9</button>
                     </div>
-                    ${rows.map(r => `<div class="acct-back-row"><span>${escapeHtml(r[0])}</span><span>${escapeHtml(r[1])}</span></div>`).join("")}
+                    ${longRows.join("")}
+                    <div class="acct-back-pair">${shortRows.join("")}</div>
                     ${extra ? `<div>${extra.replace(/^<br>/, "")}</div>` : ""}
                     <div class="acct-back-hint">Tap anywhere to flip back</div>
                 </div>`;

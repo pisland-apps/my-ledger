@@ -2940,6 +2940,20 @@
         .acct-jump { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; background: var(--card-bg); border: 1.5px solid var(--border-color); border-radius: 14px; padding: 6px; margin-bottom: 8px; }
         .acct-jump-item { text-align: left; border: none; background: transparent; color: var(--text-main); padding: 9px 10px; border-radius: 8px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
         .acct-jump-item:active { background: var(--chip-bg); }
+
+        /* v574: icon-only List | Cards switch in the Accounts header; wider cards; roomier card back */
+        .acct-view-switch { display: inline-flex; flex-shrink: 0; border: 1.5px solid var(--border-color); border-radius: 12px; overflow: hidden; background: var(--card-bg); }
+        .acct-view-btn { display: flex; align-items: center; justify-content: center; width: 38px; height: 36px; border: none; background: transparent; color: var(--text-muted); cursor: pointer; padding: 0; }
+        .acct-view-btn + .acct-view-btn { border-left: 1.5px solid var(--border-color); }
+        .acct-view-btn.active { background: var(--primary); color: #fff; }
+        .acct-cards-track { padding-left: 8%; padding-right: 8%; }
+        .acct-card-slot { flex-basis: 84%; }
+        .acct-card-back { padding: 12px 14px; gap: 7px; scrollbar-width: none; }
+        .acct-card-back::-webkit-scrollbar { display: none; }
+        .acct-back-field { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+        .acct-back-field .lbl { font-size: 0.66rem; font-weight: 700; color: var(--text-muted); }
+        .acct-back-field .val { font-size: 0.86rem; font-weight: 800; word-break: break-word; }
+        .acct-back-pair { display: flex; gap: 18px; flex-wrap: wrap; }
         @media (min-width: 821px) {
             /* desktop: swiping makes no sense — cards wrap into a grid, click a card to select it */
             .acct-cards-track { flex-wrap: wrap; overflow: visible; scroll-snap-type: none; padding: 6px 2px 14px; }
@@ -4360,7 +4374,14 @@
             <button class="back-btn" data-click="handleAccountsBackClick">&larr; Back</button>
             <div style="flex:1;">
                 <h3 style="font-weight:800; font-size:1.2rem;">Accounts</h3>
-                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Tap an account to view its activity</p>
+                <p id="accountsPageListTitle" style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">All Accounts</p>
+            </div>
+            <!-- v574: List | Cards switch, icon-only, beside the export button (was a full-width row under the
+                 title). Per-device choice, see accountsViewMode in ledger.js. The page-list title now lives in the
+                 subtitle line above (shows "All Accounts" or the sidebar type-shortcut name). -->
+            <div class="acct-view-switch" id="accountsViewToggle" role="group" aria-label="Accounts view">
+                <button type="button" class="acct-view-btn active" data-click="setAccountsViewMode" data-mode="list" aria-label="List view" aria-pressed="true" title="List view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg></button>
+                <button type="button" class="acct-view-btn" data-click="setAccountsViewMode" data-mode="cards" aria-label="Card view" aria-pressed="false" title="Card view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="3"/><line x1="2" y1="10" x2="22" y2="10"/></svg></button>
             </div>
             <!-- v336: exports whichever list is currently on screen (all accounts, or a sidebar
                  type-shortcut like "Fixed Deposit") — see exportAccountsCsv()'s own comment. -->
@@ -4369,15 +4390,6 @@
 
         <!-- v227: Default Payment/Receive Account pickers moved to Sidebar → Settings (see
              #defaultAccountsSettingsPanel in page-datasecurity) — removed from here. -->
-        <div class="section-header">
-            <span class="section-title" id="accountsPageListTitle">All Accounts</span>
-        </div>
-        <!-- v571: List/Cards view toggle for the Accounts page. Per-device choice (localStorage),
-             see accountsViewMode in ledger.js. -->
-        <div class="nav-view-toggle" id="accountsViewToggle" style="margin:0 0 12px;">
-            <button type="button" class="nav-view-toggle-btn active" data-click="setAccountsViewMode" data-mode="list" style="flex:1;">📋 List</button>
-            <button type="button" class="nav-view-toggle-btn" data-click="setAccountsViewMode" data-mode="cards" style="flex:1;">🗂️ Cards</button>
-        </div>
         <div id="accountsPageFilterHint" class="hidden" style="margin:-8px 0 12px; font-size:0.78rem;">
             <button class="text-btn" data-click="clearAccountsPageTypeFilter" style="padding:0;">Show All Accounts</button>
         </div>

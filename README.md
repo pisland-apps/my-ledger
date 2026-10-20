@@ -4299,3 +4299,13 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
   re-rendered, which rebuilt the row at scroll 0). The row's sideways scroll is now saved before the re-render and restored after
   it (`saveAccountsChipScroll` / `restoreAccountsChipScroll`), and the active pill is kept in view. Picking a different group
   starts the new sub-group row at the left. Bumped to v573.
+
+## v574: Accounts header — icon-only List | Cards switch, wider cards, roomier card back
+
+- The List | Cards switch is now icon-only (list icon | card icon, active one highlighted) in the Accounts header, beside the
+  📤 export button; the full-width toggle row, the "ALL ACCOUNTS" row and the "Tap an account to view its activity" line are
+  gone. The page title ("All Accounts", or the sidebar type-shortcut name) is now the header's subtitle line
+  (`#accountsPageListTitle`). Same per-device choice (`ledgerAccountsViewMode`).
+- Cards are 84% of the screen wide (was 78%), side padding 8%, so neighbours still peek in.
+- Card back: Account no. and Related account get a full-width line (label above value); Currency / Members / Net Worth sit side
+  by side; the Group row was dropped (the chips show it); scrollbar hidden. Bumped to v574.

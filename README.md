@@ -4309,3 +4309,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Cards are 84% of the screen wide (was 78%), side padding 8%, so neighbours still peek in.
 - Card back: Account no. and Related account get a full-width line (label above value); Currency / Members / Net Worth sit side
   by side; the Group row was dropped (the chips show it); scrollbar hidden. Bumped to v574.
+
+## v575: Cards view on PC — one-row carousel instead of a grid
+
+- On PC (> 820px) the cards used to wrap into a grid, so with 50+ accounts the detail panel was far below the fold. PC now uses
+  the same one-row carousel as the phone (fixed 280px cards, first / last card can still centre), with **‹ ›** buttons beside the
+  counter and **←/→** keys (focus a card first); the counter list, ↺ First and the chips work the same way. Phone unchanged.
+  `isAccountsCarouselMode()` is now always true; step action `accountsCardStep`. Bumped to v575.

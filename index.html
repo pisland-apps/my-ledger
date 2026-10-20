@@ -2954,12 +2954,14 @@
         .acct-back-field .lbl { font-size: 0.66rem; font-weight: 700; color: var(--text-muted); }
         .acct-back-field .val { font-size: 0.86rem; font-weight: 800; word-break: break-word; }
         .acct-back-pair { display: flex; gap: 18px; flex-wrap: wrap; }
+        .acct-step-btn { display: none; }
         @media (min-width: 821px) {
-            /* desktop: swiping makes no sense — cards wrap into a grid, click a card to select it */
-            .acct-cards-track { flex-wrap: wrap; overflow: visible; scroll-snap-type: none; padding: 6px 2px 14px; }
-            .acct-card-slot { flex: 0 0 280px; transform: none; opacity: 1; scroll-snap-align: none; }
-            .acct-card-slot.selected { box-shadow: 0 0 0 3px var(--primary); }
-            .acct-cards-meta { display: none; }
+            /* v575: desktop keeps the one-row carousel (a grid of 50+ cards pushed the detail panel far below the
+               fold). Fixed-width cards, first/last card can still centre, ‹ › buttons + arrow keys replace swiping. */
+            .acct-card-slot { flex: 0 0 280px; }
+            .acct-cards-track { padding-left: calc(50% - 140px); padding-right: calc(50% - 140px); }
+            .acct-step-btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 30px; border: 1.5px solid var(--border-color); background: var(--card-bg); color: var(--text-main); border-radius: 999px; font-size: 1.05rem; font-weight: 800; cursor: pointer; padding: 0; }
+            .acct-step-btn:hover { background: var(--chip-bg); }
         }
         @media (prefers-reduced-motion: reduce) {
             .acct-card-flip, .acct-card-slot { transition: none; }

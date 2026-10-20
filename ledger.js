@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v574";
+        const APP_VERSION = "v575";
         const APP_VERSION_DATE = "2026-10-20";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7197,7 +7197,7 @@
             return amount < 0 ? `\u2212${formatCurrency(Math.abs(amount), curr)}` : formatCurrency(amount, curr);
         }
         function isAccountsCarouselMode() {
-            return window.matchMedia("(max-width: 820px)").matches;
+            return true; // v575: phone and PC both use the one-row carousel (PC gets ‹ › buttons and arrow keys)
         }
         function syncAccountsViewToggle() {
             document.querySelectorAll("#accountsViewToggle .acct-view-btn").forEach(b => {
@@ -7261,6 +7261,15 @@
             selectAccountCard(el.dataset.id, false);
         }
         // v572: on the last card, "↺ First" scrolls back to card 1 (no auto-loop, so the end of the list stays visible)
+        // v575: ‹ › buttons (PC) — select the previous / next card in the current list
+        function accountsCardStep(el) {
+            const track = document.getElementById("acctCardsTrack");
+            if (!track) return;
+            const slots = Array.from(track.children);
+            const i = slots.findIndex(s => s.dataset.acctId === accountsCardSelectedId);
+            const j = Math.min(slots.length - 1, Math.max(0, i + (Number(el.dataset.dir) || 0)));
+            if (j !== i && slots[j]) selectAccountCard(slots[j].dataset.acctId, false);
+        }
         function accountsCardGoFirst() {
             const track = document.getElementById("acctCardsTrack");
             if (!track || !track.children.length) return;
@@ -7460,9 +7469,11 @@
             return `${chips}${subRow}${groupTotal}
                 <div class="acct-cards-track" id="acctCardsTrack">${slots}</div>
                 <div class="acct-cards-meta">
+                    <button type="button" class="acct-step-btn" data-click="accountsCardStep" data-dir="-1" aria-label="Previous card" title="Previous card">\u2039</button>
                     <button type="button" class="acct-counter-btn" id="acctCardsCounter" data-click="accountsCardCounterTap" aria-label="Choose a card from the list">${selIdx + 1} / ${visible.length}</button>
                     ${dots}
                     <button type="button" class="acct-first-btn${isLast ? "" : " hidden"}" id="acctFirstBtn" data-click="accountsCardGoFirst">\u21ba First</button>
+                    <button type="button" class="acct-step-btn" data-click="accountsCardStep" data-dir="1" aria-label="Next card" title="Next card">\u203a</button>
                 </div>
                 ${jump}
                 ${details}`;
@@ -7494,6 +7505,13 @@
                 });
             }, { passive: true });
             track.addEventListener("keydown", (e) => {
+                if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                    e.preventDefault();
+                    accountsCardStep({ dataset: { dir: e.key === "ArrowLeft" ? "-1" : "1" } });
+                    const cur = Array.from(track.children).find(s => s.dataset.acctId === accountsCardSelectedId);
+                    if (cur) cur.focus({ preventScroll: true });
+                    return;
+                }
                 if (e.key !== "Enter" && e.key !== " ") return;
                 const slot = e.target.closest && e.target.closest(".acct-card-slot");
                 if (!slot || e.target !== slot) return;
@@ -27179,6 +27197,7 @@
             accountsCardCounterTap: () => accountsCardCounterTap(), // v572
             accountsCardJump: (el) => accountsCardJump(el), // v572
             accountsCardGoFirst: () => accountsCardGoFirst(), // v572
+            accountsCardStep: (el) => accountsCardStep(el), // v575
             exportInventoryCsv: () => exportInventoryCsv(),
             exportTotalSummaryCsv: () => exportTotalSummaryCsv(),
             exportTagReportCsv: () => exportTagReportCsv(), // v555

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v582";
+        const APP_VERSION = "v583";
         const APP_VERSION_DATE = "2026-10-21";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -26798,6 +26798,12 @@
             if (!resp.ok) throw new Error(`Drive primary write failed (${resp.status})`);
         }
 
+        // v583: last known "this device is primary" answer, kept in localStorage so the dashboard star shows
+        // straight after a relaunch / while offline, until the next Drive check says otherwise.
+        const DRIVE_PRIMARY_ME_KEY = "ledgerDrivePrimaryMe";
+        function drivePrimaryMeRemembered() { try { return localStorage.getItem(DRIVE_PRIMARY_ME_KEY) === "1"; } catch (e) { return false; } }
+        function rememberDrivePrimaryMe(isMe) { try { if (isMe) localStorage.setItem(DRIVE_PRIMARY_ME_KEY, "1"); else localStorage.removeItem(DRIVE_PRIMARY_ME_KEY); } catch (e) { /* non-fatal */ } }
+        function drivePrimaryIsMe() { return drivePrimaryState.status === "me" || (drivePrimaryState.status === "unknown" && drivePrimaryMeRemembered()); }
         function setDrivePrimaryState(rec) {
             drivePrimaryRecCache = { rec: rec || null, at: Date.now() };
             const me = getDriveDeviceId();
@@ -26805,6 +26811,7 @@
             else if (rec.mode === "any") drivePrimaryState = { status: "any", deviceName: "" };
             else if (rec.deviceId === me) drivePrimaryState = { status: "me", deviceName: rec.deviceName || getDriveDeviceName() };
             else drivePrimaryState = { status: "other", deviceName: rec.deviceName || "Another device" };
+            rememberDrivePrimaryMe(drivePrimaryState.status === "me"); // v583
             renderDrivePrimaryUI();
         }
 
@@ -27579,6 +27586,7 @@
             else if (driveBlockedByPrimary && driveDirtyStoreSet.size > 0) text = "☁ " + (drivePrimaryState.deviceName || "Another device") + " is primary — upload manually";
             else if (driveAutoSyncPending || driveDirtyStoreSet.size > 0) text = "☁ Waiting to upload…";
             else text = t ? "☁ Synced " + t : "☁ Not synced yet";
+            if (drivePrimaryIsMe()) text = "⭐ " + text; // v583: this device is the primary — star only, no extra text
             el.classList.remove("hidden");
             el.classList.toggle("warn", warn);
             if (text !== driveStatusLineText) { driveStatusLineText = text; el.textContent = text; }
@@ -27588,8 +27596,9 @@
         function driveStatusLineTap() {
             const waiting = !driveSyncInFlight && !driveSyncPauseState && (driveDirtyStoreSet.size > 0 || driveSyncErrorNote);
             if (waiting) { kickDriveSyncIfDirty(); showToast("☁ Trying to upload now…"); }
-            else if (driveLastSyncedAtShown) { const d = new Date(driveLastSyncedAtShown); showToast(`☁ Last synced ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`); }
+            else if (driveLastSyncedAtShown) { const d = new Date(driveLastSyncedAtShown); showToast(`☁ Last synced ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` + (drivePrimaryIsMe() ? " · ⭐ primary device" : "")); }
             updateDriveStatusLine();
+            refreshDrivePrimaryUI(); // v583: re-check who is primary (fixes a stale star if another device took over)
         }
 
         function updateDriveLastSyncedText(lastSyncedAt) {

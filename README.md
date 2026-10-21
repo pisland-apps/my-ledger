@@ -4350,3 +4350,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Until someone chooses a primary device (Settings → Google Drive → *Advanced: multi-device sync* → Make This Device Primary, or Allow All Devices), uploads use the **original single-file backup with images embedded**, exactly like v578 — no per-image files, no behaviour change for people who haven't opted in. The record in `ledger-primary.json` is the switch: once it exists, every device on that Google account uploads the slim format. Pulling always understands both formats.
 - The first opt-in shows a warning: every device on that account must already run this version (an older one would clear its local images when it pulls the slim format).
 - The new controls live in a collapsed *Advanced* section; Clean Up Unused Images is in there too (it needs the new format). Cache bumped to v582.
+
+## v583: ⭐ on the dashboard sync line when this device is the primary
+- The small Drive status line under the Dashboard header now starts with a ⭐ when this device is the primary device (e.g. "⭐ ☁ Synced 09:15 AM"). No extra text, no new icon; it appears in every state of that line (syncing, waiting, warnings). Nothing changes for devices that are not primary, when no primary is set, or when Drive isn't connected (the line is hidden then, as before).
+- The last known answer is remembered in `localStorage["ledgerDrivePrimaryMe"]` so the star shows straight after a relaunch or while offline, until the next Drive check updates it. Tapping the line now also re-checks who is primary (so a stale star clears if another device took over) and the "Last synced" toast adds "· ⭐ primary device".
+- Cache bumped to v583.

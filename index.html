@@ -2441,6 +2441,11 @@
         .tagrep-date span { display: block; margin-top: 2px; font-size: 0.62rem; font-weight: 700; color: var(--text-muted); }
         .tagrep-main { flex: 1; min-width: 0; }
         .tagrep-title { font-size: 0.95rem; font-weight: 500; line-height: 1.35; color: var(--text-main); overflow-wrap: anywhere; }
+        /* v586: with the "Long Cang" Chinese font (one weight only: 400) a 500 title stays at the font's thin natural stroke and looks
+           small and light next to the English; 600 makes the browser thicken the strokes — the same look Inventory item names get
+           (.item-name is 600). The system Chinese font (YaHei) has no 600, so there the title stays at 500 (see v563). Screen only,
+           like the Chinese font itself. */
+        @media screen { html[data-zh-font="longcang"] .tagrep-title { font-weight: 600; } }
         .tagrep-note { margin-top: 2px; font-size: 0.8rem; line-height: 1.4; color: var(--text-muted); overflow-wrap: anywhere; }
         .tagrep-meta { margin-top: 3px; font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
         .tagrep-amtcol { flex-shrink: 0; margin-left: auto; text-align: right; }

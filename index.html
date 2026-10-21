@@ -5930,6 +5930,18 @@
                     <div class="util-row" style="margin-top:8px;">
                         <button class="btn-util" data-click="openDriveSnapshotsModal">🗂️ Local Snapshots</button>
                     </div>
+                    <details style="margin-top:10px;">
+                        <summary style="font-size:0.78rem; font-weight:700; cursor:pointer;">🧪 Advanced: multi-device sync</summary>
+                        <p style="font-size:0.7rem; color:var(--text-muted); margin:6px 0;">Off by default. Turning it on (by choosing a primary device) switches this Google account's Drive backup to the newer format, where each image is its own file so syncs only send what changed. Update every device that uses this account first.</p>
+                        <p id="drivePrimaryText" style="font-size:0.72rem; color:var(--text-muted); margin:0 0 6px;">Primary device: checking…</p>
+                        <div class="util-row">
+                            <button class="btn-util" data-click="makeThisDevicePrimary">⭐ Make This Device Primary</button>
+                            <button class="btn-util" data-click="allowAllDevicesToUpload">🔓 Allow All Devices</button>
+                        </div>
+                        <div class="util-row" style="margin-top:8px;">
+                            <button class="btn-util" data-click="cleanUpUnusedDriveImages">🧹 Clean Up Unused Images</button>
+                        </div>
+                    </details>
                 </div>
             </div>
             <div class="widget-setting-card">

@@ -4328,3 +4328,25 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 ## v578: Fix App font buttons not responding
 - `selectAppFont` had been registered in `CHANGE_ACTIONS` instead of `CLICK_ACTIONS`, so the `data-click` buttons did nothing. Moved to `CLICK_ACTIONS`.
+
+## v579: Google Drive sync — images as separate files, primary device, manual-upload guard
+- **Images no longer travel inside `ledger-backup.json`.** The Drive data file is now "slim" (`attachmentsExternal: true` + `attachmentIds`); each attachment is its own AES-GCM encrypted file `ledger-img-<attachmentId>.json` in the appDataFolder (own random IV per file; key = passcode + a per-device salt written into the file, cached so PBKDF2 runs once per salt per session). A sync lists the Drive images once and uploads only the ones Drive lacks — *before* the data file, so the data file never lists an image that isn't there. Restore keeps blobs the device already has, prunes ones the backup no longer lists (that's how a delete on the phone reaches the PC) and downloads only the missing ones.
+- While a pull is still fetching images, `driveImgPullIncomplete` (persisted) blocks Drive uploads and file exports, so half-downloaded images can't be dropped from a later backup. Retried by the next Restore Latest / auto-pull.
+- **Primary device** (`ledger-primary.json` in the appDataFolder; `mode: "primary" | "any"`): only the primary auto-uploads; others still auto-pull and can upload manually. No record yet → nothing is restricted (changed in v581; v579/v580 let the first auto-uploading device claim it). Settings → Google Drive has *Make This Device Primary* / *Allow All Devices*. Soft lock (Drive doesn't enforce it).
+- **Manual "Upload to Drive" guard:** warns before overwriting when Drive changed since this device last synced, or when another device is the primary.
+- Passcode change rotates the image salt and re-uploads every image on the next sync.
+- Old-format Drive backups (images embedded) still restore normally. **Update every device to v579 before the first sync from a v579 device** — v578 would read the slim file as "no images" and clear its local ones.
+- Not in this version: purging orphaned images from Drive (deleted images stay in Drive for now). Cache bumped to v579.
+
+## v580: Settings > Google Drive > "Clean Up Unused Images" (button only)
+- Deletes Drive image files that no backup lists any more **and** that have been unused for 30+ days. Drive doesn't record when an image became unused, so the first run that notices an unused image writes the date to `ledger-orphans.json` (appDataFolder); images used again are dropped from that record. A first run therefore deletes nothing — it starts the clock.
+- Preconditions (otherwise it explains and stops): primary device (or no primary), no unsynced local changes, no unfinished image pull, this device already on Drive's latest backup, Drive backup in the new slim format. It decides from Drive's own data file (decrypted), and treats an image as used if its id appears anywhere in that data. Safety stop if the backup lists no images but this device has some.
+- Preview + confirm before deleting (count and size, how many newer ones are kept); re-checks that Drive hasn't changed while the dialog was open. A mistaken purge heals itself if some device still has the image locally (the next upload re-sends it). Cache bumped to v580.
+
+## v581: Primary device is opt-in
+- With no `ledger-primary.json` record, every device auto-uploads exactly as before v579 — a device no longer claims "primary" by itself. The restriction only starts when someone taps *Make This Device Primary* (Settings → Google Drive). Reason: family members who weren't told about the feature, using their own devices/accounts, must see no behaviour change. Cache bumped to v581.
+
+## v582: new Drive image format is opt-in too
+- Until someone chooses a primary device (Settings → Google Drive → *Advanced: multi-device sync* → Make This Device Primary, or Allow All Devices), uploads use the **original single-file backup with images embedded**, exactly like v578 — no per-image files, no behaviour change for people who haven't opted in. The record in `ledger-primary.json` is the switch: once it exists, every device on that Google account uploads the slim format. Pulling always understands both formats.
+- The first opt-in shows a warning: every device on that account must already run this version (an older one would clear its local images when it pulls the slim format).
+- The new controls live in a collapsed *Advanced* section; Clean Up Unused Images is in there too (it needs the new format). Cache bumped to v582.

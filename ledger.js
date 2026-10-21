@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v578";
-        const APP_VERSION_DATE = "2026-10-20";
+        const APP_VERSION = "v582";
+        const APP_VERSION_DATE = "2026-10-21";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -1080,6 +1080,7 @@
                 const verifier = await aesEncryptString(newKey, VERIFIER_PLAINTEXT);
                 saveLockConfig({ salt: newSaltB64, iterations: PBKDF2_ITERATIONS, verifierIv: verifier.iv, verifierData: verifier.data });
                 currentPasscode = newVal;
+                resetDriveImageKeys(); // v579: Drive image files were encrypted under the old passcode — re-upload them
 
                 // Biometric unlock wraps the OLD passcode text with a PRF-derived key (see
                 // enableBiometricUnlock above) — that wrapped value is now stale, since unlocking
@@ -25222,7 +25223,19 @@
         // bundle object without duplicating this list of stores. exportBackup() itself still
         // does its own encryption/plaintext-confirmation/filename/download steps right after
         // calling this — nothing about the file-export flow changes.
-        async function buildBackupBundle() {
+        // v579: opts.slim = Google Drive upload shape — no image bytes, just attachmentIds (the images
+        // travel as their own Drive files, see syncImagesToDrive()). opts.allowIncomplete = local
+        // safety snapshots may be taken even while a Drive image pull is unfinished. A normal call
+        // (file export) is refused while images are missing locally, so a backup file can never
+        // silently come out without them.
+        async function buildBackupBundle(opts) {
+            opts = opts || {};
+            if (!opts.slim && !opts.allowIncomplete && driveImgPullIncomplete) {
+                throw new Error("Some images are still being downloaded from Google Drive. Tap Restore Latest in Settings → Google Drive to finish, then try again.");
+            }
+            const attachmentFields = opts.slim
+                ? { attachments: [], attachmentsExternal: true, attachmentIds: await getAllKeysDB(STORES.ATTACHMENTS) }
+                : { attachments: await readAllDB(STORES.ATTACHMENTS) };
             return {
                 accounts: await readAllDB(STORES.ACCOUNTS),
                 transactions: await readAllDB(STORES.TRANSACTIONS),
@@ -25233,7 +25246,7 @@
                 // v121: attachment file blobs (id/name/mime/data) referenced by transactions'
                 // own `attachments` arrays — without this, a restored backup's transactions
                 // would still list attachments, but tapping one would fail to load.
-                attachments: await readAllDB(STORES.ATTACHMENTS),
+                ...attachmentFields,
                 // v227: reusable Income/Expense transaction templates (see openTemplateFormModal()).
                 templates: await readAllDB(STORES.TEMPLATES),
                 // v257: trip/claim tag definitions (see renderTagsPage()) — the transactions
@@ -25283,7 +25296,9 @@
         }
 
         async function exportBackup(forceEncrypted = false) {
-            const bundle = await buildBackupBundle();
+            let bundle;
+            try { bundle = await buildBackupBundle(); }
+            catch (err) { alert(err && err.message ? err.message : String(err)); return; }
 
             const toggle = document.getElementById("exportEncryptToggle");
             const wantsEncryption = forceEncrypted ? true : (toggle ? toggle.checked : true); // encrypted-by-default
@@ -25421,7 +25436,7 @@
                     if (db.objectStoreNames.contains(STORES.NAV_HISTORY)) {
                         await clearStoreDB(STORES.NAV_HISTORY);
                     }
-                    if (db.objectStoreNames.contains(STORES.ATTACHMENTS)) {
+                    if (db.objectStoreNames.contains(STORES.ATTACHMENTS) && !bundle.attachmentsExternal) {
                         await clearStoreDB(STORES.ATTACHMENTS);
                     }
                     if (db.objectStoreNames.contains(STORES.TEMPLATES)) {
@@ -25484,7 +25499,13 @@
                     // v121: attachment blobs — written with their ORIGINAL ids (v296: transactions
                     // now do too, see the comment above) so each restored transaction's own
                     // `attachments[].id` refs keep resolving correctly.
-                    if (bundle.attachments) {
+                    if (bundle.attachmentsExternal) {
+                        // v579: slim Drive bundle — keep the image blobs this device already has,
+                        // drop the ones the backup no longer lists (that's how a delete made on
+                        // another device reaches this one); the missing ones are fetched from Drive
+                        // right after by pullMissingDriveImages().
+                        await pruneLocalAttachments(bundle.attachmentIds || []);
+                    } else if (bundle.attachments) {
                         for (const att of bundle.attachments) await writeDB(STORES.ATTACHMENTS, att);
                     }
                     // v227: reusable Income/Expense transaction templates — absent on older backups,
@@ -26015,6 +26036,13 @@
         const GOOGLE_CLIENT_ID = "285114774867-demqcuh6htn67926nim8iqc5jsl4grdd.apps.googleusercontent.com";
         const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
         const DRIVE_BACKUP_FILENAME = "ledger-backup.json";
+        // v579: images are no longer packed inside ledger-backup.json. Each attachment is its own
+        // encrypted file in the appDataFolder, named after its attachment id, so a sync only
+        // uploads/downloads the images the other side doesn't have yet. ledger-primary.json is a
+        // tiny plaintext record saying which device is allowed to auto-upload.
+        const DRIVE_IMG_PREFIX = "ledger-img-";
+        const DRIVE_IMG_SUFFIX = ".json";
+        const DRIVE_PRIMARY_FILENAME = "ledger-primary.json";
         const DRIVE_AUTOSYNC_DEBOUNCE_MS = 4000;
 
         let driveTokenClient = null;
@@ -26079,6 +26107,17 @@
         // looked at later instead of having to reason from a single live case. See
         // enterDriveSyncPause()/the resolve* functions for what gets written into an entry.
         let driveConflictLog = [];
+        // v579: true from the moment a pull starts replacing this device's data with a slim
+        // (images-separate) backup until every image it references has been fetched or confirmed
+        // missing from Drive. Persisted, so an app restart mid-download can't lead to an upload
+        // that silently drops the not-yet-downloaded images. Uploads/file exports refuse while set.
+        let driveImgPullIncomplete = false;
+        // v579: what the last primary-device check found. status: "unknown" | "none" | "any" | "me" | "other"
+        let drivePrimaryState = { status: "unknown", deviceName: "" };
+        let driveBlockedByPrimary = false;
+        // v582: last primary record seen (rec === null = none). A record in Drive is what switches this Google
+        // account to the new image-per-file backup format; no record = the original single-file backup.
+        let drivePrimaryRecCache = { rec: null, at: 0 };
 
         // Small helper for every "this write is Drive-sync's own bookkeeping, not a real local
         // edit" write (driveDirtyStoreSet, driveLastKnownRemoteRev, driveSyncPauseState,
@@ -26142,6 +26181,8 @@
             // exact "auto-sync might clobber something" window this feature exists to close.
             const storedDirty = await readKeyDB("settings", "driveDirtyStoreSet");
             driveDirtyStoreSet = new Set(storedDirty && Array.isArray(storedDirty.value) ? storedDirty.value : []);
+            const storedImgIncomplete = await readKeyDB("settings", "driveImgPullIncomplete");
+            driveImgPullIncomplete = !!(storedImgIncomplete && storedImgIncomplete.value);
             const storedRemoteRev = await readKeyDB("settings", "driveLastKnownRemoteRev");
             driveLastKnownRemoteRev = storedRemoteRev ? (storedRemoteRev.value || null) : null;
             const storedPause = await readKeyDB("settings", "driveSyncPauseState");
@@ -26332,6 +26373,7 @@
         async function manualSyncGoogleDrive(btnEl) {
             setButtonBusy("manualSyncGoogleDrive", btnEl, true);
             try {
+                if (!(await confirmManualDriveUpload())) return;
                 await uploadBackupToDrive();
                 showToast("☁️ Uploaded to Google Drive");
             } catch (err) {
@@ -26513,6 +26555,521 @@
             return driveFileId;
         }
 
+        // ===== v579: per-image Drive files + primary device ============================================
+        // All image traffic goes through the helpers below. Design notes:
+        //  * File name = attachment id (ledger-img-<id>.json), so "what's missing" is a plain list
+        //    comparison: upload = local ids − Drive ids, download = backup's ids − local ids.
+        //  * Every image file is its own AES-GCM message with its OWN random IV (aesEncryptString()
+        //    makes a fresh one per call). The key is derived from the passcode + a per-device salt that
+        //    is written into each file, so any device can decrypt any file, and PBKDF2 only runs once
+        //    per distinct salt per session (cached), not once per image.
+        //  * Images are uploaded BEFORE the small data file, so a device that sees the new data file
+        //    can always find the images it lists.
+        //  * Nothing is ever deleted from Drive here — removing an image just drops it from the data
+        //    file's attachmentIds. Purging orphaned Drive files is a separate, later step.
+        let driveImgKeyCache = new Map();
+
+        function getAllKeysDB(storeName) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const tx = db.transaction([storeName], "readonly");
+                    const req = tx.objectStore(storeName).getAllKeys();
+                    req.onsuccess = () => resolve(req.result || []);
+                    req.onerror = () => reject(req.error);
+                } catch (err) { reject(err); }
+            });
+        }
+
+        async function pruneLocalAttachments(keepIds) {
+            if (!db.objectStoreNames.contains(STORES.ATTACHMENTS)) return;
+            const keep = new Set((keepIds || []).map(String));
+            const local = await getAllKeysDB(STORES.ATTACHMENTS);
+            for (const k of local) {
+                if (!keep.has(String(k))) await deleteDB(STORES.ATTACHMENTS, k);
+            }
+        }
+
+        function getDriveImgSalt() {
+            try {
+                let salt = localStorage.getItem("ledgerDriveImgSalt");
+                if (!salt) {
+                    salt = bufToB64(crypto.getRandomValues(new Uint8Array(16)));
+                    localStorage.setItem("ledgerDriveImgSalt", salt);
+                }
+                return salt;
+            } catch (err) { return bufToB64(crypto.getRandomValues(new Uint8Array(16))); }
+        }
+
+        // Called after a passcode change: images already in Drive were encrypted under the old
+        // passcode, so start a fresh salt and re-upload every image on the next sync.
+        function resetDriveImageKeys() {
+            driveImgKeyCache = new Map();
+            try {
+                localStorage.removeItem("ledgerDriveImgSalt");
+                localStorage.setItem("ledgerDriveImgReuploadAll", "1");
+            } catch (err) { /* non-fatal */ }
+        }
+
+        async function getDriveImgKey(saltB64, iterations) {
+            if (!currentPasscode) throw new Error("Unlock the app first.");
+            const ck = saltB64 + ":" + iterations;
+            if (!driveImgKeyCache.has(ck)) driveImgKeyCache.set(ck, await deriveKeyFromPasscode(currentPasscode, saltB64, iterations));
+            return driveImgKeyCache.get(ck);
+        }
+
+        async function encryptDriveImage(rec) {
+            const salt = getDriveImgSalt();
+            const key = await getDriveImgKey(salt, PBKDF2_ITERATIONS);
+            const { iv, data } = await aesEncryptString(key, JSON.stringify(rec));
+            return { v: 1, salt, iterations: PBKDF2_ITERATIONS, iv, data };
+        }
+
+        async function decryptDriveImage(payload) {
+            const key = await getDriveImgKey(payload.salt, payload.iterations);
+            return JSON.parse(await aesDecryptString(key, payload.iv, payload.data));
+        }
+
+        function driveImgFileName(id) { return DRIVE_IMG_PREFIX + String(id) + DRIVE_IMG_SUFFIX; }
+
+        // One list call returns every image file in the appDataFolder. Returns { map, dups }:
+        // map = attachment id -> { fileId, modifiedTime }; dups = extra same-named files (Drive allows
+        // duplicates; two devices uploading the same image at once can create one).
+        async function listDriveImageFiles(token) {
+            const map = new Map();
+            const dups = [];
+            let pageToken = "";
+            do {
+                const url = "https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&pageSize=1000&fields=nextPageToken,files(id,name,modifiedTime,size)" + (pageToken ? "&pageToken=" + encodeURIComponent(pageToken) : "");
+                const resp = await driveFetch(url, { headers: { Authorization: `Bearer ${token}` } });
+                if (!resp.ok) throw new Error(`Drive image list failed (${resp.status})`);
+                const data = await resp.json();
+                for (const f of (data.files || [])) {
+                    if (!f.name || f.name.indexOf(DRIVE_IMG_PREFIX) !== 0 || !f.name.endsWith(DRIVE_IMG_SUFFIX)) continue;
+                    const id = f.name.slice(DRIVE_IMG_PREFIX.length, f.name.length - DRIVE_IMG_SUFFIX.length);
+                    const prev = map.get(id);
+                    if (!prev) { map.set(id, { fileId: f.id, modifiedTime: f.modifiedTime, size: Number(f.size || 0) }); continue; }
+                    if (new Date(f.modifiedTime) > new Date(prev.modifiedTime)) { dups.push(prev.fileId); map.set(id, { fileId: f.id, modifiedTime: f.modifiedTime, size: Number(f.size || 0) }); }
+                    else dups.push(f.id);
+                }
+                pageToken = data.nextPageToken || "";
+            } while (pageToken);
+            return { map, dups };
+        }
+
+        async function runDrivePool(items, limit, worker) {
+            let next = 0;
+            const runners = [];
+            const failure = { err: null };
+            for (let i = 0; i < Math.min(limit, items.length); i++) {
+                runners.push((async () => {
+                    while (next < items.length && !failure.err) {
+                        const item = items[next++];
+                        try { await worker(item); } catch (e) { failure.err = failure.err || e; }
+                    }
+                })());
+            }
+            await Promise.all(runners);
+            if (failure.err) throw failure.err;
+        }
+
+        async function uploadDriveImageFile(token, id, payload, existingFileId) {
+            const metadata = existingFileId ? { name: driveImgFileName(id) } : { name: driveImgFileName(id), parents: ["appDataFolder"] };
+            const boundary = "ledgerdriveimg";
+            const body =
+                `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+                `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(payload)}\r\n--${boundary}--`;
+            const url = existingFileId
+                ? `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart&fields=id`
+                : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`;
+            const resp = await driveFetch(url, {
+                method: existingFileId ? "PATCH" : "POST",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+                body
+            }, 90000);
+            if (!resp.ok) throw new Error(`Drive image upload failed (${resp.status})`);
+        }
+
+        // Uploads only the images (from `ids`) that Drive doesn't have yet. Returns how many it sent.
+        async function syncImagesToDrive(token, ids) {
+            if (!ids || !ids.length) return 0;
+            const { map, dups } = await listDriveImageFiles(token);
+            let reuploadAll = false;
+            try { reuploadAll = localStorage.getItem("ledgerDriveImgReuploadAll") === "1"; } catch (err) { /* ignore */ }
+            const todo = ids.filter(id => reuploadAll || !map.has(String(id)));
+            let done = 0;
+            await runDrivePool(todo, 3, async (id) => {
+                const rec = await readKeyDB(STORES.ATTACHMENTS, id);
+                if (!rec) return; // removed locally since the bundle was built
+                const payload = await encryptDriveImage(rec);
+                const existing = map.get(String(id));
+                await uploadDriveImageFile(await ensureDriveAccessToken(), id, payload, existing ? existing.fileId : null);
+                done++;
+                if (todo.length > 4 && done % 5 === 0) showToast(`☁️ Uploading images ${done}/${todo.length}…`);
+            });
+            if (reuploadAll) { try { localStorage.removeItem("ledgerDriveImgReuploadAll"); } catch (err) { /* ignore */ } }
+            for (const fileId of dups) {
+                try { await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }); } catch (err) { /* best-effort */ }
+            }
+            return done;
+        }
+
+        // Downloads only the images (from `ids`) this device doesn't have yet. Network failures throw
+        // (the pull stays "incomplete" and is retried); an image that is simply absent from Drive or
+        // can't be decrypted is counted and skipped so it can't block every future sync.
+        async function pullMissingDriveImages(ids) {
+            const result = { downloaded: 0, absent: 0, undecryptable: 0 };
+            if (!ids || !ids.length) return result;
+            const token = await ensureDriveAccessToken();
+            const local = new Set((await getAllKeysDB(STORES.ATTACHMENTS)).map(String));
+            const missing = ids.filter(id => !local.has(String(id)));
+            if (!missing.length) return result;
+            const { map } = await listDriveImageFiles(token);
+            let n = 0;
+            const prevSuppress = driveSuppressAutoSync;
+            driveSuppressAutoSync = true;
+            try {
+                await runDrivePool(missing, 3, async (id) => {
+                    const f = map.get(String(id));
+                    if (!f) { result.absent++; return; }
+                    const t = await ensureDriveAccessToken();
+                    const resp = await driveFetch(`https://www.googleapis.com/drive/v3/files/${f.fileId}?alt=media`, { headers: { Authorization: `Bearer ${t}` } }, 90000);
+                    if (!resp.ok) throw new Error(`Drive image download failed (${resp.status})`);
+                    const payload = await resp.json();
+                    let rec;
+                    try { rec = await decryptDriveImage(payload); } catch (e) { result.undecryptable++; return; }
+                    await writeDB(STORES.ATTACHMENTS, rec);
+                    result.downloaded++;
+                    n++;
+                    if (missing.length > 4 && n % 5 === 0) showToast(`☁️ Downloading images ${n}/${missing.length}…`);
+                });
+            } finally {
+                driveSuppressAutoSync = prevSuppress;
+            }
+            return result;
+        }
+
+        // ----- primary device ----------------------------------------------------------------------
+        function getDriveDeviceName() {
+            try {
+                let name = localStorage.getItem("ledgerDriveDeviceName");
+                if (!name) {
+                    name = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || "") ? "Phone" : "Computer";
+                    localStorage.setItem("ledgerDriveDeviceName", name);
+                }
+                return name;
+            } catch (err) { return "This device"; }
+        }
+
+        // Returns { fileId, rec } — rec is null when no primary record exists yet. Duplicate record files
+        // (two devices claiming at once) are resolved to the newest and the rest removed.
+        async function fetchDrivePrimary(token) {
+            const url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${DRIVE_PRIMARY_FILENAME}'&fields=files(id,modifiedTime)`;
+            const resp = await driveFetch(url, { headers: { Authorization: `Bearer ${token}` } });
+            if (!resp.ok) throw new Error(`Drive primary lookup failed (${resp.status})`);
+            const files = (await resp.json()).files || [];
+            if (!files.length) return { fileId: null, rec: null };
+            let chosen = null;
+            for (const f of files) if (!chosen || new Date(f.modifiedTime) > new Date(chosen.modifiedTime)) chosen = f;
+            for (const f of files) {
+                if (f.id === chosen.id) continue;
+                try { await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }); } catch (err) { /* best-effort */ }
+            }
+            const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${chosen.id}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
+            if (!r.ok) throw new Error(`Drive primary read failed (${r.status})`);
+            let rec = null;
+            try { rec = await r.json(); } catch (err) { rec = null; }
+            return { fileId: chosen.id, rec };
+        }
+
+        async function writeDrivePrimary(token, rec, fileId) {
+            const metadata = fileId ? { name: DRIVE_PRIMARY_FILENAME } : { name: DRIVE_PRIMARY_FILENAME, parents: ["appDataFolder"] };
+            const boundary = "ledgerdriveprimary";
+            const body =
+                `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+                `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(rec)}\r\n--${boundary}--`;
+            const url = fileId
+                ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&fields=id`
+                : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`;
+            const resp = await driveFetch(url, {
+                method: fileId ? "PATCH" : "POST",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+                body
+            });
+            if (!resp.ok) throw new Error(`Drive primary write failed (${resp.status})`);
+        }
+
+        function setDrivePrimaryState(rec) {
+            drivePrimaryRecCache = { rec: rec || null, at: Date.now() };
+            const me = getDriveDeviceId();
+            if (!rec) drivePrimaryState = { status: "none", deviceName: "" };
+            else if (rec.mode === "any") drivePrimaryState = { status: "any", deviceName: "" };
+            else if (rec.deviceId === me) drivePrimaryState = { status: "me", deviceName: rec.deviceName || getDriveDeviceName() };
+            else drivePrimaryState = { status: "other", deviceName: rec.deviceName || "Another device" };
+            renderDrivePrimaryUI();
+        }
+
+        function renderDrivePrimaryUI() {
+            const el = document.getElementById("drivePrimaryText");
+            if (!el) return;
+            const st = drivePrimaryState;
+            if (st.status === "me") el.textContent = `⭐ Primary device: this device (${st.deviceName}). Only the primary device auto-uploads.`;
+            else if (st.status === "other") el.textContent = `Primary device: ${st.deviceName}. This device only pulls changes — upload from here manually when you need to.`;
+            else if (st.status === "any") el.textContent = "No primary device — every device with auto-sync on may upload (last upload wins).";
+            else if (st.status === "none") el.textContent = "Off — Drive uses the original single-file backup and every device may auto-upload. Tap Make This Device Primary to switch this Google account to the newer image-per-file format.";
+            else el.textContent = "Primary device: checking…";
+        }
+
+        async function refreshDrivePrimaryUI() {
+            try {
+                const connectedRow = document.getElementById("driveConnectedRow");
+                if (!connectedRow || connectedRow.classList.contains("hidden")) return;
+                const token = await ensureDriveAccessToken();
+                const { rec } = await fetchDrivePrimary(token);
+                setDrivePrimaryState(rec);
+                driveBlockedByPrimary = drivePrimaryState.status === "other";
+                updateDriveStatusLine();
+            } catch (err) { /* leave "checking…" — non-fatal */ }
+        }
+
+        // Auto-upload gate. "go" = this device may upload now; "blocked" = another device is primary.
+        // v581: opt-in. With NO primary record nothing is restricted — every device behaves exactly as
+        // it did before v579 (so family members who were never told about this are unaffected). The
+        // restriction only exists once someone presses "Make This Device Primary".
+        async function driveAutoUploadRole(token) {
+            const me = getDriveDeviceId();
+            const { rec } = await fetchDrivePrimary(token);
+            if (!rec) {
+                setDrivePrimaryState(null);
+                driveBlockedByPrimary = false;
+                return "go";
+            }
+            setDrivePrimaryState(rec);
+            driveBlockedByPrimary = !(rec.mode === "any" || rec.deviceId === me);
+            return driveBlockedByPrimary ? "blocked" : "go";
+        }
+
+        // v582: the primary record doubles as the opt-in switch for the new Drive format. Used by the cached
+        // upload-time check so an upload doesn't add a Drive call when the auto-sync gate just fetched it.
+        async function getDrivePrimaryRecCached(token, maxAgeMs) {
+            if (Date.now() - drivePrimaryRecCache.at < (maxAgeMs || 20000)) return drivePrimaryRecCache.rec;
+            const { rec } = await fetchDrivePrimary(token);
+            setDrivePrimaryState(rec);
+            return rec;
+        }
+
+        async function confirmEnableNewDriveFormat() {
+            return await customConfirm("This switches your Google Drive backup to the newer format (each image stored as its own file) for EVERY device using this Google account. Update all those devices to this version first — an older version that pulls the new format would lose its local images. Continue?");
+        }
+
+        async function makeThisDevicePrimary() {
+            try {
+                const token = await ensureDriveAccessToken();
+                const { fileId, rec } = await fetchDrivePrimary(token);
+                const me = getDriveDeviceId();
+                if (!rec && !(await confirmEnableNewDriveFormat())) return;
+                if (rec && rec.mode === "primary" && rec.deviceId !== me) {
+                    const ok = await customConfirm(`Make this device the primary? ${rec.deviceName || "The other device"} will stop auto-uploading and only pull changes. Make sure it has finished syncing first.`);
+                    if (!ok) return;
+                }
+                await writeDrivePrimary(token, { mode: "primary", deviceId: me, deviceName: getDriveDeviceName(), claimedAt: Date.now() }, fileId);
+                const again = await fetchDrivePrimary(token);
+                setDrivePrimaryState(again.rec);
+                driveBlockedByPrimary = drivePrimaryState.status === "other";
+                updateDriveStatusLine();
+                showToast("⭐ This device is now the primary");
+                if (driveDirtyStoreSet.size > 0) scheduleDriveAutoSync();
+            } catch (err) { alert("Couldn't change the primary device: " + (err && err.message ? err.message : err)); }
+        }
+
+        async function allowAllDevicesToUpload() {
+            try {
+                const t0 = await ensureDriveAccessToken();
+                if (!(await fetchDrivePrimary(t0)).rec && !(await confirmEnableNewDriveFormat())) return;
+            } catch (err) { alert("Couldn't check the primary device: " + (err && err.message ? err.message : err)); return; }
+            const ok = await customConfirm("Allow every device to auto-upload? If two devices change data at the same time, the later upload wins and the other device's changes can be lost.");
+            if (!ok) return;
+            try {
+                const token = await ensureDriveAccessToken();
+                const { fileId } = await fetchDrivePrimary(token);
+                await writeDrivePrimary(token, { mode: "any", claimedAt: Date.now() }, fileId);
+                const again = await fetchDrivePrimary(token);
+                setDrivePrimaryState(again.rec);
+                driveBlockedByPrimary = false;
+                updateDriveStatusLine();
+                showToast("🔓 All devices may auto-upload");
+            } catch (err) { alert("Couldn't change the primary device: " + (err && err.message ? err.message : err)); }
+        }
+
+        // Manual "Upload to Drive" guard: returns true to go ahead. Warns (instead of silently
+        // overwriting) when Drive has moved on since this device last synced, or when a different
+        // device is the primary.
+        async function confirmManualDriveUpload() {
+            const token = await ensureDriveAccessToken();
+            await findDriveBackupFileId();
+            const remoteMoved = !!driveFileId && driveLastLookupModifiedTime !== driveLastKnownRemoteRev;
+            let rec = null;
+            try { rec = (await fetchDrivePrimary(token)).rec; setDrivePrimaryState(rec); } catch (err) { /* guard is best-effort */ }
+            const otherPrimary = !!rec && rec.mode === "primary" && rec.deviceId !== getDriveDeviceId();
+            if (!remoteMoved && !otherPrimary) return true;
+            let msg = "";
+            if (remoteMoved) msg += "Google Drive has changes this device hasn't pulled yet (probably from another device) — uploading now overwrites them. ";
+            if (otherPrimary) msg += `${rec.deviceName || "Another device"} is the primary device. `;
+            msg += remoteMoved ? "OK = overwrite Drive anyway. Cancel = stop, then use Restore Latest first." : "Upload from this device anyway?";
+            return await customConfirm(msg);
+        }
+        // ===== end v579 block ============================================================================
+
+        // ===== v580: "Clean up unused images" (button only, primary device) ==========================
+        // Drive never learns WHEN an image became unused (an image file's own timestamp is its upload
+        // time), so the first time a cleanup run sees an image that no backup lists it writes that date
+        // into ledger-orphans.json; only images unused for DRIVE_ORPHAN_GRACE_DAYS+ are ever deleted.
+        // The grace period also covers an image uploaded just before its data file (looks unused for a
+        // moment) and an offline device that still lists an image.
+        const DRIVE_ORPHANS_FILENAME = "ledger-orphans.json";
+        const DRIVE_ORPHAN_GRACE_DAYS = 30;
+
+        async function fetchDriveSmallJson(token, name) {
+            const url = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${name}'&fields=files(id,modifiedTime)`;
+            const resp = await driveFetch(url, { headers: { Authorization: `Bearer ${token}` } });
+            if (!resp.ok) throw new Error(`Drive lookup failed (${resp.status})`);
+            const files = (await resp.json()).files || [];
+            if (!files.length) return { fileId: null, rec: null };
+            let chosen = null;
+            for (const f of files) if (!chosen || new Date(f.modifiedTime) > new Date(chosen.modifiedTime)) chosen = f;
+            const r = await driveFetch(`https://www.googleapis.com/drive/v3/files/${chosen.id}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
+            if (!r.ok) throw new Error(`Drive read failed (${r.status})`);
+            let rec = null;
+            try { rec = await r.json(); } catch (err) { rec = null; }
+            return { fileId: chosen.id, rec };
+        }
+
+        async function writeDriveSmallJson(token, name, rec, fileId) {
+            const metadata = fileId ? { name } : { name, parents: ["appDataFolder"] };
+            const boundary = "ledgerdrivesmall";
+            const body =
+                `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+                `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(rec)}\r\n--${boundary}--`;
+            const url = fileId
+                ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&fields=id`
+                : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`;
+            const resp = await driveFetch(url, {
+                method: fileId ? "PATCH" : "POST",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+                body
+            });
+            if (!resp.ok) throw new Error(`Drive write failed (${resp.status})`);
+            return (await resp.json()).id;
+        }
+
+        // Works out which Drive images are unused and how long each has been. An image counts as used
+        // if its id is in the data file's attachmentIds OR appears anywhere in the data file's text
+        // (belt and braces: a transaction that still names it keeps it). Updates ledger-orphans.json.
+        async function planDriveImageCleanup(token, referencedIds, dataJson, now) {
+            const { map } = await listDriveImageFiles(token);
+            const ref = new Set((referencedIds || []).map(String));
+            const candidates = [];
+            for (const [id, f] of map) {
+                if (ref.has(id)) continue;
+                if (dataJson.indexOf(id) !== -1) continue;
+                candidates.push({ id, fileId: f.fileId, size: f.size || 0 });
+            }
+            const orph = await fetchDriveSmallJson(token, DRIVE_ORPHANS_FILENAME);
+            const seen = (orph.rec && orph.rec.seen && typeof orph.rec.seen === "object") ? Object.assign({}, orph.rec.seen) : {};
+            const candSet = new Set(candidates.map(c => c.id));
+            let changed = false;
+            for (const id of Object.keys(seen)) if (!candSet.has(id)) { delete seen[id]; changed = true; } // used again, or file gone
+            for (const c of candidates) if (!seen[c.id]) { seen[c.id] = now; changed = true; }
+            let orphFileId = orph.fileId;
+            if (changed) orphFileId = await writeDriveSmallJson(token, DRIVE_ORPHANS_FILENAME, { v: 1, seen }, orphFileId);
+            const graceMs = DRIVE_ORPHAN_GRACE_DAYS * 86400000;
+            const eligible = candidates.filter(c => now - seen[c.id] >= graceMs);
+            const waiting = candidates.filter(c => now - seen[c.id] < graceMs);
+            return { candidates, eligible, waiting, seen, orphFileId, totalImages: map.size };
+        }
+
+        async function deleteDriveImages(token, items, plan) {
+            let deleted = 0;
+            await runDrivePool(items, 3, async (it) => {
+                const r = await fetch(`https://www.googleapis.com/drive/v3/files/${it.fileId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+                if (!r.ok && r.status !== 404) throw new Error(`Drive delete failed (${r.status})`);
+                deleted++;
+            });
+            if (deleted && plan && plan.orphFileId) {
+                const seen = Object.assign({}, plan.seen);
+                for (const it of items) delete seen[it.id];
+                await writeDriveSmallJson(token, DRIVE_ORPHANS_FILENAME, { v: 1, seen }, plan.orphFileId);
+            }
+            return deleted;
+        }
+
+        function formatDriveBytes(n) {
+            if (!n) return "0 KB";
+            return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+        }
+
+        async function cleanUpUnusedDriveImages(btnEl) {
+            setButtonBusy("cleanUpUnusedDriveImages", btnEl, true);
+            let tookLock = false;
+            try {
+                if (!currentPasscode) { alert("Unlock the app first."); return; }
+                if (driveSyncInFlight || driveAutoSyncPending) { alert("A sync is running — try again in a moment."); return; }
+                if (driveSyncPauseState || driveImgPullIncomplete || driveDirtyStoreSet.size > 0) {
+                    alert("Sync first. This device has changes not yet on Drive, or an unfinished pull — the cleanup must compare against Drive's latest backup.");
+                    return;
+                }
+                const token = await ensureDriveAccessToken();
+                const { rec } = await fetchDrivePrimary(token);
+                setDrivePrimaryState(rec);
+                if (rec && rec.mode === "primary" && rec.deviceId !== getDriveDeviceId()) {
+                    alert(`${rec.deviceName || "Another device"} is the primary device — run the cleanup there (or make this device primary first).`);
+                    return;
+                }
+                await findDriveBackupFileId();
+                if (!driveFileId) { alert("No backup in Drive yet."); return; }
+                if (driveLastLookupModifiedTime !== driveLastKnownRemoteRev) { alert("Drive has newer changes than this device. Tap Restore Latest first."); return; }
+                const startRev = driveLastLookupModifiedTime;
+                driveSyncInFlight = true; tookLock = true; // no uploads from this device while we decide
+                const resp = await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
+                if (!resp.ok) throw new Error(`Drive download failed (${resp.status})`);
+                const payload = await resp.json();
+                const bundle = payload.encrypted ? await decryptBackupBundle(payload) : payload;
+                if (!bundle) return; // passcode prompt cancelled
+                if (!bundle.attachmentsExternal || !Array.isArray(bundle.attachmentIds)) {
+                    alert("The Drive backup is still in the old format (images inside it). Upload once from this device with v579 or later, then try again.");
+                    return;
+                }
+                const localKeys = await getAllKeysDB(STORES.ATTACHMENTS);
+                if (bundle.attachmentIds.length === 0 && localKeys.length > 0) {
+                    alert("Safety stop: the Drive backup lists no images but this device has some. Nothing was deleted — upload from this device first.");
+                    return;
+                }
+                const plan = await planDriveImageCleanup(token, bundle.attachmentIds, JSON.stringify(bundle), Date.now());
+                const sum = (arr) => arr.reduce((t, c) => t + (c.size || 0), 0);
+                if (!plan.candidates.length) { showToast("🧹 No unused images in Drive"); return; }
+                if (!plan.eligible.length) {
+                    alert(`${plan.waiting.length} unused image(s) (${formatDriveBytes(sum(plan.waiting))}) found. They were first noticed today, so nothing is deleted yet — run this again after ${DRIVE_ORPHAN_GRACE_DAYS} days.`);
+                    return;
+                }
+                const waitNote = plan.waiting.length ? ` ${plan.waiting.length} newer unused image(s) are kept.` : "";
+                const ok = await customConfirm(`Delete ${plan.eligible.length} image(s) (${formatDriveBytes(sum(plan.eligible))}) from Google Drive that haven't been used for ${DRIVE_ORPHAN_GRACE_DAYS}+ days?${waitNote} This can't be undone.`);
+                if (!ok) return;
+                // Drive may have changed while the dialog was open (another device synced) — if so, stop.
+                await findDriveBackupFileId();
+                if (driveLastLookupModifiedTime !== startRev) { alert("Drive changed while you were deciding. Nothing was deleted — run the cleanup again."); return; }
+                const deleted = await deleteDriveImages(token, plan.eligible, plan);
+                showToast(`🧹 Deleted ${deleted} unused image(s) from Drive`);
+            } catch (err) {
+                alert("Cleanup failed: " + (err && err.message ? err.message : err));
+            } finally {
+                if (tookLock) {
+                    driveSyncInFlight = false;
+                    if (driveResyncNeeded) { driveResyncNeeded = false; armDriveAutoSyncTimer(); }
+                }
+                setButtonBusy("cleanUpUnusedDriveImages", btnEl, false);
+            }
+        }
+        // ===== end v580 block ============================================================================
+
         // Builds the same encrypted payload shape exportBackup() writes to a file, and
         // PATCHes (or, on the very first sync, POSTs/creates) it as the single Drive-appdata
         // backup file. Requires the app to be unlocked (currentPasscode set) — same requirement
@@ -26522,8 +27079,15 @@
             if (driveSyncInFlight) return;
             driveSyncInFlight = true;
             try {
+                if (driveImgPullIncomplete) throw new Error("Images from Google Drive are still being downloaded — tap Restore Latest first, so they aren't left out of the next upload.");
                 const token = await ensureDriveAccessToken();
-                const bundle = await buildBackupBundle();
+                // v579: slim bundle (no image bytes). The images it lists are uploaded FIRST, only the
+                // ones Drive doesn't have yet, so anyone who sees the new data file can find them.
+                // v582: only when a primary record exists in Drive (someone opted in); otherwise the
+                // original full single-file bundle, exactly as before v579.
+                const slim = !!(await getDrivePrimaryRecCached(token));
+                const bundle = slim ? await buildBackupBundle({ slim: true }) : await buildBackupBundle();
+                if (slim) await syncImagesToDrive(token, bundle.attachmentIds);
                 const salt = crypto.getRandomValues(new Uint8Array(16));
                 const saltB64 = bufToB64(salt);
                 const key = await deriveKeyFromPasscode(currentPasscode, saltB64, PBKDF2_ITERATIONS);
@@ -26727,10 +27291,19 @@
                 // risk) so the common fast-forward case doesn't spend a snapshot write on nothing.
                 let localSnapshotBundle = null;
                 if (driveDirtyStoreSet.size > 0) {
-                    localSnapshotBundle = await buildBackupBundle();
+                    localSnapshotBundle = await buildBackupBundle({ allowIncomplete: true });
                     await saveDriveSnapshot(localSnapshotBundle);
                 }
+                // v579: a slim bundle lists its images by id; they are fetched right after the data is
+                // restored. The "incomplete" flag stays set (persisted) until that finishes, and
+                // uploads/file exports refuse in between, so half-downloaded images can't be dropped.
+                if (bundle.attachmentsExternal) await persistDriveBookkeeping("driveImgPullIncomplete", (driveImgPullIncomplete = true));
                 await restoreFromBundle(bundle);
+                let imgResult = null;
+                if (bundle.attachmentsExternal) {
+                    imgResult = await pullMissingDriveImages(bundle.attachmentIds);
+                    await persistDriveBookkeeping("driveImgPullIncomplete", (driveImgPullIncomplete = false));
+                }
                 // v430: same infinite-auto-sync-loop fix as uploadBackupToDrive() above — this
                 // bookkeeping write must not re-arm scheduleDriveAutoSync().
                 const now = Date.now();
@@ -26763,7 +27336,10 @@
                 const restoredAt = payload.syncedAt ? new Date(payload.syncedAt).toLocaleString() : "unknown time";
                 const dupNote = driveLastLookupFileCount > 1 ? ` (${driveLastLookupFileCount} same-named files were found — used the newest, removed the rest)` : "";
                 const snapNote = localSnapshotBundle ? " — your previous unsynced data was saved to Local Snapshots" : "";
-                showToast(`☁️ Restored backup from Drive — uploaded ${restoredAt}${dupNote}${snapNote}`);
+                const imgNote = imgResult
+                    ? (imgResult.downloaded ? ` · ${imgResult.downloaded} image(s) downloaded` : "") + ((imgResult.absent || imgResult.undecryptable) ? ` · ⚠ ${imgResult.absent + imgResult.undecryptable} image(s) unavailable` : "")
+                    : "";
+                showToast(`☁️ Restored backup from Drive — uploaded ${restoredAt}${dupNote}${snapNote}${imgNote}`);
             } finally {
                 driveSuppressAutoSync = false;
                 driveSyncInFlight = false;
@@ -26839,6 +27415,11 @@
                 const remoteModifiedTime = driveFileId ? driveLastLookupModifiedTime : null;
                 const remoteChanged = remoteModifiedTime !== driveLastKnownRemoteRev;
                 if (!remoteChanged) {
+                    // v579: only the primary device auto-uploads (a device with no primary yet claims
+                    // it). Everyone else keeps pulling below but leaves uploading to the manual button.
+                    const role = await driveAutoUploadRole(await ensureDriveAccessToken());
+                    if (role === "blocked") { updateDriveStatusLine(); return; }
+                    updateDriveStatusLine();
                     await uploadBackupToDrive();
                     return;
                 }
@@ -26900,6 +27481,7 @@
         // Settings page is opened for as long as driveSyncPauseState is non-null — so a user who
         // dismissed/missed the toast still has a durable way to notice and resolve it.
         function renderDriveSyncPauseBanner() {
+            refreshDrivePrimaryUI(); // v579: also refresh the "Primary device" line whenever Settings → Drive is shown
             const banner = document.getElementById("driveSyncPauseBanner");
             if (!banner) return;
             if (!driveSyncPauseState) { banner.classList.add("hidden"); return; }
@@ -26994,6 +27576,7 @@
             else if (driveSyncErrorNote) { text = "⚠ Not uploaded yet — retrying"; warn = true; }
             else if (driveSyncInFlight) text = "☁ Syncing…";
             else if (!autoOn) { text = "☁ Auto-sync off" + (t ? " · last " + t : ""); warn = true; }
+            else if (driveBlockedByPrimary && driveDirtyStoreSet.size > 0) text = "☁ " + (drivePrimaryState.deviceName || "Another device") + " is primary — upload manually";
             else if (driveAutoSyncPending || driveDirtyStoreSet.size > 0) text = "☁ Waiting to upload…";
             else text = t ? "☁ Synced " + t : "☁ Not synced yet";
             el.classList.remove("hidden");
@@ -27237,6 +27820,9 @@
             disconnectGoogleDrive: () => disconnectGoogleDrive(),
             manualSyncGoogleDrive: (el) => manualSyncGoogleDrive(el),
             manualRestoreFromDrive: (el) => manualRestoreFromDrive(el),
+            makeThisDevicePrimary: () => makeThisDevicePrimary(),
+            allowAllDevicesToUpload: () => allowAllDevicesToUpload(),
+            cleanUpUnusedDriveImages: (el) => cleanUpUnusedDriveImages(el),
             resolveDriveSyncKeepLocal: () => resolveDriveSyncKeepLocal(),
             resolveDriveSyncUseRemote: () => resolveDriveSyncUseRemote(),
             openDriveSnapshotsModal: () => openDriveSnapshotsModal(),

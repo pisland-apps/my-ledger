@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v587";
+        const APP_VERSION = "v588";
         const APP_VERSION_DATE = "2026-10-21";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -9976,6 +9976,53 @@
             const cur = getZhFont();
             document.documentElement.setAttribute("data-zh-font", cur);
             document.querySelectorAll("#zhFontPicker .app-font-opt").forEach(b => b.classList.toggle("selected", b.dataset.font === cur));
+            applyZhSizeAttr(); // v588
+        }
+        // v588: "Chinese size" for the Long Cang font — device-only (localStorage, like the font choice itself: not in the backup,
+        // does not trigger a Drive sync). Done with CSS `size-adjust` on COPIES of the Chinese @font-face slices (families
+        // "Long Cang L"/"Klee One ZH L" = 110%, "... XL" = 120%), built once per size from the existing rules; CSS vars in
+        // index.html (--zh-ff) point at them. size-adjust scales only those glyphs, so English / digits are untouched.
+        const ZH_SIZE_KEY = "ledgerZhFontSize";
+        const ZH_SIZE_PCT = { normal: 100, large: 110, larger: 120 };
+        const ZH_SIZE_SUFFIX = { large: "L", larger: "XL" };
+        function getZhSize() {
+            let v = null;
+            try { v = localStorage.getItem(ZH_SIZE_KEY); } catch (e) {}
+            return Object.prototype.hasOwnProperty.call(ZH_SIZE_PCT, v) ? v : "normal";
+        }
+        function ensureZhSizeFonts(size) {
+            if (!ZH_SIZE_SUFFIX[size]) return;
+            const id = "zhSizeFonts-" + size;
+            if (document.getElementById(id)) return;
+            let css = "";
+            try {
+                for (const sheet of Array.from(document.styleSheets)) {
+                    let rules;
+                    try { rules = sheet.cssRules; } catch (e) { continue; }
+                    for (const r of Array.from(rules)) {
+                        if (!(r instanceof CSSFontFaceRule) && r.type !== 5) continue;
+                        const fam = (r.style.getPropertyValue("font-family") || "").replace(/["']/g, "").trim();
+                        if (fam !== "Long Cang" && fam !== "Klee One ZH") continue;
+                        css += r.cssText.replace(/font-family:\s*[^;]+;/, `font-family: "${fam} ${ZH_SIZE_SUFFIX[size]}"; size-adjust: ${ZH_SIZE_PCT[size]}%;`) + "\n";
+                    }
+                }
+            } catch (e) {}
+            if (!css) return;
+            const st = document.createElement("style");
+            st.id = id;
+            st.textContent = css;
+            document.head.appendChild(st);
+        }
+        function applyZhSizeAttr() {
+            const size = getZhSize();
+            if (getZhFont() === "longcang") ensureZhSizeFonts(size);
+            document.documentElement.setAttribute("data-zh-size", size);
+            document.querySelectorAll("#zhSizeRow .zh-size-opt").forEach(b => b.classList.toggle("selected", b.dataset.size === size));
+        }
+        function selectZhSize(el) {
+            const v = el && el.dataset ? el.dataset.size : "normal";
+            try { localStorage.setItem(ZH_SIZE_KEY, Object.prototype.hasOwnProperty.call(ZH_SIZE_PCT, v) ? v : "normal"); } catch (e) {}
+            applyZhSizeAttr();
         }
         function selectZhFont(el) {
             const v = el && el.dataset ? el.dataset.font : "default";
@@ -27777,6 +27824,7 @@
             selectBgTheme: (el) => selectBgTheme(el),
             selectAppFont: (el) => selectAppFont(el), // v577 (click map — the font buttons use data-click)
             selectZhFont: (el) => selectZhFont(el), // v584 (same click map)
+            selectZhSize: (el) => selectZhSize(el), // v588
             // v403: navigateToCompanionPage() has no data-click of its own anymore (Companion's
             // rail icon/page merged into Net Worth Card's) — it's still called directly from JS
             // by toggleCompanionSettingsFromDashboard()/toggleMonthlyTrendMascotSettingsFromDashboard()

@@ -4375,3 +4375,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v587: Spending by Tag — day stamp on its own line (phone view)
 
 - At widths <= 767px the day stamp ("30 Thu") sits on a slim line above that day's first entry instead of in a left column, so titles, 📎 badges and amounts use the full card width (fewer wrapped Chinese titles). Continuation rows (same day) hide their empty date cell and their dashed divider starts at the card padding. CSS only (`.tagrep-date`, `.tagrep-row.cont::before` inside `@media (max-width: 767px)`); wider screens unchanged. Bumped to v587.
+
+## v588: Chinese size (Normal / Large / Larger) for the Long Cang font
+
+- Settings > Background Theme > Chinese font: when Long Cang is selected a "Chinese size" row appears (Normal / Large +10% / Larger +20%, with a live sample). Saved in `localStorage` key `ledgerZhFontSize` — this device only, not in the backup, no Drive sync. Applied early in `theme-init.js` (`data-zh-size` on `<html>`).
+- Implementation: `size-adjust` on copies of the Long Cang / Klee One ZH `@font-face` slices (families "... L" = 110%, "... XL" = 120%), generated once per size by `ensureZhSizeFonts()` from the existing rules (same woff2 files, nothing new to download or precache); `--zh-ff` for `data-zh-size="large|larger"` lists the copies first and the originals as fallback. Only Chinese glyphs scale; English / digits keep the App font size. Needs `size-adjust` support (Chrome / Edge / Firefox 92+, Safari 17+); on older browsers it simply stays Normal. Bumped to v588.

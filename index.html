@@ -3567,6 +3567,12 @@
            reports and PDF exports are untouched. */
         @media screen {
             html[data-zh-font="longcang"] { --zh-ff: "Long Cang", "Klee One ZH",; }
+            /* v588: "Chinese size" (Large / Larger). The "... L" / "... XL" families are copies of the Long Cang / Klee One ZH
+               @font-face slices with `size-adjust` 110% / 120% — created at runtime by ensureZhSizeFonts() (same font files, so nothing
+               extra to download or precache). size-adjust scales ONLY these Chinese glyphs; English / digits keep the App font size.
+               The original families stay in the stack as a fallback if the copies are not (yet) defined. */
+            html[data-zh-font="longcang"][data-zh-size="large"] { --zh-ff: "Long Cang L", "Klee One ZH L", "Long Cang", "Klee One ZH",; }
+            html[data-zh-font="longcang"][data-zh-size="larger"] { --zh-ff: "Long Cang XL", "Klee One ZH XL", "Long Cang", "Klee One ZH",; }
         }
         .app-font-opt {
             display: flex; flex-direction: column; align-items: stretch; gap: 2px;
@@ -3575,6 +3581,13 @@
             border: 2px solid var(--border-color); text-align: left;
         }
         .app-font-opt.selected { border-color: var(--primary); }
+        /* v588: Chinese size picker — only shown while the Chinese font is Long Cang (the system font is left alone) */
+        #zhSizeRow { display: none; flex-direction: column; gap: 6px; }
+        html[data-zh-font="longcang"] #zhSizeRow { display: flex; }
+        .zh-size-seg { display: flex; gap: 6px; }
+        .zh-size-opt { flex: 1; padding: 9px 6px; border-radius: 12px; border: 2px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.8rem; font-weight: 700; cursor: pointer; }
+        .zh-size-opt.selected { border-color: var(--primary); }
+        .zh-size-sample { padding: 10px 14px; border-radius: 12px; border: 1px dashed var(--border-color); font-size: 1rem; line-height: 1.5; }
         .app-font-opt-name { order: -1; font-size: 0.72rem; font-weight: 700; color: var(--text-muted); }
         .app-font-opt-sample { font-size: 1.05rem; font-weight: 700; }
         /* Settings row for the toggle above only means anything for this one preset — hidden
@@ -6165,6 +6178,17 @@
                     <span class="app-font-opt-sample" style="font-family:'Long Cang', cursive; font-size:1.25rem;">他们所有的设备和仪器仿佛都是有生命的。</span>
                     <span class="app-font-opt-name">Long Cang 龙藏体</span>
                 </button>
+                <!-- v588: Chinese size (device-only), shown only for Long Cang -->
+                <div id="zhSizeRow">
+                    <span class="toggle-switch-label" style="font-size:0.85rem;">🔠 中文字大小 Chinese size</span>
+                    <div class="zh-size-seg" role="group" aria-label="Chinese font size">
+                        <button type="button" class="zh-size-opt" data-click="selectZhSize" data-size="normal">Normal</button>
+                        <button type="button" class="zh-size-opt" data-click="selectZhSize" data-size="large">Large</button>
+                        <button type="button" class="zh-size-opt" data-click="selectZhSize" data-size="larger">Larger</button>
+                    </div>
+                    <div class="zh-size-sample">小费 -喵喵 · 阿迪达斯 -Sx (¥1,798.20)</div>
+                    <span style="font-size:0.72rem; color:var(--text-muted);">只放大中文字，英文和数字不变；只保存在这台设备上（不进备份、不触发同步）。 Chinese only — English and numbers keep their size; saved on this device only (not in the backup, does not sync).</span>
+                </div>
             </div>
         </div>
         </div>

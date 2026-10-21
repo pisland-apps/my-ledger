@@ -4384,3 +4384,13 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v589: Spending by Tag — day stamp is a pill on phones
 
 - The day stamp (`.tagrep-date`) now wraps its day number and weekday in `.tagrep-dpill`. Wider screens: `display: contents`, so the left column looks exactly as before. Phone view (<= 767px): a small pill with the month-header tint (`--active-bg`), day number in `--primary`, weekday muted, so it stands out from the entry titles. Bumped to v589.
+
+## v590: Chinese font picker — Ma Shan Zheng (马善政) added
+
+- Settings > Background Theme > Chinese font now has a third choice: **Ma Shan Zheng 马善政** (a brush-style handwriting font, OFL, google/mashanzheng) next to Default and Long Cang. Stored in the same device-only `localStorage["ledgerZhFont"]` (`default` | `longcang` | `mashanzheng`); `theme-init.js` accepts it for first paint, `ZH_FONT_CHOICES` in `ledger.js` lists it, and `html[data-zh-font="mashanzheng"]` sets `--zh-ff: "Ma Shan Zheng", "Klee One ZH",`.
+- Built exactly like Long Cang: inline `@font-face` slices (88 files in `fonts/ma-shan-zheng/`, ~3.6 MB in total) with `unicode-range` clipped to U+2E80 and above, so English / digits keep the App font; screen only; not precached — the service worker runtime-caches the slices a screen uses (first use of a character needs a connection). Only the slices for characters actually shown are downloaded.
+- **The slice files are NOT in this deploy zip** — upload `fonts/ma-shan-zheng/` once to the repo from `ledger-pwa-deploy_v590_part2-mashanzheng-fonts.zip`, same as Long Cang (v584). `fonts/MA-SHAN-ZHENG-LICENSE.txt` is in this zip.
+- Traditional characters: Ma Shan Zheng has the same simplified-only glyph set as Long Cang (6,730 CJK ideographs, checked from the font cmaps), so the existing Klee One ZH fallback covers its missing characters too — no new fallback file.
+- The Chinese size row (Normal / Large / Larger) and the Spending by Tag title weight (600) now apply to both fonts; `ensureZhSizeFonts()` also copies the Ma Shan Zheng slices (families "Ma Shan Zheng L" / "XL").
+- Cache bumped to v590.
+

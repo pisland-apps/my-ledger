@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v589";
+        const APP_VERSION = "v590";
         const APP_VERSION_DATE = "2026-10-21";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -9963,10 +9963,10 @@
             const cur = getAppFont();
             document.querySelectorAll("#appFontPicker .app-font-opt").forEach(b => b.classList.toggle("selected", b.dataset.font === cur));
         }
-        // v584: Chinese-only font choice ("default" | "longcang"), independent of the App font above.
+        // v584: Chinese-only font choice ("default" | "longcang" | "mashanzheng" (v590)), independent of the App font above.
         // html[data-zh-font] sets --zh-ff (see the CSS in index.html); mirrored in theme-init.js.
         const ZH_FONT_KEY = "ledgerZhFont";
-        const ZH_FONT_CHOICES = ["default", "longcang"];
+        const ZH_FONT_CHOICES = ["default", "longcang", "mashanzheng"]; // v590: + Ma Shan Zheng
         function getZhFont() {
             let v = null;
             try { v = localStorage.getItem(ZH_FONT_KEY); } catch (e) {}
@@ -9978,7 +9978,7 @@
             document.querySelectorAll("#zhFontPicker .app-font-opt").forEach(b => b.classList.toggle("selected", b.dataset.font === cur));
             applyZhSizeAttr(); // v588
         }
-        // v588: "Chinese size" for the Long Cang font — device-only (localStorage, like the font choice itself: not in the backup,
+        // v588: "Chinese size" for the Long Cang / Ma Shan Zheng (v590) fonts — device-only (localStorage, like the font choice itself: not in the backup,
         // does not trigger a Drive sync). Done with CSS `size-adjust` on COPIES of the Chinese @font-face slices (families
         // "Long Cang L"/"Klee One ZH L" = 110%, "... XL" = 120%), built once per size from the existing rules; CSS vars in
         // index.html (--zh-ff) point at them. size-adjust scales only those glyphs, so English / digits are untouched.
@@ -10002,7 +10002,7 @@
                     for (const r of Array.from(rules)) {
                         if (!(r instanceof CSSFontFaceRule) && r.type !== 5) continue;
                         const fam = (r.style.getPropertyValue("font-family") || "").replace(/["']/g, "").trim();
-                        if (fam !== "Long Cang" && fam !== "Klee One ZH") continue;
+                        if (fam !== "Long Cang" && fam !== "Ma Shan Zheng" && fam !== "Klee One ZH") continue; // v590: + Ma Shan Zheng
                         css += r.cssText.replace(/font-family:\s*[^;]+;/, `font-family: "${fam} ${ZH_SIZE_SUFFIX[size]}"; size-adjust: ${ZH_SIZE_PCT[size]}%;`) + "\n";
                     }
                 }
@@ -10015,7 +10015,7 @@
         }
         function applyZhSizeAttr() {
             const size = getZhSize();
-            if (getZhFont() === "longcang") ensureZhSizeFonts(size);
+            if (getZhFont() !== "default") ensureZhSizeFonts(size); // v590: Long Cang or Ma Shan Zheng
             document.documentElement.setAttribute("data-zh-size", size);
             document.querySelectorAll("#zhSizeRow .zh-size-opt").forEach(b => b.classList.toggle("selected", b.dataset.size === size));
         }

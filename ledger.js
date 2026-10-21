@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v588";
+        const APP_VERSION = "v589";
         const APP_VERSION_DATE = "2026-10-21";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -23778,7 +23778,7 @@
 
                 return `
                     <div class="tagrep-row${showDate ? "" : " cont"}" data-click="openTxQuickView" data-type="${t.type}" data-id="${escapeHtml(t.id)}">
-                        <div class="tagrep-date">${showDate ? `<b>${escapeHtml(dayNum)}</b><span>${escapeHtml(wd)}</span>` : ""}</div>
+                        <div class="tagrep-date">${showDate ? `<span class="tagrep-dpill"><b>${escapeHtml(dayNum)}</b><span>${escapeHtml(wd)}</span></span>` : ""}</div>
                         <div class="tagrep-main">
                             <div class="tagrep-title">${escapeHtml(head)}${txAttachBadgeHTML(t)}${buildTagBadgesHTML(rowTags, t.id)}${buildClaimedBadgeHTML(t, txs)}</div>
                             ${noteLine ? `<div class="tagrep-note">${escapeHtml(noteLine)}</div>` : ""}

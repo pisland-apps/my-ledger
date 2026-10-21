@@ -4380,3 +4380,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 
 - Settings > Background Theme > Chinese font: when Long Cang is selected a "Chinese size" row appears (Normal / Large +10% / Larger +20%, with a live sample). Saved in `localStorage` key `ledgerZhFontSize` — this device only, not in the backup, no Drive sync. Applied early in `theme-init.js` (`data-zh-size` on `<html>`).
 - Implementation: `size-adjust` on copies of the Long Cang / Klee One ZH `@font-face` slices (families "... L" = 110%, "... XL" = 120%), generated once per size by `ensureZhSizeFonts()` from the existing rules (same woff2 files, nothing new to download or precache); `--zh-ff` for `data-zh-size="large|larger"` lists the copies first and the originals as fallback. Only Chinese glyphs scale; English / digits keep the App font size. Needs `size-adjust` support (Chrome / Edge / Firefox 92+, Safari 17+); on older browsers it simply stays Normal. Bumped to v588.
+
+## v589: Spending by Tag — day stamp is a pill on phones
+
+- The day stamp (`.tagrep-date`) now wraps its day number and weekday in `.tagrep-dpill`. Wider screens: `display: contents`, so the left column looks exactly as before. Phone view (<= 767px): a small pill with the month-header tint (`--active-bg`), day number in `--primary`, weekday muted, so it stands out from the entry titles. Bumped to v589.

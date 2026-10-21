@@ -2439,6 +2439,8 @@
         .tagrep-date { width: 34px; flex: 0 0 34px; text-align: center; padding-top: 1px; }
         .tagrep-date b { display: block; font-size: 1.15rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--text-main); }
         .tagrep-date span { display: block; margin-top: 2px; font-size: 0.62rem; font-weight: 700; color: var(--text-muted); }
+        /* v589: wrapper for the day stamp — invisible on wider screens (children lay out exactly as before), a pill on phones */
+        .tagrep-date .tagrep-dpill { display: contents; }
         /* v587: phone view — the day stamp moves from a left column to its own slim line above that day's first entry, so every
            entry (title, 📎, amount) gets the full card width instead of ~one sixth less. Continuation rows (same day) have an
            empty date cell: it is hidden and their dashed divider now starts at the card's left padding. Wider screens unchanged. */
@@ -2449,6 +2451,11 @@
             .tagrep-date:empty { display: none; }
             .tagrep-date b { display: inline; font-size: 0.95rem; }
             .tagrep-date span { display: inline; margin-top: 0; font-size: 0.72rem; }
+            /* v589: the day stamp is a small pill — same indigo tint as the month header, day number in the accent colour,
+               weekday muted — so it no longer looks like another entry title */
+            .tagrep-date { margin-bottom: 2px; }
+            .tagrep-date .tagrep-dpill { display: inline-flex; align-items: baseline; gap: 6px; padding: 2px 10px; border-radius: 999px; background: var(--active-bg); }
+            .tagrep-date .tagrep-dpill b { color: var(--primary); }
         }
         .tagrep-main { flex: 1; min-width: 0; }
         .tagrep-title { font-size: 0.95rem; font-weight: 500; line-height: 1.35; color: var(--text-main); overflow-wrap: anywhere; }

@@ -4371,3 +4371,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v586: Spending by Tag — row titles use weight 600 when the Chinese font is Long Cang
 
 - v563 set `.tagrep-title` to 500 so Chinese would not look bolder than English with the system Chinese font (YaHei has only 400 / 700). Long Cang has a single weight (400), so 500 left the Chinese thin and small next to Inventory item names (600, browser-thickened). New rule `html[data-zh-font="longcang"] .tagrep-title { font-weight: 600 }` (screen only) matches Inventory; with the default Chinese font the title stays 500. Bumped to v586.
+
+## v587: Spending by Tag — day stamp on its own line (phone view)
+
+- At widths <= 767px the day stamp ("30 Thu") sits on a slim line above that day's first entry instead of in a left column, so titles, 📎 badges and amounts use the full card width (fewer wrapped Chinese titles). Continuation rows (same day) hide their empty date cell and their dashed divider starts at the card padding. CSS only (`.tagrep-date`, `.tagrep-row.cont::before` inside `@media (max-width: 767px)`); wider screens unchanged. Bumped to v587.

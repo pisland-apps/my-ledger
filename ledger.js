@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v583";
+        const APP_VERSION = "v584";
         const APP_VERSION_DATE = "2026-10-21";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -9303,6 +9303,7 @@
             // other preset and keeps it correctly set even right after a fresh selectBgTheme().
             applyCrayonFontAttr();
             applyAppFontAttr(); // v577: re-assert the global App font too (cheap, idempotent)
+            applyZhFontAttr(); // v584: same for the Chinese font
             if (save) {
                 try {
                     localStorage.setItem(BG_THEME_STORAGE_KEY, JSON.stringify(theme));
@@ -9384,6 +9385,7 @@
             const fontToggle = document.getElementById("crayonFontToggle");
             if (fontToggle) fontToggle.checked = isCrayonFontEnabled();
             applyAppFontAttr();
+            applyZhFontAttr(); // v584
         }
 
         function selectBgTheme(el) {
@@ -9961,10 +9963,30 @@
             const cur = getAppFont();
             document.querySelectorAll("#appFontPicker .app-font-opt").forEach(b => b.classList.toggle("selected", b.dataset.font === cur));
         }
+        // v584: Chinese-only font choice ("default" | "longcang"), independent of the App font above.
+        // html[data-zh-font] sets --zh-ff (see the CSS in index.html); mirrored in theme-init.js.
+        const ZH_FONT_KEY = "ledgerZhFont";
+        const ZH_FONT_CHOICES = ["default", "longcang"];
+        function getZhFont() {
+            let v = null;
+            try { v = localStorage.getItem(ZH_FONT_KEY); } catch (e) {}
+            return ZH_FONT_CHOICES.includes(v) ? v : "default";
+        }
+        function applyZhFontAttr() {
+            const cur = getZhFont();
+            document.documentElement.setAttribute("data-zh-font", cur);
+            document.querySelectorAll("#zhFontPicker .app-font-opt").forEach(b => b.classList.toggle("selected", b.dataset.font === cur));
+        }
+        function selectZhFont(el) {
+            const v = el && el.dataset ? el.dataset.font : "default";
+            try { localStorage.setItem(ZH_FONT_KEY, ZH_FONT_CHOICES.includes(v) ? v : "default"); } catch (e) {}
+            applyZhFontAttr();
+        }
         function selectAppFont(el) {
             const v = el && el.dataset ? el.dataset.font : "default";
             try { localStorage.setItem(APP_FONT_KEY, APP_FONT_CHOICES.includes(v) ? v : "default"); } catch (e) {}
             applyAppFontAttr();
+            applyZhFontAttr(); // v584
         }
 
         // v250: Privacy Mode — see the CSS comment on html[data-privacy-mode="on"] in
@@ -27754,6 +27776,7 @@
             navigateToMonthlyTrendPage: () => navigateToMonthlyTrendPage(),
             selectBgTheme: (el) => selectBgTheme(el),
             selectAppFont: (el) => selectAppFont(el), // v577 (click map — the font buttons use data-click)
+            selectZhFont: (el) => selectZhFont(el), // v584 (same click map)
             // v403: navigateToCompanionPage() has no data-click of its own anymore (Companion's
             // rail icon/page merged into Net Worth Card's) — it's still called directly from JS
             // by toggleCompanionSettingsFromDashboard()/toggleMonthlyTrendMascotSettingsFromDashboard()

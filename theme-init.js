@@ -144,6 +144,9 @@
                 // v577: global App font pick, same before-first-paint reasoning (see ledger.js getAppFont()).
                 var appFontPref = localStorage.getItem("ledgerAppFont");
                 document.documentElement.setAttribute("data-app-font", (appFontPref === "kalam" || appFontPref === "shadows") ? appFontPref : "default");
+                // v584: Chinese-only font choice, same before-first-paint reasoning (see ledger.js getZhFont()).
+                var zhFontPref = localStorage.getItem("ledgerZhFont");
+                document.documentElement.setAttribute("data-zh-font", zhFontPref === "longcang" ? "longcang" : "default");
                 // v249: same before-first-paint reasoning as the two attributes above, for
                 // Privacy Mode — a real amount briefly flashing unblurred for one frame while
                 // someone's phone screen is visible to bystanders is exactly the scenario this

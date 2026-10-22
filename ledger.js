@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v600";
+        const APP_VERSION = "v601";
         const APP_VERSION_DATE = "2026-10-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -18081,13 +18081,13 @@
                 ${insAttachmentsHtml(p)}
 
                 <div style="border:1px solid var(--border-color); border-radius:12px; padding:12px;">
-                    <div style="display:flex; justify-content:space-between; gap:12px;">
+                    <div class="ins-hero-cols">
                         <div style="min-width:0;">
                             <div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Premiums paid</div>
                             <div style="font-family:'Kalam', cursive; font-size:1.1rem; font-weight:800;">${formatCurrency(f.paid, cur)}</div>
                             ${insPaidBreakdownHtml(f, cur, p)}
                         </div>
-                        ${f.latestSv ? `<div style="min-width:0; text-align:right;">
+                        ${f.latestSv ? `<div class="ins-hero-sv" style="min-width:0; text-align:right;">
                             <div style="font-size:0.66rem; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Surrender value</div>
                             <div style="font-family:'Kalam', cursive; font-size:1.1rem; font-weight:800;">${f.svValue == null ? "—" : formatCurrency(f.svValue, cur)}</div>
                             <div style="font-size:0.68rem; font-weight:600; color:${f.svStale ? "var(--expense-color)" : "var(--text-muted)"};">as of ${escapeHtml(f.latestSv.date)}${f.svStale ? " · ⚠️ over a year old" : ""}</div>

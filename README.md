@@ -4474,3 +4474,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v600: Insurance detail — button bar fix
 - Four buttons (Record premium / cashback / SV / Edit) wrap two per row on a phone so no label is clipped; one row on wide screens.
 - Cache bumped to v600.
+
+## v601: Insurance detail (phone)
+- Button bar now really wraps two per row (inline flex:1 was overriding the CSS).
+- Premiums paid / Surrender value card stacks vertically on a phone, so the surrender figure no longer overflows.
+- Cache bumped to v601.

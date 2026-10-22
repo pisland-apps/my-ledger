@@ -4461,3 +4461,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Edit Policy: **+ Add surrender value** now sits above the list (new entries are inserted at the top, so no scrolling to the bottom).
 - Policy detail: "Premium payments" and "Surrender value history" headings are highlighted badges with a count chip.
 - Cache bumped to v597.
+
+## v598: Insurance
+- Policy detail: "Cashback received" heading is now a highlighted badge too (same as Premium payments / Surrender value history).
+- Cache bumped to v598.

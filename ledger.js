@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v591";
+        const APP_VERSION = "v592";
         const APP_VERSION_DATE = "2026-10-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -25490,6 +25490,17 @@
         // uses — same clear/rewrite order, same in-memory-variable reapplication, same
         // Companion/re-render tail. Throws on invalid bundles instead of alert()-ing directly,
         // so each caller can word the error for its own context (file vs. Drive).
+        // v592: ATOMIC. Until v591 this cleared one store at a time and wrote records back one by one,
+        // each in its own tiny IndexedDB transaction — so an error, a closed tab or a dead phone half-way left
+        // a half-old, half-new ledger. Now every record is encrypted in memory FIRST (a failure there changes
+        // nothing), then ONE transaction across all the stores clears and rewrites them. IndexedDB commits a
+        // transaction all-or-nothing: if anything fails (bad record, quota, the app being killed) the browser
+        // rolls back and the previous data is exactly as it was. Nothing may be awaited while that
+        // transaction is open (it would auto-commit early), which is why all the encrypting happens before it.
+        // Image handling is unchanged: a slim Drive bundle prunes (inside the same transaction), a Local
+        // Snapshot (attachmentsExtraOnly) only adds, everything else clears and rewrites.
+        // If anything fails AFTER the commit (the screen refresh at the end), the error carries
+        // restoreCommitted = true so callers know the data itself did change.
         async function restoreFromBundle(bundle) {
             if (!bundle.accounts || !bundle.transactions) {
                 throw new Error("Invalid backup: missing required data.");
@@ -25500,148 +25511,104 @@
             // queue an upload of data we just DOWNLOADED, which is at best wasteful and at worst
             // a feedback loop with a slower/competing device. Suppressed for the duration of this
             // restore; see the flag's own comment near the Drive sync code.
+            // (v592: the transaction below bypasses writeDB() altogether, so it can't schedule anything
+            // itself; the flag still covers the helper calls at the end.)
+            const prevSuppress = driveSuppressAutoSync;
             driveSuppressAutoSync = true;
+            let committed = false;
             try {
-                    await clearStoreDB(STORES.ACCOUNTS);
-                    await clearStoreDB(STORES.TRANSACTIONS);
+                const has = (s) => db.objectStoreNames.contains(s);
+                const encryptAll = (store, list) => Promise.all((list || []).map(rec => encryptRecord(store, rec)));
 
-                    if (db.objectStoreNames.contains(STORES.CATEGORIES)) {
-                        await clearStoreDB(STORES.CATEGORIES);
-                    }
-                    if (db.objectStoreNames.contains(STORES.MEMBERS)) {
-                        await clearStoreDB(STORES.MEMBERS);
-                    }
-                    if (db.objectStoreNames.contains(STORES.FUNDS)) {
-                        await clearStoreDB(STORES.FUNDS);
-                    }
-                    if (db.objectStoreNames.contains(STORES.NAV_HISTORY)) {
-                        await clearStoreDB(STORES.NAV_HISTORY);
-                    }
-                    // v591: a Local Snapshot (attachmentsExtraOnly) carries only the images the overwrite
-                    // destroyed, so restoring it must never clear the store — it just writes those back (below).
-                    if (db.objectStoreNames.contains(STORES.ATTACHMENTS) && !bundle.attachmentsExternal && !bundle.attachmentsExtraOnly) {
-                        await clearStoreDB(STORES.ATTACHMENTS);
-                    }
-                    if (db.objectStoreNames.contains(STORES.TEMPLATES)) {
-                        await clearStoreDB(STORES.TEMPLATES);
-                    }
-                    if (db.objectStoreNames.contains(STORES.TAGS)) {
-                        await clearStoreDB(STORES.TAGS);
-                    }
-                    if (db.objectStoreNames.contains(STORES.BUDGETS)) {
-                        await clearStoreDB(STORES.BUDGETS);
-                    }
-                    if (db.objectStoreNames.contains(STORES.INVENTORY)) {
-                        await clearStoreDB(STORES.INVENTORY);
-                    }
-                    if (db.objectStoreNames.contains(STORES.PLANNED_PAYMENTS)) {
-                        await clearStoreDB(STORES.PLANNED_PAYMENTS);
-                    }
-                    if (db.objectStoreNames.contains(STORES.REMINDERS)) {
-                        await clearStoreDB(STORES.REMINDERS);
-                    }
-                    if (db.objectStoreNames.contains(STORES.INSURANCE)) {
-                        await clearStoreDB(STORES.INSURANCE);
-                    }
-                    if (db.objectStoreNames.contains(STORES.TIMELINE)) {
-                        await clearStoreDB(STORES.TIMELINE);
-                    }
+                const newBaseCurrency = bundle.baseCurrency ? bundle.baseCurrency : baseCurrency;
+                const newFxRates = bundle.fxRates ? bundle.fxRates : fxRates;
+                const settingsRows = (bundle.settings && Array.isArray(bundle.settings))
+                    ? bundle.settings.filter(rec => rec && rec.key && !isDeviceLocalDriveSetting(rec.key)) // v450: never take another device's sync state
+                    : [];
 
-                    if (bundle.baseCurrency) baseCurrency = bundle.baseCurrency;
-                    if (bundle.fxRates) fxRates = bundle.fxRates;
-                    await writeDB(STORES.SETTINGS, { key: "baseCurrency", value: baseCurrency });
-                    await writeDB(STORES.SETTINGS, { key: "fxRates", value: fxRates });
-
-                    for (const acc of bundle.accounts) await writeDB(STORES.ACCOUNTS, acc);
-                    // v296 fix: previously did `delete tx.id` before writing each transaction back,
-                    // deliberately letting IndexedDB's autoIncrement assign a fresh id to every one
-                    // on import — but several fields store ANOTHER transaction's id as a cross-
-                    // reference (linkedFdPlacementId, refundOf/refundOfIds), and a fresh id breaks
-                    // every one of them: the FD account's own Activity page stops grouping interest
-                    // payouts under their placement, the ✅ Claimed/Reimbursement badge disappears,
-                    // and — worse than cosmetic — findReimbursementFor()'s refundOfIds lookup (used
-                    // by the Settle Multiple Bills as One Claim candidate query) silently stops
-                    // matching, so an already-settled claim would reappear as unclaimed and risk
-                    // being settled twice. STORES.TRANSACTIONS is fully cleared just above, so there
-                    // is no id collision risk in keeping the originals — same reasoning the
-                    // attachments restore below already uses on purpose (see its own comment).
-                    for (const tx of bundle.transactions) await writeDB(STORES.TRANSACTIONS, tx);
-
-                    if (bundle.categories) {
-                        for (const cat of bundle.categories) await writeDB(STORES.CATEGORIES, cat);
-                    }
-                    if (bundle.members) {
-                        for (const mem of bundle.members) await writeDB(STORES.MEMBERS, mem);
-                    }
-                    if (bundle.funds) {
-                        for (const fund of bundle.funds) await writeDB(STORES.FUNDS, fund);
-                    }
-                    if (bundle.navHistory) {
-                        for (const rec of bundle.navHistory) await writeDB(STORES.NAV_HISTORY, rec);
-                    }
-                    // v121: attachment blobs — written with their ORIGINAL ids (v296: transactions
-                    // now do too, see the comment above) so each restored transaction's own
-                    // `attachments[].id` refs keep resolving correctly.
+                // 1. Prepare (no database changes yet). Order inside each store = order in the bundle.
+                // v296 note (kept): transactions keep their ORIGINAL ids — several fields store ANOTHER
+                // transaction's id (linkedFdPlacementId, refundOf/refundOfIds); the store is fully cleared
+                // first, so there is no collision. Same for attachments (the ids inside transactions'
+                // own `attachments` arrays), v121.
+                const plan = [];
+                const addPlan = async (store, list, clear) => { if (has(store)) plan.push({ store, clear, records: await encryptAll(store, list) }); };
+                await addPlan(STORES.ACCOUNTS, bundle.accounts, true);
+                await addPlan(STORES.TRANSACTIONS, bundle.transactions, true);
+                await addPlan(STORES.CATEGORIES, bundle.categories, true);
+                await addPlan(STORES.MEMBERS, bundle.members, true);
+                await addPlan(STORES.FUNDS, bundle.funds, true);
+                await addPlan(STORES.NAV_HISTORY, bundle.navHistory, true);
+                let pruneKeep = null; // Set of image ids to keep when this is a slim Drive bundle
+                if (has(STORES.ATTACHMENTS)) {
                     if (bundle.attachmentsExternal) {
-                        // v579: slim Drive bundle — keep the image blobs this device already has,
-                        // drop the ones the backup no longer lists (that's how a delete made on
-                        // another device reaches this one); the missing ones are fetched from Drive
-                        // right after by pullMissingDriveImages().
-                        await pruneLocalAttachments(bundle.attachmentIds || []);
-                    } else if (bundle.attachments) {
-                        for (const att of bundle.attachments) await writeDB(STORES.ATTACHMENTS, att);
+                        // v579: slim Drive bundle — keep the image blobs this device already has, drop the
+                        // ones the backup no longer lists (that's how a delete made on another device
+                        // reaches this one); the missing ones are fetched from Drive right after by
+                        // pullMissingDriveImages().
+                        pruneKeep = new Set((bundle.attachmentIds || []).map(String));
+                        plan.push({ store: STORES.ATTACHMENTS, clear: false, records: [] });
+                    } else if (bundle.attachmentsExtraOnly) {
+                        // v591: a Local Snapshot carries only the images the overwrite destroyed — add
+                        // them back, never clear.
+                        await addPlan(STORES.ATTACHMENTS, bundle.attachments, false);
+                    } else {
+                        await addPlan(STORES.ATTACHMENTS, bundle.attachments, true);
                     }
-                    // v227: reusable Income/Expense transaction templates — absent on older backups,
-                    // skipped entirely for those (same pattern as bundle.attachments above).
-                    if (bundle.templates) {
-                        for (const tpl of bundle.templates) await writeDB(STORES.TEMPLATES, tpl);
-                    }
-                    // v257: tag definitions — same "absent on older backups → skip" pattern.
-                    if (bundle.tags) {
-                        for (const tag of bundle.tags) await writeDB(STORES.TAGS, tag);
-                    }
-                    // v264: monthly/yearly Budget records — same "absent on older backups → skip"
-                    // pattern. (Fix: this store was being cleared above on every import but was
-                    // never actually written back from the bundle, so a restored backup always
-                    // showed "no budget set" even though the source device had one.)
-                    if (bundle.budgets) {
-                        for (const b of bundle.budgets) await writeDB(STORES.BUDGETS, b);
-                    }
-                    // v318: Inventory items — same "absent on older backups → skip" pattern.
-                    if (bundle.inventory) {
-                        for (const inv of bundle.inventory) await writeDB(STORES.INVENTORY, inv);
-                    }
-                    // v354: Planned Payments — same "absent on older backups → skip" pattern.
-                    if (bundle.plannedPayments) {
-                        for (const pp of bundle.plannedPayments) await writeDB(STORES.PLANNED_PAYMENTS, pp);
-                    }
-                    // v418: Reminders — same "absent on older backups → skip" pattern.
-                    if (bundle.reminders) {
-                        for (const rem of bundle.reminders) await writeDB(STORES.REMINDERS, rem);
-                    }
-                    // v468: Insurance policies — same "absent on older backups → skip" pattern.
-                    if (bundle.insurance) {
-                        for (const pol of bundle.insurance) await writeDB(STORES.INSURANCE, pol);
-                    }
-                    // v537: Timeline entries — same "absent on older backups → skip" pattern.
-                    if (bundle.timeline) {
-                        for (const tl of bundle.timeline) await writeDB(STORES.TIMELINE, tl);
-                    }
+                }
+                await addPlan(STORES.TEMPLATES, bundle.templates, true);
+                await addPlan(STORES.TAGS, bundle.tags, true);
+                await addPlan(STORES.BUDGETS, bundle.budgets, true); // (v264: was cleared but never written back)
+                await addPlan(STORES.INVENTORY, bundle.inventory, true);
+                await addPlan(STORES.PLANNED_PAYMENTS, bundle.plannedPayments, true);
+                await addPlan(STORES.REMINDERS, bundle.reminders, true);
+                await addPlan(STORES.INSURANCE, bundle.insurance, true);
+                await addPlan(STORES.TIMELINE, bundle.timeline, true);
+                // SETTINGS is never cleared — rows are overwritten one by one (this device's own sync
+                // state rows are skipped above). baseCurrency / fxRates first, then the preference dump.
+                plan.push({ store: STORES.SETTINGS, clear: false, records: await encryptAll(STORES.SETTINGS, [
+                    { key: "baseCurrency", value: newBaseCurrency },
+                    { key: "fxRates", value: newFxRates },
+                    ...settingsRows
+                ]) });
 
-                    // v65: restore preferences from the SETTINGS store dump (defaultPaymentAccount,
-                    // defaultIncomeCategory, defaultExpenseCategory, recentTx* widget filters,
-                    // expandedAccountSubrows). Absent on older backups, so this is skipped entirely
-                    // for those — accounts/transactions/etc. still import fine, just without prefs.
-                    // baseCurrency/fxRates rows are included in this dump too but are already
-                    // applied above from bundle.baseCurrency/bundle.fxRates; writing them again here
-                    // is harmless (same values, same store row).
-                    // v347: this dump also now carries companionPetId/companionCustomImage — see
-                    // the dedicated reapply call right after this block, not a switch case here.
-                    if (bundle.settings && Array.isArray(bundle.settings)) {
-                        for (const rec of bundle.settings) {
-                            if (!rec || !rec.key) continue;
-                            if (isDeviceLocalDriveSetting(rec.key)) continue; // v450: never take another device's sync state
-                            await writeDB(STORES.SETTINGS, rec);
+                // 2. One transaction over every store: all or nothing.
+                await new Promise((resolve, reject) => {
+                    let tx = null;
+                    try {
+                        tx = db.transaction(plan.map(p => p.store), "readwrite");
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error || new Error("Restore failed — nothing was changed."));
+                        tx.onabort = () => reject(tx.error || new Error("The browser cancelled the restore — nothing was changed."));
+                        for (const p of plan) {
+                            const os = tx.objectStore(p.store);
+                            if (p.clear) os.clear();
+                            for (const rec of p.records) os.put(rec);
+                        }
+                        if (pruneKeep) {
+                            const os = tx.objectStore(STORES.ATTACHMENTS);
+                            const keysReq = os.getAllKeys();
+                            keysReq.onsuccess = () => {
+                                for (const k of keysReq.result || []) if (!pruneKeep.has(String(k))) os.delete(k);
+                            };
+                        }
+                    } catch (err) {
+                        try { if (tx) tx.abort(); } catch (e) { /* already finished */ }
+                        reject(err);
+                    }
+                });
+                committed = true;
+
+                // 3. The data is in. Mirror it into the in-memory variables and refresh the screen.
+                baseCurrency = newBaseCurrency;
+                fxRates = newFxRates;
+                // v65: restore preferences from the SETTINGS store dump (defaultPaymentAccount,
+                // defaultIncomeCategory, defaultExpenseCategory, recentTx* widget filters,
+                // expandedAccountSubrows). Absent on older backups, so nothing is applied for those —
+                // accounts/transactions/etc. still import fine, just without prefs.
+                // v347: this dump also now carries companionPetId/companionCustomImage — see
+                // the dedicated reapply call right after this block, not a switch case here.
+                for (const rec of settingsRows) {
                             switch (rec.key) {
                                 case "defaultPaymentAccount": defaultPaymentAccount = rec.value || ""; break;
                                 case "defaultReceiveAccount": defaultReceiveAccount = rec.value || ""; break;
@@ -25670,28 +25637,30 @@
                                     expandedAccountSubrows = new Set(Array.isArray(rec.value) ? rec.value : []);
                                     break;
                             }
-                        }
-                    }
+                }
 
-                    // v347: Companion (companionPetId / companionCustomImage) is handled outside
-                    // the switch above rather than with a case per key — unlike every other
-                    // setting here, it isn't mirrored into a plain in-memory variable; it's read
-                    // straight from IndexedDB each time it's applied. Reapplying once, after every
-                    // row above has already been written, is also order-independent: if
-                    // companionCustomImage happened to appear after companionPetId in bundle.settings,
-                    // a per-key case would risk re-painting the chip before the image it needs was
-                    // actually in the store yet. Safe to run even on a backup with no Companion
-                    // settings at all — it just reflects whatever this device already had.
-                    await applyCompanionPet(await getSavedCompanionId(), { save: false });
+                // v347: Companion (companionPetId / companionCustomImage) is handled outside
+                // the switch above rather than with a case per key — unlike every other
+                // setting here, it isn't mirrored into a plain in-memory variable; it's read
+                // straight from IndexedDB each time it's applied. Reapplying once, after every
+                // row above has already been written, is also order-independent: if
+                // companionCustomImage happened to appear after companionPetId in bundle.settings,
+                // a per-key case would risk re-painting the chip before the image it needs was
+                // actually in the store yet. Safe to run even on a backup with no Companion
+                // settings at all — it just reflects whatever this device already had.
+                await applyCompanionPet(await getSavedCompanionId(), { save: false });
 
-                    await syncAndLoadCategories();
-                    await loadMembersCache();
-                    await loadInsuranceCache(); // v468
-                    renderSidebarMembers();
-                    renderSidebarAccountTypeShortcuts();
-                    renderApp();
+                await syncAndLoadCategories();
+                await loadMembersCache();
+                await loadInsuranceCache(); // v468
+                renderSidebarMembers();
+                renderSidebarAccountTypeShortcuts();
+                renderApp();
+            } catch (err) {
+                if (err && typeof err === "object") err.restoreCommitted = committed;
+                throw err;
             } finally {
-                driveSuppressAutoSync = false;
+                driveSuppressAutoSync = prevSuppress;
             }
         }
 
@@ -27505,18 +27474,26 @@
                 alert("Couldn't save a safety copy of the current data, so nothing was restored: " + (err && err.message ? err.message : err));
                 return;
             }
+            let refreshError = null;
             try {
                 await restoreFromBundle(bundle);
             } catch (err) {
-                alert("The restore didn't finish: " + (err && err.message ? err.message : err) + "\n\nYour previous data is saved in Local Snapshots (\"Before restore\") — restore that one to get it back.");
-                await renderDriveSnapshotsList();
-                return;
+                if (err && err.restoreCommitted) {
+                    // v592: the data was written (the restore is atomic) and only the screen refresh failed —
+                    // carry on as a normal restore, and tell the user to reload.
+                    refreshError = err;
+                } else {
+                    // v592: nothing was written — the restore is all-or-nothing, so the previous data is untouched.
+                    alert("The restore didn't go through and nothing was changed: " + (err && err.message ? err.message : err));
+                    await renderDriveSnapshotsList();
+                    return;
+                }
             }
             await markAllDriveDataStoresDirty();
             scheduleDriveAutoSync();
             await renderDriveSnapshotsList();
             const unavailable = imgResult ? imgResult.absent + imgResult.undecryptable : 0;
-            showToast("Restored local snapshot" + (unavailable ? ` · ⚠ ${unavailable} image${unavailable === 1 ? "" : "s"} unavailable` : ""));
+            showToast("Restored local snapshot" + (unavailable ? ` · ⚠ ${unavailable} image${unavailable === 1 ? "" : "s"} unavailable` : "") + (refreshError ? " · reload the app to refresh the screen" : ""));
         }
 
         // v433: best-effort, non-authoritative diff — compares each top-level store array between

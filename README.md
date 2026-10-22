@@ -4408,3 +4408,14 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Conflict-log "remote changed stores" now compares image id sets instead of raw attachment fields, so "attachments" no longer always shows as changed.
 - Not in this version: atomic (single-transaction) restore — planned for v592, since `restoreFromBundle` is shared with file import and the Drive pull.
 - Cache bumped to v591.
+
+## v592: Atomic restore — a restore is all-or-nothing
+
+- **Problem:** `restoreFromBundle()` cleared one store at a time and wrote every record back in its own tiny IndexedDB transaction. An error, a closed tab, a crash or a dead battery half-way left a half-old / half-new ledger, with no error to catch.
+- **Now:** every record is encrypted in memory first, then **one** IndexedDB transaction across all the stores clears and rewrites them. IndexedDB commits a transaction all-or-nothing, so if anything fails (a bad record, quota, the browser or OS killing the app) the previous data is exactly as it was. Nothing is awaited while the transaction is open.
+- **Covers all three callers** (they share this one function): Restore Latest / Use Remote (Drive pull), Import Backup (file), and Local Snapshot restore.
+- **Unchanged behaviour:** the same 15 data stores are cleared and rewritten; SETTINGS is never cleared (rows overwritten, this device's own `drive*` sync rows skipped); transactions and images keep their original ids; slim Drive bundles still prune local images they don't list (now inside the same transaction); Local Snapshots (`attachmentsExtraOnly`) still only add images; in-memory variables, Companion and the screen refresh are applied after the commit.
+- **Errors:** a failure before the commit throws with `restoreCommitted = false` and nothing has changed. A failure in the screen refresh AFTER the commit throws with `restoreCommitted = true`; the Local Snapshot restore then carries on as a normal restore (marks the stores unsynced, syncs) and the toast says to reload the app. The Local Snapshot restore's failure alert now says "nothing was changed" instead of pointing to the "Before restore" snapshot (which is still saved first).
+- **Cost:** the whole restored bundle (data plus any image records) is held in memory encrypted before the transaction opens — fine at current sizes (~25 MB of images), and a failure there simply changes nothing.
+- Not changed: Import Backup (file) still doesn't mark the restored data as unsynced the way a Local Snapshot restore does (v591) — a separate decision.
+- Cache bumped to v592.

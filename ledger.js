@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v593";
+        const APP_VERSION = "v594";
         const APP_VERSION_DATE = "2026-10-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -9470,6 +9470,7 @@
             window.scrollTo(0, 0);
             pushVirtualState("bgtheme");
             buildBgThemeSwatchGrid();
+            zhPackOnPickerOpen(); // v594: offline-font status line (saved state first, then the cache check)
         }
 
         // --- v326: Net Worth Card Style (Setting page) --------------------------------------
@@ -9989,6 +9990,7 @@
             document.documentElement.setAttribute("data-zh-font", cur);
             document.querySelectorAll("#zhFontPicker .app-font-opt").forEach(b => b.classList.toggle("selected", b.dataset.font === cur));
             applyZhSizeAttr(); // v588
+            try { renderZhPackStatus(); } catch (e) {} // v594
         }
         // v588: "Chinese size" for the Long Cang / Ma Shan Zheng (v590) fonts — device-only (localStorage, like the font choice itself: not in the backup,
         // does not trigger a Drive sync). Done with CSS `size-adjust` on COPIES of the Chinese @font-face slices (families
@@ -10040,7 +10042,298 @@
             const v = el && el.dataset ? el.dataset.font : "default";
             try { localStorage.setItem(ZH_FONT_KEY, ZH_FONT_CHOICES.includes(v) ? v : "default"); } catch (e) {}
             applyZhFontAttr();
+            if (ZH_PACKS[v]) zhPackDownload(v, { user: true }); // v594: save the whole font for offline (resumable; no-op when already saved)
         }
+
+        // ---- v594: offline copy of the Chinese handwriting fonts ("Saved for offline") --------------------
+        // Long Cang / Ma Shan Zheng are cut into 88 slices each, and the browser only fetches a slice when a
+        // character in it is shown — so a character you have never seen before needs a connection. This block
+        // lets the person download the WHOLE font (every slice + the shared Klee One fallback) once:
+        //  * resumable — what is already in the font cache is never fetched again; an interrupted download only
+        //    fetches what is missing; at most ZH_PACK_CONCURRENCY requests at a time (one pack at a time);
+        //  * "saved" means every slice is really in the cache (a response only counts once cache.put succeeded);
+        //  * the status line reads the saved state in localStorage (ZH_PACK_KEY) so it is right the moment the
+        //    picker opens, then a background check against the cache downgrades it if slices went missing
+        //    (the browser may evict the cache under storage pressure) — the state is the fast answer, the cache
+        //    is the truth;
+        //  * font-version.js says which version of the font FILES is current; a saved copy recorded at an older
+        //    version is "stale": still used offline, refreshed quietly (only) when the picker is opened or the
+        //    font is used while online — never just because the app version changed;
+        //  * "Remove offline copy" (⋯ menu) deletes a font's slices but keeps the Klee One fallback while the
+        //    other font still has a copy.
+        // Device-only, like the font choice: not in the backup, does not sync.
+        const ZH_PACK_KEY = "ledgerZhFontPack";
+        const ZH_PACKS = {
+            longcang:    { families: ["Long Cang", "Klee One ZH"],     short: "Long Cang",     mb: "4.6" },
+            mashanzheng: { families: ["Ma Shan Zheng", "Klee One ZH"], short: "Ma Shan Zheng", mb: "5.0" }
+        };
+        const ZH_PACK_CONCURRENCY = 3;
+        const ZH_PACK_AUTO_RETRY_MS = 10 * 60 * 1000; // quiet (non-tap) retries at most this often
+        const zhPackRun = {};      // pack -> { running, done, total, cancel, promise } (in memory only)
+        const zhPackUrlCache = {};
+        let zhPackChain = Promise.resolve(); // one pack downloads at a time -> total concurrency stays <= 3
+        let zhPackMenuOpen = false;
+
+        function zhFontCacheName() { return self.LEDGER_FONT_CACHE || "ledger-fonts-v1"; }
+        function zhFontVersion() { return self.LEDGER_FONT_VERSION || "f1"; }
+        function zhPackAll() {
+            let o = {};
+            try { o = JSON.parse(localStorage.getItem(ZH_PACK_KEY) || "{}") || {}; } catch (e) { o = {}; }
+            return (o && typeof o === "object") ? o : {};
+        }
+        function zhPackGet(pack) { const s = zhPackAll()[pack]; return (s && typeof s === "object") ? s : { s: "none" }; }
+        function zhPackSet(pack, st) {
+            const all = zhPackAll();
+            all[pack] = st;
+            try { localStorage.setItem(ZH_PACK_KEY, JSON.stringify(all)); } catch (e) {}
+        }
+        // The font files of a pack = the url() of its @font-face rules (single source of truth: index.html).
+        function zhPackUrls(pack) {
+            if (zhPackUrlCache[pack]) return zhPackUrlCache[pack];
+            const fams = ZH_PACKS[pack] ? ZH_PACKS[pack].families : [];
+            const set = new Set();
+            try {
+                for (const sheet of Array.from(document.styleSheets)) {
+                    let rules;
+                    try { rules = sheet.cssRules; } catch (e) { continue; }
+                    for (const r of Array.from(rules)) {
+                        if (!(r instanceof CSSFontFaceRule) && r.type !== 5) continue;
+                        const fam = (r.style.getPropertyValue("font-family") || "").replace(/["']/g, "").trim();
+                        if (!fams.includes(fam)) continue; // exact names only: the "... L" / "... XL" size copies reuse the same files
+                        for (const m of (r.style.getPropertyValue("src") || "").matchAll(/url\(\s*["']?([^"')]+?)["']?\s*\)/g)) {
+                            try { set.add(new URL(m[1], document.baseURI).href); } catch (e) {}
+                        }
+                    }
+                }
+            } catch (e) {}
+            const list = Array.from(set);
+            if (list.length) zhPackUrlCache[pack] = list;
+            return list;
+        }
+        async function zhPackPresent(cache) {
+            const c = cache || await caches.open(zhFontCacheName());
+            return new Set((await c.keys()).map(k => k.url));
+        }
+        // What the status line should say, from the saved state (+ a running download, if any).
+        function zhPackView(pack) {
+            const run = zhPackRun[pack];
+            if (run && run.running) return { k: "saving", done: run.done, total: run.total };
+            const st = zhPackGet(pack);
+            if (st.s === "saved") return { k: st.fv === zhFontVersion() ? "saved" : "stale", err: st.err };
+            if (st.s === "partial") return { k: "partial", n: st.n || 0, t: st.t || 0, err: st.err };
+            return { k: "none", err: st.err };
+        }
+        function zhPackErrText(err) {
+            if (err === "offline") return " Connect to the internet to save. 联网后再保存。";
+            if (err === "storage") return " Not enough storage space. 存储空间不足。";
+            if (err === "missing") return " Font files not found on the server. 服务器上找不到字体文件。";
+            if (err === "net") return " Network problem — will retry. 网络问题，稍后重试。";
+            return "";
+        }
+        function renderZhPackStatus() {
+            const row = document.getElementById("zhPackRow");
+            const textEl = document.getElementById("zhPackText");
+            if (!row || !textEl) return;
+            const sel = getZhFont();
+            const selPack = ZH_PACKS[sel] ? sel : null;
+            const anyCopy = Object.keys(ZH_PACKS).some(p => zhPackView(p).k !== "none");
+            row.classList.toggle("show", !!(selPack || anyCopy));
+            let state = "none", txt = "";
+            if (selPack) {
+                const v = zhPackView(selPack);
+                state = v.k;
+                if (v.k === "saving") txt = v.total ? `Saving for offline… ${v.done}/${v.total} · 正在保存供离线使用` : "Saving for offline… · 正在保存供离线使用";
+                else if (v.k === "saved") txt = "Saved for offline · 已保存，可离线使用";
+                else if (v.k === "stale") txt = "Saved for offline (older font files) — will update when online · 离线可用，联网时会自动更新" + zhPackErrText(v.err);
+                else if (v.k === "partial") txt = `Not saved yet (${v.n}/${v.t}) — will retry when online · 还没保存完整，联网时会自动重试` + zhPackErrText(v.err);
+                else txt = "Not saved for offline · 未保存离线副本" + zhPackErrText(v.err);
+            } else if (anyCopy) {
+                state = "copies";
+                const parts = Object.keys(ZH_PACKS).filter(p => zhPackView(p).k !== "none").map(p => {
+                    const k = zhPackView(p).k;
+                    return ZH_PACKS[p].short + (k === "saved" ? " ✓" : k === "stale" ? " ✓ (older)" : k === "saving" ? " …" : " (incomplete)");
+                });
+                txt = "Offline font copies: " + parts.join(", ") + " · 离线字体副本";
+            }
+            textEl.textContent = txt;
+            textEl.dataset.state = state;
+            renderZhPackMenu();
+        }
+        function renderZhPackMenu() {
+            const menu = document.getElementById("zhPackMenu");
+            const btn = document.getElementById("zhPackMore");
+            if (!menu) return;
+            menu.hidden = !zhPackMenuOpen;
+            if (btn) btn.setAttribute("aria-expanded", zhPackMenuOpen ? "true" : "false");
+            if (!zhPackMenuOpen) return;
+            const items = [];
+            const sel = getZhFont();
+            if (ZH_PACKS[sel]) {
+                const v = zhPackView(sel);
+                if (v.k === "none" || v.k === "partial" || v.k === "stale") {
+                    const verb = v.k === "none" ? "Save for offline now" : v.k === "partial" ? "Resume saving" : "Update offline copy";
+                    items.push(`<button type="button" class="zh-pack-menu-btn" data-click="zhPackSaveNow" data-pack="${sel}">⬇ ${verb} (≈${ZH_PACKS[sel].mb} MB)</button>`);
+                }
+            }
+            for (const p of Object.keys(ZH_PACKS)) {
+                if (zhPackView(p).k !== "none") items.push(`<button type="button" class="zh-pack-menu-btn" data-click="zhPackRemoveCopy" data-pack="${p}">🗑 Remove offline copy — ${ZH_PACKS[p].short} 删除离线副本</button>`);
+            }
+            if (!items.length) items.push('<span class="zh-pack-menu-note">No offline copy saved. 没有离线副本。</span>');
+            menu.innerHTML = items.join("");
+        }
+        function toggleZhPackMenu() { zhPackMenuOpen = !zhPackMenuOpen; renderZhPackMenu(); }
+
+        // Download (or resume, or refresh) every file of a pack. Resolves when finished; never throws.
+        function zhPackDownload(pack, opts) {
+            if (!ZH_PACKS[pack]) return Promise.resolve();
+            const cur = zhPackRun[pack];
+            if (cur && cur.running) return cur.promise;
+            const run = { running: true, done: 0, total: 0, cancel: false, promise: null };
+            zhPackRun[pack] = run;
+            renderZhPackStatus();
+            run.promise = zhPackChain = zhPackChain
+                .then(() => zhPackDownloadNow(pack, opts || {}, run))
+                .catch(() => {})
+                .then(() => { run.running = false; renderZhPackStatus(); });
+            return run.promise;
+        }
+        async function zhPackDownloadNow(pack, opts, run) {
+            const urls = zhPackUrls(pack);
+            const st = zhPackGet(pack);
+            const now = Date.now();
+            if (!urls.length || !("caches" in window)) { zhPackSet(pack, Object.assign({}, st, { la: now, err: "unsupported" })); return; }
+            if (!navigator.onLine) { zhPackSet(pack, Object.assign({}, st, { la: now, err: "offline" })); return; }
+            const ver = zhFontVersion();
+            // Recorded at an older font version -> refresh every file (cache:"reload"); resumable via st.rf.d.
+            const outdated = (st.s === "saved" || st.s === "partial") && !!st.fv && st.fv !== ver;
+            let rf = null, todo;
+            const cache = await caches.open(zhFontCacheName());
+            const indexed = urls.map((u, i) => ({ u, i }));
+            if (outdated) {
+                rf = { fv: ver, d: (st.rf && st.rf.fv === ver && Array.isArray(st.rf.d)) ? st.rf.d.slice() : [] };
+                const done = new Set(rf.d);
+                todo = indexed.filter(x => !done.has(x.i));
+            } else {
+                const present = await zhPackPresent(cache);
+                todo = indexed.filter(x => !present.has(x.u));
+            }
+            run.total = urls.length;
+            run.done = urls.length - todo.length;
+            renderZhPackStatus();
+            let next = 0, failed = 0, missing = 0, fatal = null;
+            const worker = async () => {
+                while (!fatal && !run.cancel) {
+                    if (!navigator.onLine) { fatal = "offline"; return; }
+                    const j = next++;
+                    if (j >= todo.length) return;
+                    const item = todo[j];
+                    let ok = false, status = 0;
+                    for (let attempt = 0; attempt < 2 && !ok && !fatal && !run.cancel; attempt++) {
+                        try {
+                            const resp = await fetch(item.u, { cache: "reload" });
+                            status = resp.status;
+                            if (resp.ok && !/text\/html/i.test(resp.headers.get("Content-Type") || "")) {
+                                await cache.put(item.u, resp); // counts only once it is really in the cache
+                                ok = true;
+                            } else if (resp.status === 404) break; // not on the server — a retry will not help
+                        } catch (e) {
+                            if (e && (e.name === "QuotaExceededError" || /quota/i.test(String(e.message || "")))) { fatal = "storage"; break; }
+                        }
+                    }
+                    if (ok) { run.done++; if (rf) rf.d.push(item.i); }
+                    else { failed++; if (status === 404) missing++; }
+                    renderZhPackStatus();
+                }
+            };
+            await Promise.all(Array.from({ length: ZH_PACK_CONCURRENCY }, worker));
+            if (run.cancel) return;
+            const finishedAll = !fatal && failed === 0;
+            if (finishedAll) {
+                zhPackSet(pack, { s: "saved", fv: ver, n: urls.length, t: urls.length, ts: Date.now(), la: Date.now() });
+                if (outdated) await zhPackPruneOrphans(cache);
+            } else {
+                const err = fatal || (missing ? "missing" : "net");
+                if (outdated) zhPackSet(pack, Object.assign({}, st, { rf, la: Date.now(), err })); // stays a usable (stale) copy; resumes from rf
+                else zhPackSet(pack, { s: run.done > 0 ? "partial" : "none", fv: ver, n: run.done, t: urls.length, la: Date.now(), err });
+            }
+        }
+        // After a refresh: drop cached font files that no @font-face rule uses any more (renamed / removed slices).
+        async function zhPackPruneOrphans(cache) {
+            try {
+                const keep = new Set();
+                Object.keys(ZH_PACKS).forEach(p => zhPackUrls(p).forEach(u => keep.add(u)));
+                for (const k of await cache.keys()) if (!keep.has(k.url)) await cache.delete(k);
+            } catch (e) {}
+        }
+        // The truth check: compare the saved state with what is really in the cache; downgrade if slices are gone.
+        async function zhPackVerify(pack) {
+            const st = zhPackGet(pack);
+            if (st.s !== "saved" && st.s !== "partial") return;
+            const run = zhPackRun[pack];
+            if ((run && run.running) || !("caches" in window)) return;
+            const urls = zhPackUrls(pack);
+            if (!urls.length) return;
+            let present;
+            try { present = await zhPackPresent(); } catch (e) { return; }
+            const n = urls.filter(u => present.has(u)).length;
+            if (st.s === "saved" && n < urls.length) {
+                const next = Object.assign({}, st, { s: "partial", n, t: urls.length });
+                delete next.rf;
+                zhPackSet(pack, next);
+            } else if (st.s === "partial" && n === urls.length && (!st.fv || st.fv === zhFontVersion())) {
+                zhPackSet(pack, { s: "saved", fv: zhFontVersion(), n, t: urls.length, ts: Date.now(), la: st.la || 0 });
+            } else if (st.s === "partial" && n !== st.n) {
+                zhPackSet(pack, Object.assign({}, st, { n, t: urls.length }));
+            }
+        }
+        function zhPackAutoOk() {
+            if (!navigator.onLine) return false;
+            const c = navigator.connection;
+            return !(c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || "")));
+        }
+        // Quiet retry for the font that is in use: only for a copy that is missing / incomplete / outdated, only online,
+        // not in data-saver, not if the person removed the copy, and not more often than every 10 minutes.
+        function zhPackMaybeAuto(pack) {
+            if (!ZH_PACKS[pack] || !zhPackAutoOk()) return;
+            const st = zhPackGet(pack);
+            const k = zhPackView(pack).k;
+            const needs = k === "partial" || k === "stale" || (k === "none" && !st.removed);
+            if (!needs) return;
+            if (st.la && Date.now() - st.la < ZH_PACK_AUTO_RETRY_MS) return;
+            zhPackDownload(pack, { user: false });
+        }
+        async function zhPackRemove(pack) {
+            if (!ZH_PACKS[pack] || !("caches" in window)) return;
+            const run = zhPackRun[pack];
+            if (run && run.running) { run.cancel = true; try { await run.promise; } catch (e) {} }
+            const keep = new Set(); // files another font that still has a copy needs (the shared Klee One fallback)
+            Object.keys(ZH_PACKS).filter(p => p !== pack && zhPackView(p).k !== "none").forEach(p => zhPackUrls(p).forEach(u => keep.add(u)));
+            try {
+                const cache = await caches.open(zhFontCacheName());
+                for (const u of zhPackUrls(pack)) if (!keep.has(u)) await cache.delete(u);
+            } catch (e) {}
+            zhPackSet(pack, { s: "none", removed: true });
+            renderZhPackStatus();
+        }
+        function zhPackSaveNow(el) { const p = el && el.dataset ? el.dataset.pack : ""; zhPackMenuOpen = false; zhPackDownload(p, { user: true }); }
+        function zhPackRemoveCopy(el) { const p = el && el.dataset ? el.dataset.pack : ""; zhPackMenuOpen = false; return zhPackRemove(p); }
+        // Opening the Background Theme page: show the saved state at once, verify against the cache, then maybe retry quietly.
+        async function zhPackOnPickerOpen() {
+            try {
+                renderZhPackStatus();
+                for (const p of Object.keys(ZH_PACKS)) await zhPackVerify(p);
+                renderZhPackStatus();
+                const sel = getZhFont();
+                if (ZH_PACKS[sel]) zhPackMaybeAuto(sel);
+            } catch (e) {}
+        }
+        // App start: if a Chinese handwriting font is in use, check its copy and retry quietly when needed.
+        function zhPackAutoOnStart() {
+            const sel = getZhFont();
+            if (!ZH_PACKS[sel]) return;
+            zhPackVerify(sel).then(() => { renderZhPackStatus(); zhPackMaybeAuto(sel); }).catch(() => {});
+        }
+        window.addEventListener("load", () => setTimeout(zhPackAutoOnStart, 4000));
         function selectAppFont(el) {
             const v = el && el.dataset ? el.dataset.font : "default";
             try { localStorage.setItem(APP_FONT_KEY, APP_FONT_CHOICES.includes(v) ? v : "default"); } catch (e) {}
@@ -28030,6 +28323,9 @@
             selectAppFont: (el) => selectAppFont(el), // v577 (click map — the font buttons use data-click)
             selectZhFont: (el) => selectZhFont(el), // v584 (same click map)
             selectZhSize: (el) => selectZhSize(el), // v588
+            toggleZhPackMenu: () => toggleZhPackMenu(), // v594 (offline font copy: ⋯ menu, save now, remove)
+            zhPackSaveNow: (el) => zhPackSaveNow(el),
+            zhPackRemoveCopy: (el) => zhPackRemoveCopy(el),
             // v403: navigateToCompanionPage() has no data-click of its own anymore (Companion's
             // rail icon/page merged into Net Worth Card's) — it's still called directly from JS
             // by toggleCompanionSettingsFromDashboard()/toggleMonthlyTrendMascotSettingsFromDashboard()

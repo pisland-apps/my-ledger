@@ -3695,6 +3695,16 @@
         .zh-size-seg { display: flex; gap: 6px; }
         .zh-size-opt { flex: 1; padding: 9px 6px; border-radius: 12px; border: 2px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.8rem; font-weight: 700; cursor: pointer; }
         .zh-size-opt.selected { border-color: var(--primary); }
+        /* v594: offline-copy status line under the Chinese font choices (see the "offline copy of the Chinese
+           fonts" block in ledger.js). Hidden until a Chinese handwriting font is selected or a copy exists. */
+        #zhPackRow { display: none; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.74rem; color: var(--text-muted); }
+        #zhPackRow.show { display: flex; }
+        .zh-pack-text { flex: 1; min-width: 0; line-height: 1.4; }
+        .zh-pack-more { border: 1px solid var(--border-color); background: transparent; color: var(--text-muted); border-radius: 8px; width: 28px; height: 24px; line-height: 1; cursor: pointer; font-weight: 800; }
+        .zh-pack-menu { flex-basis: 100%; display: flex; flex-direction: column; gap: 6px; }
+        .zh-pack-menu[hidden] { display: none; }
+        .zh-pack-menu-btn { text-align: left; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-main); font-size: 0.75rem; font-weight: 600; cursor: pointer; }
+        .zh-pack-menu-note { color: var(--text-muted); font-size: 0.72rem; }
         .zh-size-sample { padding: 10px 14px; border-radius: 12px; border: 1px dashed var(--border-color); font-size: 1rem; line-height: 1.5; }
         .app-font-opt-name { order: -1; font-size: 0.72rem; font-weight: 700; color: var(--text-muted); }
         .app-font-opt-sample { font-size: 1.05rem; font-weight: 700; }
@@ -6292,6 +6302,12 @@
                     <span class="app-font-opt-sample" style="font-family:'Ma Shan Zheng', cursive; font-size:1.25rem;">他们所有的设备和仪器仿佛都是有生命的。</span>
                     <span class="app-font-opt-name">Ma Shan Zheng 马善政</span>
                 </button>
+                <!-- v594: offline-copy status for the selected font + a subtle menu (save now / remove offline copy) -->
+                <div id="zhPackRow">
+                    <span id="zhPackText" class="zh-pack-text" role="status" aria-live="polite"></span>
+                    <button type="button" id="zhPackMore" class="zh-pack-more" data-click="toggleZhPackMenu" aria-label="Offline font options" aria-expanded="false" aria-controls="zhPackMenu">&#8943;</button>
+                    <div id="zhPackMenu" class="zh-pack-menu" hidden></div>
+                </div>
                 <!-- v588: Chinese size (device-only), shown only for Long Cang / Ma Shan Zheng -->
                 <div id="zhSizeRow">
                     <span class="toggle-switch-label" style="font-size:0.85rem;">🔠 中文字大小 Chinese size</span>
@@ -8337,6 +8353,8 @@
     <div id="toastMsg" class="toast-msg" role="status" aria-live="polite"></div>
 
     <!-- ================= ENGINE CONTROLLERS ================= -->
+    <!-- v594: font cache name + font-file version, shared with sw.js (see font-version.js). -->
+    <script src="font-version.js"></script>
     <script src="ledger.js"></script>
 </body>
 </html>

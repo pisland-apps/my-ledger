@@ -4,7 +4,14 @@
 // files the Service Worker serves; APP_VERSION is just the display label in the corner of the
 // screen. They don't sync automatically (different files, different load times) — when you bump
 // one, bump the other too. See the matching reminder comment on APP_VERSION in ledger.js.
-const CACHE_NAME = "ledger-cache-v593";
+const CACHE_NAME = "ledger-cache-v594";
+
+// v594: the Chinese handwriting fonts (Long Cang / Ma Shan Zheng slices + the Klee One fallback) live in
+// their OWN cache that survives app version bumps. font-version.js (shared with the page) names it and
+// carries LEDGER_FONT_VERSION, which is bumped only when the font files themselves change. If the file
+// is somehow missing the defaults below keep the service worker installable.
+try { importScripts("font-version.js"); } catch (e) { /* defaults below */ }
+const FONT_CACHE = self.LEDGER_FONT_CACHE || "ledger-fonts-v1";
 // NOTE: deliberately does NOT include "./index.html" here. On hosts that
 // redirect /index.html -> / (e.g. Cloudflare Pages -- GitHub Pages doesn't do
 // this), caching that URL bakes in a redirected Response, and Chrome refuses
@@ -18,6 +25,8 @@ const ASSETS_TO_CACHE = [
     // fix moved it out to this external file (see its own header comment) — needs precaching
     // same as ledger.js since it also runs on every load, before first paint.
     "./theme-init.js",
+    // v594: shared font cache name + font-file version (see its header); the page loads it too.
+    "./font-version.js",
     "./manifest.json",
     "./icon-192.png",
     "./icon-512.png",
@@ -69,12 +78,12 @@ self.addEventListener("install", (event) => {
     self.skipWaiting();
 });
 
-// Activate: clean up old cache versions.
+// Activate: clean up old cache versions (v594: everything except the current app cache AND the font cache).
 self.addEventListener("activate", (event) => {
     event.waitUntil(
         caches.keys().then((keys) =>
             Promise.all(
-                keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+                keys.filter((key) => key !== CACHE_NAME && key !== FONT_CACHE).map((key) => caches.delete(key))
             )
         )
     );
@@ -89,6 +98,34 @@ self.addEventListener("activate", (event) => {
 // what makes the app open even with no internet connection at all — network-first still falls
 // back to whatever's cached the instant the fetch fails.
 const NETWORK_FIRST_ASSETS = new Set(["./ledger.js"]);
+
+// v594: Chinese font files. Cache-first from the font cache (falling back to any older cache, so slices
+// a pre-v594 build had already saved are still found), network on a miss, and the response is kept in
+// the font cache. A request with cache:"reload" is the app's "save / refresh the offline copy" download:
+// it must really reach the network (never be answered from the cache, or a refresh would look like it
+// succeeded while offline), so on failure it errors instead of falling back.
+function isZhFontPath(pathname) {
+    return /\/fonts\/(long-cang\/|ma-shan-zheng\/|klee-one-zh-fallback-400\.woff2$)/.test(pathname);
+}
+async function zhFontResponse(request) {
+    const cache = await caches.open(FONT_CACHE);
+    const reload = request.cache === "reload";
+    if (!reload) {
+        const hit = (await cache.match(request.url)) || (await caches.match(request.url));
+        if (hit) return hit;
+    }
+    try {
+        const response = await fetch(request);
+        if (isGoodAsset(response)) cache.put(request.url, response.clone());
+        return response;
+    } catch (e) {
+        if (!reload) {
+            const hit = await cache.match(request.url);
+            if (hit) return hit;
+        }
+        return Response.error();
+    }
+}
 
 self.addEventListener("fetch", (event) => {
     if (event.request.method !== "GET") return;
@@ -145,6 +182,11 @@ self.addEventListener("fetch", (event) => {
                 })
                 .catch(navigationFallback)
         );
+        return;
+    }
+
+    if (isZhFontPath(new URL(event.request.url).pathname)) {
+        event.respondWith(zhFontResponse(event.request));
         return;
     }
 

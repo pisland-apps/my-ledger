@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v595";
+        const APP_VERSION = "v596";
         const APP_VERSION_DATE = "2026-10-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -18574,7 +18574,7 @@
                 <button type="button" class="ins-row-x" data-click="removeInsRow" data-row-id="${rowId}" aria-label="Remove">×</button>`;
             container.appendChild(row);
             insRecalcPaymentTotal();
-            if (!data && continueFromLast) container.scrollTop = container.scrollHeight;
+            if (!data && continueFromLast) { container.scrollTop = container.scrollHeight; if (container.scrollHeight <= container.clientHeight + 1) row.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
         }
 
         // v491: a premium-history row can be tagged "paid by parent" (P button). Untagged rows count as
@@ -18607,7 +18607,7 @@
                 <button type="button" class="ins-row-x" data-click="removeInsRow" data-row-id="${rowId}" aria-label="Remove">×</button>`;
             container.appendChild(row);
             insRecalcCashbackTotal();
-            if (!data && continueFromLast) container.scrollTop = container.scrollHeight;
+            if (!data && continueFromLast) { container.scrollTop = container.scrollHeight; if (container.scrollHeight <= container.clientHeight + 1) row.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
         }
 
         function collectInsCashbackRows() {
@@ -18779,6 +18779,9 @@
         function insAddSvRowForType() {
             if (document.getElementById("insType").value === "investment") addInsFundSvRow(null);
             else addInsSvRow(null);
+            const c = document.getElementById("insSvRows"); // v596: phone has no inner scroll box — bring the new entry into view
+            const last = c && c.lastElementChild;
+            if (last && c.scrollHeight <= c.clientHeight + 1) last.scrollIntoView({ block: "nearest", behavior: "smooth" });
         }
 
         function addInsFundSvRow(data) {
@@ -19414,6 +19417,12 @@
         }
         // v595: Edit Policy is split into section cards (#insSec1..#insSec9); the chip bar (#insJump) at the top
         // jumps between them and highlights the section being read.
+        function toggleInsHelp(el) { // v596: "!" button shows / hides the section's explanation (phone only)
+            const sec = el && el.closest ? el.closest(".ins-sec") : null;
+            if (!sec) return;
+            const on = sec.classList.toggle("help-open");
+            el.setAttribute("aria-expanded", on ? "true" : "false");
+        }
         function insJumpTo(el) {
             const sc = document.getElementById("insModalScroll");
             const sec = el && el.dataset ? document.getElementById(el.dataset.target) : null;
@@ -28627,6 +28636,7 @@
             removeInsRow: (el) => removeInsRow(el),
             insAgentFromNotes: () => insAgentFromNotes(), // v485
             insJumpTo: (el) => insJumpTo(el), // v595
+            toggleInsHelp: (el) => toggleInsHelp(el), // v596
             openInsAttachment: (el) => openInsAttachment(el), // v486
             removeExistingInsAttachment: (el) => removeExistingInsAttachment(el),
             removeTempInsAttachment: (el) => removeTempInsAttachment(el),

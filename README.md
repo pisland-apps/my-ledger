@@ -4449,3 +4449,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **Tested** in headless Chromium at phone width (all nine sections present, every original control still inside a section, chip jump lands the section at the top, active chip follows scrolling, reopening resets to the top, no script errors; screenshots checked in the default light theme and the dark "暗夜描边" theme). **Not tested:** a real phone, saving a policy through the new layout end to end, and the other themes.
 - Cache bumped to v595.
 
+
+
+## v596: Insurance — Edit Policy on a phone
+- The long explanations under "Premiums paid before this ledger", "Cashback / payouts" and "Surrender value history" are hidden on phones (≤640px) behind a **!** button in the section header; tap to show / hide. Desktop is unchanged.
+- Earlier-payment and cashback rows wrap onto two lines on a phone (Date + Amount, then Note + P / ↩ / ×) so Amount and Note are no longer squeezed; column headers are hidden there (placeholders say what each box is).
+- The inner scroll boxes (payment / cashback / surrender lists) are removed on a phone, so a swipe anywhere scrolls the whole form and "+ Add surrender value" is easy to reach; a newly added entry scrolls into view.
+- Cache bumped to v596.

@@ -4470,3 +4470,7 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Policy detail has a **📈 Record SV** button (shown for policies that have surrender-value history, or are Life / Savings / Investment-linked). It opens Edit Policy at "Surrender value history" with a new entry (today) on top, cursor ready; Save stores it.
 - Button bar wraps to fit four buttons on a phone.
 - Cache bumped to v599.
+
+## v600: Insurance detail — button bar fix
+- Four buttons (Record premium / cashback / SV / Edit) wrap two per row on a phone so no label is clipped; one row on wide screens.
+- Cache bumped to v600.

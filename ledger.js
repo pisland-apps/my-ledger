@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v596";
+        const APP_VERSION = "v597";
         const APP_VERSION_DATE = "2026-10-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -18054,6 +18054,8 @@
             const freqLabel = INS_FREQ[p.frequency] ? INS_FREQ[p.frequency][0] : "";
             const premiumText = parseFloat(p.premium) > 0 ? `${formatCurrency(p.premium, cur)}${freqLabel ? " · " + freqLabel : ""}` : "";
             const section = (title) => `<div style="font-size:0.72rem; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin:16px 0 6px;">${title}</div>`;
+            // v597: highlighted badge heading for the two long lists (premium payments / surrender value history)
+            const sectionBadge = (title, count) => `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:22px 0 8px; padding:8px 12px; border-radius:12px; background:var(--primary-chip-bg); border-left:4px solid var(--primary);"><span style="font-size:0.78rem; font-weight:800; color:var(--primary); text-transform:uppercase; letter-spacing:0.04em;">${title}</span><span style="margin-left:auto; min-width:26px; text-align:center; padding:2px 9px; border-radius:999px; background:var(--primary); color:#fff; font-size:0.74rem; font-weight:800;">${count}</span></div>`;
             const line = (left, right, sub) => `
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; padding:7px 0; border-bottom:1px solid var(--border-color);">
                     <span style="min-width:0; font-size:0.82rem; font-weight:600; overflow-wrap:anywhere;">${left}${sub ? `<br><span style="font-size:0.68rem; color:var(--text-muted);">${sub}</span>` : ""}</span>
@@ -18175,7 +18177,7 @@
                 ...f.ledgerRows.map(r => ({ date: r.date, amount: r.amount, source: "Ledger", note: "", dup: !!(p.historyCutoff && r.date && r.date <= p.historyCutoff) })),
                 ...f.history.map(r => ({ date: r.date, amount: parseFloat(r.amount) || 0, source: "History", note: r.note || "", dup: false }))
             ].sort((a, b) => b.date.localeCompare(a.date));
-            html += section(`Premium payments (${timeline.length})`);
+            html += sectionBadge("Premium payments", timeline.length);
             if (timeline.length) {
                 // A negative amount is a refund: shown green with a leading "+", like a refund in the transaction list.
                 html += `<div>` + timeline.map(r => line(
@@ -18214,7 +18216,7 @@
             // Surrender value history
             // Nothing is shown for a policy with no surrender value (term, medical, motor… never have one).
             if (f.svs.length) {
-                html += section(`Surrender value history (${f.svs.length})`);
+                html += sectionBadge("Surrender value history", f.svs.length);
                 html += f.svs.map(r => {
                     const bits = [];
                     if (typeof r.guaranteed === "number") bits.push(`Guaranteed ${formatCurrency(r.guaranteed, cur)}`);
@@ -18779,9 +18781,6 @@
         function insAddSvRowForType() {
             if (document.getElementById("insType").value === "investment") addInsFundSvRow(null);
             else addInsSvRow(null);
-            const c = document.getElementById("insSvRows"); // v596: phone has no inner scroll box — bring the new entry into view
-            const last = c && c.lastElementChild;
-            if (last && c.scrollHeight <= c.clientHeight + 1) last.scrollIntoView({ block: "nearest", behavior: "smooth" });
         }
 
         function addInsFundSvRow(data) {

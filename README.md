@@ -4456,3 +4456,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Earlier-payment and cashback rows wrap onto two lines on a phone (Date + Amount, then Note + P / ↩ / ×) so Amount and Note are no longer squeezed; column headers are hidden there (placeholders say what each box is).
 - The inner scroll boxes (payment / cashback / surrender lists) are removed on a phone, so a swipe anywhere scrolls the whole form and "+ Add surrender value" is easy to reach; a newly added entry scrolls into view.
 - Cache bumped to v596.
+
+## v597: Insurance
+- Edit Policy: **+ Add surrender value** now sits above the list (new entries are inserted at the top, so no scrolling to the bottom).
+- Policy detail: "Premium payments" and "Surrender value history" headings are highlighted badges with a count chip.
+- Cache bumped to v597.

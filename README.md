@@ -4419,3 +4419,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **Cost:** the whole restored bundle (data plus any image records) is held in memory encrypted before the transaction opens — fine at current sizes (~25 MB of images), and a failure there simply changes nothing.
 - Not changed: Import Backup (file) still doesn't mark the restored data as unsynced the way a Local Snapshot restore does (v591) — a separate decision.
 - Cache bumped to v592.
+
+## v593: Insurance — surrender value list no longer needs a long scroll
+
+- **Problem:** in Edit Policy the surrender-value entries were an unbounded list, oldest first, with "＋ Add surrender value" below the last one. With a long history the new entry landed at the very bottom of an already long form, so adding one meant scrolling past every earlier entry (the payment and cashback lists were already bounded; this one wasn't).
+- **Now:** the list sits in a bounded, scrolling box (`.ins-sv-scroll`, max 380px — a bit taller than the payment list's 300px, since each entry has several inputs), shown **newest first**. A new entry is inserted at the **top** of the box, scrolled into view, and takes focus (Guaranteed; for an investment-linked policy, the fund name). The Add button stays right under the box.
+- Saving still sorts entries by date (`collectInsSvRows()`), so the on-screen order changes nothing in the data. The policy page itself is unchanged (latest entry = the value shown on the policy).
+- Cache bumped to v593.

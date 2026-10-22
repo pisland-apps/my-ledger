@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v592";
+        const APP_VERSION = "v593";
         const APP_VERSION_DATE = "2026-10-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -18362,6 +18362,23 @@
         // or more parts empty nothing is guessed — the difference simply shows as "Other". So any mix of
         // boxes can be entered. Dividend and Terminal bonus accept a sum such as "20389.58 + 11580.50"
         // (see insParseAmount()).
+        // v593: the surrender list is shown newest-first in a bounded, scrolling box (like the payment and
+        // cashback lists), and a NEW blank entry goes to the TOP of it and takes focus — so adding one no
+        // longer means scrolling past every earlier entry to the bottom of the form. Loaded rows are appended
+        // in the order given (newest first, see openInsuranceModal()). Saving sorts by date, so the order
+        // on screen never matters to the data.
+        function placeInsSvRow(row, isNew) {
+            const box = document.getElementById("insSvRows");
+            if (isNew) { box.insertBefore(row, box.firstChild); box.scrollTop = 0; }
+            else box.appendChild(row);
+        }
+
+        function focusNewInsSvRow(row, selector) {
+            const el = row.querySelector(selector);
+            if (el) { try { el.focus({ preventScroll: true }); } catch (err) { /* ignore */ } }
+            if (row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
+        }
+
         function addInsSvRow(data) {
             const r = data || {};
             insRowCounter++;
@@ -18388,7 +18405,8 @@
                 <div class="ins-row-line">
                     <div class="ins-sv-cell"><label>Total surrender value (auto)</label><input type="number" class="ins-sv-total" step="0.01" placeholder="auto" value="${val(r.total)}" data-input="insSvTotalInput" data-change="insSvTotalChange"></div>
                 </div>`;
-            document.getElementById("insSvRows").appendChild(row);
+            placeInsSvRow(row, !data);
+            if (!data) focusNewInsSvRow(row, ".ins-sv-guaranteed");
         }
 
         function insSvRowFields(row) {
@@ -18492,7 +18510,7 @@
                     <div class="ins-sv-cell"><label>Deduction</label><input type="number" class="ins-sv-deduction" step="0.01" min="0" placeholder="0.00" value="${val(r.deduction)}" data-input="insFundRowInput"></div>
                     <div class="ins-sv-cell"><label>Surrender value</label><input type="number" class="ins-sv-total" step="0.01" placeholder="auto" value="${val(r.total)}" data-input="insSvTotalInput"></div>
                 </div>`;
-            document.getElementById("insSvRows").appendChild(row);
+            placeInsSvRow(row, !data);
             const funds = Array.isArray(r.funds) && r.funds.length ? r.funds : [null];
             funds.forEach(fd => addInsFundLineTo(row, fd));
             // A loaded total that is not fund value − deduction was typed over by hand: keep it as is.
@@ -18501,6 +18519,7 @@
                 row.dataset.totalAuto = Math.abs(r.total - (sum - (r.deduction || 0))) < 0.005 ? "1" : "0";
             }
             insFundRowRecalc(row);
+            if (!data) focusNewInsSvRow(row, ".ins-fd-name");
         }
 
         function addInsFundLine(el) {
@@ -19087,7 +19106,7 @@
             ((p && p.coverages) || []).forEach(c => addInsCoverageRow(c));
             ((p && p.riders) || []).forEach(r => addInsRiderRow(r));
             ((p && p.premiumHistory) || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(r => addInsPaymentRow(r));
-            ((p && p.surrenderHistory) || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(r => (Array.isArray(r.funds) ? addInsFundSvRow(r) : addInsSvRow(r)));
+            ((p && p.surrenderHistory) || []).slice().sort((a, b) => b.date.localeCompare(a.date)).forEach(r => (Array.isArray(r.funds) ? addInsFundSvRow(r) : addInsSvRow(r)));
             ((p && p.cashbackHistory) || []).slice().sort((a, b) => a.date.localeCompare(b.date)).forEach(r => addInsCashbackRow(r)); // v510
             insRecalcPaymentTotal();
             updateInsSvAddUi();

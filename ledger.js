@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v598";
+        const APP_VERSION = "v599";
         const APP_VERSION_DATE = "2026-10-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -18236,8 +18236,25 @@
 
             document.getElementById("insuranceDetailBody").innerHTML = html;
             { const cbBtn = document.getElementById("insDetailCashbackBtn"); if (cbBtn) cbBtn.style.display = (parseFloat(p.cashbackPct) > 0 || f.cbCount > 0 || f.cbPlan) ? "" : "none"; } // v510/v511
+            { const svBtn = document.getElementById("insDetailSvBtn"); if (svBtn) svBtn.style.display = (f.svs.length > 0 || ["life", "savings", "investment"].includes(p.type)) ? "" : "none"; } // v599
             // Already open when re-rendered after linking/unlinking a planned payment.
             if (!document.getElementById("insuranceDetailModal").classList.contains("active")) openModal("insuranceDetailModal");
+        }
+
+        // v599: "📈 Record SV" — opens Edit Policy already scrolled to Surrender value history with a new,
+        // empty entry (dated today) on top and the cursor in it; Save stores it like any other edit.
+        function insuranceRecordSv() {
+            const id = activeInsuranceId;
+            if (!id) return;
+            closeModalAndThen("insuranceDetailModal", async () => {
+                await openInsuranceModal(id);
+                insAddSvRowForType();
+                setTimeout(() => {
+                    insJumpTo({ dataset: { target: "insSec8" } });
+                    const first = document.querySelector("#insSvRows .ins-sv-guaranteed, #insSvRows input:not([type=date])");
+                    if (first) { try { first.focus({ preventScroll: true }); } catch (err) { /* ignore */ } }
+                }, 120);
+            });
         }
 
         function insuranceDetailEdit() {
@@ -28642,6 +28659,7 @@
             addInsSchedStep: (el) => addInsSchedStep(el), // v482 (v483: moved here from CHANGE_ACTIONS — buttons fire click, not change)
             insSchedPasteFromNote: (el) => insSchedPasteFromNote(el), // v482 (v483: same fix)
             insuranceDetailEdit: () => insuranceDetailEdit(),
+            insuranceRecordSv: () => insuranceRecordSv(), // v599
             insuranceRecordPremium: () => insuranceRecordPremium(),
             insuranceOpenPlanPicker: (el) => insuranceOpenPlanPicker(el), // v511: el.dataset.kind
             insurancePickPlan: (el) => insurancePickPlan(el),

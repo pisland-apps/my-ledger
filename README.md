@@ -4465,3 +4465,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 ## v598: Insurance
 - Policy detail: "Cashback received" heading is now a highlighted badge too (same as Premium payments / Surrender value history).
 - Cache bumped to v598.
+
+## v599: Insurance — 📈 Record SV
+- Policy detail has a **📈 Record SV** button (shown for policies that have surrender-value history, or are Life / Savings / Investment-linked). It opens Edit Policy at "Surrender value history" with a new entry (today) on top, cursor ready; Save stores it.
+- Button bar wraps to fit four buttons on a phone.
+- Cache bumped to v599.

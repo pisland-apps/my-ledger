@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v594";
+        const APP_VERSION = "v595";
         const APP_VERSION_DATE = "2026-10-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -19409,7 +19409,33 @@
             renderInsAttachmentPreview();
             document.getElementById("insDeleteBtn").style.display = id ? "block" : "none";
             openModal("insuranceModal");
+            const insSc = document.getElementById("insModalScroll"); // v595: always start at the top, chip bar in sync
+            if (insSc) { insSc.scrollTop = 0; const jb = document.getElementById("insJump"); if (jb) jb.scrollLeft = 0; insUpdateJumpActive(); }
         }
+        // v595: Edit Policy is split into section cards (#insSec1..#insSec9); the chip bar (#insJump) at the top
+        // jumps between them and highlights the section being read.
+        function insJumpTo(el) {
+            const sc = document.getElementById("insModalScroll");
+            const sec = el && el.dataset ? document.getElementById(el.dataset.target) : null;
+            if (!sc || !sec) return;
+            const top = sec.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop - 58;
+            sc.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+        }
+        function insUpdateJumpActive() {
+            const sc = document.getElementById("insModalScroll");
+            if (!sc) return;
+            const secs = Array.from(sc.querySelectorAll(".ins-sec"));
+            if (!secs.length) return;
+            const line = sc.getBoundingClientRect().top + 72;
+            let cur = secs[0];
+            secs.forEach(s => { if (s.getBoundingClientRect().top <= line) cur = s; });
+            if (sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 4) cur = secs[secs.length - 1];
+            let on = null;
+            sc.querySelectorAll("#insJump button").forEach(b => { const isOn = b.dataset.target === cur.id; b.classList.toggle("on", isOn); if (isOn) on = b; });
+            const bar = document.getElementById("insJump");
+            if (on && bar) { const l = on.offsetLeft - 20, r = on.offsetLeft + on.offsetWidth + 20; if (l < bar.scrollLeft) bar.scrollLeft = l; else if (r > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = r - bar.clientWidth; }
+        }
+        (function () { const sc = document.getElementById("insModalScroll"); if (sc) sc.addEventListener("scroll", insUpdateJumpActive, { passive: true }); })();
 
         async function handleSaveInsurance() {
             const id = document.getElementById("insId").value || null;
@@ -28600,6 +28626,7 @@
             removeInsFundLine: (el) => removeInsFundLine(el),
             removeInsRow: (el) => removeInsRow(el),
             insAgentFromNotes: () => insAgentFromNotes(), // v485
+            insJumpTo: (el) => insJumpTo(el), // v595
             openInsAttachment: (el) => openInsAttachment(el), // v486
             removeExistingInsAttachment: (el) => removeExistingInsAttachment(el),
             removeTempInsAttachment: (el) => removeTempInsAttachment(el),

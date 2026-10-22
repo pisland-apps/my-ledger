@@ -5424,6 +5424,8 @@
             </div>
             <div id="systemQuotaText">Total browser quota limit: ~10240.00 MB, Used: 0.00 MB (across local sandboxes)</div>
         </div>
+        <!-- v591: Local Snapshots are counted in "Used" above but not in the footprint estimate, so they get their own line -->
+        <p id="snapshotStorageText" style="font-size:0.75rem; color:var(--text-muted); margin-top:8px;"></p>
         <p style="font-size:0.75rem; color:var(--text-muted); margin-top:8px;">Everything is stored locally in this browser's IndexedDB — nothing is sent to a server. Use Backup &amp; Restore to export a copy.</p>
 
         <!-- v278: entry point into the new attachment review list — a first look at what's
@@ -8248,6 +8250,22 @@
                 <button type="button" id="backupPasscodeCancelBtn" class="submit-btn" style="background:var(--chip-bg); color:var(--text-main); margin-top:0;">Cancel</button>
                 <button type="button" id="backupPasscodeOkBtn" class="submit-btn" style="background:var(--primary); margin-top:0;">Decrypt</button>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Local Snapshots (v591) — safety copies of this device's data saved before a Drive restore or a
+         snapshot restore would overwrite it. Each row: Restore / Delete. Rows are rendered by
+         renderDriveSnapshotsList() in ledger.js. -->
+    <div class="modal" id="driveSnapshotsModal">
+        <div class="modal-sheet" style="max-width: 420px;">
+            <div class="modal-header" style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <h3 style="font-weight: 800;">Local Snapshots</h3>
+                <button data-click="closeModal" data-modal="driveSnapshotsModal" style="background:none; border:none; font-size: 1.5rem; padding: 8px;">&times;</button>
+            </div>
+            <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;">Safety copies of this device's data, saved automatically before a Google Drive restore (when you had unsynced changes) and before every snapshot restore.</p>
+            <div id="driveSnapshotsSummary" style="font-size:0.75rem; font-weight:700; margin-bottom:6px;"></div>
+            <div id="driveSnapshotsNote" class="hidden" style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;"></div>
+            <div id="driveSnapshotsList" style="max-height:55vh; overflow-y:auto;"></div>
         </div>
     </div>
 

@@ -4394,3 +4394,17 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - The Chinese size row (Normal / Large / Larger) and the Spending by Tag title weight (600) now apply to both fonts; `ensureZhSizeFonts()` also copies the Ma Shan Zheng slices (families "Ma Shan Zheng L" / "XL").
 - Cache bumped to v590.
 
+
+## v591: Local Snapshots — slim snapshots, a real list, restore that syncs
+
+- **Why:** each Local Snapshot was a full backup including every image, encrypted twice (passcode layer + app-lock layer) — about 45 MB each with ~25 MB of images. Five of them were ~230 MB of the PC's 231 MB "Used". Opening the list also decrypted all five.
+- **Slim snapshots.** A snapshot now holds all the data plus **only the local images the overwrite would destroy** (the ones the incoming Drive data doesn't list); every other image is just an id in `attachmentIds`. New helpers `buildSnapshotBundle()` / `bundleAttachmentIds()`. Marked `attachmentsExtraOnly`. Old full snapshots (no flag) still restore exactly as before.
+- **Snapshot restore never deletes images** (`restoreFromBundle` skips the attachments clear/prune for `attachmentsExtraOnly` bundles and just writes the extras back). Images the snapshot lists but this device no longer has are **fetched from Drive before anything is changed**; if that download fails the restore stops with nothing touched. Images Drive no longer has are skipped and counted in the toast ("⚠ N images unavailable"). A restore can only recover what still exists on this device, in the snapshot, or in Drive.
+- **Restore now counts as a local change.** After a snapshot restore every restored store is marked dirty and auto-sync is scheduled, the same as an edit: the primary device uploads it, a Drive change in the meantime gives the normal conflict pause, and a later Restore Latest takes its own safety snapshot first. Before: the device looked "clean", so Drive and this device silently disagreed and no safety snapshot was taken.
+- **"Before restore" snapshot** is saved first (data only, no images needed — a snapshot restore never deletes images; for an old full snapshot, the images it would delete are included). If it can't be saved, nothing is restored. If the restore itself fails midway, the message points to that copy and nothing is uploaded.
+- **Limits:** newest 5 snapshots AND at most ~60 MB in total (oldest dropped first, the newest is never dropped, checked only when a snapshot is saved, on stored sizes — nothing is decrypted). When the size cap (not the count) removes something, the list shows "Auto-cleaned N older snapshots…" (device-local `driveSnapshotCleanupNote`). The old ~45 MB snapshots on the PC are cleared this way on the next snapshot, or sooner with Delete.
+- **Local Snapshots list** (Settings → Backup & Restore): new modal with date, size, label, **Restore** and **Delete** per row, replacing the `prompt()`. The confirm now says all data stores and settings are replaced. No separate snapshot index — added only if the list turns out slow now that snapshots are small.
+- **Storage page** gets a "Local Snapshots: N (~X MB)" line (the footprint figure above it is an estimate and never included snapshots).
+- Conflict-log "remote changed stores" now compares image id sets instead of raw attachment fields, so "attachments" no longer always shows as changed.
+- Not in this version: atomic (single-transaction) restore — planned for v592, since `restoreFromBundle` is shared with file import and the Drive pull.
+- Cache bumped to v591.

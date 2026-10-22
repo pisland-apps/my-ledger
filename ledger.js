@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v590";
-        const APP_VERSION_DATE = "2026-10-21";
+        const APP_VERSION = "v591";
+        const APP_VERSION_DATE = "2026-10-22";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -2306,7 +2306,7 @@
                         // data } — same encrypted-bundle shape uploadBackupToDrive() writes to
                         // Drive itself, so restoring one goes through the exact same
                         // decryptBackupBundle()/restoreFromBundle() path. Only the most recent 5
-                        // are kept (see pruneDriveSnapshots()).
+                        // are kept, and at most ~60 MB in total (see pruneDriveSnapshots(), v591).
                         database.createObjectStore(STORES.DRIVE_SNAPSHOTS, { keyPath: "id", autoIncrement: true });
                     }
                 };
@@ -5752,6 +5752,18 @@
                 
                 const percentage = Math.min((estimate.usage / estimate.quota) * 100, 100);
                 document.getElementById("meterFillElement").style.width = `${Math.max(percentage, 0.4)}%`;
+            }
+            // v591: Local Snapshots are part of the "Used" figure but not of the footprint estimate above —
+            // show them on their own line (stored sizes only, nothing is decrypted).
+            const snapEl = document.getElementById("snapshotStorageText");
+            if (snapEl) {
+                try {
+                    const rows = await listDriveSnapshotRows();
+                    const bytes = rows.reduce((n, r) => n + r.size, 0);
+                    snapEl.textContent = rows.length
+                        ? `Local Snapshots: ${rows.length} (~${(bytes / (1024 * 1024)).toFixed(2)} MB) — included in "Used" above. Manage them in Settings → Backup & Restore → Local Snapshots.`
+                        : "Local Snapshots: none";
+                } catch (err) { snapEl.textContent = ""; }
             }
         }
 
@@ -25505,7 +25517,9 @@
                     if (db.objectStoreNames.contains(STORES.NAV_HISTORY)) {
                         await clearStoreDB(STORES.NAV_HISTORY);
                     }
-                    if (db.objectStoreNames.contains(STORES.ATTACHMENTS) && !bundle.attachmentsExternal) {
+                    // v591: a Local Snapshot (attachmentsExtraOnly) carries only the images the overwrite
+                    // destroyed, so restoring it must never clear the store — it just writes those back (below).
+                    if (db.objectStoreNames.contains(STORES.ATTACHMENTS) && !bundle.attachmentsExternal && !bundle.attachmentsExtraOnly) {
                         await clearStoreDB(STORES.ATTACHMENTS);
                     }
                     if (db.objectStoreNames.contains(STORES.TEMPLATES)) {
@@ -27235,23 +27249,114 @@
             }
         }
 
-        // v433: encrypts and stores a local snapshot bundle into STORES.DRIVE_SNAPSHOTS, keeping
-        // only the most recent 5 (oldest dropped first). Same encrypted shape uploadBackupToDrive()
-        // writes to Drive, so restoreDriveSnapshot() below can reuse decryptBackupBundle() as-is.
-        async function saveDriveSnapshot(bundle) {
+        // v591: Local Snapshots are safety copies of THIS device's data, taken right before a Drive
+        // pull (or a snapshot restore) would overwrite it. Until v590 every snapshot was a full backup
+        // including every image, encrypted twice (passcode layer + app-lock layer) -> ~45 MB each with
+        // ~25 MB of images, 5 of them = ~230 MB. Now a snapshot holds all the data plus ONLY the images
+        // the overwrite would destroy (local images the incoming data doesn't list); every other image
+        // is just an id in `attachmentIds`. See buildSnapshotBundle() / restoreDriveSnapshot().
+        const DRIVE_SNAPSHOT_KEEP = 5;
+        const DRIVE_SNAPSHOT_MAX_BYTES = 60 * 1024 * 1024; // soft total cap, only evaluated when a snapshot is saved
+        const DRIVE_SNAPSHOT_DATA_STORES = [STORES.ACCOUNTS, STORES.TRANSACTIONS, STORES.CATEGORIES, STORES.MEMBERS, STORES.FUNDS, STORES.NAV_HISTORY, STORES.ATTACHMENTS, STORES.TEMPLATES, STORES.TAGS, STORES.BUDGETS, STORES.INVENTORY, STORES.PLANNED_PAYMENTS, STORES.REMINDERS, STORES.INSURANCE, STORES.TIMELINE, STORES.SETTINGS];
+
+        // Every image id a bundle refers to: slim / snapshot bundles list them in attachmentIds, full
+        // bundles carry the image records themselves.
+        function bundleAttachmentIds(b) {
+            if (!b) return [];
+            if (Array.isArray(b.attachmentIds)) return b.attachmentIds.map(String);
+            return Array.isArray(b.attachments) ? b.attachments.filter(a => a && a.id !== undefined).map(a => String(a.id)) : [];
+        }
+
+        // v591: builds the (slim) snapshot of what is on this device right now. `incoming` is the bundle
+        // about to be restored over it: local images it doesn't list are the ones that restore will
+        // delete, so those (and only those) are copied into the snapshot. A snapshot restore
+        // (attachmentsExtraOnly) never deletes images, and incoming === null means "no images needed".
+        async function buildSnapshotBundle(incoming) {
+            const bundle = await buildBackupBundle({ slim: true, allowIncomplete: true });
+            const localIds = bundle.attachmentIds;
+            delete bundle.attachmentsExternal;
+            bundle.attachmentsExtraOnly = true;
+            bundle.attachments = [];
+            if (incoming && !incoming.attachmentsExtraOnly) {
+                const listed = new Set(bundleAttachmentIds(incoming));
+                for (const id of localIds) {
+                    if (listed.has(String(id))) continue;
+                    const rec = await readKeyDB(STORES.ATTACHMENTS, id);
+                    if (rec) bundle.attachments.push(rec);
+                }
+            }
+            return bundle;
+        }
+
+        // Encrypts and stores a snapshot bundle into STORES.DRIVE_SNAPSHOTS, then prunes (see
+        // pruneDriveSnapshots()). Same encrypted shape uploadBackupToDrive() writes to Drive, so
+        // restoreDriveSnapshot() below reuses decryptBackupBundle() as-is. opts.label is a short
+        // human label shown in the list ("Before Drive restore" / "Before restore").
+        async function saveDriveSnapshot(bundle, opts) {
+            opts = opts || {};
             const salt = crypto.getRandomValues(new Uint8Array(16));
             const saltB64 = bufToB64(salt);
             const key = await deriveKeyFromPasscode(currentPasscode, saltB64, PBKDF2_ITERATIONS);
             const { iv, data } = await aesEncryptString(key, JSON.stringify(bundle));
+            const row = { createdAt: Date.now(), encrypted: true, salt: saltB64, iterations: PBKDF2_ITERATIONS, iv, data };
+            if (opts.label) row.label = String(opts.label);
+            const prevSuppress = driveSuppressAutoSync;
             driveSuppressAutoSync = true;
             try {
-                await writeDB(STORES.DRIVE_SNAPSHOTS, {
-                    createdAt: Date.now(), encrypted: true, salt: saltB64, iterations: PBKDF2_ITERATIONS, iv, data
-                });
+                await writeDB(STORES.DRIVE_SNAPSHOTS, row);
                 await pruneDriveSnapshots();
             } finally {
-                driveSuppressAutoSync = false;
+                driveSuppressAutoSync = prevSuppress;
             }
+        }
+
+        // v591: row ids + stored sizes WITHOUT decrypting anything (a cursor, so only one row is in memory
+        // at a time). Newest first. Size = length of the stored ciphertext string.
+        function listDriveSnapshotRows() {
+            return new Promise((resolve, reject) => {
+                try {
+                    const out = [];
+                    const tx = db.transaction([STORES.DRIVE_SNAPSHOTS], "readonly");
+                    const req = tx.objectStore(STORES.DRIVE_SNAPSHOTS).openCursor();
+                    req.onsuccess = () => {
+                        const c = req.result;
+                        if (c) {
+                            const v = c.value;
+                            out.push({ id: c.key, size: (v && typeof v.data === "string") ? v.data.length : 0 });
+                            c.continue();
+                        } else {
+                            resolve(out.sort((a, b) => b.id - a.id));
+                        }
+                    };
+                    req.onerror = () => reject(req.error);
+                } catch (err) { reject(err); }
+            });
+        }
+
+        function deleteDriveSnapshotRow(id) {
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction([STORES.DRIVE_SNAPSHOTS], "readwrite");
+                tx.objectStore(STORES.DRIVE_SNAPSHOTS).delete(id);
+                tx.oncomplete = resolve;
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        // Decrypts the outer (app-lock) layer of one stored row; legacy plain-stored rows fall back to
+        // the raw row (same handling listDriveSnapshots() has always had).
+        async function unwrapDriveSnapshotRow(raw) {
+            try { return await decryptRecord(STORES.DRIVE_SNAPSHOTS, raw); }
+            catch (err) { return raw; }
+        }
+
+        async function loadDriveSnapshot(id) {
+            const raw = await new Promise((resolve, reject) => {
+                const tx = db.transaction([STORES.DRIVE_SNAPSHOTS], "readonly");
+                const req = tx.objectStore(STORES.DRIVE_SNAPSHOTS).get(id);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+            return raw ? await unwrapDriveSnapshotRow(raw) : null;
         }
 
         async function listDriveSnapshots() {
@@ -27265,15 +27370,13 @@
                     // handed decryptBackupBundle() a record with no salt, so no snapshot could be
                     // restored. Unwrap the outer layer here (falling back to the raw row for any
                     // legacy plain-stored snapshot) and keep the row's id for pruning.
+                    // v591: also keeps the stored size, for the list.
                     const raw = (req.result || []).sort((a, b) => b.id - a.id);
                     const out = [];
                     for (const r of raw) {
-                        try {
-                            const plain = await decryptRecord(STORES.DRIVE_SNAPSHOTS, r);
-                            out.push({ ...plain, id: r.id });
-                        } catch (err) {
-                            out.push(r);
-                        }
+                        const size = (r && typeof r.data === "string") ? r.data.length : 0;
+                        const plain = await unwrapDriveSnapshotRow(r);
+                        out.push({ ...plain, id: r.id, size });
                     }
                     resolve(out);
                 };
@@ -27281,40 +27384,139 @@
             });
         }
 
+        // v591: keeps the newest DRIVE_SNAPSHOT_KEEP snapshots AND at most DRIVE_SNAPSHOT_MAX_BYTES in total
+        // (oldest dropped first, the newest is never dropped). Works on raw rows, no decrypting. When the
+        // size cap (not the count) removed something, a note is saved (device-local "drive*" setting) and
+        // shown at the top of the Local Snapshots list, so the clean-up is never silent.
         async function pruneDriveSnapshots() {
-            const all = await listDriveSnapshots(); // newest first
-            const toDrop = all.slice(5); // keep newest 5
-            for (const snap of toDrop) {
-                await new Promise((resolve, reject) => {
-                    const tx = db.transaction([STORES.DRIVE_SNAPSHOTS], "readwrite");
-                    tx.objectStore(STORES.DRIVE_SNAPSHOTS).delete(snap.id);
-                    tx.oncomplete = resolve;
-                    tx.onerror = () => reject(tx.error);
-                });
+            const rows = await listDriveSnapshotRows(); // newest first
+            let kept = 0, total = 0, cut = false, sizeDropped = 0, sizeDroppedBytes = 0;
+            for (let i = 0; i < rows.length; i++) {
+                const r = rows[i];
+                if (!cut && i >= 1 && total + r.size > DRIVE_SNAPSHOT_MAX_BYTES) cut = true;
+                if (i >= DRIVE_SNAPSHOT_KEEP || cut) {
+                    await deleteDriveSnapshotRow(r.id);
+                    if (i < DRIVE_SNAPSHOT_KEEP) { sizeDropped++; sizeDroppedBytes += r.size; }
+                    continue;
+                }
+                kept++; total += r.size;
+            }
+            if (sizeDropped > 0) await persistDriveBookkeeping("driveSnapshotCleanupNote", { at: Date.now(), count: sizeDropped, bytes: sizeDroppedBytes });
+        }
+
+        // After a snapshot restore the restored data differs from what Drive holds, so every restored
+        // store is flagged as an unsynced local change — exactly what a normal edit does. The device then
+        // uploads it (primary device) or raises the normal conflict pause if Drive moved on, and a later
+        // Restore Latest takes its own safety snapshot first instead of overwriting the restored data.
+        async function markAllDriveDataStoresDirty() {
+            for (const s of DRIVE_SNAPSHOT_DATA_STORES) {
+                if (db.objectStoreNames.contains(s)) await markStoreDirty(s);
             }
         }
 
-        // Settings entry point ("Local Snapshots" under Backup & Restore) — lets the user browse
-        // and restore one of the safety-net snapshots saved automatically by downloadBackupFromDrive()
-        // below, e.g. if they resolved a sync conflict with "Use Remote" and want their pre-overwrite
-        // local data back after all.
+        // Settings entry point ("Local Snapshots" under Backup & Restore): lists the safety-net snapshots,
+        // each with Restore / Delete. v591: a real list instead of a prompt() asking for a number.
         async function openDriveSnapshotsModal() {
+            await renderDriveSnapshotsList();
+            const modal = document.getElementById("driveSnapshotsModal");
+            if (modal && !modal.classList.contains("active")) openModal("driveSnapshotsModal");
+        }
+
+        async function renderDriveSnapshotsList() {
+            const listEl = document.getElementById("driveSnapshotsList");
+            const summaryEl = document.getElementById("driveSnapshotsSummary");
+            const noteEl = document.getElementById("driveSnapshotsNote");
+            if (!listEl) return;
             const snapshots = await listDriveSnapshots();
+            const total = snapshots.reduce((n, s) => n + (s.size || 0), 0);
+            if (summaryEl) summaryEl.textContent = snapshots.length
+                ? `${snapshots.length} snapshot${snapshots.length === 1 ? "" : "s"} · ${formatDriveBytes(total)} (keeps the newest ${DRIVE_SNAPSHOT_KEEP}, max ${Math.round(DRIVE_SNAPSHOT_MAX_BYTES / 1048576)} MB in total)`
+                : "";
+            if (noteEl) {
+                let note = null;
+                try { const rec = await readKeyDB("settings", "driveSnapshotCleanupNote"); note = rec && rec.value; } catch (err) { note = null; }
+                if (note && note.count) {
+                    noteEl.textContent = `Auto-cleaned ${note.count} older snapshot${note.count === 1 ? "" : "s"} (~${formatDriveBytes(note.bytes || 0)}) on ${new Date(note.at).toLocaleString()} to stay under ${Math.round(DRIVE_SNAPSHOT_MAX_BYTES / 1048576)} MB.`;
+                    noteEl.classList.remove("hidden");
+                } else {
+                    noteEl.textContent = "";
+                    noteEl.classList.add("hidden");
+                }
+            }
             if (snapshots.length === 0) {
-                alert("No local snapshots yet — one is saved automatically the next time a Drive restore would overwrite unsynced local changes.");
+                listEl.innerHTML = `<p style="font-size:0.8rem; color:var(--text-muted);">No local snapshots yet — one is saved automatically the next time a Drive restore would overwrite unsynced local changes, and one before every snapshot restore.</p>`;
                 return;
             }
-            const lines = snapshots.map((s, i) => `${i + 1}. ${new Date(s.createdAt).toLocaleString()}`).join("\n");
-            const choice = prompt(`Local snapshots (most recent first) — enter a number to restore it, or Cancel:\n\n${lines}`);
-            if (!choice) return;
-            const idx = parseInt(choice, 10) - 1;
-            if (isNaN(idx) || idx < 0 || idx >= snapshots.length) return;
-            const ok = await customConfirm(`Restore the snapshot from ${new Date(snapshots[idx].createdAt).toLocaleString()}? This replaces THIS device's current accounts, transactions, and categories.`);
+            listEl.innerHTML = snapshots.map(s => {
+                const when = s.createdAt ? new Date(s.createdAt).toLocaleString() : "Unknown date";
+                const label = s.label ? ` · ${escapeHtml(s.label)}` : "";
+                return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 0; border-top:1px solid var(--border-color, rgba(128,128,128,0.25));">` +
+                    `<div style="min-width:0;"><div style="font-size:0.85rem; font-weight:700;">${escapeHtml(when)}</div>` +
+                    `<div style="font-size:0.72rem; color:var(--text-muted);">${escapeHtml(formatDriveBytes(s.size || 0))}${label}</div></div>` +
+                    `<div style="display:flex; gap:6px; flex-shrink:0;">` +
+                    `<button type="button" class="btn-util" data-click="restoreDriveSnapshot" data-id="${escapeHtml(s.id)}">Restore</button>` +
+                    `<button type="button" class="btn-util" data-click="deleteDriveSnapshot" data-id="${escapeHtml(s.id)}">Delete</button>` +
+                    `</div></div>`;
+            }).join("");
+        }
+
+        async function deleteDriveSnapshot(el) {
+            const id = Number(el.dataset.id);
+            if (!Number.isFinite(id)) return;
+            const ok = await customConfirm("Delete this local snapshot? This can't be undone.");
             if (!ok) return;
-            const bundle = await decryptBackupBundle(snapshots[idx]);
+            await deleteDriveSnapshotRow(id);
+            await renderDriveSnapshotsList();
+            showToast("Snapshot deleted");
+        }
+
+        async function restoreDriveSnapshot(el) {
+            const id = Number(el.dataset.id);
+            if (!Number.isFinite(id)) return;
+            const snap = await loadDriveSnapshot(id);
+            if (!snap) { await renderDriveSnapshotsList(); return; }
+            const when = snap.createdAt ? new Date(snap.createdAt).toLocaleString() : "unknown date";
+            const ok = await customConfirm(`Restore the snapshot from ${when}? This replaces ALL of THIS device's current ledger data (accounts, transactions, categories, members, funds, budgets, tags, templates, inventory, planned payments, reminders, insurance, timeline and settings). A copy of the current data is saved to Local Snapshots first, and the restored data then counts as this device's unsynced changes, so it syncs to Google Drive.`);
+            if (!ok) return;
+            const bundle = await decryptBackupBundle(snap);
             if (!bundle) return;
-            await restoreFromBundle(bundle);
-            showToast("Restored local snapshot");
+            if (!bundle.accounts || !bundle.transactions) { alert("This snapshot is not valid — nothing was changed."); return; }
+
+            // A slim snapshot lists images it doesn't carry. Fetch the ones this device no longer has from
+            // Drive BEFORE touching any data: that step only adds images, so if it fails (offline, Drive not
+            // connected) nothing has changed yet. Images Drive no longer has are skipped and counted.
+            let imgResult = null;
+            if (bundle.attachmentsExtraOnly) {
+                const have = new Set((await getAllKeysDB(STORES.ATTACHMENTS)).map(String));
+                for (const a of (bundle.attachments || [])) if (a && a.id !== undefined) have.add(String(a.id));
+                const missing = bundleAttachmentIds(bundle).filter(x => !have.has(x));
+                if (missing.length) {
+                    try { imgResult = await pullMissingDriveImages(missing); }
+                    catch (err) {
+                        alert(`This snapshot refers to ${missing.length} image${missing.length === 1 ? "" : "s"} that this device no longer has, and they couldn't be downloaded from Google Drive (${err && err.message ? err.message : err}). Nothing was changed — try again while online and connected to Drive.`);
+                        return;
+                    }
+                }
+            }
+
+            try {
+                await saveDriveSnapshot(await buildSnapshotBundle(bundle), { label: "Before restore" });
+            } catch (err) {
+                alert("Couldn't save a safety copy of the current data, so nothing was restored: " + (err && err.message ? err.message : err));
+                return;
+            }
+            try {
+                await restoreFromBundle(bundle);
+            } catch (err) {
+                alert("The restore didn't finish: " + (err && err.message ? err.message : err) + "\n\nYour previous data is saved in Local Snapshots (\"Before restore\") — restore that one to get it back.");
+                await renderDriveSnapshotsList();
+                return;
+            }
+            await markAllDriveDataStoresDirty();
+            scheduleDriveAutoSync();
+            await renderDriveSnapshotsList();
+            const unavailable = imgResult ? imgResult.absent + imgResult.undecryptable : 0;
+            showToast("Restored local snapshot" + (unavailable ? ` · ⚠ ${unavailable} image${unavailable === 1 ? "" : "s"} unavailable` : ""));
         }
 
         // v433: best-effort, non-authoritative diff — compares each top-level store array between
@@ -27327,10 +27529,15 @@
             const keys = new Set([...Object.keys(bundleA || {}), ...Object.keys(bundleB || {})]);
             for (const k of keys) {
                 if (k === "syncedAt" || k === "exportedAt") continue;
+                // v591: a snapshot / slim bundle carries image ids (and only some image records) while a full
+                // bundle carries every record, so compare the SET of image ids once, below, instead of the
+                // raw fields — otherwise "attachments" always looked changed.
+                if (k === "attachments" || k === "attachmentIds" || k === "attachmentsExternal" || k === "attachmentsExtraOnly") continue;
                 if (JSON.stringify(bundleA ? bundleA[k] : undefined) !== JSON.stringify(bundleB ? bundleB[k] : undefined)) {
                     changed.push(k);
                 }
             }
+            if (bundleAttachmentIds(bundleA).sort().join("|") !== bundleAttachmentIds(bundleB).sort().join("|")) changed.push("attachments");
             return changed;
         }
 
@@ -27367,8 +27574,10 @@
                 // risk) so the common fast-forward case doesn't spend a snapshot write on nothing.
                 let localSnapshotBundle = null;
                 if (driveDirtyStoreSet.size > 0) {
-                    localSnapshotBundle = await buildBackupBundle({ allowIncomplete: true });
-                    await saveDriveSnapshot(localSnapshotBundle);
+                    // v591: slim snapshot — data plus only the local images this pull is about to delete
+                    // (the ones the incoming bundle doesn't list), see buildSnapshotBundle().
+                    localSnapshotBundle = await buildSnapshotBundle(bundle);
+                    await saveDriveSnapshot(localSnapshotBundle, { label: "Before Drive restore" });
                 }
                 // v579: a slim bundle lists its images by id; they are fetched right after the data is
                 // restored. The "incomplete" flag stays set (persisted) until that finishes, and
@@ -27906,6 +28115,8 @@
             resolveDriveSyncKeepLocal: () => resolveDriveSyncKeepLocal(),
             resolveDriveSyncUseRemote: () => resolveDriveSyncUseRemote(),
             openDriveSnapshotsModal: () => openDriveSnapshotsModal(),
+            restoreDriveSnapshot: (el) => restoreDriveSnapshot(el), // v591
+            deleteDriveSnapshot: (el) => deleteDriveSnapshot(el), // v591
             handleLedgerBackClick: () => handleLedgerBackClick(),
             navigateToWorkspace: () => navigateToWorkspace(),
             saveFxRates: () => saveFxRates(),

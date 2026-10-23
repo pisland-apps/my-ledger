@@ -4504,3 +4504,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - A thin **divider** now separates the to-do group from Budget. It only appears while at least one of the four widgets is visible.
 - Purely visual (new CSS + two small helpers `setTodoBadge()` / `refreshTodoGroupDivider()`); no data or logic changes. Per-row styling untouched.
 - Cache bumped to v605.
+
+## v606: Biometric unlock — toggle no longer stays on when enrollment fails
+- **Bug:** `enableBiometricUnlock()` reports failure by returning `false` (it never throws), but the Backup & Restore "Biometric quick unlock" toggle only reset itself on a thrown error. On devices without WebAuthn PRF support the PRF alert appeared, yet the toggle stayed switched on with no biometric record saved.
+- **Fix:** `handleBiometricToggleChange()` now switches the toggle back off when `enableBiometricUnlock()` returns `false`.
+- If credential registration fails for a reason other than the user dismissing the prompt (`NotAllowedError`), a short "couldn't be set up on this device or browser" alert now shows instead of failing silently.
+- Security model unchanged: biometric unlock stays PRF-only (no gate-only fallback); the passcode remains the unlock method on devices without PRF.
+- Cache bumped to v606.

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v605";
+        const APP_VERSION = "v606";
         const APP_VERSION_DATE = "2026-10-23";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1339,6 +1339,11 @@
                     cred = await navigator.credentials.create({ publicKey: biometricCreateOptions(false, salt) });
                 } catch (err2) {
                     console.error("[ledger] biometric registration failed", err2);
+                    // NotAllowedError = user cancelled / dismissed the prompt: stay quiet.
+                    // Anything else is a real failure the user should hear about.
+                    if (!(err2 && err2.name === "NotAllowedError")) {
+                        alert("Fingerprint / Face unlock couldn't be set up on this device or browser. Continue using your passcode.");
+                    }
                     return false;
                 }
             }
@@ -1457,7 +1462,11 @@
             const toggle = document.getElementById("biometricToggle");
             if (toggle.checked) {
                 try {
-                    await enableBiometricUnlock(currentPasscode);
+                    // enableBiometricUnlock() reports failure by returning false (it never throws),
+                    // so the toggle must be reset from its return value — otherwise it stays on
+                    // even though no biometric record was saved (e.g. device lacks PRF).
+                    const ok = await enableBiometricUnlock(currentPasscode);
+                    if (!ok) toggle.checked = false;
                 } catch (err) {
                     toggle.checked = false;
                     alert("Could not enable biometric unlock: " + (err && err.message ? err.message : err));
@@ -25247,6 +25256,8 @@
                 if (await isBiometricSupported()) {
                     const wantsBiometric = await customConfirm("Enable fingerprint / Face unlock for faster access next time?");
                     if (wantsBiometric) {
+                        // Returns false on failure (alerting where relevant); initBiometricToggleRow()
+                        // below re-syncs the toggle from the saved record, so nothing more to do here.
                         try { await enableBiometricUnlock(currentPasscode); } catch (err) { alert("Could not enable biometric unlock: " + (err && err.message ? err.message : err)); }
                     }
                 }

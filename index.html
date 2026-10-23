@@ -4311,6 +4311,39 @@
         <div id="fdReminderContainer"></div>
         <div id="ccReminderContainer"></div>
 
+        <!-- v602: "To-do" cluster — Planned Payments and Tag Reminders (e.g. Pending Claim) moved up from below
+             Monthly Trend to sit right under the FD / Credit Card due reminders, so everything that needs
+             action is visible on first open. Same element ids as before, so the render functions are unchanged.
+             Order: overdue/due cards -> Planned Payments -> Tag Reminders. -->
+        <!-- v354: Planned Payments — bills keyed in ahead of being paid (see the "🕒 Save as
+             Planned" button on the Income/Expense entry form).
+             v361: this widget now only shows entries due within 3 days or overdue (and never a
+             paused one, regardless of date) — hidden entirely when nothing meets that bar. The
+             full list (everything, however far off, including paused) lives on its own page now
+             — tap the title, same as Warranty Reminders links to Inventory — since Planned
+             Payments has more to manage (Edit Series, Pause) than a glance-only reminder does.
+             See renderPlannedPaymentsWidget()/renderPlannedPaymentsPage() in ledger.js. -->
+        <div id="dashboardPlannedPaymentsWidget" style="display:none;">
+        <div class="section-header">
+            <span class="section-title" style="cursor:pointer;" data-click="navigateToPlannedPaymentsPage">🕒 Planned Payments</span>
+        </div>
+        <div class="ledger-container" id="plannedPaymentsList"></div>
+        </div>
+
+        <!-- v281: Tag Reminders — one row per tag with "Show on Dashboard" enabled (see the Tag
+             modal), each showing how many transactions currently carry that tag + outstanding
+             expense total. Hidden entirely when no such tag has any matching transaction, same
+             convention as the FD-maturity/Credit-Card-due reminders elsewhere in this app. Rows are
+             deliberately non-clickable (same restraint as buildTagReportCategoryListHTML() in the
+             Spending by Tag report) — this is a "check the list yourself" nudge, not a drill-in. -->
+        <div id="dashboardTagWidget" style="display:none;">
+        <div class="section-header">
+            <span class="section-title" style="cursor:pointer;" data-click="sidebarGo" data-target="tag-report">🔖 Tag Reminders</span>
+        </div>
+        <div class="ledger-container" id="tagReminderList"></div>
+        </div>
+
+
         <div id="dashboardBudgetWidgetContainer">
         <div class="section-header">
             <span class="section-title">Budget</span>
@@ -4418,19 +4451,7 @@
             </div>
         </div>
 
-        <!-- v281: Tag Reminders — one row per tag with "Show on Dashboard" enabled (see the Tag
-             modal), each showing how many transactions currently carry that tag + outstanding
-             expense total. Hidden entirely when no such tag has any matching transaction, same
-             convention as the FD-maturity/Credit-Card-due reminders elsewhere in this app. Rows are
-             deliberately non-clickable (same restraint as buildTagReportCategoryListHTML() in the
-             Spending by Tag report) — this is a "check the list yourself" nudge, not a drill-in. -->
-        <div id="dashboardTagWidget" style="display:none;">
-        <div class="section-header">
-            <span class="section-title" style="cursor:pointer;" data-click="sidebarGo" data-target="tag-report">🔖 Tag Reminders</span>
-        </div>
-        <div class="ledger-container" id="tagReminderList"></div>
-        </div>
-
+        
         <!-- v318: Warranty Reminders — mirrors the Tag Reminders widget just above, but for
              active Inventory items whose (representative) warranty ends within 30 days. Hidden
              entirely when nothing's expiring soon. Rows ARE clickable here (unlike Tag
@@ -4442,21 +4463,7 @@
         <div class="ledger-container" id="warrantyReminderList"></div>
         </div>
 
-        <!-- v354: Planned Payments — bills keyed in ahead of being paid (see the "🕒 Save as
-             Planned" button on the Income/Expense entry form).
-             v361: this widget now only shows entries due within 3 days or overdue (and never a
-             paused one, regardless of date) — hidden entirely when nothing meets that bar. The
-             full list (everything, however far off, including paused) lives on its own page now
-             — tap the title, same as Warranty Reminders links to Inventory — since Planned
-             Payments has more to manage (Edit Series, Pause) than a glance-only reminder does.
-             See renderPlannedPaymentsWidget()/renderPlannedPaymentsPage() in ledger.js. -->
-        <div id="dashboardPlannedPaymentsWidget" style="display:none;">
-        <div class="section-header">
-            <span class="section-title" style="cursor:pointer;" data-click="navigateToPlannedPaymentsPage">🕒 Planned Payments</span>
-        </div>
-        <div class="ledger-container" id="plannedPaymentsList"></div>
-        </div>
-
+        
         <!-- v418: Reminders — renewal-type dates. Only shows a reminder once it's within its own
              (per-item, manually-set) leadDays of its due date, or overdue — hidden entirely when
              nothing currently qualifies. Everything else lives on the full Reminders page. See

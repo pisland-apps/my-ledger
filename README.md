@@ -4479,3 +4479,9 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Button bar now really wraps two per row (inline flex:1 was overriding the CSS).
 - Premiums paid / Surrender value card stacks vertically on a phone, so the surrender figure no longer overflows.
 - Cache bumped to v601.
+
+## v602: Dashboard — to-do items moved to the top
+- **Planned Payments** and **Tag Reminders** (e.g. Pending Claim) moved from below Monthly Trend to sit directly under the FD / Credit Card due reminders, before Budget.
+- Order: overdue / due cards → Planned Payments → Tag Reminders → Budget.
+- Layout only (HTML blocks moved, same element ids); no logic or data changes. Each widget still hides itself when it has nothing to show.
+- Cache bumped to v602.

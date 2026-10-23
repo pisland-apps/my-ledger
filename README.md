@@ -4485,3 +4485,9 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Order: overdue / due cards → Planned Payments → Tag Reminders → Budget.
 - Layout only (HTML blocks moved, same element ids); no logic or data changes. Each widget still hides itself when it has nothing to show.
 - Cache bumped to v602.
+
+## v603: Dashboard — Reminders moved up too
+- **Reminders** (renewal-type dates, e.g. overdue renewals) moved up beside the other to-do items.
+- Order: overdue / due cards → Planned Payments → Reminders → Tag Reminders → Budget.
+- Layout only; same element ids, no logic or data changes.
+- Cache bumped to v603.

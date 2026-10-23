@@ -4314,7 +4314,7 @@
         <!-- v602: "To-do" cluster — Planned Payments and Tag Reminders (e.g. Pending Claim) moved up from below
              Monthly Trend to sit right under the FD / Credit Card due reminders, so everything that needs
              action is visible on first open. Same element ids as before, so the render functions are unchanged.
-             Order: overdue/due cards -> Planned Payments -> Tag Reminders. -->
+             Order: overdue/due cards -> Planned Payments -> Reminders (v603) -> Tag Reminders. -->
         <!-- v354: Planned Payments — bills keyed in ahead of being paid (see the "🕒 Save as
              Planned" button on the Income/Expense entry form).
              v361: this widget now only shows entries due within 3 days or overdue (and never a
@@ -4328,6 +4328,17 @@
             <span class="section-title" style="cursor:pointer;" data-click="navigateToPlannedPaymentsPage">🕒 Planned Payments</span>
         </div>
         <div class="ledger-container" id="plannedPaymentsList"></div>
+        </div>
+
+        <!-- v418: Reminders — renewal-type dates. Only shows a reminder once it's within its own
+             (per-item, manually-set) leadDays of its due date, or overdue — hidden entirely when
+             nothing currently qualifies. Everything else lives on the full Reminders page. See
+             renderRemindersWidget() in ledger.js. -->
+        <div id="dashboardRemindersWidget" style="display:none;">
+        <div class="section-header">
+            <span class="section-title" style="cursor:pointer;" data-click="navigateToRemindersPage">🔔 Reminders</span>
+        </div>
+        <div class="ledger-container" id="remindersWidgetList"></div>
         </div>
 
         <!-- v281: Tag Reminders — one row per tag with "Show on Dashboard" enabled (see the Tag
@@ -4464,17 +4475,7 @@
         </div>
 
         
-        <!-- v418: Reminders — renewal-type dates. Only shows a reminder once it's within its own
-             (per-item, manually-set) leadDays of its due date, or overdue — hidden entirely when
-             nothing currently qualifies. Everything else lives on the full Reminders page. See
-             renderRemindersWidget() in ledger.js. -->
-        <div id="dashboardRemindersWidget" style="display:none;">
-        <div class="section-header">
-            <span class="section-title" style="cursor:pointer;" data-click="navigateToRemindersPage">🔔 Reminders</span>
-        </div>
-        <div class="ledger-container" id="remindersWidgetList"></div>
-        </div>
-
+        
         <div id="dashboardAccountsWidget">
         <div class="section-header">
             <span class="section-title" style="cursor:pointer;" data-click="navigateToAccountsPage">Accounts</span>

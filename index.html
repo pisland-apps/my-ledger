@@ -426,6 +426,16 @@
         }
         #noteSummaryModal .modal-sheet {
             background: #f4ede4; /* warm "paper" tint instead of the app's plain white card */
+            /* v607: the paper stays light in EVERY theme, so its ink must stay dark too. The title,
+               "×", merchant names, "Dates:" lines and the Close button all read their colour from
+               these theme variables, which dark presets flip to light values — giving pale text on
+               cream paper (unreadable). Pinning them here, on the sheet only, re-scopes them for
+               everything inside the modal and leaves the rest of the app's theme untouched. */
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --chip-bg: #e8d9c5;
+            color: var(--text-main);
         }
         #noteSummaryModal .note-summary-entry {
             background: #fffaf3;

@@ -4511,3 +4511,8 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - If credential registration fails for a reason other than the user dismissing the prompt (`NotAllowedError`), a short "couldn't be set up on this device or browser" alert now shows instead of failing silently.
 - Security model unchanged: biometric unlock stays PRF-only (no gate-only fallback); the passcode remains the unlock method on devices without PRF.
 - Cache bumped to v606.
+
+## v607: Description Summary modal — readable in dark themes
+- **Bug:** the Description Summary modal (📝 on a category page) keeps its warm cream "paper" background in every theme, but its text took colour from the theme variables. Dark themes make those light, so the title, ×, merchant names, "Dates:" lines and Close button were pale text on pale paper (unreadable).
+- **Fix:** `--text-main`, `--text-muted`, `--border-color` and `--chip-bg` are pinned to light-theme values on `#noteSummaryModal .modal-sheet` only, so the ink stays dark on the paper in every theme. Income/expense accent colours are unchanged.
+- CSS only; no logic or data changes. Cache bumped to v607.

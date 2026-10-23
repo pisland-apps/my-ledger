@@ -4314,7 +4314,7 @@
         <!-- v602: "To-do" cluster — Planned Payments and Tag Reminders (e.g. Pending Claim) moved up from below
              Monthly Trend to sit right under the FD / Credit Card due reminders, so everything that needs
              action is visible on first open. Same element ids as before, so the render functions are unchanged.
-             Order: overdue/due cards -> Planned Payments -> Reminders (v603) -> Tag Reminders. -->
+             Order: overdue/due cards -> Planned Payments -> Reminders (v603) -> Tag Reminders -> Warranty Reminders (v604, least urgent). -->
         <!-- v354: Planned Payments — bills keyed in ahead of being paid (see the "🕒 Save as
              Planned" button on the Income/Expense entry form).
              v361: this widget now only shows entries due within 3 days or overdue (and never a
@@ -4354,6 +4354,17 @@
         <div class="ledger-container" id="tagReminderList"></div>
         </div>
 
+
+        <!-- v318: Warranty Reminders — mirrors the Tag Reminders widget just above, but for
+             active Inventory items whose (representative) warranty ends within 30 days. Hidden
+             entirely when nothing's expiring soon. Rows ARE clickable here (unlike Tag
+             Reminders) — tapping one jumps straight to that item in Inventory. -->
+        <div id="dashboardWarrantyWidget" style="display:none;">
+        <div class="section-header">
+            <span class="section-title" style="cursor:pointer;" data-click="navigateToInventoryPage">⚠️ Warranty Reminders</span>
+        </div>
+        <div class="ledger-container" id="warrantyReminderList"></div>
+        </div>
 
         <div id="dashboardBudgetWidgetContainer">
         <div class="section-header">
@@ -4463,17 +4474,7 @@
         </div>
 
         
-        <!-- v318: Warranty Reminders — mirrors the Tag Reminders widget just above, but for
-             active Inventory items whose (representative) warranty ends within 30 days. Hidden
-             entirely when nothing's expiring soon. Rows ARE clickable here (unlike Tag
-             Reminders) — tapping one jumps straight to that item in Inventory. -->
-        <div id="dashboardWarrantyWidget" style="display:none;">
-        <div class="section-header">
-            <span class="section-title" style="cursor:pointer;" data-click="navigateToInventoryPage">⚠️ Warranty Reminders</span>
-        </div>
-        <div class="ledger-container" id="warrantyReminderList"></div>
-        </div>
-
+        
         
         
         <div id="dashboardAccountsWidget">

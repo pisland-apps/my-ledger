@@ -4491,3 +4491,9 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Order: overdue / due cards → Planned Payments → Reminders → Tag Reminders → Budget.
 - Layout only; same element ids, no logic or data changes.
 - Cache bumped to v603.
+
+## v604: Dashboard — Warranty Reminders moved up (last)
+- **Warranty Reminders** moved from below Monthly Trend to the end of the to-do group (least urgent).
+- Order: overdue / due cards → Planned Payments → Reminders → Tag Reminders → Warranty Reminders → Budget.
+- Layout only; same element ids, no logic or data changes.
+- Cache bumped to v604.

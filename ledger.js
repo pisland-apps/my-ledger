@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v604";
+        const APP_VERSION = "v605";
         const APP_VERSION_DATE = "2026-10-23";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -2583,6 +2583,34 @@
         // carry the tag right now, and disappears on its own once the user removes the tag from
         // the last matching transaction (e.g. after settling a claim via Reimbursement + editing
         // the transaction to drop the tag) — no separate "resolved" flag anywhere.
+        // v605: Dashboard to-do group helpers. setTodoBadge() puts a count badge on a to-do widget's
+        // section title (level: "red" = overdue/expired, "orange" = due soon, "purple" = info only);
+        // a count of 0 hides it. It also refreshes the thin divider above Budget, which only shows
+        // while at least one of the four to-do widgets is visible. Purely visual — no data touched.
+        const TODO_WIDGET_IDS = ["dashboardPlannedPaymentsWidget", "dashboardRemindersWidget", "dashboardTagWidget", "dashboardWarrantyWidget"];
+        function refreshTodoGroupDivider() {
+            const divider = document.getElementById("todoGroupDivider");
+            if (!divider) return;
+            const anyVisible = TODO_WIDGET_IDS.some(id => {
+                const el = document.getElementById(id);
+                return el && el.style.display !== "none";
+            });
+            divider.style.display = anyVisible ? "" : "none";
+        }
+        function setTodoBadge(widgetId, count, level) {
+            const badge = document.getElementById(widgetId + "Badge");
+            if (badge) {
+                if (count > 0) {
+                    badge.textContent = String(count);
+                    badge.className = "todo-badge " + (level || "orange");
+                    badge.style.display = "";
+                } else {
+                    badge.style.display = "none";
+                }
+            }
+            refreshTodoGroupDivider();
+        }
+
         function renderTagReminderWidget(txs, accounts) {
             const wrap = document.getElementById("dashboardTagWidget");
             const list = document.getElementById("tagReminderList");
@@ -2610,6 +2638,7 @@
                 .filter(Boolean);
 
             wrap.style.display = rows.length ? "" : "none";
+            setTodoBadge("dashboardTagWidget", rows.reduce((n, r) => n + r.count, 0), "purple");
             if (rows.length === 0) return;
 
             list.innerHTML = rows.map(r => {
@@ -15514,6 +15543,7 @@
 
             const expiring = await getExpiringWarrantyItems();
             wrap.style.display = expiring.length ? "" : "none";
+            setTodoBadge("dashboardWarrantyWidget", expiring.length, expiring.some(({ w }) => warrantyProgressInfo(w).daysLeft <= 0) ? "red" : "orange");
             if (!expiring.length) return;
 
             list.innerHTML = expiring.map(({ item, w }) => {
@@ -16392,6 +16422,7 @@
                 return daysDiff <= 3; // includes overdue (negative) and "due today" (0)
             });
             wrap.style.display = payments.length ? "" : "none";
+            setTodoBadge("dashboardPlannedPaymentsWidget", payments.length, payments.some(p => p.dueDate < today) ? "red" : "orange");
             if (!payments.length) return;
 
             list.innerHTML = payments.map(p => renderPlannedPaymentRowHtml(p, today)).join("");
@@ -20097,6 +20128,7 @@
                 return daysDiff <= (r.leadDays || 0);
             }).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
             wrap.style.display = reminders.length ? "" : "none";
+            setTodoBadge("dashboardRemindersWidget", reminders.length, reminders.some(r => r.dueDate < today) ? "red" : "orange");
             if (!reminders.length) return;
 
             list.innerHTML = reminders.map(r => renderReminderRowHtml(r, today)).join("");

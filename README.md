@@ -4497,3 +4497,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Order: overdue / due cards → Planned Payments → Reminders → Tag Reminders → Warranty Reminders → Budget.
 - Layout only; same element ids, no logic or data changes.
 - Cache bumped to v604.
+
+## v605: Dashboard — count badges + divider on the to-do group
+- Planned Payments, Reminders, Tag Reminders and Warranty Reminders now show a small **count badge** next to their section title.
+- Badge colour = urgency: **red** = something overdue/expired, **orange** = due soon, **purple** = Tag Reminders (info only; counts items, e.g. "2" for 2 pending-claim items).
+- A thin **divider** now separates the to-do group from Budget. It only appears while at least one of the four widgets is visible.
+- Purely visual (new CSS + two small helpers `setTodoBadge()` / `refreshTodoGroupDivider()`); no data or logic changes. Per-row styling untouched.
+- Cache bumped to v605.

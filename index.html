@@ -3934,6 +3934,31 @@
         #ledgerYearNav.compact .btn-util { flex: 0 0 auto; padding: 6px 11px !important; font-size: 0.9rem !important; background: transparent !important; border-radius: 0 !important; }
         #ledgerYearNav.compact .btn-util:disabled { opacity: 0.3; }
         #ledgerYearNav.compact select { min-width: 0 !important; font-size: 0.85rem !important; padding: 6px 4px !important; border: none !important; border-left: 1px solid var(--border-color) !important; border-right: 1px solid var(--border-color) !important; border-radius: 0 !important; background: transparent !important; }
+
+        /* v605: count badge on the Dashboard to-do section titles (Planned Payments / Reminders /
+           Tag Reminders / Warranty Reminders). Colour = urgency: red = something overdue/expired,
+           orange = due soon, purple = informational (Tag Reminders). Solid fill + white text so it
+           reads the same in light and dark themes. */
+        .todo-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 6px;
+            margin-left: 7px;
+            border-radius: 9px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            letter-spacing: 0;
+            line-height: 1;
+            color: #fff;
+            vertical-align: middle;
+            box-sizing: border-box;
+        }
+        .todo-badge.red { background: var(--expense-color, #ef4444); }
+        .todo-badge.orange { background: #f59e0b; }
+        .todo-badge.purple { background: #7c3aed; }
     </style>
     <!-- v179: apply any saved background-theme choice before first paint, so the page never
          flashes the default slate background and then jumps to the user's chosen tint.
@@ -4325,7 +4350,7 @@
              See renderPlannedPaymentsWidget()/renderPlannedPaymentsPage() in ledger.js. -->
         <div id="dashboardPlannedPaymentsWidget" style="display:none;">
         <div class="section-header">
-            <span class="section-title" style="cursor:pointer;" data-click="navigateToPlannedPaymentsPage">🕒 Planned Payments</span>
+            <span class="section-title" style="cursor:pointer;" data-click="navigateToPlannedPaymentsPage">🕒 Planned Payments<span class="todo-badge" id="dashboardPlannedPaymentsWidgetBadge" style="display:none;"></span></span>
         </div>
         <div class="ledger-container" id="plannedPaymentsList"></div>
         </div>
@@ -4336,7 +4361,7 @@
              renderRemindersWidget() in ledger.js. -->
         <div id="dashboardRemindersWidget" style="display:none;">
         <div class="section-header">
-            <span class="section-title" style="cursor:pointer;" data-click="navigateToRemindersPage">🔔 Reminders</span>
+            <span class="section-title" style="cursor:pointer;" data-click="navigateToRemindersPage">🔔 Reminders<span class="todo-badge" id="dashboardRemindersWidgetBadge" style="display:none;"></span></span>
         </div>
         <div class="ledger-container" id="remindersWidgetList"></div>
         </div>
@@ -4349,7 +4374,7 @@
              Spending by Tag report) — this is a "check the list yourself" nudge, not a drill-in. -->
         <div id="dashboardTagWidget" style="display:none;">
         <div class="section-header">
-            <span class="section-title" style="cursor:pointer;" data-click="sidebarGo" data-target="tag-report">🔖 Tag Reminders</span>
+            <span class="section-title" style="cursor:pointer;" data-click="sidebarGo" data-target="tag-report">🔖 Tag Reminders<span class="todo-badge" id="dashboardTagWidgetBadge" style="display:none;"></span></span>
         </div>
         <div class="ledger-container" id="tagReminderList"></div>
         </div>
@@ -4361,10 +4386,15 @@
              Reminders) — tapping one jumps straight to that item in Inventory. -->
         <div id="dashboardWarrantyWidget" style="display:none;">
         <div class="section-header">
-            <span class="section-title" style="cursor:pointer;" data-click="navigateToInventoryPage">⚠️ Warranty Reminders</span>
+            <span class="section-title" style="cursor:pointer;" data-click="navigateToInventoryPage">⚠️ Warranty Reminders<span class="todo-badge" id="dashboardWarrantyWidgetBadge" style="display:none;"></span></span>
         </div>
         <div class="ledger-container" id="warrantyReminderList"></div>
         </div>
+
+        <!-- v605: thin divider between the to-do group (Planned Payments / Reminders / Tag Reminders /
+             Warranty Reminders) and Budget. Only shown while at least one of those four is visible
+             (see refreshTodoGroupDivider() in ledger.js), so an empty to-do group leaves no stray line. -->
+        <div id="todoGroupDivider" style="display:none; border-top:1px solid var(--border-color); margin:18px 2px 0;"></div>
 
         <div id="dashboardBudgetWidgetContainer">
         <div class="section-header">

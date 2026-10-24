@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v607";
-        const APP_VERSION_DATE = "2026-10-23";
+        const APP_VERSION = "v608";
+        const APP_VERSION_DATE = "2026-10-24";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -13020,8 +13020,14 @@
                     seen.add(key);
                     out.push(t.desc.trim());
                 }
-                if (!histSeen.has(key) && t.cat) {
-                    histSeen.add(key);
+                // v608: one history entry per description + category + account (was: per
+                // description only). The v353 chips are meant to separate the same merchant paid
+                // from different accounts (Cash vs TNG), but this loop kept only the newest
+                // occurrence of each description, so the second account never reached
+                // findHistoryCandidates() and only one chip could ever appear for it.
+                const hKey = key + "||" + t.cat + "||" + (t.src || "");
+                if (t.cat && !histSeen.has(hKey)) {
+                    histSeen.add(hKey);
                     historyEntries.push({ desc: t.desc.trim(), cat: t.cat, type: t.type, src: t.src });
                 }
             }

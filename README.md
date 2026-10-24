@@ -4516,3 +4516,10 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - **Bug:** the Description Summary modal (📝 on a category page) keeps its warm cream "paper" background in every theme, but its text took colour from the theme variables. Dark themes make those light, so the title, ×, merchant names, "Dates:" lines and Close button were pale text on pale paper (unreadable).
 - **Fix:** `--text-main`, `--text-muted`, `--border-color` and `--chip-bg` are pinned to light-theme values on `#noteSummaryModal .modal-sheet` only, so the ink stays dark on the paper in every theme. Income/expense accent colours are unchanged.
 - CSS only; no logic or data changes. Cache bumped to v607.
+
+## v608: Quick Add — same description paid from different accounts now gives one chip per account
+- **Bug:** typing "Fla" after "Kedai Kopi Tenom's Flavor" had been paid once by Wallet Cash and once by Wallet TNG showed only the TNG chip. `loadDescSuggestionsCache()` kept just the newest occurrence of each description, so the other account never reached `findHistoryCandidates()`. The v353 multi-chip case only worked when the two records had different description text (e.g. "PETRONAS Nosob" vs "PETRONAS Nosob (R)").
+- **Fix:** history entries are now kept per description + category + account. `findHistoryCandidates()` is unchanged (de-dupes by category + account, newest first, max 3). The v252 description dropdown (`dynamicDescSuggestions`) is unchanged.
+- Chips for records on the same date are in stored order, since transactions only carry a date, not a time.
+- Cache bumped to v608.
+

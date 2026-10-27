@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v608";
-        const APP_VERSION_DATE = "2026-10-24";
+        const APP_VERSION = "v609";
+        const APP_VERSION_DATE = "2026-10-27";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -12796,7 +12796,33 @@
             const topTier = currencyCandidates.concat(cnySuffixCandidates);
             const pool = topTier.length ? topTier : bareCandidates;
             if (pool.length) {
-                const chosen = pool.reduce((best, c) => (!best || c.value > best.value) ? c : best, null);
+                let chosen = pool.reduce((best, c) => (!best || c.value > best.value) ? c : best, null);
+                // v609: with 2+ bare numbers and no currency/块 marker, "biggest wins" breaks when a
+                // merchant name itself starts/ends with a number ("99 Speed Mart": typing
+                // "99 9.5" or "9.5 99" took 99 as the amount). So when there is a tie-break to
+                // make, try each bare number as the amount in turn and prefer the one whose
+                // LEFTOVER text matches a saved description in the user's own history (exact
+                // match first, then loose match; larger value first within each). If nothing
+                // matches history, behaviour is unchanged (largest wins).
+                if (!topTier.length && pool.length > 1) {
+                    const leftoverFor = (c) => {
+                        let t = text.slice(0, c.index) + text.slice(c.index + c.length);
+                        const d = parseRelativeDate(t);
+                        if (d) t = t.slice(0, d.index) + t.slice(d.index + d.length);
+                        return t.replace(/\s{2,}/g, " ").trim();
+                    };
+                    const byValueDesc = pool.slice().sort((a, b) => b.value - a.value);
+                    let exactPick = null, loosePick = null;
+                    for (const c of byValueDesc) {
+                        const left = leftoverFor(c);
+                        if (left.length < 2) continue;
+                        const hits = findHistoryCandidates(left);
+                        if (!hits.length) continue;
+                        if (!exactPick && hits.some(h => h.desc.toLowerCase() === left.toLowerCase())) exactPick = c;
+                        if (!loosePick) loosePick = c;
+                    }
+                    if (exactPick || loosePick) chosen = exactPick || loosePick;
+                }
                 result.amount = chosen.value;
                 text = text.slice(0, chosen.index) + text.slice(chosen.index + chosen.length);
             }

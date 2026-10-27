@@ -4523,3 +4523,11 @@ For a policy whose Type is **Investment-linked**, "＋ Add fund value" creates a
 - Chips for records on the same date are in stored order, since transactions only carry a date, not a time.
 - Cache bumped to v608.
 
+## v609: Quick Add — a merchant name that contains a number ("99 Speed Mart") no longer loses to the amount
+
+With two bare numbers and no `RM` / `块` marker, Quick Add used to take the *largest* as the amount, so
+`99 9.5` and `9.5 99` both gave Amount 99 and Description 9.5 (no chip). Now each bare number is tried as the
+amount in turn, and the one whose leftover text matches a saved description in your history wins (exact match
+first, then loose match). Both orders now give Amount 9.5 + "99 Speed Mart" + its category/account chip.
+If nothing in history matches, behaviour is unchanged (largest number = amount). Currency-marked amounts
+(`RM25`, `25块`) are unaffected.

@@ -4544,3 +4544,31 @@ If nothing in history matches, behaviour is unchanged (largest number = amount).
 - **Reminders**: the Notes field (e.g. a document number) was saved but never shown. It now appears as a "📝 …"
   line (max 2 lines) under the reminder name, on both the Reminders page and the Dashboard widget.
 - `APP_VERSION` / `CACHE_NAME` bumped to v610. No data or schema change.
+
+## v611: Quick Add — pick the merchant first, then its Category · Account
+
+Quick Add chips used to be Category · Account combinations. Which merchant name you ended up with depended on
+which combination you tapped (e.g. `ten` → TNG gave "Kedai Kopi Tenom", Cash gave "Kedai Kopi Tenom's Flavor",
+PBB gave "Towering Tenom Mee"), and one merchant used with several accounts looked like unrelated chips.
+
+- **Step 1 — merchant chips.** Matching is by merchant (saved description), de-duplicated, with `'` / `’`, case
+  and extra spaces ignored. Rank: exact, prefix, word-start, contains; ties by most recent. Max 5. A small `×N`
+  shows how many Category · Account combinations that merchant has.
+- **Step 2 — tap a merchant.** Description is filled with that merchant's saved name. One combination: Category
+  and Account are applied right away. Several: that merchant's own combinations appear (most used first, then
+  most recent); tap one to apply. A "‹ merchant" chip goes back to the merchant list.
+- Description now only mirrors what you typed until you tap a merchant (no more silent replacement, even with a
+  single match).
+- If no merchant matches, the old keyword guess (category only, e.g. `grab` → Commute) is still offered.
+- `loadDescSuggestionsCache()` now also stores `count` and `lastDate` per description + category + account.
+  `findHistoryCandidates()` stays (used by the v609 amount tie-break); chips use the new
+  `findMerchantCandidates()`. No data or schema change; `index.html` unchanged.
+- `APP_VERSION` / `CACHE_NAME` bumped to v611.
+
+## v612: dark-theme legibility — Opening Balance Setup / Balance B/F / Balance C/F rows
+
+On an account's Activity page these three rows had a fixed near-white inline background (`#fafbfd`) while their
+text follows the theme, so on the three dark themes (暗夜描边 / Slate / 尊爵黑金) they showed light text on a
+white row. They now use the class `ledger-item-carry`: original near-white on light themes (and Liquid Glass),
+a low-alpha indigo tint (`rgba(99,102,241,0.16)`) on the dark themes. `ledger.js` (three templates) and
+`index.html` (one CSS block) changed; no data change. `APP_VERSION` / `CACHE_NAME` bumped to v612.

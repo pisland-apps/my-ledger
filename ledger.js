@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v611";
-        const APP_VERSION_DATE = "2026-10-28";
+        const APP_VERSION = "v612";
+        const APP_VERSION_DATE = "2026-10-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -22641,7 +22641,7 @@
                 if (viewingAcc && viewingAcc.type !== "multi" && viewingAcc.type !== "fd" && viewingAcc.type !== "unittrust" && viewingAcc.initialBalance) {
                     const subText = viewingAcc.currency !== baseCurrency ? `<span class="converted-subtext">≈ ${formatCurrency(convertCurrency(viewingAcc.initialBalance, viewingAcc.currency, baseCurrency), baseCurrency)}</span>` : '';
                     openingBalanceHTML = `
-                        <div class="ledger-item" style="background-color: #fafbfd; border-left: 4px solid var(--primary); cursor: default;">
+                        <div class="ledger-item ledger-item-carry" style="border-left: 4px solid var(--primary); cursor: default;">
                             <div class="item-left">
                                 <span class="item-name" style="font-style: italic;">🏦 [Opening Balance Setup]</span>
                                 <span class="item-meta">Account Opening Initial Vault Point</span>
@@ -22673,7 +22673,7 @@
                         const bf = computeAccountBalanceAsOf(viewingAcc, yearStartMs);
                         const subText = viewingAcc.currency !== baseCurrency ? `<span class="converted-subtext">≈ ${formatCurrency(convertCurrency(bf, viewingAcc.currency, baseCurrency), baseCurrency)}</span>` : '';
                         balanceBfHTML = `
-                            <div class="ledger-item" style="background-color: #fafbfd; border-left: 4px solid var(--primary); cursor: default;">
+                            <div class="ledger-item ledger-item-carry" style="border-left: 4px solid var(--primary); cursor: default;">
                                 <div class="item-left">
                                     <span class="item-name" style="font-style: italic;">↩️ Balance B/F</span>
                                     <span class="item-meta">Brought forward from ${accountLedgerYearsCache[accountYearIdx - 1]}</span>
@@ -22693,7 +22693,7 @@
                         const cf = computeAccountBalanceAsOf(viewingAcc, yearEndExclusiveMs);
                         const subText = viewingAcc.currency !== baseCurrency ? `<span class="converted-subtext">≈ ${formatCurrency(convertCurrency(cf, viewingAcc.currency, baseCurrency), baseCurrency)}</span>` : '';
                         balanceCfHTML = `
-                            <div class="ledger-item" style="background-color: #fafbfd; border-left: 4px solid var(--primary); cursor: default;">
+                            <div class="ledger-item ledger-item-carry" style="border-left: 4px solid var(--primary); cursor: default;">
                                 <div class="item-left">
                                     <span class="item-name" style="font-style: italic;">↪️ Balance C/F</span>
                                     <span class="item-meta">Carried forward to ${accountLedgerYearsCache[accountYearIdx + 1]}</span>

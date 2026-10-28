@@ -439,6 +439,15 @@
             background: rgba(59,130,246,0.14) !important; border-color: rgba(96,165,250,0.40) !important;
         }
         html[data-bg-theme="midnight"] #txFdLinkWrap label[style*="color:#1d4ed8"], html[data-bg-theme="slate"] #txFdLinkWrap label[style*="color:#1d4ed8"], html[data-bg-theme="noir"] #txFdLinkWrap label[style*="color:#1d4ed8"] { color: #93c5fd !important; }
+        /* v612: the account Activity page's "Opening Balance Setup" / "Balance B/F" / "Balance C/F"
+           rows had a fixed near-white inline background (#fafbfd), but their text follows the
+           theme — so on the three dark presets it was light text on a white row (nearly
+           unreadable). Now a class: light themes keep the original near-white; the dark presets
+           get a low-alpha indigo tint, so the theme's own text colours read normally. */
+        .ledger-item.ledger-item-carry { background-color: #fafbfd; }
+        html[data-bg-theme="midnight"] .ledger-item.ledger-item-carry, html[data-bg-theme="slate"] .ledger-item.ledger-item-carry, html[data-bg-theme="noir"] .ledger-item.ledger-item-carry {
+            background-color: rgba(99,102,241,0.16);
+        }
         .reminder-row-note {
             font-size: 0.72rem; font-weight: 600; color: var(--text-muted); font-style: italic;
             margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere;

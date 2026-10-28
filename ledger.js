@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v610";
-        const APP_VERSION_DATE = "2026-10-27";
+        const APP_VERSION = "v611";
+        const APP_VERSION_DATE = "2026-10-28";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -12861,40 +12861,63 @@
             return result;
         }
 
-        // v353: given the leftover text after amount/date have been stripped, returns every
-        // distinct-description history entry whose text overlaps it (exact match, or either
-        // string contains the other — same loose-substring rule v351/v352 used), ranked exact
-        // matches first then by recency (dynamicDescHistoryEntries is already newest-first per
-        // description, and Array.prototype.sort is stable, so recency order survives within each
-        // rank group), then DEDUPED by (category, account) — not by description text — since two
-        // different descriptions ("PETRONAS Nosob" / "PETRONAS Nosob (R)") can be the exact same
-        // real-world category+account and shouldn't produce two chips for that case, while two
-        // matches that genuinely used different accounts (e.g. paid via TNG one time, Visa
-        // another) are kept as separate candidates on purpose — that's the whole point of this
-        // being an array instead of v351/v352's single-best-match lookup. Capped to 3 so a very
-        // common short fragment (like "pe") can't flood the chip row.
+        // Still used by parseQuickAddText() (v609 amount tie-break: does the leftover text match
+        // a saved description?). Chip rendering no longer uses it — see findMerchantCandidates().
         function findHistoryCandidates(cleaned) {
             if (cleaned.length < 2) return [];
-            const key = cleaned.toLowerCase();
+            const key = normQA(cleaned);
             const matches = dynamicDescHistoryEntries.filter(e => {
-                const k = e.desc.toLowerCase();
+                const k = normQA(e.desc);
                 return k === key || k.includes(key) || key.includes(k);
             });
-            matches.sort((a, b) => {
-                const aExact = a.desc.toLowerCase() === key ? 0 : 1;
-                const bExact = b.desc.toLowerCase() === key ? 0 : 1;
-                return aExact - bExact;
-            });
+            matches.sort((a, b) => (normQA(a.desc) === key ? 0 : 1) - (normQA(b.desc) === key ? 0 : 1));
             const seen = new Set();
             const out = [];
             for (const m of matches) {
-                const dedupeKey = m.cat + "||" + m.src;
-                if (seen.has(dedupeKey)) continue;
-                seen.add(dedupeKey);
+                const dk = m.cat + "||" + m.src;
+                if (seen.has(dk)) continue;
+                seen.add(dk);
                 out.push(m);
                 if (out.length >= 3) break;
             }
             return out;
+        }
+
+        // v611: Quick Add now matches MERCHANTS (descriptions), not category+account combos.
+        // normQA() makes "Tenom's" / "Tenom’s" / extra spaces / case compare equal.
+        function normQA(str) {
+            return String(str || "").replace(/[\u2018\u2019\u02BC`]/g, "'").replace(/\s+/g, " ").trim().toLowerCase();
+        }
+
+        // Returns merchants (grouped by normalised description) whose name matches the leftover
+        // typed text, each as { desc, count, lastDate, combos:[{cat,type,src,count,lastDate}] }.
+        // Rank: exact > prefix > word-start > contains > typed-text-contains-name, then newest.
+        // Only the first 5 are returned so a very short fragment can't flood the row.
+        function findMerchantCandidates(cleaned, type) {
+            const key = normQA(cleaned);
+            if (key.length < 2) return [];
+            const groups = new Map();
+            for (const e of dynamicDescHistoryEntries) {
+                if (type && e.type !== type) continue;
+                const k = normQA(e.desc);
+                let rank = -1;
+                if (k === key) rank = 0;
+                else if (k.startsWith(key)) rank = 1;
+                else if (k.split(/[\s\-\/&(),.]+/).some(w => w.startsWith(key))) rank = 2;
+                else if (k.includes(key)) rank = 3;
+                else if (key.includes(k)) rank = 4;
+                if (rank === -1) continue;
+                let g = groups.get(k);
+                if (!g) { g = { desc: e.desc, rank, count: 0, lastDate: "", combos: [] }; groups.set(k, g); }
+                g.count += e.count || 1;
+                if ((e.lastDate || "") > g.lastDate) g.lastDate = e.lastDate || "";
+                g.combos.push({ cat: e.cat, type: e.type, src: e.src, count: e.count || 1, lastDate: e.lastDate || "" });
+            }
+            const out = [...groups.values()];
+            out.sort((a, b) => (a.rank - b.rank) || b.lastDate.localeCompare(a.lastDate) || (b.count - a.count));
+            // Combos: most used first, newest as tie-break.
+            out.forEach(g => g.combos.sort((a, b) => (b.count - a.count) || b.lastDate.localeCompare(a.lastDate)));
+            return out.slice(0, 5);
         }
 
         // Looks up an <option>'s own text for a compact chip label — e.g. "Wallet TNG (MYR) — VF"
@@ -12907,92 +12930,69 @@
             return opt.textContent.split(" (")[0].trim();
         }
 
-        // Renders the (already type-filtered, already deduped) candidate list as tappable chips,
-        // each labelled "Category" alone (keyword guess, no account attached) or "Category ·
-        // AccountShortName" (history match). A single surviving candidate renders as a single
-        // chip — deliberately not special-cased into old v351/v352's different plain-category
-        // look, so the tap behavior (confirms category AND account together, see
-        // applyQuickAddSuggestion()) is the same regardless of how many candidates there were;
-        // the user just happens to see one option instead of several.
-        function renderQuickAddCandidates(candidates, hideEntirely) {
+        // v611: two-step chip row. Stage "merchant": one chip per matching merchant (name only,
+        // with a small ×N use count when it has several category/account combos). Tapping a
+        // merchant fills Description with ITS saved name; if it has exactly one combo that is
+        // applied immediately, otherwise stage "combo" shows that merchant's own Category ·
+        // Account combos to pick from. Stage "keyword": the old category-only keyword guess,
+        // used only when no merchant matched. State lives on the DOM node (wrap._qa) so a
+        // re-render can never leave a chip pointing at stale data.
+        function renderQuickAddChips(qa) {
             const wrap = document.getElementById("txQuickAddCatSuggest");
-            if (hideEntirely || candidates.length === 0) {
+            if (!qa || !qa.items || qa.items.length === 0) {
                 wrap.style.display = "none";
                 wrap.innerHTML = "";
-                wrap._quickAddCandidates = null;
+                wrap._qa = null;
                 return;
             }
-            wrap.innerHTML = candidates.map((c, i) => {
+            let html = "";
+            if (qa.stage === "combo") {
+                html += `<button type="button" class="quickadd-chip" style="background:transparent; border:1.5px solid var(--border-color); color:var(--text-muted);" data-click="applyQuickAddSuggestion" data-idx="back">‹ ${escapeHtml(qa.merchant)}</button>`;
+            }
+            html += qa.items.map((c, i) => {
+                if (qa.stage === "merchant") {
+                    const n = c.combos.length;
+                    const hint = n > 1 ? ` <span class="qc-source">×${n}</span>` : "";
+                    const icon = c.combos[0] ? getCategoryIcon(c.combos[0].cat, c.combos[0].type) : "";
+                    return `<button type="button" class="quickadd-chip" data-click="applyQuickAddSuggestion" data-idx="${i}">${icon} ${escapeHtml(c.desc)}${hint}</button>`;
+                }
                 const acctLabel = shortAccountLabel(c.src);
                 const label = acctLabel ? `${c.cat} · ${acctLabel}` : c.cat;
                 return `<button type="button" class="quickadd-chip" data-click="applyQuickAddSuggestion" data-idx="${i}">${getCategoryIcon(c.cat, c.type)} ${escapeHtml(label)}</button>`;
             }).join("");
-            // Candidates are stashed on the DOM node itself rather than a module-level variable
-            // so a fast retype that re-renders this row between a chip's render and its tap can
-            // never apply a stale, no-longer-displayed candidate — whatever's on-screen is always
-            // exactly what dataset.idx indexes into.
-            wrap._quickAddCandidates = candidates;
+            wrap.innerHTML = html;
+            wrap._qa = qa;
             wrap.style.display = "flex";
         }
 
-        // Wired as data-input on #txQuickAdd (index.html). Live-fills Amount/Date always (both
-        // unambiguous once matched). Description: filled immediately ONLY when there's exactly
-        // one surviving history candidate (same as v352 — a single match's own saved name is a
-        // safe auto-complete); with zero or several candidates, Description is left as whatever
-        // was actually typed, since with several candidates there's no single "correct" full name
-        // to guess at (see the v353 chat discussion — "pe" matching three different PETRONAS
-        // Nosob entries has no one obviously-right completion). Category AND Account are NEVER
-        // auto-filled here (a v353 change from v351/v352, which silently pre-set Account on an
-        // exact history match) — both now only ever get set together, by tapping a chip
-        // (applyQuickAddSuggestion() below), so the one confirm gesture always covers both of the
-        // fields that actually change how a transaction is classified.
+        // Wired as data-input on #txQuickAdd (index.html). Live-fills Amount/Date. Description
+        // mirrors what's typed (never silently replaced by a guess — v611: even a single match
+        // now waits for a tap). Merchant chips come from the user's own history first; the
+        // keyword map is only a fallback (category only) when no merchant matched.
         function handleQuickAddInput(el) {
             const raw = el.value;
-            if (!raw.trim()) { renderQuickAddCandidates([], true); return; }
+            if (!raw.trim()) { renderQuickAddChips(null); return; }
 
             const parsed = parseQuickAddText(raw);
-
             if (parsed.amount !== null) document.getElementById("txAmount").value = parsed.amount;
             if (parsed.date) document.getElementById("txDate").value = parsed.date;
+            if (parsed.desc) document.getElementById("txDesc").value = parsed.desc;
 
-            // The Category row/select only exists (and is only populated) for whichever type
-            // this specific form instance was opened as — openTransactionForm() takes a fixed
-            // `type` per open, there's no live Income/Expense toggle inside an already-open form.
-            // So a candidate only survives when it agrees with the type already open; a
-            // same-text-different-type guess (e.g. "salary" typed while an Expense form is open)
-            // is silently dropped rather than shown as an unusable chip — same reasoning as never
-            // guessing an Account from scratch: an option the user can't actually act on here
-            // isn't worth surfacing. If NO history candidate survives that filter, the
-            // keyword-map guess is offered instead (still type-filtered) — same priority order as
-            // v351/v352, just expressed over a list instead of a single result.
             const currentType = document.getElementById("txType").value;
-            let candidates = parsed.historyCandidates.filter(c => c.type === currentType);
-            if (candidates.length === 0 && parsed.keywordGuess && parsed.keywordGuess.type === currentType) {
-                candidates = [parsed.keywordGuess];
-            }
+            if (currentType === "transfer") { renderQuickAddChips(null); return; }
 
-            if (candidates.length === 1 && candidates[0].desc) {
-                document.getElementById("txDesc").value = candidates[0].desc;
-            } else if (parsed.desc) {
-                document.getElementById("txDesc").value = parsed.desc;
+            const merchants = findMerchantCandidates(parsed.desc, currentType);
+            if (merchants.length) {
+                renderQuickAddChips({ stage: "merchant", items: merchants, all: merchants });
+            } else if (parsed.keywordGuess && parsed.keywordGuess.type === currentType) {
+                renderQuickAddChips({ stage: "keyword", items: [parsed.keywordGuess] });
+            } else {
+                renderQuickAddChips(null);
             }
-
-            renderQuickAddCandidates(candidates, currentType === "transfer");
         }
 
-        // Tapping a candidate chip applies its category AND account together (a v353 change —
-        // see handleQuickAddInput()'s comment for why these two are no longer set at different
-        // times) via the same select+dispatch-change+syncAccountPickerButtonText pattern every
-        // other direct-set in this file uses. Also fills Description with that specific
-        // candidate's own saved name, which matters most for the multi-candidate case: picking
-        // the "Fuel · Wallet TNG" chip over "Fuel · Hlbb Visa" also resolves which of several
-        // saved descriptions ("PETRONAS Nosob" vs "PETRONAS Nosob (R)") actually belongs with it.
-        function applyQuickAddSuggestion(el) {
-            const wrap = document.getElementById("txQuickAddCatSuggest");
-            const candidates = wrap._quickAddCandidates || [];
-            const c = candidates[parseInt(el.dataset.idx, 10)];
-            if (!c) return;
-
+        // Sets Category + Account (via the same select+change+sync pattern as elsewhere).
+        function applyQuickAddCombo(c) {
             const catSelect = document.getElementById("txCategory");
             if ([...catSelect.options].some(o => o.value === c.cat)) {
                 catSelect.value = c.cat;
@@ -13006,9 +13006,35 @@
                     syncAccountPickerButtonText("srcAccount");
                 }
             }
-            if (c.desc) document.getElementById("txDesc").value = c.desc;
+        }
 
-            renderQuickAddCandidates([], true);
+        function applyQuickAddSuggestion(el) {
+            const wrap = document.getElementById("txQuickAddCatSuggest");
+            const qa = wrap._qa;
+            if (!qa) return;
+
+            // "‹ Merchant" chip: back to the merchant list.
+            if (el.dataset.idx === "back") {
+                renderQuickAddChips({ stage: "merchant", items: qa.all, all: qa.all });
+                return;
+            }
+            const c = qa.items[parseInt(el.dataset.idx, 10)];
+            if (!c) return;
+
+            if (qa.stage === "merchant") {
+                document.getElementById("txDesc").value = c.desc;
+                closeDescSuggestions();
+                if (c.combos.length === 1) {
+                    applyQuickAddCombo(c.combos[0]);
+                    renderQuickAddChips(null);
+                } else {
+                    renderQuickAddChips({ stage: "combo", merchant: c.desc, items: c.combos, all: qa.all });
+                }
+                return;
+            }
+            // combo or keyword stage: apply and finish.
+            applyQuickAddCombo(c);
+            renderQuickAddChips(null);
         }
 
         // --- TRANSACTION CREATION / EDITOR CORE ---
@@ -13035,6 +13061,7 @@
             // occurrence — no extra sort/lookup needed. Order here (dedup-by-desc, newest first)
             // is exactly what findHistoryCandidates() relies on for its own recency ranking.
             const historyEntries = [];
+            const histIndex = {};
             const histSeen = new Set(); // separate from `seen` above: if the newest occurrence of
             // a description happens to have no category (t.cat falsy — an old malformed row, or
             // an in-progress migration), the original v351 map-based version still fell through to
@@ -13051,10 +13078,19 @@
                 // from different accounts (Cash vs TNG), but this loop kept only the newest
                 // occurrence of each description, so the second account never reached
                 // findHistoryCandidates() and only one chip could ever appear for it.
+                // v611: also count how often each combination was used and remember its newest
+                // date (`sorted` is newest-first, so the first sighting is the newest) — the
+                // Quick Add combo chips rank by this.
                 const hKey = key + "||" + t.cat + "||" + (t.src || "");
-                if (t.cat && !histSeen.has(hKey)) {
-                    histSeen.add(hKey);
-                    historyEntries.push({ desc: t.desc.trim(), cat: t.cat, type: t.type, src: t.src });
+                if (t.cat) {
+                    if (!histSeen.has(hKey)) {
+                        const entry = { desc: t.desc.trim(), cat: t.cat, type: t.type, src: t.src, count: 1, lastDate: t.date || "" };
+                        histSeen.add(hKey);
+                        histIndex[hKey] = entry;
+                        historyEntries.push(entry);
+                    } else {
+                        histIndex[hKey].count++;
+                    }
                 }
             }
             dynamicDescSuggestions = out;
@@ -13120,7 +13156,7 @@
             document.getElementById("txQuickAdd").value = "";
             document.getElementById("txQuickAddCatSuggest").style.display = "none";
             document.getElementById("txQuickAddCatSuggest").innerHTML = "";
-            document.getElementById("txQuickAddCatSuggest")._quickAddCandidates = null;
+            document.getElementById("txQuickAddCatSuggest")._qa = null;
             document.getElementById("txQuickAddRow").style.display = existingTxId === null ? "flex" : "none";
 
             const accounts = await readAllDB(STORES.ACCOUNTS);

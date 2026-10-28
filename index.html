@@ -421,6 +421,29 @@
 
         /* Scoped to this one modal by ID, so nothing else in the app inherits the handwritten
            look — see the @font-face comment above for why. */
+
+        /* v610: dark-theme legibility fixes. (1) Account-card info lines (credit-card Limit/
+           Statement/Due/Available/Amount due, Bank Loan redraw, "Excluded from Net Worth")
+           used fixed dark pink/blue/red hexes that vanish on a dark card — light theme keeps
+           the original colours, the three dark presets get lighter tints. (2) The "Linked
+           Placement" panel (FD interest income) has a fixed pale-blue inline background, so
+           the theme's light text/chip colours sat on it unreadably — dark presets get a
+           low-alpha blue tint instead. (3) Reminder notes line on the list rows. */
+        .acct-cc-line { color: #9d174d; }
+        .acct-redraw-line { color: #0369a1; }
+        .acct-excl-line { color: #991b1b; }
+        html[data-bg-theme="midnight"] .acct-cc-line, html[data-bg-theme="slate"] .acct-cc-line, html[data-bg-theme="noir"] .acct-cc-line { color: #f9a8d4; }
+        html[data-bg-theme="midnight"] .acct-redraw-line, html[data-bg-theme="slate"] .acct-redraw-line, html[data-bg-theme="noir"] .acct-redraw-line { color: #7dd3fc; }
+        html[data-bg-theme="midnight"] .acct-excl-line, html[data-bg-theme="slate"] .acct-excl-line, html[data-bg-theme="noir"] .acct-excl-line { color: #fca5a5; }
+        html[data-bg-theme="midnight"] #txFdLinkWrap, html[data-bg-theme="slate"] #txFdLinkWrap, html[data-bg-theme="noir"] #txFdLinkWrap {
+            background: rgba(59,130,246,0.14) !important; border-color: rgba(96,165,250,0.40) !important;
+        }
+        html[data-bg-theme="midnight"] #txFdLinkWrap label[style*="color:#1d4ed8"], html[data-bg-theme="slate"] #txFdLinkWrap label[style*="color:#1d4ed8"], html[data-bg-theme="noir"] #txFdLinkWrap label[style*="color:#1d4ed8"] { color: #93c5fd !important; }
+        .reminder-row-note {
+            font-size: 0.72rem; font-weight: 600; color: var(--text-muted); font-style: italic;
+            margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+        }
         #noteSummaryModal, #noteSummaryModal * {
             font-family: var(--zh-ff,) "Kalam", cursive;
         }

@@ -4531,3 +4531,16 @@ amount in turn, and the one whose leftover text matches a saved description in y
 first, then loose match). Both orders now give Amount 9.5 + "99 Speed Mart" + its category/account chip.
 If nothing in history matches, behaviour is unchanged (largest number = amount). Currency-marked amounts
 (`RM25`, `25块`) are unaffected.
+
+## v610: dark-theme legibility (Linked Placement, account-card info lines) + Reminder notes on the list
+
+- **FD interest entry → "Linked Placement"**: the panel had a fixed pale-blue background, so on the three dark
+  themes (暗夜描边 / Slate / 尊爵黑金) the placement picker's light text was almost invisible. Dark themes now use a
+  low-alpha blue tint with a lighter-blue label; light themes are unchanged.
+- **Accounts page**: credit-card lines (Limit · Statement day · Due day · Available · Amount due), the Bank Loan
+  "Redraw Available" line and "Excluded from Net Worth" used fixed dark pink/blue/red text. They are now classes
+  (`acct-cc-line`, `acct-redraw-line`, `acct-excl-line`): original colours on light themes, lighter tints on dark
+  themes. Applies to both the list and the Cards-view detail.
+- **Reminders**: the Notes field (e.g. a document number) was saved but never shown. It now appears as a "📝 …"
+  line (max 2 lines) under the reminder name, on both the Reminders page and the Dashboard widget.
+- `APP_VERSION` / `CACHE_NAME` bumped to v610. No data or schema change.

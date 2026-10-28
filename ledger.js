@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v609";
+        const APP_VERSION = "v610";
         const APP_VERSION_DATE = "2026-10-27";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7063,7 +7063,7 @@
                 // Dashboard's Net Worth total (see newAccIncludeNetWorth), so it's obvious here
                 // too rather than just being a silent gap in the headline number.
                 const excludedLine = a.includeInNetWorth === false
-                    ? `<br><span style="font-size:0.7rem; color:#991b1b; font-weight:600;">🚫 Excluded from Net Worth</span>`
+                    ? `<br><span class="acct-excl-line" style="font-size:0.7rem; font-weight:600;">🚫 Excluded from Net Worth</span>`
                     : "";
 
                 // v164: Account No./Ref shown right under the account name (was bundled at the
@@ -7080,7 +7080,7 @@
                 // negated (see openCreditCardPayment's comment for why that's the right number).
                 const ccAmountDue = a.type === "creditcard" ? Math.max(0, -(nativeBalances[a.id] || 0)) : 0;
                 const ccAmountDueLine = ccAmountDue > 0.005
-                    ? `<br><span style="font-size:0.72rem; color:#9d174d; font-weight:700;">💳 Amount due: ${formatBalanceHTML(ccAmountDue, a.currency)}</span>`
+                    ? `<br><span class="acct-cc-line" style="font-size:0.72rem; font-weight:700;">💳 Amount due: ${formatBalanceHTML(ccAmountDue, a.currency)}</span>`
                     : "";
                 const ccPayBtnHTML = ccAmountDue > 0.005
                     ? `<button type="button" data-click="openCreditCardPayment" data-id="${escapeHtml(a.id)}" style="font-size:0.66rem; font-weight:700; color:#fff; background:#db2777; border:none; border-radius:6px; padding:5px 8px; white-space:nowrap; cursor:pointer;">💳 Pay</button>`
@@ -8924,7 +8924,7 @@
                     const available = Math.max(0, ccAnchor.creditLimit - ccAmountDueForAvail);
                     bits.push(`Available ${formatBalanceHTML(available, a.currency || baseCurrency)}`);
                 }
-                return refLine + (bits.length ? `<br><span style="font-size:0.7rem; color:#9d174d; font-weight:600;">💳 ${bits.join(" · ")}</span>` : "");
+                return refLine + (bits.length ? `<br><span class="acct-cc-line" style="font-size:0.7rem; font-weight:600;">💳 ${bits.join(" · ")}</span>` : "");
             }
             if (group === "Real Estate" && (a.propertyType || a.holdingStartDate)) {
                 const bits = [];
@@ -8939,7 +8939,7 @@
             }
             if (group === "Bank Loan" && a.hasRedrawFacility) {
                 const dateStr = a.redrawAsOfDate ? ` (as of ${formatNavHistoryDate(a.redrawAsOfDate)})` : "";
-                return refLine + `<br><span style="font-size:0.7rem; color:#0369a1; font-weight:600;">💰 Redraw Available: ${formatBalanceHTML(a.redrawAmount || 0, a.currency || baseCurrency)}${dateStr}</span>`;
+                return refLine + `<br><span class="acct-redraw-line" style="font-size:0.7rem; font-weight:600;">💰 Redraw Available: ${formatBalanceHTML(a.redrawAmount || 0, a.currency || baseCurrency)}${dateStr}</span>`;
             }
             return refLine;
         }
@@ -11278,7 +11278,7 @@
                 // Real Estate (v53): same "excluded from Net Worth" flag renderAccountsPage()
                 // already shows on the global Accounts page.
                 const excludedLine = a.includeInNetWorth === false
-                    ? `<br><span style="font-size:0.7rem; color:#991b1b; font-weight:600;">🚫 Excluded from Net Worth</span>`
+                    ? `<br><span class="acct-excl-line" style="font-size:0.7rem; font-weight:600;">🚫 Excluded from Net Worth</span>`
                     : "";
 
                 const acctRefLine = a.accountRef
@@ -11290,7 +11290,7 @@
                 // page (renderAccountsPage) — see that copy's comment for what amountDue means.
                 const ccAmountDue = a.type === "creditcard" ? Math.max(0, -(nativeBalances[a.id] || 0)) : 0;
                 const ccAmountDueLine = ccAmountDue > 0.005
-                    ? `<br><span style="font-size:0.72rem; color:#9d174d; font-weight:700;">💳 Amount due: ${formatBalanceHTML(ccAmountDue, a.currency)}</span>`
+                    ? `<br><span class="acct-cc-line" style="font-size:0.72rem; font-weight:700;">💳 Amount due: ${formatBalanceHTML(ccAmountDue, a.currency)}</span>`
                     : "";
                 const ccPayBtnHTML = ccAmountDue > 0.005
                     ? `<button type="button" data-click="openCreditCardPayment" data-id="${escapeHtml(a.id)}" style="font-size:0.66rem; font-weight:700; color:#fff; background:#db2777; border:none; border-radius:6px; padding:5px 8px; white-space:nowrap; cursor:pointer;">💳 Pay</button>`
@@ -20144,6 +20144,7 @@
                         <span style="display:flex; flex-direction:column;">
                             <strong>${escapeHtml(r.name)}</strong>
                             ${metaLine ? `<span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">${metaLine}</span>` : ""}
+                            ${r.notes ? `<span class="reminder-row-note">📝 ${escapeHtml(r.notes)}</span>` : ""}
                         </span>
                     </span>
                     <span style="text-align:right;">

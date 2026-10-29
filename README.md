@@ -4572,3 +4572,10 @@ text follows the theme, so on the three dark themes (暗夜描边 / Slate / 尊�
 white row. They now use the class `ledger-item-carry`: original near-white on light themes (and Liquid Glass),
 a low-alpha indigo tint (`rgba(99,102,241,0.16)`) on the dark themes. `ledger.js` (three templates) and
 `index.html` (one CSS block) changed; no data change. `APP_VERSION` / `CACHE_NAME` bumped to v612.
+
+## v613: inventory — detail page, Toys category, bigger phone pills, tidy camera file names
+- Tapping an inventory row now opens a read-only detail page (photos large, price, category, vendor, date, paid-from, model/SN, note, warranties, files); the ✏️ Edit button inside opens the existing form. The blue "N attachment(s)" link on a row still jumps straight to the photo.
+- New inventory category 🧸 Toys (fixed list, before "Other"). Existing items are unchanged.
+- Phone view: category pills have larger icons (44px tap targets); the count is a small corner badge.
+- Photos taken with the Take Photo / Camera buttons (transaction, inventory, insurance forms) are named `IMG_YYYYMMDD_HHMMSS.jpg` in local time instead of the long internal number. Gallery/file picks keep their own name.
+`index.html` + `ledger.js` + `sw.js` changed; no data/DB change. `APP_VERSION` / `CACHE_NAME` bumped to v613.

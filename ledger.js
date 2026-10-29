@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v612";
+        const APP_VERSION = "v613";
         const APP_VERSION_DATE = "2026-10-29";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -13920,6 +13920,20 @@
         // Resizes + re-encodes an image as JPEG to keep IndexedDB storage usage reasonable.
         // Receipts don't need full camera resolution to stay legible. Also reused at a small
         // size/quality to build the inline preview thumbnail kept on the transaction record.
+        // v613: photos taken with the "Take Photo"/"Camera" button arrive with a long internal name
+        // (e.g. 17932735966518197010...). Rename them like the phone's own camera: IMG_YYYYMMDD_HHMMSS.jpg
+        // in LOCAL time (a second photo in the same batch gets _2, _3 ...). Gallery / file picks keep their own name.
+        function camPhotoNames(count) {
+            const d = new Date(), p = n => String(n).padStart(2, "0");
+            const stamp = `IMG_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+            return Array.from({ length: count }, (_, i) => `${stamp}${count > 1 ? "_" + (i + 1) : ""}.jpg`);
+        }
+        function attNamesFor(event, files) {
+            const fromCam = !!(event && event.target && /CameraInput$/.test(event.target.id || ""));
+            const camNames = fromCam ? camPhotoNames(files.length) : null;
+            return file => (camNames && (file.type || "").startsWith("image/")) ? camNames[files.indexOf(file)] : file.name;
+        }
+
         function compressImage(dataUrl, maxDimension, quality) {
             return new Promise((resolve, reject) => {
                 const img = new Image();
@@ -13995,6 +14009,7 @@
         // save (handleTransactionSubmitMobile) — cancelling the form discards these.
         async function handleTxAttachmentsSelected(event) {
             const files = Array.from(event.target.files || []);
+            const attName = attNamesFor(event, files);
             for (const file of files) {
                 const isImage = file.type.startsWith("image/");
                 const isPdf = file.type === "application/pdf";
@@ -14025,7 +14040,7 @@
                 }
 
                 tempTxAttachments.push({
-                    name: file.name,
+                    name: attName(file),
                     mime: isImage ? "image/jpeg" : "application/pdf",
                     data,
                     thumb,
@@ -15676,8 +15691,8 @@
         let inventoryStatusFilter = "all"; // "all" | "active" | "disposed" | "lost"
         // v558: category field + grouping. Categories are a fixed list (stored as the plain name on
         // item.category; an item whose stored name is not in the list still groups under that name).
-        const INV_CATEGORIES = ["Electronics", "Appliances", "Furniture & Storage", "Musical Instruments", "Luggage & Travel", "Tools", "Kitchen & Dining", "Home Accessories", "Other"];
-        const INV_CATEGORY_ICONS = { "Electronics": "💻", "Appliances": "🔌", "Furniture & Storage": "🪑", "Musical Instruments": "🎹", "Luggage & Travel": "🧳", "Tools": "🔧", "Kitchen & Dining": "🍽️", "Home Accessories": "🏡", "Other": "📦" };
+        const INV_CATEGORIES = ["Electronics", "Appliances", "Furniture & Storage", "Musical Instruments", "Luggage & Travel", "Tools", "Kitchen & Dining", "Home Accessories", "Toys", "Other"];
+        const INV_CATEGORY_ICONS = { "Electronics": "💻", "Appliances": "🔌", "Furniture & Storage": "🪑", "Musical Instruments": "🎹", "Luggage & Travel": "🧳", "Tools": "🔧", "Kitchen & Dining": "🍽️", "Home Accessories": "🏡", "Toys": "🧸", "Other": "📦" };
         let inventoryCategoryFilter = ""; // "" = All | a category name | "__none__" = Uncategorised
         function fillInvCategorySelect(id, selected) {
             const sel = document.getElementById(id);
@@ -15980,6 +15995,56 @@
         let invExistingAttachments = [];
         let invTempAttachments = [];
 
+        // v613: read-only detail page for an inventory item (tap a row). Shows the photos large + all the facts;
+        // the Edit button inside opens the existing edit form. Nothing here writes data.
+        let invDetailAtts = [];
+        async function openInventoryDetail(id) {
+            const [items, accounts] = await Promise.all([readAllDB(STORES.INVENTORY), readAllDB(STORES.ACCOUNTS)]);
+            const it = items.find(x => x.id === id);
+            if (!it) return;
+            invDetailAtts = (it.attachments || []).slice();
+            const isImg = a => (a.mime || "").startsWith("image/") && !/\.pdf$/i.test(a.name || "");
+            const cur = it.currency || baseCurrency;
+            const acc = it.srcAccountId ? accounts.find(a => a.id === it.srcAccountId) : null;
+            const cat = (it.category && String(it.category).trim()) || "";
+            const status = it.status || "active";
+            const row = (label, value) => value ? `<div class="invd-row"><span class="invd-k">${label}</span><span class="invd-v">${value}</span></div>` : "";
+
+            const photos = invDetailAtts.map((a, i) => isImg(a) ? `
+                <div class="invd-photo" data-click="openInvDetailAttachment" data-idx="${i}" title="Tap to open">
+                    ${(a.thumb || a.data) ? `<img data-att-img="d${i}" src="${a.data || a.thumb}" alt="${escapeHtml(a.name || "Photo")}">` : `<span style="font-size:1.8rem;">🖼️</span>`}
+                </div>` : "").join("");
+            const files = invDetailAtts.map((a, i) => !isImg(a) ? `
+                <div class="invd-file" data-click="openInvDetailAttachment" data-idx="${i}">📄 <span>${escapeHtml(a.name || "Attachment")}</span></div>` : "").join("");
+
+            const warranties = (it.warranties || []).map(w => {
+                const info = warrantyProgressInfo(w);
+                const txt = info.expired ? `expired ${Math.abs(info.daysLeft)}d ago` : `${info.daysLeft}d left`;
+                const color = info.expired ? "#b91c1c" : (info.expiringSoon ? "var(--expense-color)" : "var(--text-muted)");
+                return `<div class="invd-row"><span class="invd-k">⏱️ ${escapeHtml(w.label || "Warranty")}</span><span class="invd-v" style="color:${color};">${escapeHtml(w.endDate || "—")} · ${txt}</span></div>`;
+            }).join("");
+
+            const specs = [row("Model", escapeHtml(it.model || "")), row("Serial no.", escapeHtml(it.serialNumber || ""))].join("");
+            document.getElementById("inventoryDetailTitle").textContent = it.name || "Inventory Item";
+            document.getElementById("inventoryDetailBody").innerHTML = `
+                ${photos ? `<div class="invd-photos">${photos}</div>` : ""}
+                <div class="invd-price">${escapeHtml(formatCurrency(it.purchasePrice || 0, cur))}${status !== "active" ? `<span class="invd-status" style="color:${INV_STATUS_COLORS[status] || "var(--text-muted)"};">${escapeHtml(INV_STATUS_LABELS[status] || status)}</span>` : ""}</div>
+                <div class="invd-card">
+                    ${row("Category", cat ? `${INV_CATEGORY_ICONS[cat] || "🏷️"} ${escapeHtml(cat)}` : "")}
+                    ${row("Vendor", escapeHtml(it.vendor || ""))}
+                    ${row("Purchased", escapeHtml(it.purchaseDate || ""))}
+                    ${row("Paid from", acc ? "🏠 " + escapeHtml(accountOptionLabel(acc, accounts)) : (it.srcAccountId ? "(deleted account)" : ""))}
+                    ${specs}
+                    ${row("Note", it.note ? escapeHtml(it.note).replace(/\n/g, "<br>") : "")}
+                </div>
+                ${warranties ? `<div class="invd-card">${warranties}</div>` : ""}
+                ${files ? `<div class="invd-files">${files}</div>` : ""}
+                ${it.updated ? `<p class="invd-updated">Last updated ${escapeHtml(it.updated)}</p>` : ""}`;
+            document.getElementById("inventoryDetailEditBtn").dataset.id = it.id;
+            openModal("inventoryDetailModal");
+            hydrateInlineAttImages(document.getElementById("inventoryDetailBody"), invDetailAtts, "d");
+        }
+
         async function openInventoryItemModal(id) {
             document.getElementById("invId").value = id || "";
             document.getElementById("invWarrantyRows").innerHTML = "";
@@ -16098,6 +16163,7 @@
 
         async function handleInvAttachmentsSelected(event) {
             const files = Array.from(event.target.files || []);
+            const attName = attNamesFor(event, files);
             for (const file of files) {
                 const isImage = file.type.startsWith("image/");
                 const isPdf = file.type === "application/pdf";
@@ -16116,7 +16182,7 @@
                     if (!data) { alert(`Couldn't read "${file.name}" — it wasn't added.`); continue; }
                     thumb = null;
                 }
-                invTempAttachments.push({ id: makeAttId(), name: file.name, mime: isImage ? "image/jpeg" : "application/pdf", data, thumb, size: data.length });
+                invTempAttachments.push({ id: makeAttId(), name: attName(file), mime: isImage ? "image/jpeg" : "application/pdf", data, thumb, size: data.length });
             }
             renderInvAttachmentPreview();
             document.getElementById("invCameraInput").value = "";
@@ -19361,6 +19427,7 @@
 
         async function handleInsAttachmentsSelected(event) {
             const files = Array.from(event.target.files || []);
+            const attName = attNamesFor(event, files);
             for (const file of files) {
                 const isImage = file.type.startsWith("image/");
                 const isPdf = file.type === "application/pdf";
@@ -19383,7 +19450,7 @@
                     if (!data) { alert(`Couldn't read "${file.name}" — it wasn't added.`); continue; }
                     thumb = null;
                 }
-                insTempAttachments.push({ id: makeAttId(), name: file.name, mime: isImage ? "image/jpeg" : "application/pdf", data, thumb, size: data.length });
+                insTempAttachments.push({ id: makeAttId(), name: attName(file), mime: isImage ? "image/jpeg" : "application/pdf", data, thumb, size: data.length });
             }
             renderInsAttachmentPreview();
             document.getElementById("insCameraInput").value = "";
@@ -28701,7 +28768,9 @@
             inventoryCategoryChip: (el) => inventoryCategoryChip(el), // v559
             invNoop: () => {}, // v558: swallows clicks on the inline category picker so the row's own tap (open item) doesn't fire
             inventoryWarrantyStripTap: () => inventoryWarrantyStripTap(),
-            inventoryItemCardTap: (el) => openInventoryItemModal(el.dataset.id),
+            inventoryItemCardTap: (el) => openInventoryDetail(el.dataset.id), // v613: tap = read-only detail; Edit is inside
+            invDetailEdit: (el) => { const id = el.dataset.id; closeModalAndThen("inventoryDetailModal", () => openInventoryItemModal(id)); },
+            openInvDetailAttachment: (el) => { const a = invDetailAtts[parseInt(el.dataset.idx, 10)]; if (a) openAttachment(a, null); },
             openInventoryItemModalNew: () => openInventoryItemModal(null),
             addTxInvWarrantyRow: () => addWarrantyRow("txInvWarrantyRows", "txInvWr"),
             addInvWarrantyRow: () => addWarrantyRow("invWarrantyRows", "invWr"),

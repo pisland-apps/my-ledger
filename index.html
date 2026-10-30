@@ -3251,6 +3251,8 @@
         .acct-dormant-line { color: #b45309; }
         html[data-bg-theme="midnight"] .acct-dormant-line, html[data-bg-theme="slate"] .acct-dormant-line, html[data-bg-theme="noir"] .acct-dormant-line { color: #fcd34d; }
         .acct-chip.dormant-chip.active { background: #b45309; border-color: #b45309; color: #fff; }
+        /* v615: masked card number — tap to reveal for 5 seconds */
+        .acct-ref-mask { cursor: pointer; letter-spacing: 0.03em; }
         .dormant-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; cursor: pointer; }
         .dormant-row .dormant-sub { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; display: block; }
         .acct-card-bal { margin-top: auto; font-size: 1.45rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; position: relative; z-index: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

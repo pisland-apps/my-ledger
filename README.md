@@ -4591,3 +4591,13 @@ An account can now be flagged **Dormant** by hand: Edit Account → **Account st
 - New account record fields: `status` ("active" | "dormant"), `dormantSince`, `dormantNote`. Older records without them read as Active, so no migration; they travel with Backup & Restore and Drive sync like any other account field.
 
 `index.html` + `ledger.js` + `sw.js` changed. `APP_VERSION` / `CACHE_NAME` bumped to v614.
+
+## v615: card numbers are masked until tapped
+
+Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to show the full number for 5 seconds (tap again, or wait, to hide it). Applies to the Accounts list, a member's account list, the Cards-view back face and the account's Activity banner.
+
+- **Which accounts:** a Credit Card account masks any number with 8+ digits. Any other account masks its number only when it looks like a card number (13–19 digits that pass the Luhn check), so ordinary bank account numbers (e.g. `038-68-02838-0`) still show in full. A 13–19 digit number that fails the Luhn check also shows in full.
+- While masked, the full number is not placed in the page at all (it is read back from the database on tap), so a screenshot or "save page" of the list never contains it. The Edit Account form still shows the full number so it can be corrected.
+- No data change. The app passcode was already mandatory (setup screen has no skip; the app does not start until a passcode exists), so nothing changed there.
+
+`index.html` + `ledger.js` + `sw.js` changed. `APP_VERSION` / `CACHE_NAME` bumped to v615.

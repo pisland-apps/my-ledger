@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v614";
+        const APP_VERSION = "v615";
         const APP_VERSION_DATE = "2026-10-30";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7128,7 +7128,7 @@
                 // bottom of the card via accountExtraInfoLine's own refLine) — includeRef:false
                 // below so it isn't rendered twice.
                 const acctRefLine = a.accountRef
-                    ? `<div class="account-card-refline">${escapeHtml(a.accountRef)}</div>`
+                    ? `<div class="account-card-refline">${accountRefDisplayHTML(a)}</div>`
                     : "";
                 const extraInfoLine = accountExtraInfoLine(a, nativeBalances, false, accounts);
 
@@ -7431,7 +7431,9 @@
             // (currency, members) sit side by side. The group is not repeated here — the chips already show it.
             const field = (lbl, val) => `<div class="acct-back-field"><span class="lbl">${escapeHtml(lbl)}</span><span class="val">${escapeHtml(val)}</span></div>`;
             const longRows = [];
-            if (a.accountRef) longRows.push(field("Account no.", a.accountRef));
+            if (a.accountRef) longRows.push(shouldMaskAccountRef(a)
+                ? `<div class="acct-back-field"><span class="lbl">Account no.</span><span class="val">${accountRefDisplayHTML(a)}</span></div>`
+                : field("Account no.", a.accountRef));
             if (linkedAcc) longRows.push(field("Related", accountOptionLabel(linkedAcc, accounts)));
             const shortRows = [];
             if (!isBasket) shortRows.push(field("Currency", a.currency));
@@ -8952,6 +8954,45 @@
         // wants to show the Account No./Ref in its own separate spot — see the Accounts-page
         // .account-card-refline below the account name — opt out of it here, so it isn't also
         // repeated in whatever this function returns for the rest of the row/banner.
+        // v615: card numbers in Account No. / Ref are shown masked (•••• 1234) and revealed only on tap.
+        // A Credit Card account always masks a number of 8+ digits; any other account masks it only
+        // when it looks like a card number (13-19 digits that pass the Luhn check), so ordinary bank
+        // account numbers keep showing in full. The full number is NOT put into the page while masked
+        // (revealAccountRef reads it back from the database), and the edit form still shows it in full.
+        function accountRefDigits(ref) { return String(ref || "").replace(/\D/g, ""); }
+        function luhnValid(d) {
+            let sum = 0, dbl = false;
+            for (let i = d.length - 1; i >= 0; i--) {
+                let n = d.charCodeAt(i) - 48;
+                if (dbl) { n *= 2; if (n > 9) n -= 9; }
+                sum += n; dbl = !dbl;
+            }
+            return sum % 10 === 0;
+        }
+        function shouldMaskAccountRef(a) {
+            if (!a || !a.accountRef) return false;
+            const d = accountRefDigits(a.accountRef);
+            if (d.length < 8) return false;
+            if (a.type === "creditcard") return true;
+            return d.length >= 13 && d.length <= 19 && luhnValid(d);
+        }
+        function accountRefDisplayHTML(a) {
+            if (!shouldMaskAccountRef(a)) return escapeHtml(a.accountRef || "");
+            const last4 = accountRefDigits(a.accountRef).slice(-4);
+            return `<span class="acct-ref-mask" data-click="revealAccountRef" data-id="${escapeHtml(a.id)}" data-mask="\u2022\u2022\u2022\u2022 ${last4}" role="button" tabindex="0" title="Tap to show the full number for 5 seconds">\u2022\u2022\u2022\u2022 ${last4} \uD83D\uDC41</span>`;
+        }
+        async function revealAccountRef(el) {
+            if (!el) return;
+            if (el._hideTimer) { clearTimeout(el._hideTimer); el._hideTimer = null; }
+            if (el.dataset.shown === "1") { el.textContent = el.dataset.mask + " \uD83D\uDC41"; el.dataset.shown = "0"; return; }
+            const accts = await readAllDB(STORES.ACCOUNTS);
+            const a = accts.find(x => x.id === el.dataset.id);
+            if (!a || !a.accountRef) return;
+            el.textContent = a.accountRef;
+            el.dataset.shown = "1";
+            el._hideTimer = setTimeout(() => { el.textContent = el.dataset.mask + " \uD83D\uDC41"; el.dataset.shown = "0"; el._hideTimer = null; }, 5000);
+        }
+
         // v614: Dormant status helpers. Manual flag only (see the Account status field) — Ledger
         // can't know the bank's own dormancy rule, and interest credits don't count as activity.
         function isDormantAccount(a) { return !!a && a.status === "dormant"; }
@@ -8970,7 +9011,7 @@
             // it's built separately here and prepended ahead of whichever type-specific line (if
             // any) applies below, rather than living inside one of those mutually-exclusive
             // branches.
-            const refLine = (includeRef && a.accountRef) ? `<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${escapeHtml(a.accountRef)}</span>` : "";
+            const refLine = (includeRef && a.accountRef) ? `<br><span style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">${accountRefDisplayHTML(a)}</span>` : "";
             // v412: "Shares Credit Limit With" — when set, Limit/Available are computed across
             // the whole group (this card's anchor + every other card pointing at that same
             // anchor) instead of just this one account, so every card in the group shows the
@@ -11357,7 +11398,7 @@
                     : "";
 
                 const acctRefLine = a.accountRef
-                    ? `<div class="account-card-refline">${escapeHtml(a.accountRef)}</div>`
+                    ? `<div class="account-card-refline">${accountRefDisplayHTML(a)}</div>`
                     : "";
                 const extraInfoLine = accountExtraInfoLine(a, nativeBalances, false, accounts);
 
@@ -28860,6 +28901,7 @@
             warrantyReminderItemTap: (el) => { navigateToInventoryPage(); setTimeout(() => openInventoryItemModal(el.dataset.id), 60); },
             // v418: REMINDERS
             navigateToRemindersPage: () => navigateToRemindersPage(),
+            revealAccountRef: (el) => revealAccountRef(el), // v615
             toggleAccountsDormantFilter: () => toggleAccountsDormantFilter(), // v614
             navigateToDormantAccounts: () => navigateToDormantAccounts(), // v614
             reminderSetStatusFilter: (el) => reminderSetStatusFilter(el),

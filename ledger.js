@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v613";
-        const APP_VERSION_DATE = "2026-10-29";
+        const APP_VERSION = "v614";
+        const APP_VERSION_DATE = "2026-10-30";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -485,6 +485,7 @@
         let accountsCardSelectedId = null;   // account id of the card currently selected
         let accountsCardSubgroup = "all";    // v572: "all" | sub-group name | "__none" (accounts with no sub-group)
         let accountsPageTypeFilter = null;
+        let accountsDormantOnly = false; // v614: Dormant chip on the Accounts page
         // v222 fix: where the Accounts page's "← Back" (and hardware/gesture back) should
         // return to. Every pre-v222 entry point (sidebar, dashboard, delete-account flow)
         // only ever meant "back to Dashboard", so this defaulted implicitly via a hardcoded
@@ -2596,7 +2597,7 @@
         // section title (level: "red" = overdue/expired, "orange" = due soon, "purple" = info only);
         // a count of 0 hides it. It also refreshes the thin divider above Budget, which only shows
         // while at least one of the four to-do widgets is visible. Purely visual — no data touched.
-        const TODO_WIDGET_IDS = ["dashboardPlannedPaymentsWidget", "dashboardRemindersWidget", "dashboardTagWidget", "dashboardWarrantyWidget"];
+        const TODO_WIDGET_IDS = ["dashboardPlannedPaymentsWidget", "dashboardRemindersWidget", "dashboardDormantWidget", "dashboardTagWidget", "dashboardWarrantyWidget"]; // v614: + dormant
         function refreshTodoGroupDivider() {
             const divider = document.getElementById("todoGroupDivider");
             if (!divider) return;
@@ -5469,6 +5470,7 @@
             accountsPageBackTarget = backTarget || "workspace";
             workspaceScrollY = window.scrollY;
             accountsPageTypeFilter = typeFilter || null;
+            accountsDormantOnly = false; // v614: every normal entry starts unfiltered
             showPage("page-accounts");
             window.scrollTo(0, 0);
             pushVirtualState("accounts");
@@ -5500,6 +5502,42 @@
 
         // Clears the Accounts page's type filter (if any) and re-renders — wired to the "Show
         // All Accounts" link that appears whenever a sidebar type shortcut narrowed the list.
+        function toggleAccountsDormantFilter() {
+            accountsDormantOnly = !accountsDormantOnly;
+            accountsCardSelectedId = null;
+            renderAccountsPage();
+        }
+        // v614: dashboard "Dormant accounts" line → Accounts page, filtered to Dormant.
+        async function navigateToDormantAccounts() {
+            await navigateToAccountsPage(null, "workspace");
+            accountsDormantOnly = true;
+            accountsCardSelectedId = null;
+            await renderAccountsPage();
+        }
+        function toggleAccDormantFields() {
+            const wrap = document.getElementById("newAccDormantWrap");
+            if (wrap) wrap.style.display = document.getElementById("newAccStatus").value === "dormant" ? "" : "none";
+        }
+        // v614: dashboard widget — only while a dormant account still holds a balance (zero-balance
+        // dormant accounts keep just the 💤 marker on their card).
+        function renderDormantAccountsWidget(accounts, nativeBalances) {
+            const wrap = document.getElementById("dashboardDormantWidget");
+            const list = document.getElementById("dormantWidgetList");
+            if (!wrap || !list) return;
+            const rows = (accounts || []).filter(isDormantAccount)
+                .map(a => ({ a, val: accountBaseValue(a, nativeBalances) }))
+                .filter(r => r.val > 0.005);
+            wrap.style.display = rows.length ? "" : "none";
+            setTodoBadge("dashboardDormantWidget", rows.length, "orange");
+            if (!rows.length) { list.innerHTML = ""; return; }
+            const total = rows.reduce((s, r) => s + r.val, 0);
+            list.innerHTML = rows.map(r => `
+                <div class="config-item dormant-row" data-click="navigateToDormantAccounts">
+                    <span>${escapeHtml(r.a.name)}<span class="dormant-sub">${escapeHtml(r.a.dormantNote || (r.a.dormantSince ? "Dormant since " + formatNavHistoryDate(r.a.dormantSince) : "Dormant"))}</span></span>
+                    <span>${formatBalanceHTML(r.val, baseCurrency)}</span>
+                </div>`).join("") + (rows.length > 1 ? `<div class="config-list-subtotal"><span class="total-label">Total</span>: <span class="total-amount">${formatBalanceHTML(total, baseCurrency)}</span></div>` : "");
+        }
+
         async function clearAccountsPageTypeFilter() {
             accountsPageTypeFilter = null;
             await renderAccountsPage();
@@ -6571,6 +6609,10 @@
             document.getElementById("editAccountId").value = "";
             document.getElementById("newAccName").value = "";
             document.getElementById("newAccRef").value = "";
+            document.getElementById("newAccStatus").value = "active"; // v614
+            document.getElementById("newAccDormantSince").value = "";
+            document.getElementById("newAccDormantNote").value = "";
+            toggleAccDormantFields();
             document.getElementById("newAccGroup").value = DEFAULT_ACCOUNT_GROUP;
             handleAccGroupChange();
             document.getElementById("newAccBal").value = "0";
@@ -6628,6 +6670,11 @@
                 // when the account is re-grouped, since a bank account number doesn't stop being
                 // true just because the account got moved to a different Group/Sub-Group.
                 accountRef: accountRef,
+                // v614: manual Dormant flag. Since/Note are cleared whenever the status is Active
+                // so a reactivated account doesn't keep a stale "dormant since" date behind.
+                status: (document.getElementById("newAccStatus").value === "dormant") ? "dormant" : "active",
+                dormantSince: (document.getElementById("newAccStatus").value === "dormant") ? (document.getElementById("newAccDormantSince").value || "") : "",
+                dormantNote: (document.getElementById("newAccStatus").value === "dormant") ? document.getElementById("newAccDormantNote").value.trim() : "",
                 subgroup: document.getElementById("newAccSubgroup").value || "",
                 linkedAccountId: (group === "Bank Loan" ? (document.getElementById("newAccLinkedAccount").value || null) : null),
                 includeInNetWorth: (group === "Real Estate" ? (document.getElementById("newAccIncludeNetWorth").value !== "no") : true),
@@ -6906,7 +6953,18 @@
             const withoutZeroBalance = filter
                 ? filtered.filter(a => Math.abs(accountBaseValue(a, nativeBalances)) >= 0.005)
                 : filtered;
-            const sorted = sortAccountsByGroupThenName(withoutZeroBalance);
+            // v614: Dormant chip — shown while any account in the current set is flagged; stays
+            // visible while active so it can always be switched off again.
+            const dormantInSet = withoutZeroBalance.filter(isDormantAccount);
+            if (accountsDormantOnly && dormantInSet.length === 0) accountsDormantOnly = false;
+            const dormantChipEl = document.getElementById("accountsDormantChipRow");
+            if (dormantChipEl) {
+                dormantChipEl.classList.toggle("hidden", dormantInSet.length === 0);
+                dormantChipEl.innerHTML = dormantInSet.length
+                    ? `<button type="button" class="acct-chip dormant-chip${accountsDormantOnly ? " active" : ""}" data-click="toggleAccountsDormantFilter" aria-pressed="${accountsDormantOnly ? "true" : "false"}">\uD83D\uDCA4 Dormant <span class="acct-chip-n">${dormantInSet.length}</span></button>`
+                    : "";
+            }
+            const sorted = sortAccountsByGroupThenName(accountsDormantOnly ? dormantInSet : withoutZeroBalance);
 
             // v64: the collapse/expand state (expandedAccountSubrows) used to be keyed by
             // account id alone, so the same account's subrows showed the same open/closed state
@@ -7185,7 +7243,7 @@
                     : "";
 
                 html += `
-                    <div class="config-item account-card" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="accounts">
+                    <div class="config-item account-card${isDormantAccount(a) ? " dormant" : ""}" style="cursor:pointer;" data-click="navigateToLedgerPage" data-id="${escapeHtml(a.id)}" data-back="accounts">
                         ${accountAvatarHTML(a.name, a.logo)}
                         <div class="account-card-body">
                             <div class="account-card-toprow">
@@ -7353,6 +7411,7 @@
             const owners = (Array.isArray(a.memberIds) ? a.memberIds : []).map(id => getMemberById(id)?.name).filter(Boolean);
             const foot = owners.length ? owners.join(" \u00b7 ") : "Unassigned";
             const excluded = a.includeInNetWorth === false ? `<span class="acct-card-pill dashed">\uD83D\uDEAB Not in Net Worth</span>` : "";
+            const dormantPill = isDormantAccount(a) ? `<span class="acct-card-pill dormant">\uD83D\uDCA4 Dormant</span>` : "";
             const grad = accountCardGradient(group);
             const front = `
                 <div class="acct-card-face acct-card-front" style="background:${grad};">
@@ -7361,7 +7420,7 @@
                         <div class="acct-card-name">${escapeHtml(a.name)}</div>
                         <button type="button" class="acct-flip-btn" data-click="flipAccountCard" data-id="${escapeHtml(a.id)}" aria-label="Show card info" title="Card info">i</button>
                     </div>
-                    <div class="acct-card-badges"><span class="acct-card-pill">${escapeHtml(typeLabel)}</span>${excluded}</div>
+                    <div class="acct-card-badges"><span class="acct-card-pill">${escapeHtml(typeLabel)}</span>${dormantPill}${excluded}</div>
                     <div class="acct-card-bal">${main}</div>
                     <div class="acct-card-sub">${escapeHtml(sub)}</div>
                     <div class="acct-card-foot">${escapeHtml(foot)}</div>
@@ -7505,7 +7564,7 @@
                 ? `<div class="acct-group-total">${escapeHtml(totalLabel)}: ${formatBalanceHTML(visible.reduce((s, a) => s + accountBaseValue(a, nativeBalances), 0), baseCurrency)}</div>`
                 : "";
             const slots = visible.map(a => `
-                <div class="acct-card-slot${a.id === accountsCardSelectedId ? " selected" : ""}" role="button" tabindex="0" aria-label="${escapeHtml(a.name)}" data-acct-id="${escapeHtml(a.id)}" data-click="selectAccountCard" data-id="${escapeHtml(a.id)}">
+                <div class="acct-card-slot${a.id === accountsCardSelectedId ? " selected" : ""}${isDormantAccount(a) ? " dormant" : ""}" role="button" tabindex="0" aria-label="${escapeHtml(a.name)}" data-acct-id="${escapeHtml(a.id)}" data-click="selectAccountCard" data-id="${escapeHtml(a.id)}">
                     ${accountCardFaceHTML(a, accounts, nativeBalances)}
                 </div>`).join("");
             const selIdx = visible.findIndex(a => a.id === accountsCardSelectedId);
@@ -7637,6 +7696,10 @@
             stagedAccLogoDataUrl = null; // unchanged unless the user picks/removes a new one below
             renderAccLogoPreview(account.logo || null);
             document.getElementById("newAccRef").value = account.accountRef || "";
+            document.getElementById("newAccStatus").value = isDormantAccount(account) ? "dormant" : "active"; // v614
+            document.getElementById("newAccDormantSince").value = account.dormantSince || "";
+            document.getElementById("newAccDormantNote").value = account.dormantNote || "";
+            toggleAccDormantFields();
             document.getElementById("newAccGroup").value = account.group || DEFAULT_ACCOUNT_GROUP;
             await handleAccGroupChange(
                 account.subgroup || "",
@@ -8889,7 +8952,19 @@
         // wants to show the Account No./Ref in its own separate spot — see the Accounts-page
         // .account-card-refline below the account name — opt out of it here, so it isn't also
         // repeated in whatever this function returns for the rest of the row/banner.
+        // v614: Dormant status helpers. Manual flag only (see the Account status field) — Ledger
+        // can't know the bank's own dormancy rule, and interest credits don't count as activity.
+        function isDormantAccount(a) { return !!a && a.status === "dormant"; }
+        function dormantAccountLine(a) {
+            if (!isDormantAccount(a)) return "";
+            const bits = [a.dormantSince ? `Dormant since ${formatNavHistoryDate(a.dormantSince)}` : "Dormant"];
+            if (a.dormantNote) bits.push(escapeHtml(a.dormantNote));
+            return `<br><span class="acct-dormant-line" style="font-size:0.7rem; font-weight:600;">💤 ${bits.join(" · ")}</span>`;
+        }
         function accountExtraInfoLine(a, nativeBalances, includeRef = true, accounts = null) {
+            return accountExtraInfoLineBase(a, nativeBalances, includeRef, accounts) + dormantAccountLine(a);
+        }
+        function accountExtraInfoLineBase(a, nativeBalances, includeRef = true, accounts = null) {
             const group = a.group || DEFAULT_ACCOUNT_GROUP;
             // Account No. / Ref (v130): plain informational text, independent of group/type, so
             // it's built separately here and prepended ahead of whichever type-specific line (if
@@ -22165,6 +22240,7 @@
             await renderWarrantyReminderWidget();
             await refreshPlannedPaymentsViews();
             await renderRemindersWidget();
+            renderDormantAccountsWidget(accounts, nativeBalances); // v614
             applyDashboardWidgetOrder();
             applyMonthlyTrendDashboardVisibility();
             renderDesktopInsightsRail(accounts, txs);
@@ -28784,6 +28860,8 @@
             warrantyReminderItemTap: (el) => { navigateToInventoryPage(); setTimeout(() => openInventoryItemModal(el.dataset.id), 60); },
             // v418: REMINDERS
             navigateToRemindersPage: () => navigateToRemindersPage(),
+            toggleAccountsDormantFilter: () => toggleAccountsDormantFilter(), // v614
+            navigateToDormantAccounts: () => navigateToDormantAccounts(), // v614
             reminderSetStatusFilter: (el) => reminderSetStatusFilter(el),
             openReminderModalNew: () => openReminderModal(null),
             handleSaveReminder: () => handleSaveReminder(),
@@ -28910,6 +28988,7 @@
             handlePinnedAccountSlotChange: (el) => handlePinnedAccountSlotChange(el),
             ledgerYearSelectChange: () => ledgerYearSelectChange(),
             handleAccGroupChange: () => handleAccGroupChange(),
+            toggleAccDormantFields: () => toggleAccDormantFields(), // v614
             toggleRedrawFacilityFields: () => toggleRedrawFacilityFields(),
             toggleLeaseFields: () => toggleLeaseFields(),
             handleFundTxTypeChange: () => handleFundTxTypeChange(),

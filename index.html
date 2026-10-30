@@ -3244,6 +3244,15 @@
         .acct-card-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; position: relative; z-index: 1; }
         .acct-card-pill { font-size: 0.66rem; font-weight: 800; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.22); white-space: nowrap; }
         .acct-card-pill.dashed { background: transparent; border: 1.5px dashed rgba(255,255,255,0.8); }
+        /* v614: Dormant accounts */
+        .acct-card-pill.dormant { background: #fef3c7; color: #92400e; }
+        .acct-card-slot.dormant .acct-card-front { filter: saturate(0.45); }
+        .account-card.dormant { opacity: 0.8; }
+        .acct-dormant-line { color: #b45309; }
+        html[data-bg-theme="midnight"] .acct-dormant-line, html[data-bg-theme="slate"] .acct-dormant-line, html[data-bg-theme="noir"] .acct-dormant-line { color: #fcd34d; }
+        .acct-chip.dormant-chip.active { background: #b45309; border-color: #b45309; color: #fff; }
+        .dormant-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; cursor: pointer; }
+        .dormant-row .dormant-sub { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; display: block; }
         .acct-card-bal { margin-top: auto; font-size: 1.45rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; position: relative; z-index: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .acct-card-sub { font-size: 0.72rem; font-weight: 700; opacity: 0.88; min-height: 1em; position: relative; z-index: 1; margin-top: 2px; }
         .acct-card-foot { font-size: 0.7rem; font-weight: 700; opacity: 0.9; margin-top: 4px; position: relative; z-index: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -4427,6 +4436,15 @@
         <div class="ledger-container" id="remindersWidgetList"></div>
         </div>
 
+        <!-- v614: Dormant accounts — one line, only while a dormant account still holds a balance.
+             Tap opens the Accounts page filtered to Dormant. See renderDormantAccountsWidget(). -->
+        <div id="dashboardDormantWidget" style="display:none;">
+        <div class="section-header">
+            <span class="section-title" style="cursor:pointer;" data-click="navigateToDormantAccounts">💤 Dormant accounts<span class="todo-badge" id="dashboardDormantWidgetBadge" style="display:none;"></span></span>
+        </div>
+        <div class="ledger-container" id="dormantWidgetList"></div>
+        </div>
+
         <!-- v281: Tag Reminders — one row per tag with "Show on Dashboard" enabled (see the Tag
              modal), each showing how many transactions currently carry that tag + outstanding
              expense total. Hidden entirely when no such tag has any matching transaction, same
@@ -4841,6 +4859,8 @@
         <div id="accountsPageFilterHint" class="hidden" style="margin:-8px 0 12px; font-size:0.78rem;">
             <button class="text-btn" data-click="clearAccountsPageTypeFilter" style="padding:0;">Show All Accounts</button>
         </div>
+        <!-- v614: Dormant filter chip — shown only while at least one account is flagged Dormant -->
+        <div class="acct-chips hidden" id="accountsDormantChipRow"></div>
         <div class="config-list" id="accountsPageList" style="padding-bottom:88px;"></div>
 
         <button class="fab-btn" data-click="openAccountFormModal" aria-label="Add account" title="Add account"><svg class="fab-plus-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" width="24" height="24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
@@ -6927,6 +6947,28 @@
                 <div class="form-row">
                     <label>Account No. / Ref <span style="text-transform:none; font-weight:600; color:var(--text-muted);">(optional)</span></label>
                     <input type="text" id="newAccRef" placeholder="e.g. 038-68-02838-0">
+                </div>
+
+                <!-- Account status (v614): manual Active / Dormant flag. Purely informational — a
+                     dormant account still counts in Net Worth (the money is still yours); it only
+                     gets a 💤 marker on its card, a Dormant filter chip on the Accounts page and a
+                     dashboard line while it still holds a balance. See isDormantAccount() in ledger.js. -->
+                <div class="form-row">
+                    <label>Account status</label>
+                    <select id="newAccStatus" class="form-input" data-change="toggleAccDormantFields">
+                        <option value="active">Active</option>
+                        <option value="dormant">💤 Dormant (bank has frozen / flagged it)</option>
+                    </select>
+                </div>
+                <div id="newAccDormantWrap" style="display:none;">
+                    <div class="form-row">
+                        <label>Dormant since <span style="text-transform:none; font-weight:600; color:var(--text-muted);">(optional)</span></label>
+                        <input type="date" id="newAccDormantSince">
+                    </div>
+                    <div class="form-row">
+                        <label>Note <span style="text-transform:none; font-weight:600; color:var(--text-muted);">(optional)</span></label>
+                        <input type="text" id="newAccDormantNote" maxlength="120" placeholder="e.g. visit branch with IC to reactivate">
+                    </div>
                 </div>
 
                 <div class="form-row">

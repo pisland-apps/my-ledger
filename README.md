@@ -4579,3 +4579,15 @@ a low-alpha indigo tint (`rgba(99,102,241,0.16)`) on the dark themes. `ledger.js
 - Phone view: category pills have larger icons (44px tap targets); the count is a small corner badge.
 - Photos taken with the Take Photo / Camera buttons (transaction, inventory, insurance forms) are named `IMG_YYYYMMDD_HHMMSS.jpg` in local time instead of the long internal number. Gallery/file picks keep their own name.
 `index.html` + `ledger.js` + `sw.js` changed; no data/DB change. `APP_VERSION` / `CACHE_NAME` bumped to v613.
+
+## v614: dormant bank accounts
+
+An account can now be flagged **Dormant** by hand: Edit Account → **Account status** → 💤 Dormant, with an optional "Dormant since" date and a short note (e.g. "visit branch with IC to reactivate"). It is a manual flag on purpose — Ledger can't know a bank's own dormancy rule, and interest credits don't count as activity.
+
+- **Card / list:** a 💤 line under the account name (since-date + note), the row slightly dimmed; on the Cards view an amber 💤 Dormant pill and a desaturated card; the card back and the account's Activity banner show the same line.
+- **Net Worth:** unchanged — a dormant account still counts (the money is still yours).
+- **Accounts page:** a **💤 Dormant (N)** chip appears above the list/cards while any account is flagged; tap to show only those, tap again to clear. Starts unfiltered on every normal entry.
+- **Dashboard:** a "💤 Dormant accounts" block under Reminders, shown only while a dormant account still holds a balance (zero-balance dormant accounts keep just the card marker). One row per account with its note and balance, plus a total when there are several; tapping opens the Accounts page filtered to Dormant. Reactivating the account (status back to Active) removes it; Since/Note are cleared at the same time.
+- New account record fields: `status` ("active" | "dormant"), `dormantSince`, `dormantNote`. Older records without them read as Active, so no migration; they travel with Backup & Restore and Drive sync like any other account field.
+
+`index.html` + `ledger.js` + `sw.js` changed. `APP_VERSION` / `CACHE_NAME` bumped to v614.

@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v615";
+        const APP_VERSION = "v616";
         const APP_VERSION_DATE = "2026-10-30";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -1527,6 +1527,7 @@
         // where the user was — without this, returning always lands back at the very top of the
         // dashboard instead of where they left off.
         let workspaceScrollY = 0;
+        let budgetScrollY = 0; // v616: where the Budget page was scrolled to when a breakdown row opened the transaction list
 
         // Pagination for the transaction list — avoids rendering thousands of DOM rows at once.
         let ledgerRenderLimit = 50;
@@ -4029,6 +4030,7 @@
 
         function navigateToCategoryPage(categoryName, backTarget = "workspace", year = "all", month = "all") {
             if (backTarget === "workspace") workspaceScrollY = window.scrollY;
+            if (backTarget === "budget") budgetScrollY = window.scrollY; // v616
             activeCategoryView = categoryName;
             categoryDrillYear = year;
             categoryDrillMonth = month;
@@ -4311,6 +4313,17 @@
             renderBudgetPage();
         }
 
+        // v616: "!" button beside the pace rows — shows/hides the explanation text and remembers
+        // the choice on this device (localStorage only, not part of the backup).
+        function toggleBudgetPaceHelp() {
+            const box = document.getElementById("budgetPaceHelp");
+            if (!box) return;
+            const open = box.style.display === "none";
+            box.style.display = open ? "block" : "none";
+            document.querySelectorAll('[data-click="toggleBudgetPaceHelp"]').forEach(b => b.setAttribute("aria-expanded", String(open)));
+            try { localStorage.setItem("budgetPaceHelpOpen", open ? "1" : "0"); } catch (e) {}
+        }
+
         // Renders the whole Budget page body — the scope toggle's active state, the "This Month /
         // This Year" dual-progress strip (always both, regardless of which one is being browsed
         // below), and the summary card + category list for budgetViewPeriodKey. Single entry point
@@ -4386,15 +4399,16 @@
             // number, and the note below spells it out.
             const netRefundPeriod = spent < 0;
 
-            let leftLabel, leftValue, paceRows;
+            let leftLabel, leftValue, paceRows, paceActual = 0, paceTarget = 0;
             if (isYear) {
                 const monthsLeft = monthsLeftInYearKey(budgetViewPeriodKey);
                 const monthsElapsed = Math.max(monthsElapsedInYearKey(budgetViewPeriodKey), 1);
                 const paceSpent = spent / monthsElapsed;
-                const paceBudget = effectiveTotal / 12;
+                const paceBudget = Math.max(effectiveTotal, 0) / 12; // v616: never show a negative "budgeted" figure
                 const paceRemaining = monthsLeft > 0 ? remaining / monthsLeft : remaining;
                 leftLabel = "Months Left";
                 leftValue = monthsLeft;
+                paceActual = paceSpent; paceTarget = paceBudget;
                 paceRows = `
                     <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem;" title="What you've actually spent per month so far this year (spent ÷ months elapsed)"><span style="color:var(--text-muted);">🟠 Spending pace (per month so far)</span><strong>${formatBalanceHTML(paceSpent, baseCurrency)}</strong></div>
                     <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem;" title="Your total budget spread evenly across the 12 months of the year (budget ÷ 12)"><span style="color:var(--text-muted);">🔵 Budgeted per month (whole year)</span><strong>${formatCurrency(paceBudget, baseCurrency)}</strong></div>
@@ -4404,16 +4418,27 @@
                 const daysLeft = daysLeftInMonthKey(budgetViewPeriodKey);
                 const daysElapsed = Math.max(daysElapsedInMonthKey(budgetViewPeriodKey), 1);
                 const dailyAvgSpent = spent / daysElapsed;
-                const dailyBudget = effectiveTotal / daysInMonthKey(budgetViewPeriodKey);
+                const dailyBudget = Math.max(effectiveTotal, 0) / daysInMonthKey(budgetViewPeriodKey); // v616: clamp (auto-calculated month can go negative once the year is over budget)
                 const dailyRemaining = daysLeft > 0 ? remaining / daysLeft : remaining;
                 leftLabel = "Days Left";
                 leftValue = daysLeft;
+                paceActual = dailyAvgSpent; paceTarget = dailyBudget;
                 paceRows = `
                     <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem;" title="What you've actually spent per day so far this month (spent ÷ days elapsed)"><span style="color:var(--text-muted);">🟠 Spending pace (per day so far)</span><strong>${formatBalanceHTML(dailyAvgSpent, baseCurrency)}</strong></div>
                     <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem;" title="Your total budget spread evenly across every day of the month (budget ÷ days in month)"><span style="color:var(--text-muted);">🔵 Budgeted per day (whole month)</span><strong>${formatCurrency(dailyBudget, baseCurrency)}</strong></div>
                     <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem;" title="What's left to spend, spread across the days remaining (remaining ÷ days left)"><span style="color:var(--text-muted);">🟢 Room per day (rest of month)</span><strong>${formatCurrency(Math.max(dailyRemaining, 0), baseCurrency)}</strong></div>
                 `;
             }
+
+            // v616: one live status line stays visible; the long explanation hides behind the "!"
+            // button (open/closed choice remembered on this device only).
+            let paceHelpOpen = false;
+            try { paceHelpOpen = localStorage.getItem("budgetPaceHelpOpen") === "1"; } catch (e) {}
+            const paceVerdict = overBudget
+                ? { text: "Over budget", color: "var(--expense-color)" }
+                : (paceActual > paceTarget + 0.005
+                    ? { text: `Pace is above budget — on track to run out before the ${isYear ? "year" : "month"} ends`, color: "var(--expense-color)" }
+                    : { text: "On track", color: "var(--primary)" });
 
             const summaryHTML = `
                 <div class="report-card-mini" style="margin-bottom:14px;">
@@ -4433,17 +4458,23 @@
                     </div>
                     <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-top:14px; text-align:center;">
                         <div><div style="font-size:0.68rem; color:var(--text-muted);">Spent</div><div style="font-weight:700; font-size:0.85rem; ${overBudget ? "color:var(--expense-color);" : ""}">${formatBalanceHTML(spent, baseCurrency)}</div></div>
-                        <div><div style="font-size:0.68rem; color:var(--text-muted);">Budget</div><div style="font-weight:700; font-size:0.85rem;">${formatCurrency(effectiveTotal, baseCurrency)}</div></div>
+                        <div><div style="font-size:0.68rem; color:var(--text-muted);">Budget</div>${effectiveTotal < 0 ? `<div style="font-weight:700; font-size:0.85rem;">${formatCurrency(0, baseCurrency)}</div><div style="font-size:0.6rem; color:var(--expense-color); font-weight:700;">Over by ${formatCurrency(-effectiveTotal, baseCurrency)}</div>` : `<div style="font-weight:700; font-size:0.85rem;">${formatCurrency(effectiveTotal, baseCurrency)}</div>`}</div>
                         <div><div style="font-size:0.68rem; color:var(--text-muted);">Used</div><div style="font-weight:700; font-size:0.85rem;">${pctUsed.toFixed(0)}%</div></div>
                         <div><div style="font-size:0.68rem; color:var(--text-muted);">${leftLabel}</div><div style="font-weight:700; font-size:0.85rem;">${leftValue}</div></div>
                     </div>
                     ${netRefundPeriod ? `<p style="font-size:0.72rem; color:var(--text-muted); margin-top:8px;">Spent is negative because a refund posted this ${isYear ? "year" : "month"} is larger than what was actually spent in its category — so this ${isYear ? "year" : "month"} is a net inflow so far.</p>` : ""}
-                    <div style="margin-top:14px; border-top:1px solid var(--border-color); padding-top:10px;">
+                    <div style="margin-top:14px; border-top:1px solid var(--border-color); padding-top:4px;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                            <span style="font-size:0.74rem; font-weight:700; color:${paceVerdict.color};">${paceVerdict.text}</span>
+                            <button type="button" data-click="toggleBudgetPaceHelp" aria-label="What do these numbers mean?" aria-expanded="${paceHelpOpen}" title="What do these numbers mean?" style="min-width:44px; min-height:44px; background:none; border:none; padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center;"><span style="width:22px; height:22px; border-radius:50%; border:1.5px solid var(--text-muted); color:var(--text-muted); font-weight:800; font-size:0.8rem; display:flex; align-items:center; justify-content:center;">!</span></button>
+                        </div>
                         ${paceRows}
+                        <div id="budgetPaceHelp" style="display:${paceHelpOpen ? "block" : "none"}; margin-top:6px;">
+                            <p style="font-size:0.68rem; color:var(--text-muted);">These compare your ${isYear ? "month-to-month" : "day-to-day"} pace against your budget — if "Spending pace" is above "Budgeted per ${isYear ? "month" : "day"}", you're on track to run out before the ${isYear ? "year" : "month"} ends.</p>
+                            ${isVirtual ? `<p style="margin-top:8px; font-size:0.72rem; color:var(--text-muted);">Automatically accounts for prior months' actual spend this year — this month isn't set as its own budget, so it's an even share of what's left of the year.</p>` : ""}
+                        </div>
                     </div>
-                    <p style="font-size:0.68rem; color:var(--text-muted); margin-top:6px;">These compare your ${isYear ? "month-to-month" : "day-to-day"} pace against your budget — if "Spending pace" is above "Budgeted per ${isYear ? "month" : "day"}", you're on track to run out before the ${isYear ? "year" : "month"} ends.</p>
                     ${!isVirtual && resolved.rec.carryoverEnabled ? `<div style="margin-top:10px; font-size:0.72rem; color:var(--text-muted);">Includes ${formatCurrency(resolved.rec.carryoverAmount || 0, baseCurrency)} carried over from ${escapeHtml(periodKeyLabel(shiftPeriodKey(budgetViewPeriodKey, -1)))}.</div>` : ""}
-                    ${isVirtual ? `<div style="margin-top:10px; font-size:0.72rem; color:var(--text-muted);">Automatically accounts for prior months' actual spend this year — this month isn't set as its own budget, so it's an even share of what's left of the year.</div>` : ""}
                 </div>
             `;
 
@@ -4476,6 +4507,73 @@
                         ${catRows || `<p style="color:var(--text-muted); padding:8px 0; font-size:0.85rem;">No category budgets yet — tap the + button to break this ${isYear ? "year" : "month"}'s total down by category${isVirtual ? " (this will lock in this month's current auto-calculated amount as its own budget)" : ""}.</p>`}
                     </div>
                 `;
+            }
+
+            // v616: on the Yearly tab the category list becomes a "Where the money went" breakdown —
+            // every category with spending this year (largest first), plus any category that has a
+            // yearly budget but no spending yet, so budget and spending read side by side. Same
+            // figures as the Spent total above (computePeriodActuals: refunds net against their
+            // category, "Exclude from Net Savings" categories left out, base currency).
+            if (isYear) {
+                const budgets = {};
+                (resolved.rec.categoryBudgets || []).forEach(cb => { budgets[cb.cat] = cb.amount; });
+                const cats = Array.from(new Set([...Object.keys(byCategory), ...Object.keys(budgets)]));
+                const rowsData = cats.map(cat => ({ cat, spent: byCategory[cat] || 0, budget: Object.prototype.hasOwnProperty.call(budgets, cat) ? budgets[cat] : null }))
+                    .filter(r => Math.abs(r.spent) >= 0.005 || r.budget !== null)
+                    .sort((a, b) => b.spent - a.spent);
+                const positiveSum = rowsData.reduce((acc, r) => acc + Math.max(r.spent, 0), 0);
+                const budgetedCount = rowsData.filter(r => r.budget !== null).length;
+                const unbudgetedSpent = rowsData.filter(r => r.budget === null).reduce((acc, r) => acc + Math.max(r.spent, 0), 0);
+                const rowsHTML = rowsData.map(r => {
+                    const hasBudget = r.budget !== null;
+                    const shown = Math.max(r.spent, 0);
+                    const over = hasBudget && r.spent > r.budget;
+                    const barPct = hasBudget
+                        ? (r.budget > 0 ? Math.min((shown / r.budget) * 100, 100) : (shown > 0 ? 100 : 0))
+                        : (positiveSum > 0 ? Math.min((shown / positiveSum) * 100, 100) : 0);
+                    const sharePct = positiveSum > 0 ? (shown / positiveSum) * 100 : 0;
+                    const barStyle = over ? "background:var(--expense-color);" : (hasBudget ? "" : "background:var(--text-muted); opacity:0.55;");
+                    const subLeft = `${sharePct.toFixed(1)}% of spending`;
+                    const subRight = hasBudget
+                        ? (over ? `<span style="color:var(--expense-color); font-weight:700;">Over by ${formatCurrency(r.spent - r.budget, baseCurrency)}</span>` : `${formatCurrency(r.budget - Math.max(r.spent, 0), baseCurrency)} left`)
+                        : "No budget";
+                    const actionBtn = hasBudget
+                        ? `<button type="button" class="trash-btn" data-click="editCategoryBudget" data-cat="${escapeHtml(r.cat)}" title="Edit this category's budget" style="min-width:36px; min-height:36px;">✏️</button>`
+                        : `<button type="button" class="trash-btn" data-click="addCategoryBudgetFor" data-cat="${escapeHtml(r.cat)}" title="Set a yearly budget for this category" style="min-width:36px; min-height:36px; font-weight:800;">＋</button>`;
+                    return `
+                        <div class="config-item category-row-item" data-click="navigateToCategoryPage" data-category="${escapeHtml(r.cat)}" data-back="budget" data-year="${escapeHtml(budgetViewPeriodKey)}" data-month="all" style="flex-direction:column; align-items:stretch; gap:4px; cursor:pointer;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                                <span style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
+                                    <span class="split-cat-icon" style="background:${getCategoryAvatarColor(r.cat)};">${getCategoryIcon(r.cat, "expense")}</span>
+                                    <strong style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.cat)}</strong>
+                                </span>
+                                <span style="font-size:0.8rem; white-space:nowrap; ${over ? "color:var(--expense-color); font-weight:700;" : "color:var(--text-muted);"}">${formatCurrency(shown, baseCurrency)}${hasBudget ? ` / ${formatCurrency(r.budget, baseCurrency)}` : ""}</span>
+                                ${actionBtn}
+                            </div>
+                            <div class="progress-bar-container"><div class="progress-bar-fill" style="width:${barPct}%; ${barStyle}"></div></div>
+                            <div style="display:flex; justify-content:space-between; font-size:0.68rem; color:var(--text-muted);"><span>${subLeft}</span><span>${subRight}</span></div>
+                        </div>
+                    `;
+                }).join("");
+                const overAmt = spent - effectiveTotal;
+                const headLine = `${formatCurrency(Math.max(spent, 0), baseCurrency)} spent of ${formatCurrency(Math.max(effectiveTotal, 0), baseCurrency)} budget`
+                    + (overAmt > 0 ? ` · <span style="color:var(--expense-color); font-weight:700;">over by ${formatCurrency(overAmt, baseCurrency)}</span>` : ` · ${formatCurrency(-overAmt, baseCurrency)} left`);
+                const hintLine = budgetedCount === 0
+                    ? `No category budgets yet — tap ＋ on a row to set one, or use the + button below.`
+                    : (unbudgetedSpent > 0 ? `${formatCurrency(unbudgetedSpent, baseCurrency)} of spending is in categories with no yearly budget.` : "");
+                const breakdownHTML = `
+                    <div class="section-header">
+                        <span class="section-title">Where the money went</span>
+                    </div>
+                    <p style="font-size:0.74rem; color:var(--text-muted); margin:-4px 0 8px;">${headLine}</p>
+                    <div class="config-list" style="padding-bottom:88px;">
+                        ${rowsHTML || `<p style="color:var(--text-muted); padding:8px 0; font-size:0.85rem;">Nothing spent in ${escapeHtml(budgetViewPeriodKey)} yet.</p>`}
+                        ${hintLine ? `<p style="color:var(--text-muted); padding:4px 0; font-size:0.72rem;">${hintLine}</p>` : ""}
+                        ${rowsHTML ? `<p style="color:var(--text-muted); padding:0; font-size:0.68rem;">Tap a row to see its transactions for ${escapeHtml(budgetViewPeriodKey)}.</p>` : ""}
+                    </div>
+                `;
+                contentEl.innerHTML = summaryHTML + breakdownHTML;
+                return;
             }
 
             contentEl.innerHTML = summaryHTML + catSectionHTML;
@@ -4734,7 +4832,7 @@
 
         // --- Category Budget Modal (add/edit/delete one row of rec.categoryBudgets) — scoped to
         // whichever period (budgetViewPeriodKey) the Budget page is currently browsing. ---
-        async function openCategoryBudgetModal() {
+        async function openCategoryBudgetModal(preCat) {
             let rec = await getBudgetRecord(budgetViewPeriodKey);
             if (!rec) {
                 // Auto-calculated (virtual) month — adding a category budget needs a real record
@@ -4768,6 +4866,7 @@
             const select = document.getElementById("budgetCatSelect");
             select.innerHTML = buildCategoryOptionsHTML("expense", usedCats);
             select.value = "";
+            if (preCat && Array.from(select.options).some(o => o.value === preCat)) select.value = preCat; // v616: "+" on a breakdown row
             syncAccountPickerButtonText("budgetCatSelect");
             document.getElementById("budgetCatAmountInput").value = "";
             openModal("categoryBudgetModal");
@@ -5653,6 +5752,13 @@
                 showPage("page-income-breakdown");
                 await renderIncomeBreakdownPage();
                 window.scrollTo(0, workspaceScrollY);
+            } else if (ledgerBackToPage === "budget") {
+                // v616: back from a category's transactions opened off the Budget page's yearly
+                // breakdown — budgetViewScope/budgetViewPeriodKey are still what they were, so
+                // the same year comes back up.
+                showPage("page-budget");
+                await renderBudgetPage();
+                window.scrollTo(0, budgetScrollY);
             } else {
                 navigateToWorkspace();
             }
@@ -28866,6 +28972,8 @@
             deleteBudgetRecord: () => deleteBudgetRecord(),
             copyBudgetFromPreviousPeriod: () => copyBudgetFromPreviousPeriod(),
             openCategoryBudgetModal: () => openCategoryBudgetModal(),
+            addCategoryBudgetFor: (el) => openCategoryBudgetModal(el.dataset.cat), // v616
+            toggleBudgetPaceHelp: () => toggleBudgetPaceHelp(), // v616
             editCategoryBudget: (el) => editCategoryBudget(el),
             handleSaveCategoryBudget: () => handleSaveCategoryBudget(),
             removeCategoryBudget: () => removeCategoryBudget(),

@@ -4601,3 +4601,15 @@ Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to
 - No data change. The app passcode was already mandatory (setup screen has no skip; the app does not start until a passcode exists), so nothing changed there.
 
 `index.html` + `ledger.js` + `sw.js` changed. `APP_VERSION` / `CACHE_NAME` bumped to v615.
+
+## v616: Budget page — "!" help button, yearly "Where the money went" breakdown
+
+- **"!" button:** the long pace explanation (and the "Automatically accounts for prior months' spend…" note) is hidden behind a "!" button beside the three pace rows (44px tap target). A one-line live status now stays visible: "On track", "Pace is above budget — on track to run out before the month/year ends", or "Over budget". Open/closed is remembered on this device only (localStorage `budgetPaceHelpOpen`, not part of the backup).
+- **Yearly tab — "Where the money went":** replaces the plain Yearly Category Budgets list. Every category with spending that year (largest first) plus any category that has a yearly budget but no spending yet. Each row: bar, spent / budget, share of total spending, "left" or "Over by" (red). Categories with no budget show a grey bar and "No budget". A header line shows total spent vs yearly budget and the amount over/left.
+- **Tap a row** → that category's transactions for that year (existing category history page; Back and hardware back return to the same Budget year and scroll position). The ✏️ on a row edits its budget; ＋ on a row with no budget opens Add Category Budget with that category pre-selected.
+- Same numbers as the Spent total above (refunds net against their category, "Exclude from Net Savings" categories left out, base currency). A transaction with no category counts as "Other Expenses", as before.
+- **Monthly tab:** category rows unchanged (tap still edits the budget).
+- **Negative budget fix:** when an auto-calculated month goes negative (yearly budget already overspent), Budget now shows RM0.00 with "Over by RM…" under it, and "Budgeted per day/month" shows RM0.00 instead of a negative number. Remaining Budget still shows the true overspend.
+- No data change.
+
+`ledger.js` + `sw.js` + `README.md` changed. `APP_VERSION` / `CACHE_NAME` bumped to v616.

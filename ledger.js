@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v618";
+        const APP_VERSION = "v619";
         const APP_VERSION_DATE = "2026-10-30";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -4275,7 +4275,10 @@
             const yearlyEffective = budgetEffectiveTotal(yearRec);
             const priorSpend = priorMonthsActualSpend(monthKey, txs, accounts);
             const monthsRemaining = monthsRemainingInYearFrom(monthKey);
-            return (yearlyEffective - priorSpend) / monthsRemaining;
+            // v619: never negative — once the year is already over budget there is nothing left to
+            // allocate, so the month's auto budget is RM0 (not minus RM5,283.75). Also stops
+            // "lock in this month's budget" from saving a negative amount.
+            return Math.max((yearlyEffective - priorSpend) / monthsRemaining, 0);
         }
 
         // The single source of truth every renderer uses for "what is this month's budget right
@@ -4461,6 +4464,13 @@
                     ? { text: `Pace is above budget — on track to run out before the ${isYear ? "year" : "month"} ends`, color: "var(--expense-color)" }
                     : { text: "On track", color: "var(--primary)" });
 
+            // v619: an auto-calculated month with nothing left to allocate — say why, once.
+            let noRoomNote = "";
+            if (isVirtual && effectiveTotal <= 0.005) {
+                const yOver = computePeriodActuals(resolved.yearRec.id, txs, accounts).total - budgetEffectiveTotal(resolved.yearRec);
+                if (yOver > 0) noRoomNote = `<p style="font-size:0.72rem; color:var(--text-muted); margin-top:10px;">The ${escapeHtml(resolved.yearRec.id)} yearly budget is already over by ${formatCurrency(yOver, baseCurrency)}, so there is nothing left to allocate to this month.</p>`;
+            }
+
             const summaryHTML = `
                 <div class="report-card-mini" style="margin-bottom:14px;">
                     ${isVirtual ? `<div style="font-size:0.68rem; font-weight:700; color:var(--primary); background:var(--chip-bg); display:inline-block; padding:3px 8px; border-radius:6px; margin-bottom:8px;">🔄 Auto-calculated from your ${escapeHtml(resolved.yearRec.id)} Yearly Budget</div>` : ""}
@@ -4479,10 +4489,11 @@
                     </div>
                     <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-top:14px; text-align:center;">
                         <div><div style="font-size:0.68rem; color:var(--text-muted);">Spent</div><div style="font-weight:700; font-size:0.85rem; ${overBudget ? "color:var(--expense-color);" : ""}">${formatBalanceHTML(spent, baseCurrency)}</div></div>
-                        <div><div style="font-size:0.68rem; color:var(--text-muted);">Budget</div>${effectiveTotal < 0 ? `<div style="font-weight:700; font-size:0.85rem;">${formatCurrency(0, baseCurrency)}</div><div style="font-size:0.6rem; color:var(--expense-color); font-weight:700;">Over by ${formatCurrency(-effectiveTotal, baseCurrency)}</div>` : `<div style="font-weight:700; font-size:0.85rem;">${formatCurrency(effectiveTotal, baseCurrency)}</div>`}</div>
+                        <div><div style="font-size:0.68rem; color:var(--text-muted);">Budget</div><div style="font-weight:700; font-size:0.85rem;">${formatCurrency(Math.max(effectiveTotal, 0), baseCurrency)}</div></div>
                         <div><div style="font-size:0.68rem; color:var(--text-muted);">Used</div><div style="font-weight:700; font-size:0.85rem;">${usedPctText(spent, effectiveTotal)}</div></div>
                         <div><div style="font-size:0.68rem; color:var(--text-muted);">${leftLabel}</div><div style="font-weight:700; font-size:0.85rem;">${leftValue}</div></div>
                     </div>
+                    ${noRoomNote}
                     ${netRefundPeriod ? `<p style="font-size:0.72rem; color:var(--text-muted); margin-top:8px;">Spent is negative because a refund posted this ${isYear ? "year" : "month"} is larger than what was actually spent in its category — so this ${isYear ? "year" : "month"} is a net inflow so far.</p>` : ""}
                     <div style="margin-top:14px; border-top:1px solid var(--border-color); padding-top:4px;">
                         <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
@@ -4520,12 +4531,35 @@
                         </div>
                     `;
                 }).join("");
+                // v619: with no category budgets, list where the month's money went instead of an
+                // empty box (spending only, largest first, tap → that category's transactions).
+                let spendListHTML = "";
+                if (!catRows) {
+                    const spendRows = Object.keys(byCategory).map(cat => ({ cat, v: byCategory[cat] })).filter(r => r.v > 0.005).sort((a, b) => b.v - a.v);
+                    const sum = spendRows.reduce((a, r) => a + r.v, 0);
+                    const TOP_M = 10;
+                    const shownRows = (budgetBreakdownShowAll || spendRows.length <= TOP_M + 1) ? spendRows : spendRows.slice(0, TOP_M);
+                    const mo = String(Number(budgetViewPeriodKey.slice(5, 7)) - 1);
+                    spendListHTML = shownRows.map(r => {
+                        const sh = sum > 0 ? (r.v / sum) * 100 : 0;
+                        return `
+                            <div data-click="navigateToCategoryPage" data-category="${escapeHtml(r.cat)}" data-back="budget" data-year="${escapeHtml(budgetViewPeriodKey.slice(0, 4))}" data-month="${mo}" style="padding:9px 0; border-bottom:1px solid var(--border-color); cursor:pointer;">
+                                <div style="display:flex; align-items:center; gap:10px; font-size:0.86rem;">
+                                    <span style="width:22px; text-align:center; flex:none;">${getCategoryIcon(r.cat, "expense")}</span>
+                                    <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;">${escapeHtml(r.cat)}</span>
+                                    <strong style="white-space:nowrap;">${formatCurrency(r.v, baseCurrency)}</strong>
+                                    <span style="width:40px; text-align:right; color:var(--text-muted); flex:none;">${sh < 1 ? "<1%" : sh.toFixed(0) + "%"}</span>
+                                </div>
+                            </div>`;
+                    }).join("");
+                    if (spendRows.length > TOP_M + 1) spendListHTML += `<div style="text-align:center;"><button type="button" class="text-btn" data-click="toggleBudgetBreakdownAll" style="padding:8px 16px; margin:6px 0 0;">${budgetBreakdownShowAll ? `Show top ${TOP_M} only` : `Show all ${spendRows.length} categories (+${spendRows.length - TOP_M} more)`}</button></div>`;
+                }
                 catSectionHTML = `
                     <div class="section-header">
-                        <span class="section-title">${isYear ? "Yearly" : ""} Category Budgets</span>
+                        <span class="section-title">${catRows ? "Category Budgets" : (spendListHTML ? "Where the money went" : "Category Budgets")}</span>
                     </div>
                     <div class="config-list" style="padding-bottom:88px;">
-                        ${catRows || `<p style="color:var(--text-muted); padding:8px 0; font-size:0.85rem;">No category budgets yet — tap the + button to break this ${isYear ? "year" : "month"}'s total down by category${isVirtual ? " (this will lock in this month's current auto-calculated amount as its own budget)" : ""}.</p>`}
+                        ${catRows || (spendListHTML ? `<div class="report-card-mini">${spendListHTML}</div><p style="color:var(--text-muted); padding:8px 0 0; font-size:0.72rem;">No category budgets yet — tap + to set one${isVirtual ? " (locks in this month's auto-calculated amount)" : ""}.</p>` : `<p style="color:var(--text-muted); padding:8px 0; font-size:0.85rem;">Nothing spent yet this month. Tap + to set a category budget.</p>`)}
                     </div>
                 `;
             }
@@ -4708,7 +4742,7 @@
                 yearLineHTML = `
                     <div data-click="navigateToBudgetPage" data-scope="year" style="font-size:0.72rem; color:var(--text-muted); margin-top:6px; display:flex; justify-content:space-between;">
                         <span>This Year</span>
-                        <span style="${yearRemaining < 0 ? "color:var(--expense-color); font-weight:700;" : ""}">${formatBalanceHTML(yearRemaining, baseCurrency)} left</span>
+                        <span style="${yearRemaining < 0 ? "color:var(--expense-color); font-weight:700;" : ""}">${yearRemaining < 0 ? `over by ${formatCurrency(-yearRemaining, baseCurrency)}` : `${formatBalanceHTML(yearRemaining, baseCurrency)} left`}</span>
                     </div>
                 `;
             }
@@ -4752,10 +4786,10 @@
             wrap.innerHTML = `
                 <div class="report-card-mini" style="cursor:pointer;" data-click="navigateToBudgetPage" data-scope="month">
                     <div style="display:flex; justify-content:space-between; align-items:baseline;">
-                        <span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Remaining Budget · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left</span>
+                        <span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">${over ? "Over budget by" : "Remaining Budget"} · ${daysLeft} day${daysLeft === 1 ? "" : "s"} left</span>
                         <span style="font-size:0.72rem; color:var(--text-muted);">View →</span>
                     </div>
-                    <div style="font-size:1.35rem; font-weight:800; ${over ? "color:var(--expense-color);" : ""}">${formatBalanceHTML(remaining, baseCurrency)}</div>
+                    <div style="font-size:1.35rem; font-weight:800; ${over ? "color:var(--expense-color);" : ""}">${over ? formatCurrency(-remaining, baseCurrency) : formatBalanceHTML(remaining, baseCurrency)}</div>
                     <div class="progress-bar-wrap">
                         <div class="progress-bar-container" style="height:8px; margin-top:6px;">
                             <div class="progress-bar-fill" style="width:${pct}%; ${over ? "background:var(--expense-color);" : ""}"></div>

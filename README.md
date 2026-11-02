@@ -4632,3 +4632,12 @@ Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to
 - No data change. The Monthly tab and summary card are unchanged.
 
 `ledger.js` + `sw.js` + `README.md` changed. `APP_VERSION` / `CACHE_NAME` bumped to v618.
+
+## v619: Monthly tab + Dashboard budget card, over-budget handling
+
+- **Auto-calculated month never negative:** once the yearly budget is already overspent, the derived monthly budget is RM0 (it was minus RM5,283.75, which inflated the month's "over by" figure with the year's overspend). The month now reads "Over budget by" what was actually spent this month, and a note explains that the yearly budget is already over by RM x. "Lock in this month's budget" can no longer save a negative amount.
+- **Dashboard budget card:** same wording as the Budget page — "Over budget by RM…" for the month, and "over by RM…" instead of "(RM…) left" for the year.
+- **Monthly tab:** a month with no category budgets now lists where the month's money went (spending only, top 10 + Show all, tap a row → that category's transactions for the month) instead of an empty box.
+- No data change.
+
+`ledger.js` + `sw.js` + `README.md` changed. `APP_VERSION` / `CACHE_NAME` bumped to v619.

@@ -4613,3 +4613,12 @@ Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to
 - No data change.
 
 `ledger.js` + `sw.js` + `README.md` changed. `APP_VERSION` / `CACHE_NAME` bumped to v616.
+
+## v617: Budget page polish
+
+- **Yearly "Spending pace" fixed:** it divided by whole months elapsed (November counted as a full month on the 2nd), so it understated the pace. It now uses fractional months (10 full months + the part of this month gone). Present since the Yearly pace rows were added.
+- **"Used" shows the real percentage:** 105.4% instead of a capped 100%, in the Used cell and in the This Month / This Year strip ("Over budget" when there is no positive budget). Bars stay capped at full.
+- **Over budget wording:** the summary card reads "Over budget by RM…" (positive red number) instead of a bracketed negative Remaining Budget; the breakdown header no longer repeats the over-by amount. Bracket negatives elsewhere in the app are unchanged.
+- **Breakdown:** "No budget" only shows once at least one category has a budget; no-budget bars are scaled to the biggest category; ＋ is larger and uses the primary colour; shows the top 8 categories (plus any with a budget) with a "Show all" button.
+
+`ledger.js` + `sw.js` + `README.md` changed. `APP_VERSION` / `CACHE_NAME` bumped to v617.

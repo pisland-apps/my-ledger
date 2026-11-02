@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v617";
+        const APP_VERSION = "v618";
         const APP_VERSION_DATE = "2026-10-30";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -4530,11 +4530,13 @@
                 `;
             }
 
-            // v616: on the Yearly tab the category list becomes a "Where the money went" breakdown —
-            // every category with spending this year (largest first), plus any category that has a
-            // yearly budget but no spending yet, so budget and spending read side by side. Same
-            // figures as the Spent total above (computePeriodActuals: refunds net against their
-            // category, "Exclude from Net Savings" categories left out, base currency).
+            // v616/v618: on the Yearly tab the category list becomes a "Where the money went"
+            // breakdown — a small donut (top 6 + Others) over a compact legend-style list, one line
+            // per category: dot, icon, name, amount, share. A category with a yearly budget gets a
+            // thin second line (bar + "left"/"Over by" + edit). Includes every category with spending
+            // this year (largest first) plus any budgeted category with no spending yet. Same figures
+            // as the Spent total above (computePeriodActuals: refunds net against their category,
+            // "Exclude from Net Savings" categories left out, base currency).
             if (isYear) {
                 const budgets = {};
                 (resolved.rec.categoryBudgets || []).forEach(cb => { budgets[cb.cat] = cb.amount; });
@@ -4543,10 +4545,38 @@
                     .filter(r => Math.abs(r.spent) >= 0.005 || r.budget !== null)
                     .sort((a, b) => b.spent - a.spent);
                 const positiveSum = rowsData.reduce((acc, r) => acc + Math.max(r.spent, 0), 0);
-                const maxSpent = rowsData.reduce((acc, r) => Math.max(acc, r.spent), 0);
                 const budgetedCount = rowsData.filter(r => r.budget !== null).length;
                 const unbudgetedSpent = rowsData.filter(r => r.budget === null).reduce((acc, r) => acc + Math.max(r.spent, 0), 0);
-                const TOP_N = 8;
+
+                // Donut: top 6 spending categories, the rest grouped as "Others" (grey).
+                const OTHERS_COLOR = "#94a3b8";
+                const spendRows = rowsData.filter(r => r.spent > 0);
+                const DONUT_TOP = 6;
+                const groupOthers = spendRows.length > DONUT_TOP + 1;
+                const colorFor = {};
+                spendRows.forEach((r, i) => { colorFor[r.cat] = (groupOthers && i >= DONUT_TOP) ? OTHERS_COLOR : BREAKDOWN_CHART_COLORS[i % BREAKDOWN_CHART_COLORS.length]; });
+                const slices = groupOthers
+                    ? [...spendRows.slice(0, DONUT_TOP).map(r => ({ v: r.spent, c: colorFor[r.cat] })), { v: spendRows.slice(DONUT_TOP).reduce((a, r) => a + r.spent, 0), c: OTHERS_COLOR }]
+                    : spendRows.map(r => ({ v: r.spent, c: colorFor[r.cat] }));
+                const R = 46, CIRC = 2 * Math.PI * R;
+                let acc = 0;
+                const arcs = positiveSum > 0 ? slices.map(sl => {
+                    const len = (sl.v / positiveSum) * CIRC;
+                    const arc = `<circle cx="60" cy="60" r="${R}" fill="none" stroke="${sl.c}" stroke-width="14" stroke-dasharray="${len.toFixed(2)} ${(CIRC - len).toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}" transform="rotate(-90 60 60)"></circle>`;
+                    acc += len;
+                    return arc;
+                }).join("") : "";
+                const donutHTML = positiveSum > 0 ? `
+                    <div style="display:flex; justify-content:center; padding:4px 0 10px;">
+                        <svg viewBox="0 0 120 120" width="170" height="170" role="img" aria-label="Spending by category">
+                            <circle cx="60" cy="60" r="${R}" fill="none" stroke="var(--border-color)" stroke-width="14"></circle>
+                            ${arcs}
+                            <text x="60" y="56" text-anchor="middle" font-size="7" fill="var(--text-muted)">Spent ${escapeHtml(budgetViewPeriodKey)}</text>
+                            <text x="60" y="69" text-anchor="middle" font-size="10" font-weight="800" fill="currentColor">${formatCurrencyNumberOnly(Math.max(spent, 0))}</text>
+                        </svg>
+                    </div>` : "";
+
+                const TOP_N = 10;
                 const visibleRows = (budgetBreakdownShowAll || rowsData.length <= TOP_N + 1)
                     ? rowsData
                     : rowsData.filter((r, i) => i < TOP_N || r.budget !== null);
@@ -4555,49 +4585,46 @@
                     const hasBudget = r.budget !== null;
                     const shown = Math.max(r.spent, 0);
                     const over = hasBudget && r.spent > r.budget;
-                    const barPct = hasBudget
-                        ? (r.budget > 0 ? Math.min((shown / r.budget) * 100, 100) : (shown > 0 ? 100 : 0))
-                        : (maxSpent > 0 ? Math.min((shown / maxSpent) * 100, 100) : 0); // v617: no-budget bars are scaled to the biggest category
                     const sharePct = positiveSum > 0 ? (shown / positiveSum) * 100 : 0;
-                    const barStyle = over ? "background:var(--expense-color);" : (hasBudget ? "" : "background:var(--text-muted); opacity:0.55;");
-                    const subLeft = `${sharePct.toFixed(1)}% of spending`;
-                    const subRight = hasBudget
-                        ? (over ? `<span style="color:var(--expense-color); font-weight:700;">Over by ${formatCurrency(r.spent - r.budget, baseCurrency)}</span>` : `${formatCurrency(r.budget - Math.max(r.spent, 0), baseCurrency)} left`)
-                        : (budgetedCount > 0 ? "No budget" : "");
-                    const actionBtn = hasBudget
-                        ? `<button type="button" class="trash-btn" data-click="editCategoryBudget" data-cat="${escapeHtml(r.cat)}" title="Edit this category's budget" style="min-width:36px; min-height:36px;">✏️</button>`
-                        : `<button type="button" class="trash-btn" data-click="addCategoryBudgetFor" data-cat="${escapeHtml(r.cat)}" title="Set a yearly budget for this category" style="min-width:40px; min-height:40px; font-weight:800; font-size:1.4rem; line-height:1; color:var(--primary);">＋</button>`;
+                    const shareText = shown <= 0 ? "—" : (sharePct < 1 ? "<1%" : sharePct.toFixed(0) + "%");
+                    const dot = colorFor[r.cat] || "transparent";
+                    const barPct = hasBudget ? (r.budget > 0 ? Math.min((shown / r.budget) * 100, 100) : (shown > 0 ? 100 : 0)) : 0;
+                    const budgetLine = hasBudget ? `
+                        <div style="display:flex; align-items:center; gap:8px; margin:5px 0 0 32px;">
+                            <div class="progress-bar-container" style="flex:1; height:5px;"><div class="progress-bar-fill" style="width:${barPct}%; ${over ? "background:var(--expense-color);" : ""}"></div></div>
+                            <span style="font-size:0.68rem; white-space:nowrap; ${over ? "color:var(--expense-color); font-weight:700;" : "color:var(--text-muted);"}">${over ? `Over by ${formatCurrency(r.spent - r.budget, baseCurrency)}` : `${formatCurrency(r.budget - shown, baseCurrency)} left of ${formatCurrency(r.budget, baseCurrency)}`}</span>
+                            <button type="button" class="trash-btn" data-click="editCategoryBudget" data-cat="${escapeHtml(r.cat)}" title="Edit this category's budget" style="min-width:32px; min-height:32px; font-size:0.8rem;">✏️</button>
+                        </div>` : "";
                     return `
-                        <div class="config-item category-row-item" data-click="navigateToCategoryPage" data-category="${escapeHtml(r.cat)}" data-back="budget" data-year="${escapeHtml(budgetViewPeriodKey)}" data-month="all" style="flex-direction:column; align-items:stretch; gap:4px; cursor:pointer;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                                <span style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
-                                    <span class="split-cat-icon" style="background:${getCategoryAvatarColor(r.cat)};">${getCategoryIcon(r.cat, "expense")}</span>
-                                    <strong style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(r.cat)}</strong>
-                                </span>
-                                <span style="font-size:0.8rem; white-space:nowrap; ${over ? "color:var(--expense-color); font-weight:700;" : "color:var(--text-muted);"}">${formatCurrency(shown, baseCurrency)}${hasBudget ? ` / ${formatCurrency(r.budget, baseCurrency)}` : ""}</span>
-                                ${actionBtn}
+                        <div data-click="navigateToCategoryPage" data-category="${escapeHtml(r.cat)}" data-back="budget" data-year="${escapeHtml(budgetViewPeriodKey)}" data-month="all" style="padding:9px 0; border-bottom:1px solid var(--border-color); cursor:pointer;">
+                            <div style="display:flex; align-items:center; gap:10px; font-size:0.86rem;">
+                                <span style="width:10px; height:10px; border-radius:50%; flex:none; background:${dot};"></span>
+                                <span style="width:22px; text-align:center; flex:none;">${getCategoryIcon(r.cat, "expense")}</span>
+                                <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;">${escapeHtml(r.cat)}</span>
+                                <strong style="white-space:nowrap; ${over ? "color:var(--expense-color);" : ""}">${formatCurrency(shown, baseCurrency)}</strong>
+                                <span style="width:40px; text-align:right; color:var(--text-muted); flex:none;">${shareText}</span>
                             </div>
-                            <div class="progress-bar-container"><div class="progress-bar-fill" style="width:${barPct}%; ${barStyle}"></div></div>
-                            <div style="display:flex; justify-content:space-between; font-size:0.68rem; color:var(--text-muted);"><span>${subLeft}</span><span>${subRight}</span></div>
+                            ${budgetLine}
                         </div>
                     `;
                 }).join("");
                 const overAmt = spent - effectiveTotal;
                 const headLine = `${formatCurrency(Math.max(spent, 0), baseCurrency)} spent of ${formatCurrency(Math.max(effectiveTotal, 0), baseCurrency)} budget`
-                    + (overAmt > 0 ? "" : ` · ${formatCurrency(-overAmt, baseCurrency)} left`); // v617: the card above already says how much over
+                    + (overAmt > 0 ? "" : ` · ${formatCurrency(-overAmt, baseCurrency)} left`); // the summary card above already says how much over
                 const hintLine = budgetedCount === 0
-                    ? `No category budgets yet — tap ＋ on a row to set one, or use the + button below.`
+                    ? `No category budgets yet — use the + button below to set one.`
                     : (unbudgetedSpent > 0 ? `${formatCurrency(unbudgetedSpent, baseCurrency)} of spending is in categories with no yearly budget.` : "");
                 const breakdownHTML = `
                     <div class="section-header">
                         <span class="section-title">Where the money went</span>
                     </div>
                     <p style="font-size:0.74rem; color:var(--text-muted); margin:-4px 0 8px;">${headLine}</p>
-                    <div class="config-list" style="padding-bottom:88px;">
+                    <div class="report-card-mini" style="margin-bottom:88px;">
+                        ${donutHTML}
                         ${rowsHTML || `<p style="color:var(--text-muted); padding:8px 0; font-size:0.85rem;">Nothing spent in ${escapeHtml(budgetViewPeriodKey)} yet.</p>`}
-                        ${(hiddenCount > 0 || (budgetBreakdownShowAll && rowsData.length > TOP_N + 1)) ? `<button type="button" class="text-btn" data-click="toggleBudgetBreakdownAll" style="align-self:center; padding:8px 16px; margin:4px 0;">${budgetBreakdownShowAll ? `Show top ${TOP_N} only` : `Show all ${rowsData.length} categories (+${hiddenCount} more)`}</button>` : ""}
-                        ${hintLine ? `<p style="color:var(--text-muted); padding:4px 0; font-size:0.72rem;">${hintLine}</p>` : ""}
-                        ${rowsHTML ? `<p style="color:var(--text-muted); padding:0; font-size:0.68rem;">Tap a row to see its transactions for ${escapeHtml(budgetViewPeriodKey)}.</p>` : ""}
+                        ${(hiddenCount > 0 || (budgetBreakdownShowAll && rowsData.length > TOP_N + 1)) ? `<div style="text-align:center;"><button type="button" class="text-btn" data-click="toggleBudgetBreakdownAll" style="padding:8px 16px; margin:6px 0 0;">${budgetBreakdownShowAll ? `Show top ${TOP_N} only` : `Show all ${rowsData.length} categories (+${hiddenCount} more)`}</button></div>` : ""}
+                        ${hintLine ? `<p style="color:var(--text-muted); padding:8px 0 0; font-size:0.72rem;">${hintLine}</p>` : ""}
+                        ${rowsHTML ? `<p style="color:var(--text-muted); padding:4px 0 0; font-size:0.68rem;">Tap a row to see its transactions for ${escapeHtml(budgetViewPeriodKey)}.</p>` : ""}
                     </div>
                 `;
                 contentEl.innerHTML = summaryHTML + breakdownHTML;

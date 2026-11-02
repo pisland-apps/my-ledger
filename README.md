@@ -4622,3 +4622,13 @@ Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to
 - **Breakdown:** "No budget" only shows once at least one category has a budget; no-budget bars are scaled to the biggest category; ＋ is larger and uses the primary colour; shows the top 8 categories (plus any with a budget) with a "Show all" button.
 
 `ledger.js` + `sw.js` + `README.md` changed. `APP_VERSION` / `CACHE_NAME` bumped to v617.
+
+## v618: Budget page — compact yearly breakdown
+
+- **Yearly "Where the money went" redesigned** to match the Insights panel: a donut (top 6 categories + grey "Others", total spent in the centre) over a one-line-per-category list — colour dot, icon, name, amount, share of spending. Tapping a row still opens that category's transactions for the year.
+- A category with a yearly budget gets a thin second line: bar, "RM x left of RM y" or "Over by RM x" (red), and ✏️ to edit. Categories without a budget stay on one line (no "No budget" text, no grey bars).
+- Shows the top 10 (plus any budgeted category) with a "Show all" button.
+- The per-row ＋ is gone; add a category budget with the page's + button.
+- No data change. The Monthly tab and summary card are unchanged.
+
+`ledger.js` + `sw.js` + `README.md` changed. `APP_VERSION` / `CACHE_NAME` bumped to v618.

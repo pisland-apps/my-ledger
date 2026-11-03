@@ -4,7 +4,7 @@
 // files the Service Worker serves; APP_VERSION is just the display label in the corner of the
 // screen. They don't sync automatically (different files, different load times) — when you bump
 // one, bump the other too. See the matching reminder comment on APP_VERSION in ledger.js.
-const CACHE_NAME = "ledger-cache-v619";
+const CACHE_NAME = "ledger-cache-v620";
 
 // v594: the Chinese handwriting fonts (Long Cang / Ma Shan Zheng slices + the Klee One fallback) live in
 // their OWN cache that survives app version bumps. font-version.js (shared with the page) names it and
@@ -141,6 +141,11 @@ self.addEventListener("fetch", (event) => {
     // rules); this also means any future third-party request added to the app is never
     // accidentally captured by this Service Worker without a deliberate opt-in.
     if (new URL(event.request.url).origin !== self.location.origin) return;
+
+    // v620: privacy.html is a plain static page (the privacy policy linked from the Google
+    // consent screen). Without this line the navigation handler below would answer it with
+    // the app shell, so anyone with the app installed would see the ledger instead of the policy.
+    if (new URL(event.request.url).pathname.endsWith("/privacy.html")) return;
 
     // Navigation requests (address bar, installed-shortcut launch, link click):
     // this is a single-page app, so ALWAYS resolve through the canonical "./"

@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v620";
-        const APP_VERSION_DATE = "2026-11-03";
+        const APP_VERSION = "v621";
+        const APP_VERSION_DATE = "2026-11-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -20067,6 +20067,17 @@
         };
         const TL_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         let timelineTypeFilter = "all";
+        // v621: optional page style — "classic" (original rail + cards) or "ribbon" (centre spine of coloured
+        // arrow segments, year rings and label pills, alternating left/right). Remembered per device.
+        const TIMELINE_STYLE_KEY = "ledgerTimelineStyle";
+        let timelineStyle = (() => { try { return localStorage.getItem(TIMELINE_STYLE_KEY) === "ribbon" ? "ribbon" : "classic"; } catch (e) { return "classic"; } })();
+        function timelineSetStyle(el) {
+            const mode = el.dataset.mode === "ribbon" ? "ribbon" : "classic";
+            if (mode === timelineStyle) return;
+            timelineStyle = mode;
+            try { localStorage.setItem(TIMELINE_STYLE_KEY, mode); } catch (e) { /* private mode: just not remembered */ }
+            renderTimelinePage();
+        }
 
         function makeTimelineId() {
             return "tl_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
@@ -20131,6 +20142,11 @@
             const chipsEl = document.getElementById("timelineTypeChips");
             const memberSel = document.getElementById("timelineMember");
             if (!listEl || !emptyEl || !chipsEl || !memberSel) return;
+            document.querySelectorAll("#timelineStyleToggle .tl-style-btn").forEach(b => {
+                const on = b.dataset.mode === timelineStyle;
+                b.classList.toggle("active", on);
+                b.setAttribute("aria-pressed", on ? "true" : "false");
+            });
 
             await loadMembersCache();
             const all = await readAllDB(STORES.TIMELINE);
@@ -20194,11 +20210,17 @@
             const editIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
             const chevIcon = `<svg class="tl-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`;
 
-            let html = `<div class="tl-summary">${filtered.length === all.length ? `${all.length} ${all.length === 1 ? "entry" : "entries"}` : `Showing ${filtered.length} of ${all.length}`}${yearsSpan ? ` · ${escapeHtml(yearsSpan)}` : ""}</div><div class="tl-wrap"><div class="tl-sec">`;
+            const ribbon = timelineStyle === "ribbon";
+            let ribIdx = 0;
+            let html = `<div class="tl-summary">${filtered.length === all.length ? `${all.length} ${all.length === 1 ? "entry" : "entries"}` : `Showing ${filtered.length} of ${all.length}`}${yearsSpan ? ` · ${escapeHtml(yearsSpan)}` : ""}</div>` + (ribbon ? `<div class="tlr-wrap">` : `<div class="tl-wrap"><div class="tl-sec">`);
             let curYear = "";
             let inPre = false;
             items.forEach(it => {
                 const year = it.key.slice(0, 4);
+                if (ribbon && it.marker) {
+                    html += `<div class="tlr-marker"><b>📍 Ledger starts here</b><span>${escapeHtml(tlDateLabel(startDate))}</span>${preCount ? `<em>Notes below are from before the ledger</em>` : ""}</div>`;
+                    return;
+                }
                 if (it.marker) {
                     // close the "after" rail, show the divider, then open the dashed "before" rail
                     html += `</div><div class="tl-marker-row"><span class="tl-dot tl-dot-start">📍</span><div class="tl-marker"><div class="tl-marker-line"><b>Ledger starts here</b><span>${escapeHtml(tlDateLabel(startDate))}</span></div>${preCount ? `<span class="tl-marker-sub">Notes below are from before the ledger</span>` : ""}</div></div><div class="tl-sec tl-sec-pre">`;
@@ -20206,7 +20228,7 @@
                     curYear = year === curYear ? "" : curYear; // marker's own year may still need a heading for the entries below
                     return;
                 }
-                if (year !== curYear) {
+                if (!ribbon && year !== curYear) {
                     curYear = year;
                     const n = yearCount[year] || 0;
                     html += `<div class="tl-year"><span class="tl-year-n">${escapeHtml(year)}</span><span class="tl-year-c">${n} ${n === 1 ? "entry" : "entries"}</span></div>`;
@@ -20238,6 +20260,22 @@
                         ? `<span class="tl-link" data-click="timelineOpenLink" data-kind="${escapeHtml(e.linkKind)}" data-id="${escapeHtml(e.linkId)}">🔗 ${escapeHtml(label)}</span>`
                         : `<span class="tl-gone">🔗 (deleted)</span>`);
                 }
+                if (ribbon) {
+                    const side = ribIdx % 2 === 0 ? "r" : "l";
+                    const detail = [t[1], shortDate].filter(Boolean).join(" · ");
+                    html += `
+                    <div class="tlr-item tlr-${side} tlr-c${ribIdx % 5}${pre ? " tlr-pre" : ""}" data-click="timelineToggleNote">
+                        <span class="tlr-node"></span>
+                        <div class="tlr-block">
+                            <div class="tlr-top"><span class="tlr-dash"></span><span class="tlr-ring">${escapeHtml(year)}</span></div>
+                            <div class="tlr-label-row"><span class="tlr-label">${tlTitleHTML(e.title)}</span><button type="button" class="tl-edit" data-click="timelineEdit" data-id="${escapeHtml(e.id)}" aria-label="Edit entry" title="Edit">${editIcon}</button></div>
+                            <div class="tlr-text"><span class="tlr-kind">${escapeHtml(detail)}</span>${liveIds.length ? member : ""}${e.note ? `<div class="tlr-note">${escapeHtml(e.note)}</div>` : ""}</div>
+                            ${metaParts.length ? `<div class="tl-meta">${metaParts.join("")}</div>` : ""}
+                        </div>
+                    </div>`;
+                    ribIdx++;
+                    return;
+                }
                 html += `
                     <div class="tl-item tl-t-${typeKey}${pre ? " tl-pre" : ""}">
                         <span class="tl-dot">${t[0]}</span>
@@ -20249,7 +20287,7 @@
                         </div>
                     </div>`;
             });
-            html += `</div></div>`;
+            html += ribbon ? `</div>` : `</div></div>`;
             listEl.innerHTML = html;
         }
 
@@ -29110,6 +29148,7 @@
             // v537: TIMELINE
             navigateToTimelinePage: () => navigateToTimelinePage(),
             timelineSetType: (el) => timelineSetType(el),
+            timelineSetStyle: (el) => timelineSetStyle(el), // v621
             timelineToggleNote: (el) => timelineToggleNote(el),
             timelineEdit: (el) => timelineEdit(el),
             timelineOpenLink: (el) => timelineOpenLink(el),

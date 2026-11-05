@@ -1044,6 +1044,39 @@
         .tl-marker .tl-marker-sub { display: block; margin-top: 2px; font-weight: 600; }
         @media (prefers-reduced-motion: reduce) { .tl-chev { transition: none; } }
 
+        /* v621: Timeline "Ribbon" style (optional, see timelineStyle in ledger.js) — a centre spine made of
+           coloured arrow segments (each one's tip sits in the notch of the next), a node per entry, a dashed
+           connector to a big year ring, then a colour-matched title pill + details; sides alternate. */
+        .nav-header .nav-view-toggle { align-self: flex-start; }
+        .tlr-wrap { position: relative; padding: 6px 0 90px; }
+        .tlr-item { --tcol: #86cdd6; position: relative; padding: 0 0 26px; }
+        .tlr-c0 { --tcol: #86cdd6; } .tlr-c1 { --tcol: #e8a752; } .tlr-c2 { --tcol: #5f9eab; } .tlr-c3 { --tcol: #e3808a; } .tlr-c4 { --tcol: #a679ae; }
+        .tlr-item::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 14px; margin-left: -7px; background: var(--tcol); clip-path: polygon(0 0, 50% 9px, 100% 0, 100% calc(100% - 9px), 50% 100%, 0 calc(100% - 9px)); }
+        .tlr-pre::before { opacity: 0.5; }
+        .tlr-node { position: absolute; left: 50%; top: 14px; width: 24px; height: 24px; margin-left: -12px; border-radius: 50%; background: var(--tcol); box-sizing: border-box; z-index: 1; box-shadow: 0 0 0 3px var(--card-bg); }
+        .tlr-node::after { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: var(--card-bg); }
+        .tlr-block { width: calc(50% - 16px); box-sizing: border-box; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        .tlr-r .tlr-block { margin-left: calc(50% + 16px); }
+        .tlr-l .tlr-block { margin-right: calc(50% + 16px); margin-left: auto; text-align: right; }
+        .tlr-top { display: flex; align-items: center; gap: 4px; height: 52px; }
+        .tlr-l .tlr-top { flex-direction: row-reverse; }
+        .tlr-dash { flex: 1; min-width: 6px; border-top: 2px dashed var(--text-muted); opacity: 0.55; }
+        .tlr-ring { flex: 0 0 auto; width: 52px; height: 52px; border-radius: 50%; box-sizing: border-box; border: 5px solid var(--tcol); display: flex; align-items: center; justify-content: center; font-size: 0.84rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--text-main); background: var(--card-bg); }
+        .tlr-pre .tlr-ring { border-style: dashed; }
+        .tlr-label-row { display: flex; align-items: flex-start; gap: 2px; margin-top: 8px; }
+        .tlr-l .tlr-label-row { flex-direction: row-reverse; }
+        .tlr-label { display: inline-block; max-width: 100%; box-sizing: border-box; background: var(--tcol); color: #fff; border-radius: 6px; padding: 5px 10px; font-weight: 800; font-size: 0.88rem; line-height: 1.3; overflow-wrap: anywhere; text-align: center; }
+        .tlr-label-row .tl-edit { flex: 0 0 auto; width: 26px; height: 26px; }
+        .tlr-text { margin-top: 6px; font-size: 0.76rem; line-height: 1.45; color: var(--text-muted); font-weight: 600; }
+        .tlr-kind { display: block; font-weight: 800; color: var(--text-main); opacity: 0.8; }
+        .tlr-note { margin-top: 3px; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .tlr-item.open .tlr-note { display: block; -webkit-line-clamp: unset; overflow: visible; }
+        .tlr-block .tl-meta { margin: 6px 0 0; }
+        .tlr-l .tl-meta { justify-content: flex-end; }
+        .tlr-marker { position: relative; z-index: 2; margin: 2px auto 22px; max-width: 86%; text-align: center; background: var(--active-bg); border: 1.5px solid var(--primary); border-radius: 14px; padding: 8px 14px; }
+        .tlr-marker b { display: block; font-size: 0.88rem; font-weight: 800; color: var(--primary); }
+        .tlr-marker span, .tlr-marker em { display: block; font-size: 0.74rem; font-weight: 700; font-style: normal; color: var(--text-muted); }
+
         /* v539: Timeline modal — note box, extra reference-amount rows */
         .tl-note-wrap { position: relative; margin-top: 4px; }
         .tl-note-input { width: 100%; box-sizing: border-box; min-height: 88px; max-height: 240px; padding: 12px 14px 26px; border: 1.5px solid var(--border-color); border-radius: 14px; background: var(--chip-bg); color: var(--text-main); font-family: inherit; font-size: 0.9rem; line-height: 1.5; resize: none; overflow-y: auto; transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s; }
@@ -5365,6 +5398,10 @@
             <div style="flex:1;">
                 <h3 style="font-weight:800; font-size:1.2rem;">Timeline</h3>
                 <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Things worth remembering, from before the ledger started and after.</p>
+            </div>
+            <div class="nav-view-toggle" id="timelineStyleToggle" role="group" aria-label="Timeline style">
+                <button type="button" class="nav-view-toggle-btn tl-style-btn" data-click="timelineSetStyle" data-mode="classic" aria-pressed="true">Classic</button>
+                <button type="button" class="nav-view-toggle-btn tl-style-btn" data-click="timelineSetStyle" data-mode="ribbon" aria-pressed="false">Ribbon</button>
             </div>
         </div>
 

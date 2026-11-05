@@ -11,6 +11,7 @@ ledger.js       ← all app logic (external file — see CSP notes in index.html
 sw.js           ← Service Worker: offline caching (CACHE_NAME / ASSETS_TO_CACHE)
 manifest.json   ← Web App Manifest (installable as a PWA)
 icon-192.png / icon-512.png
+privacy.html     ← privacy-policy page (v620), linked from the Google OAuth consent screen
 lib/pdfjs-6.4.299/ ← vendored pdf.js 6.4.299: pdf.min.mjs + pdf.worker.min.mjs and
                   wasm/ (its image decoders: .wasm + plain-JS *_nowasm_fallback.js),
                   used by the transaction-attachment PDF viewer added in v121 —
@@ -4641,3 +4642,17 @@ Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to
 - No data change.
 
 `ledger.js` + `sw.js` + `README.md` changed. `APP_VERSION` / `CACHE_NAME` bumped to v619.
+
+## v620: privacy-policy page
+
+- **New `privacy.html`:** a plain static page (English text + a short Chinese summary) saying what is stored, what the optional Google Drive sync uploads (`drive.appdata` only; the data and image files are encrypted, `ledger-primary.json` is small and not encrypted), the one exchange-rate request, no analytics, and how to delete data. It is needed for the Google consent screen when the app is published (Testing → In production).
+- **`sw.js`:** requests whose path ends in `/privacy.html` are no longer answered with the app shell (every navigation used to be), so a browser with the app installed can still open the page. `CACHE_NAME` bumped to v620.
+- No data change.
+
+`privacy.html` (new) + `sw.js` + `ledger.js` (version only) + `README.md` changed. `APP_VERSION` / `CACHE_NAME` bumped to v620.
+
+## v621: Timeline "Ribbon" style (optional)
+
+- **Timeline page:** a **Classic / Ribbon** switch sits at the top right of the page header. *Classic* is the existing rail + cards. *Ribbon* draws a centre spine of coloured arrow segments (each tip fits the notch of the next), a node per entry, a dashed connector to a year ring, a colour-matched title pill and the details underneath, alternating right/left. Colours cycle through five tones; entries from before the ledger start get dashed rings and a faded spine. Tap an entry to expand its note; ✏️ edits it.
+- The choice is remembered per device in `localStorage` (`ledgerTimelineStyle`). No data-model change — nothing is stored in IndexedDB, backups or Drive sync.
+- Files: `index.html` (toggle + `.tlr-*` CSS), `ledger.js` (`timelineStyle`, `timelineSetStyle`, ribbon branch in `renderTimelinePage`), `sw.js`. `APP_VERSION` / `CACHE_NAME` bumped to v621.

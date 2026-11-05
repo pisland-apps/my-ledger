@@ -4656,3 +4656,9 @@ Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to
 - **Timeline page:** a **Classic / Ribbon** switch sits at the top right of the page header. *Classic* is the existing rail + cards. *Ribbon* draws a centre spine of coloured arrow segments (each tip fits the notch of the next), a node per entry, a dashed connector to a year ring, a colour-matched title pill and the details underneath, alternating right/left. Colours cycle through five tones; entries from before the ledger start get dashed rings and a faded spine. Tap an entry to expand its note; ✏️ edits it.
 - The choice is remembered per device in `localStorage` (`ledgerTimelineStyle`). No data-model change — nothing is stored in IndexedDB, backups or Drive sync.
 - Files: `index.html` (toggle + `.tlr-*` CSS), `ledger.js` (`timelineStyle`, `timelineSetStyle`, ribbon branch in `renderTimelinePage`), `sw.js`. `APP_VERSION` / `CACHE_NAME` bumped to v621.
+
+## v622: Timeline phone-view polish
+
+- **Type filters (phone, <768px):** same look as Inventory's category pills — icon only, count as a corner badge, rows wrap instead of scrolling sideways, the selected pill expands to show its name (name stays in `title`/`aria-label`). Desktop unchanged.
+- **Ribbon:** the type-name line is gone; the type emoji now sits inside the title pill (full name in its `title`). A short date (e.g. "12 Mar") still shows when the entry has one. On phones an extra amount's note moves to a second row inside its chip.
+- `index.html`, `ledger.js`, `sw.js` changed; `APP_VERSION` / `CACHE_NAME` bumped to v622.

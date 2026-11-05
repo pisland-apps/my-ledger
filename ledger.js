@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v621";
+        const APP_VERSION = "v622";
         const APP_VERSION_DATE = "2026-11-05";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -20163,7 +20163,7 @@
             chipsEl.innerHTML = all.length === 0 ? "" :
                 [`<button type="button" class="tl-chip${timelineTypeFilter === "all" ? " active" : ""}" data-click="timelineSetType" data-type="all">All<span class="tl-chip-n">${all.length}</span></button>`]
                     .concat(Object.keys(TL_TYPES).filter(k => counts[k]).map(k =>
-                        `<button type="button" class="tl-chip${timelineTypeFilter === k ? " active" : ""}" data-click="timelineSetType" data-type="${k}">${TL_TYPES[k][0]} ${escapeHtml(TL_TYPES[k][1])}<span class="tl-chip-n">${counts[k]}</span></button>`)).join("");
+                        `<button type="button" class="tl-chip${timelineTypeFilter === k ? " active" : ""}" data-click="timelineSetType" data-type="${k}" title="${escapeHtml(TL_TYPES[k][1])}" aria-label="${escapeHtml(TL_TYPES[k][1])} (${counts[k]})"><span class="tl-chip-ic">${TL_TYPES[k][0]}</span><span class="tl-chip-nm"> ${escapeHtml(TL_TYPES[k][1])}</span><span class="tl-chip-n">${counts[k]}</span></button>`)).join("");
 
             const q = (document.getElementById("timelineSearch").value || "").trim().toLowerCase();
             const memberFilter = memberSel.value;
@@ -20262,14 +20262,14 @@
                 }
                 if (ribbon) {
                     const side = ribIdx % 2 === 0 ? "r" : "l";
-                    const detail = [t[1], shortDate].filter(Boolean).join(" · ");
+
                     html += `
                     <div class="tlr-item tlr-${side} tlr-c${ribIdx % 5}${pre ? " tlr-pre" : ""}" data-click="timelineToggleNote">
                         <span class="tlr-node"></span>
                         <div class="tlr-block">
                             <div class="tlr-top"><span class="tlr-dash"></span><span class="tlr-ring">${escapeHtml(year)}</span></div>
-                            <div class="tlr-label-row"><span class="tlr-label">${tlTitleHTML(e.title)}</span><button type="button" class="tl-edit" data-click="timelineEdit" data-id="${escapeHtml(e.id)}" aria-label="Edit entry" title="Edit">${editIcon}</button></div>
-                            <div class="tlr-text"><span class="tlr-kind">${escapeHtml(detail)}</span>${liveIds.length ? member : ""}${e.note ? `<div class="tlr-note">${escapeHtml(e.note)}</div>` : ""}</div>
+                            <div class="tlr-label-row"><span class="tlr-label" title="${escapeHtml(t[1])}"><span class="tlr-ic" aria-hidden="true">${t[0]}</span>${tlTitleHTML(e.title)}</span><button type="button" class="tl-edit" data-click="timelineEdit" data-id="${escapeHtml(e.id)}" aria-label="Edit entry" title="Edit">${editIcon}</button></div>
+                            <div class="tlr-text">${shortDate ? `<span class="tlr-kind">${escapeHtml(shortDate)}</span>` : ""}${liveIds.length ? member : ""}${e.note ? `<div class="tlr-note">${escapeHtml(e.note)}</div>` : ""}</div>
                             ${metaParts.length ? `<div class="tl-meta">${metaParts.join("")}</div>` : ""}
                         </div>
                     </div>`;

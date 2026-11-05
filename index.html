@@ -1073,7 +1073,6 @@
         .tlr-item.open .tlr-note { display: block; -webkit-line-clamp: unset; overflow: visible; }
         .tlr-block .tl-meta { margin: 6px 0 0; }
         .tlr-l .tl-meta { justify-content: flex-end; }
-        .tlr-ic { margin-right: 5px; font-size: 0.95em; }
         /* v622: phone view — Timeline type filters look like the Inventory ones (icon + corner count, wrapping rows,
            the selected one expands to show its name); an extra amount's note drops to a second row inside its chip. */
         @media (max-width: 767px) {
@@ -1084,9 +1083,11 @@
             .tl-chip.active .tl-chip-nm { display: inline; font-size: 0.8rem; margin-left: 2px; }
             .tl-chip-n { position: absolute; top: -7px; right: -3px; min-width: 18px; margin: 0; padding: 1px 5px; border-radius: 999px; border: 1.5px solid var(--card-bg); background: var(--hover-bg); color: var(--text-muted); text-align: center; font-size: 0.65rem; opacity: 1; }
             .tl-chip.active .tl-chip-n { background: var(--card-bg); color: var(--primary); opacity: 1; }
-            .tlr-block .tl-ref { display: flex; flex-wrap: wrap; align-items: baseline; border-radius: 12px; }
+            .tlr-block .tl-ref { display: block; border-radius: 12px; }
+            .tlr-r .tlr-block .tl-ref { text-align: left; }
+            .tlr-l .tlr-block .tl-ref { text-align: right; }
             .tlr-block .tl-ref .tl-ref-dot { display: none; }
-            .tlr-block .tl-ref .tl-ref-note { flex: 0 0 100%; }
+            .tlr-block .tl-ref .tl-ref-note { display: block; margin-top: 1px; }
         }
         .tlr-marker { position: relative; z-index: 2; margin: 2px auto 22px; max-width: 86%; text-align: center; background: var(--active-bg); border: 1.5px solid var(--primary); border-radius: 14px; padding: 8px 14px; }
         .tlr-marker b { display: block; font-size: 0.88rem; font-weight: 800; color: var(--primary); }

@@ -4662,3 +4662,13 @@ Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to
 - **Type filters (phone, <768px):** same look as Inventory's category pills — icon only, count as a corner badge, rows wrap instead of scrolling sideways, the selected pill expands to show its name (name stays in `title`/`aria-label`). Desktop unchanged.
 - **Ribbon:** the type-name line is gone; the type emoji now sits inside the title pill (full name in its `title`). A short date (e.g. "12 Mar") still shows when the entry has one. On phones an extra amount's note moves to a second row inside its chip.
 - `index.html`, `ledger.js`, `sw.js` changed; `APP_VERSION` / `CACHE_NAME` bumped to v622.
+
+## v623: Ribbon fixes
+
+- Phone view: an extra amount's chip is now a block (amount on row 1, note on row 2) that follows the side's text alignment — left-aligned on right-hand entries, right-aligned on left-hand ones (the flex version ran "MYR" into the amount and ignored the alignment).
+- Ribbon's "Ledger starts here" box no longer shows the 📍 emoji (Classic keeps it).
+- `APP_VERSION` / `CACHE_NAME` bumped to v623.
+
+## v624: Ribbon title pill
+
+- The type emoji inside the Ribbon title pill is removed (the full type name stays in the pill's `title`). The "📍 Ledger starts here" emoji is back (v623 removed it by mistake). `APP_VERSION` / `CACHE_NAME` bumped to v624.

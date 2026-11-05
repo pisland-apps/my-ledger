@@ -4680,3 +4680,11 @@ Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to
 ## v626: Timeline subtitle hidden on phones
 
 - The "Things worth remembering…" subtitle under the Timeline title (`.tl-page-sub`) is hidden below 768px; desktop unchanged. `APP_VERSION` / `CACHE_NAME` bumped to v626.
+
+## v627: Ribbon arrows back to pointing down (for comparison with v625/v626, which point up)
+
+- Spine segments: notch at the top, tip at the bottom again (the v621 shape). Only the `.tlr-item::before` clip-path and `.tlr-wrap` top padding changed. `APP_VERSION` / `CACHE_NAME` bumped to v627.
+
+## v628: Ribbon arrows up, no nesting
+
+- Spine segments point up (tip on top, notch at the bottom) but each one now stays inside its own box (`top: 0`), so a segment's tip no longer pokes into the notch of the one above. `APP_VERSION` / `CACHE_NAME` bumped to v628.

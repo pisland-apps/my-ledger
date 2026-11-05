@@ -1044,14 +1044,14 @@
         .tl-marker .tl-marker-sub { display: block; margin-top: 2px; font-weight: 600; }
         @media (prefers-reduced-motion: reduce) { .tl-chev { transition: none; } }
 
-        /* v621 (arrows point up since v625, newest is on top): Timeline "Ribbon" style (optional, see timelineStyle in ledger.js) — a centre spine made of
+        /* v621 (arrows point up since v628, each segment stays inside its own box — no nesting into the previous one): Timeline "Ribbon" style (optional, see timelineStyle in ledger.js) — a centre spine made of
            coloured arrow segments (each one's tip sits in the notch of the next), a node per entry, a dashed
            connector to a big year ring, then a colour-matched title pill + details; sides alternate. */
         .nav-header .nav-view-toggle { align-self: flex-start; }
-        .tlr-wrap { position: relative; padding: 14px 0 90px; }
+        .tlr-wrap { position: relative; padding: 6px 0 90px; }
         .tlr-item { --tcol: #86cdd6; position: relative; padding: 0 0 26px; }
         .tlr-c0 { --tcol: #86cdd6; } .tlr-c1 { --tcol: #e8a752; } .tlr-c2 { --tcol: #5f9eab; } .tlr-c3 { --tcol: #e3808a; } .tlr-c4 { --tcol: #a679ae; }
-        .tlr-item::before { content: ""; position: absolute; left: 50%; top: -9px; bottom: 0; width: 14px; margin-left: -7px; background: var(--tcol); clip-path: polygon(50% 0, 100% 9px, 100% 100%, 50% calc(100% - 9px), 0 100%, 0 9px); }
+        .tlr-item::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 14px; margin-left: -7px; background: var(--tcol); clip-path: polygon(50% 0, 100% 9px, 100% 100%, 50% calc(100% - 9px), 0 100%, 0 9px); }
         .tlr-pre::before { opacity: 0.5; }
         .tlr-node { position: absolute; left: 50%; top: 14px; width: 24px; height: 24px; margin-left: -12px; border-radius: 50%; background: var(--tcol); box-sizing: border-box; z-index: 1; box-shadow: 0 0 0 3px var(--card-bg); }
         .tlr-node::after { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: var(--card-bg); }

@@ -4672,3 +4672,7 @@ Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to
 ## v624: Ribbon title pill
 
 - The type emoji inside the Ribbon title pill is removed (the full type name stays in the pill's `title`). The "📍 Ledger starts here" emoji is back (v623 removed it by mistake). `APP_VERSION` / `CACHE_NAME` bumped to v624.
+
+## v625: Ribbon arrows point up
+
+- The spine segments now point **up** (newest entry is on top): tip at the top of each segment, notch at the bottom, the next segment's tip nests into the notch above it. `APP_VERSION` / `CACHE_NAME` bumped to v625.

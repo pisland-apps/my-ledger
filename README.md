@@ -4676,3 +4676,7 @@ Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to
 ## v625: Ribbon arrows point up
 
 - The spine segments now point **up** (newest entry is on top): tip at the top of each segment, notch at the bottom, the next segment's tip nests into the notch above it. `APP_VERSION` / `CACHE_NAME` bumped to v625.
+
+## v626: Timeline subtitle hidden on phones
+
+- The "Things worth remembering…" subtitle under the Timeline title (`.tl-page-sub`) is hidden below 768px; desktop unchanged. `APP_VERSION` / `CACHE_NAME` bumped to v626.

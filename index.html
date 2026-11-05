@@ -1076,6 +1076,7 @@
         /* v622: phone view — Timeline type filters look like the Inventory ones (icon + corner count, wrapping rows,
            the selected one expands to show its name); an extra amount's note drops to a second row inside its chip. */
         @media (max-width: 767px) {
+            .tl-page-sub { display: none; }
             .tl-chips { flex-wrap: wrap; overflow: visible; gap: 10px 8px; padding: 8px 0 12px; }
             .tl-chip { position: relative; min-width: 46px; min-height: 44px; padding: 6px 12px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.85rem; }
             .tl-chip-ic { font-size: 1.45rem; line-height: 1; }
@@ -5413,7 +5414,7 @@
             <button class="back-btn" data-click="navigateToWorkspace">&larr; Back</button>
             <div style="flex:1;">
                 <h3 style="font-weight:800; font-size:1.2rem;">Timeline</h3>
-                <p style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Things worth remembering, from before the ledger started and after.</p>
+                <p class="tl-page-sub" style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">Things worth remembering, from before the ledger started and after.</p>
             </div>
             <div class="nav-view-toggle" id="timelineStyleToggle" role="group" aria-label="Timeline style">
                 <button type="button" class="nav-view-toggle-btn tl-style-btn" data-click="timelineSetStyle" data-mode="classic" aria-pressed="true">Classic</button>

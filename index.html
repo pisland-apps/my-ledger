@@ -7742,7 +7742,22 @@
                     <p id="txManualFxAutoHint" style="font-size:0.7rem; color:var(--text-muted); margin:0;"></p>
                 </div>
 
-                <div class="form-row form-row-icon"><span class="field-icon" aria-hidden="true">📅</span><input type="date" id="txDate" required aria-label="Date"></div>
+                <div class="form-row form-row-icon"><span class="field-icon" aria-hidden="true">📅</span><input type="date" id="txDate" required aria-label="Date" data-change="refreshTxStmtRow"></div>
+
+                <!-- v629: credit-card statement cycle. Only shown when the entry's account is a credit card that has a
+                     Statement Day (see refreshTxStmtRow() in ledger.js). Switching it on tells the app the bank left
+                     this entry off the statement its date implies and bills it on the NEXT one, so the due-date
+                     reminder / Pay pre-fill match the real statement. The date itself is never changed. -->
+                <div class="form-row" id="txStmtRow" style="display:none;">
+                    <div class="toggle-switch-row">
+                        <span class="toggle-switch-label">🧾 Billed in next statement</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="txStmtShift" data-change="refreshTxStmtRow">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <p id="txStmtHint" style="font-size:0.7rem; color:var(--text-muted); margin:2px 0 0;"></p>
+                </div>
 
                 <!-- Fixed Deposit placement terms — shown only when this entry deposits funds into an FD account -->
                 <div id="txFdFieldsWrap" style="display:none; background:#faf5ff; border:1px solid #ede9fe; border-radius:10px; padding:10px; margin-bottom:10px;">

@@ -4688,3 +4688,14 @@ Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to
 ## v628: Ribbon arrows up, no nesting
 
 - Spine segments point up (tip on top, notch at the bottom) but each one now stays inside its own box (`top: 0`), so a segment's tip no longer pokes into the notch of the one above. `APP_VERSION` / `CACHE_NAME` bumped to v628.
+
+## v629: Credit card — "Billed in next statement" (statement-cycle shift)
+
+- **Problem:** a card charge dated on/before the statement day can be left off that statement by the bank (posted after the cut-off) and billed on the next one. The due-date reminder counted it as billed, so after paying the real statement amount the leftover kept showing as overdue.
+- **New optional field `stmtShift` on a transaction** (absent/0 = normal, +1 = billed one statement later, -1 = counted one statement earlier). Only the "billed vs not-yet-billed" maths reads it; balances, reports, budgets and the Ledger list still use the real transaction date. Written by the Add/Edit form as a hand-listed field (the save record is built field-by-field — a field left out is wiped on edit).
+- **Add/Edit Transaction:** new switch **🧾 Billed in next statement** (`#txStmtRow`), shown only when the entry's account is a credit card that has a Statement Day (Expense/Income account, or a Transfer from/to the card). The hint under it names the statement it will land on. `refreshTxStmtRow()` runs on open, on account change (via `syncTransactionCurrency`) and on date/switch change.
+- **Reminder (dashboard):** `billedDebtFor()` now works out "billed by that statement close" with the shift applied (`ccBalanceAtClose` / `ccPaymentsAfterClose`, new shared top-level helpers next to `openCreditCardPayment`). Without any shifted entry the result is identical to v628 (verified against the old date-based maths for statement days 1/2/15/28–31).
+- **💳 Pay:** pre-fills the **billed, still-unpaid statement amount** when the card has a Statement Day and that differs from the total owed (a toast says so); otherwise the total owed as before.
+- **Ledger list:** entries with a shift get a small 🧾 *Next stmt* / *Earlier stmt* pill.
+- Helpers: `ccNaturalCloseStr`, `ccAddCycles`, `ccCyclesBetween`, `ccEffCloseStr`, `ccTxCardDelta`, `ccBalanceAtClose`, `ccPaymentsAfterClose`, `ccLastCloseOnOrBefore`, `ccBilledOutstanding`. No new store / DB_VERSION bump; `stmtShift` rides along in transactions, so backup, restore and Drive sync carry it unchanged.
+- `index.html`, `ledger.js`, `sw.js`, `README.md` changed; `APP_VERSION` / `CACHE_NAME` bumped to v629.

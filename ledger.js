@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v628";
-        const APP_VERSION_DATE = "2026-11-05";
+        const APP_VERSION = "v629";
+        const APP_VERSION_DATE = "2026-11-06";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -7982,7 +7982,20 @@
             document.getElementById("destAccount").value = accountId;
             document.getElementById("txCurrency").value = acc.currency;
             const amountDue = Math.max(0, -(nativeBalances[acc.id] || 0));
-            if (amountDue > 0.005) document.getElementById("txAmount").value = amountDue.toFixed(2);
+            // v629: with a statement day set, pre-fill what the bank has actually BILLED and is still
+            // unpaid (matches the statement) instead of the whole running balance, which also
+            // includes spending that belongs to the next statement. Falls back to the running
+            // balance when nothing is billed (e.g. paying the card off early).
+            let prefill = amountDue;
+            let billedNote = "";
+            if (acc.statementDay) {
+                const billedUnpaid = ccBilledOutstanding(acc, await readAllDB(STORES.TRANSACTIONS), todayLocalStr());
+                if (billedUnpaid !== null && billedUnpaid > 0.005) {
+                    prefill = Math.min(billedUnpaid, amountDue > 0.005 ? amountDue : billedUnpaid);
+                    if (Math.abs(prefill - amountDue) > 0.005) billedNote = `Pre-filled with the billed statement amount ${formatCurrency(prefill, acc.currency)} (total owed ${formatCurrency(amountDue, acc.currency)}).`;
+                }
+            }
+            if (prefill > 0.005) document.getElementById("txAmount").value = prefill.toFixed(2);
             document.getElementById("txDesc").value = "Credit Card Payment";
             // v127 fix: openTransactionForm() already ran syncAccountPickerButtonText("destAccount")
             // as its very last step (see the comment there), snapshotting the "To Account" button's
@@ -7993,6 +8006,142 @@
             // its earlier (wrong) label. Re-syncing it here, now that the value is actually set,
             // makes the visible "To Account" button match the card just clicked.
             syncAccountPickerButtonText("destAccount");
+            if (billedNote) showToast(billedNote);
+        }
+
+
+        // ================= CREDIT CARD STATEMENT CYCLES (v629) =================
+        // Every card transaction normally belongs to the statement that closes on the first
+        // statementDay on/after its own date. A bank can leave a charge off that statement
+        // (posted after the cut-off even though it is dated on/before it) and bill it on the
+        // NEXT one — that is what the optional `stmtShift` field on a transaction records:
+        // 0/absent = normal, +1 = billed one statement later, -1 = counted one statement
+        // earlier. Only the "billed vs not-yet-billed" maths below reads it (the due-date
+        // reminder, the 💳 Pay pre-fill and the v630 Reconcile screen); balances, reports and
+        // the Ledger list still use the real transaction date.
+        function ccCloseDateObj(year, month, day) {
+            // Clamps to the last real day of the month (day 31 in a 30-day month).
+            const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+            return new Date(year, month, Math.min(day, lastDayOfMonth));
+        }
+        // Close date (ISO) of the statement that normally covers dateStr.
+        function ccNaturalCloseStr(statementDay, dateStr) {
+            const parts = String(dateStr).split("-").map(Number);
+            let c = ccCloseDateObj(parts[0], parts[1] - 1, statementDay);
+            if (localDateStr(c) < dateStr) c = ccCloseDateObj(parts[0], parts[1], statementDay);
+            return localDateStr(c);
+        }
+        // Moves a close date n statements forward (negative = back).
+        function ccAddCycles(statementDay, closeStr, n) {
+            if (!n) return closeStr;
+            const parts = closeStr.split("-").map(Number);
+            return localDateStr(ccCloseDateObj(parts[0], parts[1] - 1 + n, statementDay));
+        }
+        // Whole statements between two close dates (closeB - closeA).
+        function ccCyclesBetween(closeA, closeB) {
+            const a = closeA.split("-").map(Number), b = closeB.split("-").map(Number);
+            return (b[0] - a[0]) * 12 + (b[1] - a[1]);
+        }
+        // Close date of the statement a transaction is actually billed on (stmtShift applied).
+        function ccEffCloseStr(a, t) {
+            return ccAddCycles(a.statementDay, ccNaturalCloseStr(a.statementDay, t.date), (t.stmtShift | 0));
+        }
+        // Signed effect of one transaction on this card's balance (negative = more owed) —
+        // same maths as applyToAccountBalance() in computeAccountBalances(); 0 if it doesn't touch the card.
+        function ccTxCardDelta(a, t) {
+            let d = 0;
+            if (t.type === "expense" && t.src === a.id) {
+                d -= (t.manualFxRate && t.currency !== a.currency) ? t.amount * t.manualFxRate : convertCurrency(t.amount, t.currency, a.currency);
+            } else if (t.type === "income" && t.src === a.id) {
+                d += (t.manualFxRate && t.currency !== a.currency) ? t.amount * t.manualFxRate : convertCurrency(t.amount, t.currency, a.currency);
+            } else if (t.type === "transfer") {
+                if (t.src === a.id) d -= convertCurrency(t.amount, t.currency, a.currency);
+                if (t.dest === a.id) d += (t.destAmount != null) ? t.destAmount : convertCurrency(t.amount, t.currency, a.currency);
+            }
+            return d;
+        }
+        // Card balance counting only what the bank had billed by the statement closing on closeStr.
+        function ccBalanceAtClose(a, closeStr, txsList) {
+            let bal = a.initialBalance || 0;
+            (txsList || []).forEach(t => {
+                if (!t.date) return;
+                if (a.statementDay ? ccEffCloseStr(a, t) > closeStr : t.date > closeStr) return;
+                bal += ccTxCardDelta(a, t);
+            });
+            return bal;
+        }
+        // Payments / refunds credited to the card that belong AFTER the statement closing on
+        // closeStr (no upper bound at today — a pre-recorded future payment still counts).
+        function ccPaymentsAfterClose(a, closeStr, txsList) {
+            let paid = 0;
+            (txsList || []).forEach(t => {
+                if (!t.date) return;
+                if (a.statementDay ? ccEffCloseStr(a, t) <= closeStr : t.date <= closeStr) return;
+                if ((t.type === "income" && t.src === a.id) || (t.type === "transfer" && t.dest === a.id)) {
+                    paid += ccTxCardDelta(a, t);
+                }
+            });
+            return paid;
+        }
+        // Most recent statement close on or before todayStr.
+        function ccLastCloseOnOrBefore(statementDay, todayStr) {
+            const nat = ccNaturalCloseStr(statementDay, todayStr);
+            return nat <= todayStr ? nat : ccAddCycles(statementDay, nat, -1);
+        }
+        // What the bank has actually billed and is still unpaid (all statements closed so far).
+        function ccBilledOutstanding(a, txsList, todayStr) {
+            if (!a.statementDay) return null;
+            const closeStr = ccLastCloseOnOrBefore(a.statementDay, todayStr);
+            const billed = Math.max(0, -ccBalanceAtClose(a, closeStr, txsList));
+            return Math.max(0, billed - ccPaymentsAfterClose(a, closeStr, txsList));
+        }
+        function ccFmtCloseDate(str) {
+            try { return new Date(str + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); } catch (e) { return str; }
+        }
+
+        // v629: the stmtShift value a transaction should be saved with. The Add/Edit form only
+        // offers a "Billed in next statement" switch (shift 0 <-> +1); any other value an entry
+        // already carries (-1, +2 — set from the v630 Reconcile screen) is kept unless the switch
+        // is actually flipped, and an entry whose row is hidden keeps whatever it had.
+        function readTxStmtShiftForSave(existingTx) {
+            const orig = existingTx && existingTx.stmtShift ? (existingTx.stmtShift | 0) : 0;
+            const row = document.getElementById("txStmtRow");
+            if (!row || row.style.display === "none") return orig || undefined;
+            const checked = document.getElementById("txStmtShift").checked;
+            if (checked === (orig > 0)) return orig || undefined;
+            return checked ? 1 : undefined;
+        }
+
+        // Shows/hides the "🧾 Billed in next statement" row: only for a card that has a statement
+        // day, on whichever side of the entry is the card (Expense/Income account, or a Transfer
+        // from/to it). The hint spells out which statement the entry will land on.
+        async function refreshTxStmtRow(accountsArg) {
+            const row = document.getElementById("txStmtRow");
+            if (!row) return;
+            const accounts = Array.isArray(accountsArg) ? accountsArg : await readAllDB(STORES.ACCOUNTS);
+            const type = document.getElementById("txType").value;
+            const srcId = document.getElementById("srcAccount").value;
+            const destId = document.getElementById("destAccount").value;
+            let card = accounts.find(a => a.id === srcId && a.type === "creditcard");
+            if (!card && type === "transfer") card = accounts.find(a => a.id === destId && a.type === "creditcard");
+            if (!card || !card.statementDay) { row.style.display = "none"; return; }
+            row.style.display = "block";
+            const dateVal = document.getElementById("txDate").value;
+            const hint = document.getElementById("txStmtHint");
+            if (!dateVal) { hint.textContent = ""; return; }
+            const editId = document.getElementById("txId").value;
+            let orig = 0;
+            if (editId !== "") {
+                const existing = (await readAllDB(STORES.TRANSACTIONS)).find(t => String(t.id) === String(editId));
+                orig = existing && existing.stmtShift ? (existing.stmtShift | 0) : 0;
+            }
+            const checked = document.getElementById("txStmtShift").checked;
+            const shift = checked ? (orig > 0 ? orig : 1) : (orig > 0 ? 0 : orig);
+            const natural = ccNaturalCloseStr(card.statementDay, dateVal);
+            const eff = ccAddCycles(card.statementDay, natural, shift);
+            hint.textContent = shift === 0
+                ? `Normally billed on the statement closing ${ccFmtCloseDate(natural)}. Switch on if the bank left it off that one.`
+                : `Will be billed on the statement closing ${ccFmtCloseDate(eff)} (instead of ${ccFmtCloseDate(natural)}).`;
         }
 
         // Wired to the Activity page's own 💳 Pay button — reads which account is currently
@@ -13566,6 +13715,7 @@
                 document.getElementById("txDate").value = tx.date;
                 document.getElementById("txNotes").value = tx.notes || "";
                 document.getElementById("txChecked").checked = !!tx.checked;
+                document.getElementById("txStmtShift").checked = (tx.stmtShift | 0) > 0; // v629
                 // Split Expenses is a new-entry-only affordance (see the comment on #txSplitWrap in
                 // index.html) — an existing record, split or not, is always edited as the single row
                 // it already is.
@@ -13713,6 +13863,7 @@
                 updateTxTagsRowVisibility();
                 resetTxTagsChips([]);
                 refreshTxPolicyRow(null); // v468
+                document.getElementById("txStmtShift").checked = false; // v629
 
                 // Pre-select the user's default account, if one is set and still exists — new
                 // entries only, never when editing (handled above via tx.src). Income uses
@@ -13842,6 +13993,7 @@
             syncAccountPickerButtonText("txCategory");
             // v468: final re-check, now that every branch above has settled the category.
             refreshTxPolicyRow();
+            refreshTxStmtRow(accounts); // v629: "Billed in next statement" row (card accounts with a statement day)
 
             openModal("txModal");
             // v439: callers that preset Account/Currency programmatically right after this function
@@ -14914,6 +15066,7 @@
             updateTxTransferFxVisibility();
             updateTxTagsRowVisibility();
             refreshTxWalletHint(); // v439
+            refreshTxStmtRow(accounts); // v629
         }
 
         // v295: Tags row visibility. Transfers are still never taggable in general (see the
@@ -15592,6 +15745,9 @@
                 policyId: ((document.getElementById("txType").value === "expense" || (document.getElementById("txType").value === "income" && pendingRefundOf === null)) && document.getElementById("txPolicyRow").style.display !== "none") // v510: an Income entry can be linked too (policy cashback)
                     ? (document.getElementById("txPolicyId").value || null)
                     : undefined,
+                // v629: optional statement-cycle shift (see "CREDIT CARD STATEMENT CYCLES" above). Listed
+                // explicitly because this record is built field-by-field — a field left out is wiped on edit.
+                stmtShift: readTxStmtShiftForSave(existingTxForEdit),
                 // v92 fix: writeDB() does a full put() that replaces the entire stored record, so
                 // an edit that omitted this field was silently stripping splitGroupId off of split
                 // parts, ungrouping them into standalone transactions the moment they were edited
@@ -22607,7 +22763,10 @@
             // before the cutoff. Used to tell "billed as of the last statement close" apart from
             // "everything ever posted to the account" (see ccReminderHTML below for why that
             // distinction matters).
-            function ccBalanceAsOf(a, cutoffStr) {
+            function ccBalanceAsOf(a, cutoffStr, byClose) {
+                // v629: byClose = count only what the bank BILLED by that statement close
+                // (transactions' stmtShift applied) — see ccBalanceAtClose().
+                if (byClose && a.statementDay) return ccBalanceAtClose(a, cutoffStr, txs);
                 let bal = a.initialBalance || 0;
                 txs.forEach(t => {
                     if (!t.date || t.date > cutoffStr) return;
@@ -22650,17 +22809,10 @@
                 // treats future-dated transactions as real. Excludes new charges on purpose:
                 // fresh spending after the statement close belongs to the NEXT cycle, not this
                 // one, and must never be treated as "paying down" old billed debt.
+                // v629: shared with the Reconcile screen (ccPaymentsAfterClose) so a payment's own
+                // statement-cycle shift is honoured the same way everywhere.
                 function ccPaymentsAfter(sinceStr) {
-                    let paid = 0;
-                    txs.forEach(t => {
-                        if (!t.date || t.date <= sinceStr) return;
-                        if (t.type === "income" && t.src === a.id) {
-                            paid += (t.manualFxRate && t.currency !== a.currency) ? t.amount * t.manualFxRate : convertCurrency(t.amount, t.currency, a.currency);
-                        } else if (t.type === "transfer" && t.dest === a.id) {
-                            paid += (t.destAmount != null) ? t.destAmount : convertCurrency(t.amount, t.currency, a.currency);
-                        }
-                    });
-                    return paid;
+                    return ccPaymentsAfterClose(a, sinceStr, txs);
                 }
 
                 let anchor = ccDueDateFor(todayDate.getFullYear(), todayDate.getMonth(), a.paymentDueDay);
@@ -22690,7 +22842,7 @@
                     let closeDate = ccDueDateFor(dueDateObj.getFullYear(), dueDateObj.getMonth(), a.statementDay);
                     if (closeDate > dueDateObj) closeDate = ccDueDateFor(dueDateObj.getFullYear(), dueDateObj.getMonth() - 1, a.statementDay);
                     const closeStr = localDateStr(closeDate);
-                    let billed = Math.max(0, -ccBalanceAsOf(a, closeStr));
+                    let billed = Math.max(0, -ccBalanceAsOf(a, closeStr, true)); // v629: by statement cycle (stmtShift)
                     // v275: subtract anything already paid toward THIS cycle's billed debt
                     // specifically, rather than the old approach of taking min(current total
                     // balance, billed debt) — that couldn't tell "old debt still outstanding"
@@ -23290,6 +23442,10 @@
                 const receiptBadge = attCount > 0
                     ? `<span data-click="openTxAttachmentsBadge" data-id="${escapeHtml(t.id)}" data-attachments="${escapeHtml(JSON.stringify(t.attachments || []))}" ${t.image ? `data-legacy-image="${escapeHtml(t.image)}"` : ''} style="cursor:pointer; margin-left:4px;" title="View attachment${attCount > 1 ? 's' : ''}">📎${attCount > 1 ? `<span style="font-size:0.6rem; vertical-align:top;">×${attCount}</span>` : ''}</span>`
                     : '';
+                // v629: small pill on entries the bank bills on a different statement than their date implies.
+                const stmtShiftBadge = (t.stmtShift | 0) !== 0
+                    ? `<span style="font-size:0.62rem; font-weight:700; color:#9d174d; background:#fce7f3; padding:1px 5px; border-radius:4px; margin-left:6px; white-space:nowrap;" title="Billed on a different statement than its date">🧾 ${(t.stmtShift | 0) > 0 ? "Next stmt" : "Earlier stmt"}</span>`
+                    : '';
                 const referenceText = t.fdReferenceNo ? ` · Ref: ${escapeHtml(t.fdReferenceNo)}` : '';
                 // Maturity date (v55) — shown inline on every FD placement row, not just inside
                 // the maturity reminder banner, so it's visible while scrolling that account's
@@ -23368,7 +23524,7 @@
                         ${txIconCircleHTML}
                         <div class="tx-row-body">
                             <div class="item-left">
-                                <span class="item-name">${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}${refundBadge}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}</span>
+                                <span class="item-name">${escapeHtml(t.desc)}${fdStatusBadge}${manualFxBadge}${refundBadge}${stmtShiftBadge}${buildTagBadgesHTML(t.tags, t.id)}${buildClaimedBadgeHTML(t, txs)}</span>
                                 <span class="item-meta">${t.date} [${escapeHtml(splitInfo ? splitInfo.catLabel : (t.cat || 'Transfer'))}]${referenceText}${maturityText}${receiptBadge}</span>
                                 <span class="item-meta" style="display:block; margin-top:2px; color:var(--text-muted);">${accountText}</span>
                                 ${notesLine}
@@ -29228,6 +29384,7 @@
             recalcTxFdMaturity: () => { recalcTxFdMaturity(); recalcTxSplitTotal(); },
             recalcTplSplitTotal: () => recalcTplSplitTotal(),
             syncTransactionCurrency: () => syncTransactionCurrency(),
+            refreshTxStmtRow: () => refreshTxStmtRow(), // v629
             handleTxAttachmentsSelected: (el, e) => handleTxAttachmentsSelected(e),
             handleCompanionCustomImageSelected: (el) => handleCompanionCustomImageSelected(el),
             handleAccLogoFileSelected: (el) => handleAccLogoFileSelected(el),

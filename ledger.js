@@ -10,7 +10,7 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v629";
+        const APP_VERSION = "v630";
         const APP_VERSION_DATE = "2026-11-06";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
@@ -7338,6 +7338,10 @@
                 const ccPayBtnHTML = ccAmountDue > 0.005
                     ? `<button type="button" data-click="openCreditCardPayment" data-id="${escapeHtml(a.id)}" style="font-size:0.66rem; font-weight:700; color:#fff; background:#db2777; border:none; border-radius:6px; padding:5px 8px; white-space:nowrap; cursor:pointer;">💳 Pay</button>`
                     : "";
+                // v630: 🧾 Reconcile — whenever the card has a Statement Day (even with nothing owed).
+                const ccReconBtnHTML = (a.type === "creditcard" && a.statementDay)
+                    ? `<button type="button" data-click="ccReconOpen" data-id="${escapeHtml(a.id)}" title="Reconcile with the bank statement" style="font-size:0.66rem; font-weight:700; color:#9d174d; background:#fdf2f8; border:1px solid #fbcfe8; border-radius:6px; padding:4px 7px; white-space:nowrap; cursor:pointer;">🧾 Reconcile</button>`
+                    : "";
 
                 // v62: subrows collapsed by default (see expandedAccountSubrows) — built into
                 // subrowsHtml first (before the main row, so the row can show a collapse/expand
@@ -7464,7 +7468,7 @@
                             })()}
                         </div>
                         <span style="display:flex; align-items:center; gap:6px;">
-                            ${ccPayBtnHTML}
+                            ${ccPayBtnHTML}${ccReconBtnHTML}
                             ${subrowToggleHTML}
                             <span style="color:var(--text-muted);">›</span>
                         </span>
@@ -7710,6 +7714,7 @@
                     <div class="acct-actions">
                         ${canAdd ? `<button type="button" class="acct-act-btn primary" data-click="accountsCardAddEntry" data-id="${escapeHtml(id)}">+ Add entry</button>` : ""}
                         ${due > 0.005 ? `<button type="button" class="acct-act-btn pay" data-click="openCreditCardPayment" data-id="${escapeHtml(id)}">\uD83D\uDCB3 Pay</button>` : ""}
+                        ${(a.type === "creditcard" && a.statementDay) ? `<button type="button" class="acct-act-btn" data-click="ccReconOpen" data-id="${escapeHtml(id)}">\uD83E\uDDFE Reconcile</button>` : ""}
                         <button type="button" class="acct-act-btn" data-click="navigateToLedgerPage" data-id="${escapeHtml(id)}" data-back="accounts">Activity</button>
                         <button type="button" class="acct-act-btn" data-click="editAccount" data-id="${escapeHtml(id)}">Edit</button>
                     </div>
@@ -8144,6 +8149,349 @@
                 : `Will be billed on the statement closing ${ccFmtCloseDate(eff)} (instead of ${ccFmtCloseDate(natural)}).`;
         }
 
+
+        // ================= CREDIT CARD RECONCILE (v630) =================
+        // Tick the card's transactions against the bank statement for ONE statement period, type the
+        // bank's statement balance, and see whether the two tally. Unticking a line is exactly the v629
+        // "billed in next statement" switch (it writes the same `stmtShift` on the transaction), so the
+        // two ways of fixing a mismatch can never disagree: the reminder, the 💳 Pay pre-fill and this
+        // screen all read that one field.
+        //
+        // Per-statement records (the bank figure you typed, reconciled yes/no, a fingerprint of what was
+        // reconciled) live in ONE SETTINGS row, key "ccRecon": { [cardId]: { [closeDate]: {bank, done,
+        // doneAt, diff, fp} } } — so no new store/DB_VERSION bump, and backup/restore/Drive sync carry it
+        // as part of the settings dump. A reconciled cycle goes back to "changed — re-check" on its own
+        // when the fingerprint no longer matches (an entry in the period was added/edited/deleted/moved).
+        const CC_RECON_KEY = "ccRecon";
+        let ccReconAccountId = null;
+        let ccReconCloseStr = null;
+        let ccReconKnownIds = null;   // ids seen at the last render, so rows added since flash briefly
+        let ccReconBankTimer = null;
+
+        function ccAddDaysStr(str, n) {
+            const p = str.split("-").map(Number);
+            return localDateStr(new Date(p[0], p[1] - 1, p[2] + n));
+        }
+        function ccFmtShortDate(str) {
+            try { return new Date(str + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }); } catch (e) { return str; }
+        }
+        function ccTxTouchesCard(a, t) {
+            if ((t.type === "expense" || t.type === "income") && t.src === a.id) return true;
+            return t.type === "transfer" && (t.src === a.id || t.dest === a.id);
+        }
+        function ccHash(str) {
+            let h = 5381;
+            for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+            return (h >>> 0).toString(36);
+        }
+        // Due date (ISO) of the statement closing on closeStr, or null when the card has no due day.
+        function ccDueDateStrForClose(a, closeStr) {
+            if (!a.paymentDueDay) return null;
+            const p = closeStr.split("-").map(Number);
+            let d = ccCloseDateObj(p[0], p[1] - 1, a.paymentDueDay);
+            if (localDateStr(d) < closeStr) d = ccCloseDateObj(p[0], p[1], a.paymentDueDay);
+            return localDateStr(d);
+        }
+        // Everything the Reconcile screen (and the reminder's status tag) needs for one statement period.
+        function ccReconPeriodData(a, closeStr, txsList) {
+            const S = a.statementDay;
+            const prevClose = ccAddCycles(S, closeStr, -1);
+            const nextClose = ccAddCycles(S, closeStr, 1);
+            const cardTxs = (txsList || []).filter(t => t.date && ccTxTouchesCard(a, t));
+            const sortFn = (p, q) => (p.date < q.date ? -1 : p.date > q.date ? 1 : (p.id < q.id ? -1 : 1));
+            const info = cardTxs.map(t => ({ t, nat: ccNaturalCloseStr(S, t.date), eff: ccEffCloseStr(a, t), delta: ccTxCardDelta(a, t) }));
+            const inPeriod = info.filter(i => i.eff === closeStr).sort((p, q) => sortFn(p.t, q.t));
+            // dated in this period but the bank bills them later (the v629 shift, or untick here)
+            const movedOut = info.filter(i => i.nat === closeStr && i.eff !== closeStr).sort((p, q) => sortFn(p.t, q.t));
+            // dated just after the cut-off — in case the bank counted one of them on THIS statement
+            const lastDay = ccAddDaysStr(closeStr, 10);
+            const justAfter = info.filter(i => i.nat === nextClose && i.eff === nextClose && i.t.date <= lastDay).sort((p, q) => sortFn(p.t, q.t));
+            let charges = 0, credits = 0;
+            inPeriod.forEach(i => { if (i.delta < 0) charges -= i.delta; else credits += i.delta; });
+            const prevOwed = -ccBalanceAtClose(a, prevClose, txsList);
+            const appOwed = -ccBalanceAtClose(a, closeStr, txsList);
+            const fpSrc = inPeriod.map(i => i.t.id + "|" + i.t.date + "|" + i.delta.toFixed(2) + "|" + (i.t.stmtShift | 0)).join(";") + "#" + prevOwed.toFixed(2);
+            return {
+                closeStr, prevClose, nextClose, inPeriod, movedOut, justAfter, charges, credits, prevOwed, appOwed,
+                fp: ccHash(fpSrc),
+                hasEarlier: info.some(i => i.eff < closeStr),
+                periodStart: ccAddDaysStr(prevClose, 1)
+            };
+        }
+        async function loadCcRecon() {
+            try {
+                const row = (await readAllDB(STORES.SETTINGS)).find(r => r && r.key === CC_RECON_KEY);
+                return (row && row.value && typeof row.value === "object") ? row.value : {};
+            } catch (e) { return {}; }
+        }
+        async function saveCcRecon(all) {
+            await writeDB(STORES.SETTINGS, { key: CC_RECON_KEY, value: all });
+        }
+        // "done" = reconciled and nothing in that period has changed since; "changed" = was reconciled but
+        // the period's entries no longer match; "none" = not reconciled.
+        function ccReconStatusFor(a, closeStr, txsList, reconAll) {
+            const rec = reconAll && reconAll[a.id] && reconAll[a.id][closeStr];
+            if (!rec || !rec.done) return "none";
+            return rec.fp === ccReconPeriodData(a, closeStr, txsList).fp ? "done" : "changed";
+        }
+        // Statement close date for a due date (same rule billedDebtFor() uses in the reminder).
+        function ccCloseForDue(a, dueDateObj) {
+            let c = ccCloseDateObj(dueDateObj.getFullYear(), dueDateObj.getMonth(), a.statementDay);
+            if (c > dueDateObj) c = ccCloseDateObj(dueDateObj.getFullYear(), dueDateObj.getMonth() - 1, a.statementDay);
+            return localDateStr(c);
+        }
+
+        async function ccReconContext() {
+            const [accounts, txs, reconAll] = await Promise.all([readAllDB(STORES.ACCOUNTS), readAllDB(STORES.TRANSACTIONS), loadCcRecon()]);
+            const a = accounts.find(x => x.id === ccReconAccountId);
+            if (!a || a.type !== "creditcard" || !a.statementDay) return { accounts, txs, reconAll, a: null };
+            const lastClose = ccLastCloseOnOrBefore(a.statementDay, todayLocalStr());
+            if (!ccReconCloseStr || ccReconCloseStr > lastClose) ccReconCloseStr = lastClose;
+            return { accounts, txs, reconAll, a, lastClose, closeStr: ccReconCloseStr, pd: ccReconPeriodData(a, ccReconCloseStr, txs) };
+        }
+
+        function ccReconParseBank(raw) {
+            const v = parseFloat(String(raw == null ? "" : raw).replace(/,/g, "").trim());
+            return isNaN(v) ? null : v;
+        }
+
+        // closeStrOpt (optional, ISO) opens that statement; otherwise the most recent closed one. The
+        // dashboard reminder passes the statement its due date belongs to.
+        function openCcRecon(accountIdOrEl, closeStrOpt) {
+            ccReconAccountId = typeof accountIdOrEl === "string" ? accountIdOrEl : (accountIdOrEl && accountIdOrEl.dataset ? accountIdOrEl.dataset.id : null);
+            if (!ccReconAccountId) return;
+            ccReconCloseStr = closeStrOpt || null;
+            ccReconKnownIds = null;
+            const modal = document.getElementById("ccReconModal");
+            if (!modal.classList.contains("active")) openModal("ccReconModal");
+            renderCcRecon();
+        }
+        function openCcReconFromLedgerHeader() {
+            if (activeLedgerAccountView !== "all") openCcRecon(activeLedgerAccountView);
+        }
+
+        function ccReconRowHTML(a, i, ticked, opts) {
+            const t = i.t;
+            const credit = i.delta > 0;
+            const kind = t.type === "transfer" ? (credit ? "Payment" : "Transfer out") : (credit ? "Refund / credit" : (t.cat || "Expense"));
+            const flags = [];
+            if (opts.isNew) flags.push('<span style="color:#a16207;">new</span>');
+            if (opts.matchesDiff) flags.push('<span style="color:#b91c1c;">≈ the difference</span>');
+            if (opts.note) flags.push(opts.note);
+            const flagHTML = flags.length ? ` · ${flags.join(" · ")}` : "";
+            return `<div class="ccr-row${ticked ? "" : " ccr-off"}${opts.isNew ? " ccr-new" : ""}">
+                <label class="ccr-tick"><input type="checkbox" data-change="ccReconToggleTx" data-id="${escapeHtml(t.id)}" ${ticked ? "checked" : ""} aria-label="Counted on the bank statement"></label>
+                <div class="ccr-main" data-click="ccReconEditTx" data-id="${escapeHtml(t.id)}">
+                    <div class="ccr-desc">${escapeHtml(t.desc || "(no description)")}</div>
+                    <div class="ccr-sub">${escapeHtml(ccFmtShortDate(t.date))} · ${escapeHtml(kind)}${flagHTML}</div>
+                </div>
+                <div class="ccr-amt${credit ? " cr" : ""}">${credit ? "−" : ""}${formatCurrency(Math.abs(i.delta), a.currency)}</div>
+            </div>`;
+        }
+
+        async function renderCcRecon() {
+            const body = document.getElementById("ccReconBody");
+            if (!body || !ccReconAccountId) return;
+            const ctx = await ccReconContext();
+            const a = ctx.a;
+            if (!a) {
+                body.innerHTML = `<p style="font-size:0.85rem; color:var(--text-muted); line-height:1.5;">Set a <b>Statement Day</b> on this card (Accounts → Edit) to reconcile its statements.</p>`;
+                return;
+            }
+            const scrollTop = body.scrollTop;
+            const { pd, closeStr, reconAll } = ctx;
+            const rec = (reconAll[a.id] && reconAll[a.id][closeStr]) || null;
+            const bank = rec && typeof rec.bank === "number" ? rec.bank : null;
+            const diff = bank === null ? null : Math.round((pd.appOwed - bank) * 100) / 100;
+            const status = ccReconStatusFor(a, closeStr, ctx.txs, reconAll);
+            document.getElementById("ccReconTitle").textContent = "🧾 Reconcile · " + accountOptionLabel(a, ctx.accounts);
+
+            const matchAbs = (diff !== null && Math.abs(diff) > 0.005) ? Math.abs(diff) : null;
+            const hits = (i) => matchAbs !== null && Math.abs(Math.abs(i.delta) - matchAbs) < 0.005;
+            const seen = ccReconKnownIds;
+            const isNew = (i) => seen !== null && !seen.has(String(i.t.id));
+            const rowsIn = pd.inPeriod.map(i => ccReconRowHTML(a, i, true, {
+                isNew: isNew(i), matchesDiff: hits(i),
+                note: (i.t.stmtShift | 0) !== 0 ? `<span style="color:#9d174d;">${(i.t.stmtShift | 0) > 0 && i.nat !== closeStr ? "carried from an earlier statement" : "moved to this statement"}</span>` : ""
+            })).join("");
+            const rowsOut = pd.movedOut.map(i => ccReconRowHTML(a, i, false, {
+                isNew: isNew(i), matchesDiff: hits(i),
+                note: `<span style="color:#9d174d;">billed next statement</span>`
+            })).join("");
+            const rowsAfter = pd.justAfter.map(i => ccReconRowHTML(a, i, false, { isNew: isNew(i), matchesDiff: hits(i), note: "dated after this statement" })).join("");
+
+            const dueStr = ccDueDateStrForClose(a, closeStr);
+            const paidAfter = ccPaymentsAfterClose(a, closeStr, ctx.txs);
+            const stillToPay = Math.max(0, pd.appOwed - paidAfter);
+            const lastClose = ctx.lastClose;
+            const navBtn = (dir, enabled, glyph) => `<button type="button" data-click="${dir < 0 ? "ccReconPrev" : "ccReconNext"}" ${enabled ? "" : "disabled"} style="background:var(--chip-bg); color:var(--text-main); border:none; border-radius:8px; width:34px; height:34px; font-size:1.1rem; ${enabled ? "" : "opacity:.35;"}">${glyph}</button>`;
+
+            let statusHTML;
+            if (status === "done") statusHTML = `<span style="color:#15803d; font-weight:700;">✓ Reconciled${rec && rec.doneAt ? " on " + escapeHtml(ccFmtCloseDate(rec.doneAt.slice(0, 10))) : ""}${rec && Math.abs(rec.diff || 0) > 0.005 ? ` (with a difference of ${formatCurrency(rec.diff, a.currency)})` : ""}</span>`;
+            else if (status === "changed") statusHTML = `<span style="color:#b45309; font-weight:700;">⚠ Entries in this period changed since you reconciled — please re-check.</span>`;
+            else statusHTML = `<span style="color:var(--text-muted); font-weight:600;">Not reconciled yet</span>`;
+
+            let diffHTML;
+            if (diff === null) diffHTML = `<span style="color:var(--text-muted);">Type the balance shown on the bank's statement to compare.</span>`;
+            else if (Math.abs(diff) < 0.005) diffHTML = `<span style="color:#15803d; font-weight:700;">✓ Tallies with the bank statement</span>`;
+            else diffHTML = `<span style="color:#b91c1c; font-weight:700;">Difference ${formatCurrency(Math.abs(diff), a.currency)} — ${diff > 0 ? "the app counts more than the bank. Untick an entry the bank left off." : "the bank counts more than the app. Add what's missing (or tick an entry dated just after)."}</span>`;
+
+            body.innerHTML = `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px;">
+                    ${navBtn(-1, pd.hasEarlier, "‹")}
+                    <div style="text-align:center; flex:1;">
+                        <div style="font-size:0.9rem; font-weight:800;">Statement closing ${escapeHtml(ccFmtCloseDate(closeStr))}</div>
+                        <div style="font-size:0.7rem; color:var(--text-muted);">${escapeHtml(ccFmtShortDate(pd.periodStart))} – ${escapeHtml(ccFmtShortDate(closeStr))}${dueStr ? " · due " + escapeHtml(ccFmtShortDate(dueStr)) : ""}</div>
+                    </div>
+                    ${navBtn(1, closeStr < lastClose, "›")}
+                </div>
+                <div style="font-size:0.74rem; text-align:center; margin-bottom:10px;">${statusHTML}</div>
+
+                <div class="ccr-sum">
+                    <div><span>Previous balance</span><b>${formatCurrency(pd.prevOwed, a.currency)}</b></div>
+                    <div><span>+ Charges (ticked)</span><b>${formatCurrency(pd.charges, a.currency)}</b></div>
+                    <div><span>− Payments &amp; refunds (ticked)</span><b style="color:var(--income-color);">${formatCurrency(pd.credits, a.currency)}</b></div>
+                    <div class="ccr-sum-total"><span>Statement balance (app)</span><b>${formatCurrency(pd.appOwed, a.currency)}</b></div>
+                </div>
+
+                <button type="button" data-click="ccReconAddMissing" class="submit-btn" style="margin:8px 0 6px; background:var(--chip-bg); color:var(--text-main);">+ Add missing transaction</button>
+
+                <div class="ccr-list">
+                    ${rowsIn || `<p style="font-size:0.78rem; color:var(--text-muted); padding:8px 2px;">No card entries counted on this statement.</p>`}
+                    ${rowsOut ? `<div class="ccr-sep">Not on this statement (billed next)</div>${rowsOut}` : ""}
+                    ${rowsAfter ? `<details style="margin-top:6px;"><summary class="ccr-sep" style="cursor:pointer;">Dated just after the statement (${pd.justAfter.length}) — tick if the bank counted one</summary>${rowsAfter}</details>` : ""}
+                </div>
+
+                <div class="ccr-bank">
+                    <label for="ccrBank" style="font-size:0.74rem; font-weight:700;">Bank statement balance (total owed on the statement)</label>
+                    <input type="text" inputmode="decimal" id="ccrBank" data-input="ccReconBankInput" data-change="ccReconBankCommit" data-app="${pd.appOwed}" value="${bank === null ? "" : bank.toFixed(2)}" placeholder="e.g. 1,234.56" autocomplete="off">
+                    <div id="ccrDiff" style="font-size:0.74rem; margin-top:6px; line-height:1.4;">${diffHTML}</div>
+                </div>
+
+                <div style="font-size:0.78rem; font-weight:700; margin:10px 0 8px;">${pd.appOwed > 0.005 ? (stillToPay > 0.005 ? `Still to pay${dueStr ? " by " + escapeHtml(ccFmtShortDate(dueStr)) : ""}: ${formatCurrency(stillToPay, a.currency)}` : `✓ This statement is fully paid`) : "Nothing owed on this statement"}</div>
+
+                ${status === "done"
+                    ? `<button type="button" data-click="ccReconReopen" class="submit-btn" style="background:var(--chip-bg); color:var(--text-main); margin-top:0;">Reopen this statement</button>`
+                    : `<button type="button" data-click="ccReconMarkDone" class="submit-btn" style="margin-top:0;">${status === "changed" ? "Mark reconciled again" : "Mark reconciled"}</button>`}
+            `;
+            ccReconKnownIds = new Set(ctx.txs.filter(t => ccTxTouchesCard(a, t)).map(t => String(t.id)));
+            body.scrollTop = scrollTop;
+        }
+
+        // Writes the bank figure currently typed (if any) into this statement's record.
+        async function ccReconSaveBankDraft() {
+            if (!ccReconAccountId || !ccReconCloseStr) return;
+            const input = document.getElementById("ccrBank");
+            if (!input) return;
+            const val = ccReconParseBank(input.value);
+            const all = await loadCcRecon();
+            const accRec = all[ccReconAccountId] || (all[ccReconAccountId] = {});
+            const cur = accRec[ccReconCloseStr] || {};
+            const curBank = typeof cur.bank === "number" ? cur.bank : null;
+            if (val === curBank) return; // nothing changed — don't write
+            const next = Object.assign({}, cur, { bank: val });
+            if (cur.done) next.done = false; // a different bank figure needs a fresh sign-off
+            accRec[ccReconCloseStr] = next;
+            await saveCcRecon(all);
+        }
+
+        function ccReconBankInput(el) {
+            const v = ccReconParseBank(el.value);
+            const app = Number(el.dataset.app) || 0;
+            const out = document.getElementById("ccrDiff");
+            if (out) {
+                if (v === null) out.innerHTML = `<span style="color:var(--text-muted);">Type the balance shown on the bank's statement to compare.</span>`;
+                else {
+                    const d = Math.round((app - v) * 100) / 100;
+                    out.innerHTML = Math.abs(d) < 0.005
+                        ? `<span style="color:#15803d; font-weight:700;">✓ Tallies with the bank statement</span>`
+                        : `<span style="color:#b91c1c; font-weight:700;">Difference ${escapeHtml(String(Math.abs(d).toFixed(2)))} — ${d > 0 ? "app counts more than the bank" : "bank counts more than the app"}</span>`;
+                }
+            }
+            clearTimeout(ccReconBankTimer);
+            ccReconBankTimer = setTimeout(() => { ccReconSaveBankDraft().catch(() => {}); }, 500);
+        }
+        async function ccReconBankCommit() {
+            clearTimeout(ccReconBankTimer);
+            await ccReconSaveBankDraft();
+            await renderCcRecon(); // refreshes the status and the "≈ the difference" hints
+        }
+
+        async function ccReconToggleTx(el) {
+            const id = Number(el.dataset.id);
+            const wantTicked = !!el.checked;
+            await ccReconSaveBankDraft();
+            const ctx = await ccReconContext();
+            if (!ctx.a) return;
+            const t = ctx.txs.find(r => r.id === id);
+            if (!t) { await renderCcRecon(); return; }
+            // ticked = billed on THIS statement; unticked = billed on the next one
+            const target = wantTicked ? ctx.closeStr : ccAddCycles(ctx.a.statementDay, ctx.closeStr, 1);
+            const shift = ccCyclesBetween(ccNaturalCloseStr(ctx.a.statementDay, t.date), target);
+            if (shift) t.stmtShift = shift; else delete t.stmtShift;
+            await writeDB(STORES.TRANSACTIONS, t);
+            await renderCcRecon();
+        }
+
+        async function ccReconEditTx(el) {
+            const id = Number(el.dataset.id);
+            await ccReconSaveBankDraft();
+            const txs = await readAllDB(STORES.TRANSACTIONS);
+            const t = txs.find(r => r.id === id);
+            if (t) await openTransactionForm(t.type, id);
+        }
+        async function ccReconAddMissing() {
+            await ccReconSaveBankDraft();
+            const ctx = await ccReconContext();
+            if (!ctx.a) return;
+            await openTransactionForm("expense", null, ctx.a.id);
+            // a date inside the statement period, so the new entry lands on this statement
+            document.getElementById("txDate").value = ctx.closeStr <= todayLocalStr() ? ctx.closeStr : todayLocalStr();
+            refreshTxStmtRow();
+        }
+
+        async function ccReconMarkDone() {
+            await ccReconSaveBankDraft();
+            const ctx = await ccReconContext();
+            if (!ctx.a) return;
+            const all = ctx.reconAll;
+            const bank = (all[ctx.a.id] && all[ctx.a.id][ctx.closeStr] && typeof all[ctx.a.id][ctx.closeStr].bank === "number") ? all[ctx.a.id][ctx.closeStr].bank : null;
+            if (bank === null) { alert("Type the balance shown on your bank's statement first."); return; }
+            const diff = Math.round((ctx.pd.appOwed - bank) * 100) / 100;
+            if (Math.abs(diff) > 0.005 && !confirm("The app and the bank differ by " + formatCurrency(Math.abs(diff), ctx.a.currency) + ". Mark this statement as reconciled anyway?")) return;
+            const accRec = all[ctx.a.id] || (all[ctx.a.id] = {});
+            accRec[ctx.closeStr] = { bank, done: true, doneAt: new Date().toISOString(), diff, fp: ctx.pd.fp };
+            await saveCcRecon(all);
+            await renderCcRecon();
+            await refreshAfterTransactionChange(); // the dashboard reminder shows the reconciled tag
+            showToast("Statement reconciled");
+        }
+        async function ccReconReopen() {
+            const ctx = await ccReconContext();
+            if (!ctx.a) return;
+            const all = ctx.reconAll;
+            const cur = all[ctx.a.id] && all[ctx.a.id][ctx.closeStr];
+            if (cur) { cur.done = false; await saveCcRecon(all); }
+            await renderCcRecon();
+            await refreshAfterTransactionChange();
+        }
+        async function ccReconPrev() {
+            await ccReconSaveBankDraft();
+            const ctx = await ccReconContext();
+            if (!ctx.a || !ctx.pd.hasEarlier) return;
+            ccReconCloseStr = ctx.pd.prevClose;
+            ccReconKnownIds = null;
+            await renderCcRecon();
+        }
+        async function ccReconNext() {
+            await ccReconSaveBankDraft();
+            const ctx = await ccReconContext();
+            if (!ctx.a || ctx.closeStr >= ctx.lastClose) return;
+            ccReconCloseStr = ctx.pd.nextClose;
+            ccReconKnownIds = null;
+            await renderCcRecon();
+        }
+
         // Wired to the Activity page's own 💳 Pay button — reads which account is currently
         // being viewed rather than a data-id, same reasoning as editAccountFromLedgerHeader above.
         function openCreditCardPaymentFromLedgerHeader() {
@@ -8516,6 +8864,9 @@
             if (!document.getElementById("page-insurance").classList.contains("hidden")) {
                 await renderInsurancePage();
             }
+            // v630: an open Credit Card Reconcile screen redraws so an entry just added/edited/deleted shows up.
+            const reconModalEl = document.getElementById("ccReconModal");
+            if (reconModalEl && reconModalEl.classList.contains("active")) await renderCcRecon();
         }
 
         // Relabels the Add/Edit Fund form for Gold vs a regular unit-trust fund — the same DB
@@ -11755,6 +12106,10 @@
                 const ccPayBtnHTML = ccAmountDue > 0.005
                     ? `<button type="button" data-click="openCreditCardPayment" data-id="${escapeHtml(a.id)}" style="font-size:0.66rem; font-weight:700; color:#fff; background:#db2777; border:none; border-radius:6px; padding:5px 8px; white-space:nowrap; cursor:pointer;">💳 Pay</button>`
                     : "";
+                // v630: 🧾 Reconcile — whenever the card has a Statement Day (even with nothing owed).
+                const ccReconBtnHTML = (a.type === "creditcard" && a.statementDay)
+                    ? `<button type="button" data-click="ccReconOpen" data-id="${escapeHtml(a.id)}" title="Reconcile with the bank statement" style="font-size:0.66rem; font-weight:700; color:#9d174d; background:#fdf2f8; border:1px solid #fbcfe8; border-radius:6px; padding:4px 7px; white-space:nowrap; cursor:pointer;">🧾 Reconcile</button>`
+                    : "";
 
                 let subrowsHtml = "";
 
@@ -11839,7 +12194,7 @@
                             })()}
                         </div>
                         <span style="display:flex; align-items:center; gap:6px;">
-                            ${ccPayBtnHTML}
+                            ${ccPayBtnHTML}${ccReconBtnHTML}
                             ${subrowToggleHTML}
                             <span style="color:var(--text-muted);">›</span>
                         </span>
@@ -22782,6 +23137,7 @@
                 return bal;
             }
             let ccReminderHTML = "";
+            const ccReconAllForReminder = await loadCcRecon(); // v630: reconcile status tag on each reminder
             accounts.filter(a => a.type === "creditcard" && a.paymentDueDay).forEach(a => {
                 const amountDue = Math.max(0, -(nativeBalances[a.id] || 0));
                 if (amountDue <= 0.005) return; // nothing owed — nothing to remind about
@@ -22881,9 +23237,18 @@
                 const label = overdue
                     ? `payment overdue by ${daysOverdue} day${daysOverdue === 1 ? '' : 's'} (since ${dueDateStr}) — action needed`
                     : (dueToday ? `due today` : `due in ${daysAway} day${daysAway === 1 ? '' : 's'} (${dueDateStr})`);
+                // v630: is the statement behind this reminder reconciled? (only for cards with a statement day)
+                let reconTagHTML = "";
+                if (a.statementDay) {
+                    const dueObjForTag = new Date(dueDateStr + "T00:00:00");
+                    const reminderCloseStr = ccCloseForDue(a, dueObjForTag);
+                    const reconStatus = ccReconStatusFor(a, reminderCloseStr, txs, ccReconAllForReminder);
+                    const tagText = reconStatus === "done" ? "✓ reconciled" : (reconStatus === "changed" ? "⚠ changed since reconciled" : "not reconciled");
+                    reconTagHTML = `<div style="font-size:0.7rem; font-weight:600; margin-top:4px; opacity:0.9;">${tagText} · <button type="button" data-click="ccReconOpen" data-id="${escapeHtml(a.id)}" data-close="${reminderCloseStr}" style="background:none; border:none; padding:0; color:inherit; font-size:0.7rem; font-weight:700; text-decoration:underline; cursor:pointer;">Reconcile</button></div>`;
+                }
                 ccReminderHTML += `
                     <div data-click="openCreditCardPayment" data-id="${escapeHtml(a.id)}" style="cursor:pointer; background:${bg}; border:1px solid ${border}; color:${textCol}; border-radius:12px; padding:12px 14px; margin-bottom:8px; font-size:0.8rem; font-weight:600; display:flex; justify-content:space-between; align-items:center;">
-                        <span>${overdue ? '⏰' : '🔔'} ${formatCurrency(displayAmount, a.currency)} on "${escapeHtml(accountOptionLabel(a, accounts))}" ${label}.</span>
+                        <span>${overdue ? '⏰' : '🔔'} ${formatCurrency(displayAmount, a.currency)} on "${escapeHtml(accountOptionLabel(a, accounts))}" ${label}.${reconTagHTML}</span>
                         <span style="font-size:1.1rem;">›</span>
                     </div>
                 `;
@@ -23071,8 +23436,11 @@
             if (showFullAccountHistory) {
                 const viewingAcc = accounts.find(a => a.id === activeLedgerAccountView);
                 const amountDue = (viewingAcc && viewingAcc.type === "creditcard") ? Math.max(0, -(nativeBalances[viewingAcc.id] || 0)) : 0;
-                if (viewingAcc && viewingAcc.type === "creditcard" && amountDue > 0.005) {
+                if (viewingAcc && viewingAcc.type === "creditcard" && (amountDue > 0.005 || viewingAcc.statementDay)) {
                     document.getElementById("ledgerCcAmountDue").innerHTML = formatBalanceHTML(amountDue, viewingAcc.currency);
+                    // v630: Pay only while something is owed; 🧾 Reconcile whenever the card has a statement day
+                    document.getElementById("ledgerCcPayBtn").style.display = amountDue > 0.005 ? "" : "none";
+                    document.getElementById("ledgerCcReconBtn").style.display = viewingAcc.statementDay ? "" : "none";
                     ccBanner.style.display = "flex";
                 } else {
                     ccBanner.style.display = "none";
@@ -29110,6 +29478,14 @@
             editAccountFromLedgerHeader: () => editAccountFromLedgerHeader(),
             openCreditCardPayment: (el) => openCreditCardPayment(el),
             openCreditCardPaymentFromLedgerHeader: () => openCreditCardPaymentFromLedgerHeader(),
+            ccReconOpen: (el, e) => { if (e) e.stopPropagation(); openCcRecon(el.dataset.id, el.dataset.close || null); }, // v630
+            ccReconOpenFromLedgerHeader: () => openCcReconFromLedgerHeader(), // v630
+            ccReconPrev: () => ccReconPrev(),
+            ccReconNext: () => ccReconNext(),
+            ccReconAddMissing: () => ccReconAddMissing(),
+            ccReconEditTx: (el) => ccReconEditTx(el),
+            ccReconMarkDone: () => ccReconMarkDone(),
+            ccReconReopen: () => ccReconReopen(),
             navigateToLinkedAccountFromLedgerHeader: (el) => { if (el.dataset.id) navigateToLedgerPage(el.dataset.id, "workspace"); },
             exportLedgerCsv: () => exportLedgerCsv(),
             exportAccountsCsv: () => exportAccountsCsv(),
@@ -29385,6 +29761,8 @@
             recalcTplSplitTotal: () => recalcTplSplitTotal(),
             syncTransactionCurrency: () => syncTransactionCurrency(),
             refreshTxStmtRow: () => refreshTxStmtRow(), // v629
+            ccReconToggleTx: (el) => ccReconToggleTx(el), // v630
+            ccReconBankCommit: () => ccReconBankCommit(),
             handleTxAttachmentsSelected: (el, e) => handleTxAttachmentsSelected(e),
             handleCompanionCustomImageSelected: (el) => handleCompanionCustomImageSelected(el),
             handleAccLogoFileSelected: (el) => handleAccLogoFileSelected(el),
@@ -29455,6 +29833,7 @@
         };
 
         const INPUT_ACTIONS = {
+            ccReconBankInput: (el) => ccReconBankInput(el), // v630
             recalcClaimSettlePreview: () => recalcClaimSettlePreview(),
             recalcTxFdMaturity: () => { recalcTxFdMaturity(); syncTransferFxOnAmountChange(); recalcTxSplitTotal(); },
             insRecalcPaymentTotal: () => insRecalcPaymentTotal(), // v468

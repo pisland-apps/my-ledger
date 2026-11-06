@@ -2817,6 +2817,28 @@
             padding: 16px;
         }
         .modal.active { display: flex; }
+        /* v630: Credit Card Reconcile screen (see ccReconModal / renderCcRecon() in ledger.js) */
+        .modal-sheet.ccr-sheet { max-width: 460px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
+        .ccr-body { overflow-y: auto; flex: 1 1 auto; min-height: 0; -webkit-overflow-scrolling: touch; }
+        .ccr-sum { background: var(--chip-bg); border-radius: 12px; padding: 8px 12px; font-size: 0.78rem; }
+        .ccr-sum > div { display: flex; justify-content: space-between; padding: 3px 0; }
+        .ccr-sum > div span { color: var(--text-muted); font-weight: 600; }
+        .ccr-sum .ccr-sum-total { border-top: 1px solid rgba(100,116,139,0.35); margin-top: 4px; padding-top: 6px; font-size: 0.86rem; }
+        .ccr-sum .ccr-sum-total span { color: var(--text-main); font-weight: 800; }
+        .ccr-row { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--chip-bg); }
+        .ccr-row.ccr-off { opacity: 0.6; }
+        .ccr-row.ccr-new { animation: ccrFlash 2.6s ease-out; }
+        @keyframes ccrFlash { 0% { background: #fef9c3; } 100% { background: transparent; } }
+        .ccr-tick { display: flex; align-items: center; flex: 0 0 auto; }
+        .ccr-tick input { width: 20px; height: 20px; padding: 0; margin: 0; }
+        .ccr-main { flex: 1; min-width: 0; cursor: pointer; }
+        .ccr-desc { font-size: 0.82rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ccr-sub { font-size: 0.68rem; color: var(--text-muted); }
+        .ccr-amt { font-size: 0.82rem; font-weight: 700; white-space: nowrap; }
+        .ccr-amt.cr { color: var(--income-color); }
+        .ccr-sep { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); padding: 10px 2px 2px; }
+        .ccr-bank { margin-top: 12px; }
+        .ccr-bank input { margin-top: 4px; }
         .modal-sheet {
             /* v156: frosted-glass sheet — translucent instead of flat white, so the dimmed/
                blurred backdrop reads through very faintly around form fields. Kept at 0.92
@@ -4745,7 +4767,10 @@
              duplicate that number as a separate stored/computed value. -->
         <div id="ledgerCcBanner" style="display:none; align-items:center; justify-content:space-between; gap:10px; font-size:0.78rem; font-weight:700; border-radius:10px; padding:10px 12px; margin:-6px 0 14px; background:#fdf2f8; border:1px solid #fbcfe8; color:#9d174d;">
             <span>💳 Amount due: <span id="ledgerCcAmountDue">RM0.00</span></span>
-            <button type="button" data-click="openCreditCardPaymentFromLedgerHeader" style="background:#db2777; color:white; border:none; border-radius:8px; padding:7px 14px; font-size:0.76rem; font-weight:700; cursor:pointer; white-space:nowrap;">💳 Pay</button>
+            <span style="display:flex; gap:6px;">
+                <button type="button" id="ledgerCcReconBtn" data-click="ccReconOpenFromLedgerHeader" style="display:none; background:#fff; color:#9d174d; border:1px solid #fbcfe8; border-radius:8px; padding:7px 12px; font-size:0.76rem; font-weight:700; cursor:pointer; white-space:nowrap;">🧾 Reconcile</button>
+                <button type="button" id="ledgerCcPayBtn" data-click="openCreditCardPaymentFromLedgerHeader" style="background:#db2777; color:white; border:none; border-radius:8px; padding:7px 14px; font-size:0.76rem; font-weight:700; cursor:pointer; white-space:nowrap;">💳 Pay</button>
+            </span>
         </div>
         <div id="ledgerYearNavHome">
         <div id="ledgerYearNav" style="display:none; align-items:center; justify-content:center; gap:16px; padding:10px 0 14px;">
@@ -7575,6 +7600,18 @@
          past the bottom of the viewport, overlapping whatever was there. Capped at
          calc(100vh - 32px) (matches .modal's own 16px top+bottom padding) below, same idiom
          templatePickerModal above already uses at 75vh. -->
+    <!-- v630: Credit Card Reconcile — tick a card's entries against the bank statement for one statement period
+         (see openCcRecon()/renderCcRecon() in ledger.js). Declared before #txModal so the Add/Edit form opens on top of it. -->
+    <div class="modal" id="ccReconModal">
+        <div class="modal-sheet ccr-sheet">
+            <div class="modal-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+                <h3 id="ccReconTitle" style="font-weight:800; font-size:1rem;">🧾 Reconcile statement</h3>
+                <button type="button" data-click="closeModal" data-modal="ccReconModal" style="background:none; border:none; font-size:1.5rem; padding:0 0 0 10px; line-height:1;">&times;</button>
+            </div>
+            <div id="ccReconBody" class="ccr-body"></div>
+        </div>
+    </div>
+
     <div class="modal" id="txModal">
         <div class="modal-sheet" style="padding:0; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 32px);">
             <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:20px 20px 12px; flex-shrink:0; border-bottom:1px solid var(--border-color);">

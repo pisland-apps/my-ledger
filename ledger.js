@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v630";
-        const APP_VERSION_DATE = "2026-11-06";
+        const APP_VERSION = "v631";
+        const APP_VERSION_DATE = "2026-11-17";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -16513,8 +16513,8 @@
         let inventoryStatusFilter = "all"; // "all" | "active" | "disposed" | "lost"
         // v558: category field + grouping. Categories are a fixed list (stored as the plain name on
         // item.category; an item whose stored name is not in the list still groups under that name).
-        const INV_CATEGORIES = ["Electronics", "Appliances", "Furniture & Storage", "Musical Instruments", "Luggage & Travel", "Tools", "Kitchen & Dining", "Home Accessories", "Toys", "Other"];
-        const INV_CATEGORY_ICONS = { "Electronics": "💻", "Appliances": "🔌", "Furniture & Storage": "🪑", "Musical Instruments": "🎹", "Luggage & Travel": "🧳", "Tools": "🔧", "Kitchen & Dining": "🍽️", "Home Accessories": "🏡", "Toys": "🧸", "Other": "📦" };
+        const INV_CATEGORIES = ["Electronics", "Appliances", "Furniture & Storage", "Musical Instruments", "Gold & Jewelry", "Shoes & Footwear", "Sports & Fitness Gear", "Luggage & Travel", "Tools", "Kitchen & Dining", "Home Accessories", "Toys", "Other"];
+        const INV_CATEGORY_ICONS = { "Electronics": "💻", "Appliances": "🔌", "Furniture & Storage": "🪑", "Musical Instruments": "🎹", "Gold & Jewelry": "💍", "Shoes & Footwear": "👟", "Sports & Fitness Gear": "🏸", "Luggage & Travel": "🧳", "Tools": "🔧", "Kitchen & Dining": "🍽️", "Home Accessories": "🏡", "Toys": "🧸", "Other": "📦" };
         let inventoryCategoryFilter = ""; // "" = All | a category name | "__none__" = Uncategorised
         function fillInvCategorySelect(id, selected) {
             const sel = document.getElementById(id);

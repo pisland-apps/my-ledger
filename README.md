@@ -4710,3 +4710,9 @@ Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to
   - **Mark reconciled** stores {bank, done, doneAt, diff, fingerprint}; **Reopen** clears it. The fingerprint (ids/dates/amounts/shifts of the period's entries + the previous balance) is recomputed on display, so any later add/edit/delete/move in that period flips the status to *changed — re-check* by itself. Typing a different bank figure also clears the sign-off. The bank figure is saved as a draft while typing.
 - **Storage:** one SETTINGS row, key `ccRecon` = `{ [cardId]: { [closeDate]: { bank, done, doneAt, diff, fp } } }`. No new object store and no `DB_VERSION` bump — it is part of the settings dump, so backup, restore, Local Snapshots and Drive sync carry it unchanged.
 - `index.html`, `ledger.js`, `sw.js`, `README.md` changed; `APP_VERSION` / `CACHE_NAME` bumped to v630.
+
+## v631: Inventory — 3 new categories
+
+- Added **💍 Gold & Jewelry**, **👟 Shoes & Footwear** and **🏸 Sports & Fitness Gear** to the Inventory category list (`INV_CATEGORIES` / `INV_CATEGORY_ICONS` in ledger.js), placed after Musical Instruments; "Other" stays last.
+- They appear in the item form's Category dropdown, the quick "Set category" dropdown and the category chips / CSV export. Existing items and categories are unchanged; no data migration, no `DB_VERSION` bump.
+- `ledger.js`, `sw.js`, `README.md` changed; `APP_VERSION` / `CACHE_NAME` bumped to v631.

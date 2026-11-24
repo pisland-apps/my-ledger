@@ -4716,3 +4716,30 @@ Account No. / Ref now shows a card number as `•••• 1234 👁`; tap it to
 - Added **💍 Gold & Jewelry**, **👟 Shoes & Footwear** and **🏸 Sports & Fitness Gear** to the Inventory category list (`INV_CATEGORIES` / `INV_CATEGORY_ICONS` in ledger.js), placed after Musical Instruments; "Other" stays last.
 - They appear in the item form's Category dropdown, the quick "Set category" dropdown and the category chips / CSV export. Existing items and categories are unchanged; no data migration, no `DB_VERSION` bump.
 - `ledger.js`, `sw.js`, `README.md` changed; `APP_VERSION` / `CACHE_NAME` bumped to v631.
+
+## v632: Multi-Currency account conversion (e.g. SGD → USD inside IBKR)
+
+- **Transfer** now supports Multi-Currency → Multi-Currency conversion, including the **same account** as both From and To.
+  Pick From = To = your IBKR account, choose the source currency in the header dropdown, then set **Convert to currency**
+  and enter either the exchange rate or the **Amount Received**. The source basket is debited, the target basket credited.
+- New transaction field `destCurrency` (set only for such conversions; `destAmount` holds the received amount).
+  Old data is unaffected; leaving "Convert to currency" blank keeps the previous same-currency behaviour.
+- Currency Activity pages show the conversion on both baskets (−SGD on the SGD page, +USD on the USD page).
+- Scope: Multi → Multi only (single-currency accounts keep their existing FX transfer panel).
+
+Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v632.
+
+## v633: "Avg buy" on fund/stock holding cards
+
+- Under **Units × NAV** each holding card now shows **Avg buy** (v633, changed in v634 to moving average cost of units still held: sells keep the average, later buys re-average, reinvest/contribution units at zero cost). Hidden when nothing is held or the log can't be replayed.
+- Shown on both the account page's Fund Holdings cards and the Unit Trust Portfolio's Fund Detail cards.
+
+Bumped `APP_VERSION` (ledger.js) and `CACHE_NAME` (sw.js) to v633.
+
+## v634: Avg buy now uses moving average cost
+
+See v633 note; bumped `APP_VERSION` / `CACHE_NAME` to v634.
+
+## v635: USD now displays as "US$"
+
+- `currencySymbols.USD` changed from "$" to "US$" so USD amounts (e.g. NVIDIA "US$662.00") are clearly distinguishable from RM / S$. Display only; stored data unchanged. Bumped `APP_VERSION` / `CACHE_NAME` to v635.

@@ -7735,7 +7735,13 @@
                      the received amount itself (effective rate auto-calculated back). -->
                 <div id="txTransferFxWrap" style="display:none; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:10px; margin-bottom:10px;">
                     <p style="font-size:0.7rem; font-weight:700; text-transform:uppercase; color:#1d4ed8; margin-bottom:8px;">🔁 Currency Conversion</p>
-                    <div class="toggle-switch-row" style="margin:0 0 8px;">
+                    <!-- v632: Multi-Currency -> Multi-Currency (incl. the SAME account) conversion. Only shown in that
+                         case; picks which currency basket receives the money. Blank = ordinary same-currency transfer. -->
+                    <div class="form-row" id="txTransferDestCurrencyRow" style="display:none; margin-bottom:8px;">
+                        <label>Convert to currency</label>
+                        <select id="txTransferDestCurrency" class="form-input" data-change="onTransferDestCurrencyChange"></select>
+                    </div>
+                    <div class="toggle-switch-row" id="txTransferFxToggleRow" style="margin:0 0 8px;">
                         <span class="toggle-switch-label" style="font-size:0.75rem;">✏️ Manually set conversion</span>
                         <label class="toggle-switch">
                             <input type="checkbox" id="txTransferFxToggle" data-change="toggleTxTransferFx">

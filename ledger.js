@@ -10,8 +10,8 @@
         // that's the signal to hard-refresh (Ctrl/Cmd+Shift+R) or clear the site's Service
         // Worker/cache in devtools — not a signal that the deploy itself failed. The browser may
         // just be running a cached copy of the old ledger.js.
-        const APP_VERSION = "v631";
-        const APP_VERSION_DATE = "2026-11-17";
+        const APP_VERSION = "v635";
+        const APP_VERSION_DATE = "2026-11-24";
 
         // v100: shared calculator-button icon (replaces the 🧮 emoji, which rendered
         // inconsistently across platforms/fonts). Used by the static Amount field button
@@ -1674,7 +1674,8 @@
             });
             return changed;
         }
-        const currencySymbols = { USD: "$", EUR: "€", GBP: "£", SGD: "S$", MYR: "RM", VND: "₫", PHP: "₱", IDR: "Rp" };
+        const currencySymbols = { USD: "US$", // v635: was "$" — ambiguous next to RM/S$ (and HKD/AUD/CAD all use "$")
+             EUR: "€", GBP: "£", SGD: "S$", MYR: "RM", VND: "₫", PHP: "₱", IDR: "Rp" };
         
         // Dynamic category registry
         let dynamicCategories = [];
@@ -8749,7 +8750,8 @@
             const accountName = id => { if (!id) return "(Opening Balance)"; const a = accounts.find(acc => acc.id === id); return a ? escapeHtml(accountOptionLabel(a, accounts)) : "(deleted account)"; };
 
             const relevantTxs = txs
-                .filter(t => t.currency === currency && (t.src === accountId || t.dest === accountId))
+                .filter(t => (t.currency === currency && (t.src === accountId || t.dest === accountId)) || (t.destCurrency === currency && t.dest === accountId))
+                .filter(t => !(t.destCurrency && t.currency === currency && t.dest === accountId && t.src !== accountId))
                 // v91: collapse Split Expense group siblings to their representative row — see
                 // getSplitGroupInfo().
                 .filter(t => {
@@ -8769,14 +8771,18 @@
                     // just which side (src/dest) it's on — a transfer entered with a negative
                     // amount (e.g. this Opening Balance) actually moves money the opposite way
                     // from what its src/dest role alone would suggest.
-                    const contribution = (t.dest === accountId) ? t.amount : -t.amount;
+                    // v632: in a conversion, this page's currency decides which leg we're showing.
+                    const isConvIn = !!t.destCurrency && t.destCurrency === currency && t.dest === accountId;
+                    const contribution = isConvIn ? t.destAmount : (t.dest === accountId && !t.destCurrency) ? t.amount : -t.amount;
                     if (contribution >= 0) { col = "income-color"; sgn = "+"; }
                     else { col = "expense-color"; sgn = "-"; }
                 }
 
                 const splitInfo = t.splitGroupId ? getSplitGroupInfo(t, txs) : null;
                 const displayCat = splitInfo ? splitInfo.catLabel : (t.cat || 'Transfer');
-                const displayAmount = splitInfo ? splitInfo.totalAmount : t.amount;
+                const convInHere = t.type === "transfer" && !!t.destCurrency && t.destCurrency === currency && t.dest === accountId;
+                const displayAmount = convInHere ? t.destAmount : (splitInfo ? splitInfo.totalAmount : t.amount);
+                const displayCur = convInHere ? t.destCurrency : t.currency;
                 const iconBadge = t.type === "transfer"
                     ? "🔄"
                     : (splitInfo ? splitInfo.members.map(m => getCategoryIcon(m.cat, t.type)).join("") : getCategoryIcon(t.cat, t.type));
@@ -8795,7 +8801,7 @@
                             ${notesLine}
                         </div>
                         <div class="item-right">
-                            <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(Math.abs(displayAmount), t.currency)}</div>
+                            <div class="item-value" style="color:var(--${col}); font-weight:bold;">${sgn}${formatCurrency(Math.abs(displayAmount), displayCur)}</div>
                         </div>
                     </div>`;
             }).join("");
@@ -14103,6 +14109,7 @@
                 document.getElementById("txTransferDestAmount").value = tx.destAmount != null ? tx.destAmount : "";
                 document.getElementById("txTransferRate").value = (tx.destAmount != null && tx.amount) ? (tx.destAmount / tx.amount).toFixed(6) : "";
                 document.getElementById("txTransferFxManualFields").style.display = tx.destAmount != null ? "block" : "none";
+                txTransferDestCurrencyPending = tx.destCurrency || "";
                 await updateTxTransferFxVisibility();
                 if (tx.destAmount != null) {
                     const transferSrcAcc = accounts.find(a => a.id === tx.src);
@@ -14323,6 +14330,8 @@
                 document.getElementById("txTransferRate").value = "";
                 document.getElementById("txTransferDestAmount").value = "";
                 document.getElementById("txTransferFxManualFields").style.display = "none";
+                txTransferDestCurrencyPending = "";
+                document.getElementById("txTransferDestCurrency").innerHTML = "";
 
                 syncTransactionCurrency();
             }
@@ -15365,6 +15374,7 @@
             const editingId = document.getElementById("txId").value;
             const srcId = document.getElementById("srcAccount").value;
             const destId = document.getElementById("destAccount").value;
+            const txCurrencyForHint = currency;
             let amount = parseFloat(document.getElementById("txAmount").value) || 0;
             document.querySelectorAll("#txSplitRows .tx-split-amt").forEach(inp => { amount += parseFloat(inp.value) || 0; });
 
@@ -15374,30 +15384,37 @@
             if (seq !== txWalletHintSeq) return; // a newer refresh superseded this one
             const { accounts, txs, nativeBalances } = data;
 
-            const renderLeg = (el, accountId, isOut) => {
+            const renderLeg = (el, accountId, isOut, curOverride) => {
+                const currency = curOverride || txCurrencyForHint; // v632: conversion dest leg shows its own currency
                 const acc = accountId ? accounts.find(a => a.id === accountId) : null;
                 if (!acc || acc.type !== "multi" || !currency) { el.style.display = "none"; return; }
                 let bal = (nativeBalances[acc.id] && nativeBalances[acc.id][currency]) || 0;
                 if (editingId !== "") {
                     const orig = txs.find(t => String(t.id) === String(editingId));
-                    if (orig && orig.currency === currency) {
+                    if (orig) {
                         let eff = 0;
-                        if (orig.src === acc.id) eff += orig.type === "income" ? orig.amount : (orig.type === "expense" || orig.type === "transfer") ? -orig.amount : 0;
-                        if (orig.type === "transfer" && orig.dest === acc.id) eff += orig.amount;
+                        if (orig.currency === currency) {
+                            if (orig.src === acc.id) eff += orig.type === "income" ? orig.amount : (orig.type === "expense" || orig.type === "transfer") ? -orig.amount : 0;
+                            if (orig.type === "transfer" && orig.dest === acc.id && !orig.destCurrency) eff += orig.amount;
+                        }
+                        // v632: a saved conversion credited destAmount to its destCurrency basket
+                        if (orig.type === "transfer" && orig.destCurrency === currency && orig.dest === acc.id && orig.destAmount != null) eff += orig.destAmount;
                         bal -= eff;
                     }
                 }
-                const after = isOut ? bal - amount : bal + amount;
-                const warn = isOut && (amount > 0 ? after < -0.005 : bal <= 0.005);
+                const legAmount = curOverride ? (parseFloat(document.getElementById("txTransferDestAmount").value) || 0) : amount;
+                const after = isOut ? bal - legAmount : bal + legAmount;
+                const warn = isOut && (legAmount > 0 ? after < -0.005 : bal <= 0.005);
                 let html = `💱 ${isOut ? "Paying from" : "Receiving into"} <b>${escapeHtml(currency)}</b> balance: <b>${escapeHtml(formatCurrency(bal, currency))}</b>`;
-                if (amount > 0) html += `<div class="twh-after">After this entry: ${escapeHtml(formatCurrency(after, currency))}</div>`;
+                if (legAmount > 0) html += `<div class="twh-after">After this entry: ${escapeHtml(formatCurrency(after, currency))}</div>`;
                 if (warn) html += `<div>⚠️ ${amount > 0 ? `Not enough ${escapeHtml(currency)} in this account — it would go negative.` : `No ${escapeHtml(currency)} balance in this account.`} Change the currency at the top if you meant to use another balance.</div>`;
                 el.innerHTML = html;
                 el.classList.toggle("warn", warn);
                 el.style.display = "block";
             };
             renderLeg(srcEl, (type === "expense" || type === "income" || type === "transfer") ? srcId : "", type !== "income");
-            renderLeg(destEl, type === "transfer" ? destId : "", false);
+            const convDestCur = (type === "transfer" && srcId && srcId !== "" ) ? (document.getElementById("txTransferDestCurrency").value || "") : "";
+            renderLeg(destEl, type === "transfer" ? destId : "", false, convDestCur && document.getElementById("txTransferDestCurrencyRow").style.display !== "none" ? convDestCur : "");
         }
 
         async function syncTransactionCurrency() {
@@ -15442,6 +15459,7 @@
         // Auto-calculates the FD placement's maturity date from commencing date + tenure, and
         // previews the simple-interest projected payout for this specific deposit.
         function recalcTxFdMaturity() {
+            updateTxTransferFxVisibility(); // v632: txCurrency change re-evaluates the Multi->Multi conversion block
             const startVal = document.getElementById("txFdStartDate").value;
             const tenure = parseInt(document.getElementById("txFdTenureMonths").value, 10);
             const preview = document.getElementById("txFdMaturityPreview");
@@ -15562,6 +15580,18 @@
         // currencies differ. Multi-currency and Fixed Deposit accounts hold per-currency baskets
         // (a transfer into one just credits that basket in the transaction's own currency — no
         // conversion happens at all, so there's nothing to fix there).
+        let txTransferDestCurrencyPending = null; // v632: dest currency to restore when editing a saved conversion
+        // v632: the (from, to) currencies of the transfer being entered — basket currencies for Multi->Multi.
+        function txTransferCurrencies(srcAcc, destAcc) {
+            if (srcAcc && destAcc && srcAcc.type === "multi" && destAcc.type === "multi")
+                return { from: document.getElementById("txCurrency").value, to: document.getElementById("txTransferDestCurrency").value };
+            return { from: srcAcc && srcAcc.currency, to: destAcc && destAcc.currency };
+        }
+        function onTransferDestCurrencyChange() {
+            const a = document.getElementById("txTransferRate"), b = document.getElementById("txTransferDestAmount");
+            a.value = ""; b.value = "";
+            updateTxTransferFxVisibility();
+        }
         async function updateTxTransferFxVisibility() {
             const wrap = document.getElementById("txTransferFxWrap");
             const type = document.getElementById("txType").value;
@@ -15576,6 +15606,36 @@
             const accounts = await readAllDB(STORES.ACCOUNTS);
             const srcAcc = accounts.find(a => a.id === srcId);
             const destAcc = accounts.find(a => a.id === destId);
+
+            // v632: Multi-Currency -> Multi-Currency (same account allowed) = currency conversion between baskets.
+            if (srcAcc && destAcc && srcAcc.type === "multi" && destAcc.type === "multi") {
+                const curSel = document.getElementById("txTransferDestCurrency");
+                const fromCur = document.getElementById("txCurrency").value;
+                const keep = txTransferDestCurrencyPending !== null ? txTransferDestCurrencyPending : curSel.value;
+                txTransferDestCurrencyPending = null;
+                const codes = Array.from(document.getElementById("txCurrency").options).map(o => o.value).filter(c => c && c !== fromCur);
+                curSel.innerHTML = `<option value="">— same currency (normal transfer) —</option>` + codes.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+                curSel.value = codes.includes(keep) ? keep : "";
+                const converting = curSel.value !== "";
+                wrap.style.display = "block";
+                document.getElementById("txTransferDestCurrencyRow").style.display = "block";
+                document.getElementById("txTransferFxToggleRow").style.display = "none";
+                document.getElementById("txTransferFxToggle").checked = converting;
+                document.getElementById("txTransferFxManualFields").style.display = converting ? "block" : "none";
+                if (converting) {
+                    document.getElementById("txTransferRateLabel").textContent = `Exchange Rate (1 ${fromCur} = ? ${curSel.value})`;
+                    document.getElementById("txTransferDestAmountLabel").textContent = `Amount Received (${curSel.value})`;
+                    if (!document.getElementById("txTransferRate").value) {
+                        const r = convertCurrency(1, fromCur, curSel.value), amt = parseFloat(document.getElementById("txAmount").value) || 0;
+                        if (r > 0 && isFinite(r)) { document.getElementById("txTransferRate").value = r.toFixed(6); document.getElementById("txTransferDestAmount").value = amt > 0 ? (amt * r).toFixed(2) : ""; }
+                    }
+                    updateTransferFxPreview(srcAcc, destAcc);
+                }
+                document.getElementById("txTransferFxAutoHint").textContent = converting ? "" : "Pick a currency above to convert between this account's currency balances (e.g. SGD → USD).";
+                return;
+            }
+            document.getElementById("txTransferDestCurrencyRow").style.display = "none";
+            document.getElementById("txTransferFxToggleRow").style.display = "";
 
             if (!srcAcc || !destAcc || srcAcc.type === "multi" || srcAcc.type === "fd" || destAcc.type === "multi" || destAcc.type === "fd" || srcAcc.currency === destAcc.currency) {
                 wrap.style.display = "none";
@@ -15605,7 +15665,8 @@
                         // Prefill both fields from today's live rate as a starting point — either
                         // one can then be overwritten to recalculate the other (see the two recalc
                         // functions below).
-                        const rate = convertCurrency(1, srcAcc.currency, destAcc.currency);
+                        const cc = txTransferCurrencies(srcAcc, destAcc);
+                        const rate = convertCurrency(1, cc.from, cc.to);
                         const amount = parseFloat(document.getElementById("txAmount").value) || 0;
                         document.getElementById("txTransferRate").value = rate.toFixed(6);
                         document.getElementById("txTransferDestAmount").value = amount > 0 ? (amount * rate).toFixed(2) : "";
@@ -15649,7 +15710,8 @@
             const destAmount = parseFloat(document.getElementById("txTransferDestAmount").value) || 0;
             const rate = parseFloat(document.getElementById("txTransferRate").value) || 0;
             if (!destAmount || !rate) { preview.textContent = ""; return; }
-            preview.textContent = `${destAcc.name} receives ${formatCurrency(destAmount, destAcc.currency)} at rate ${rate.toFixed(4)} — locked in for this transfer regardless of future FX rate table changes.`;
+            const cc = txTransferCurrencies(srcAcc, destAcc);
+            preview.textContent = `${destAcc.name} receives ${formatCurrency(destAmount, cc.to)} at rate ${rate.toFixed(4)} — locked in for this transfer regardless of future FX rate table changes.`;
         }
 
         // Also keeps the two conversion fields in sync when the base transaction Amount itself
@@ -15971,6 +16033,10 @@
                 }
                 transferDestAmountOverride = destAmountVal;
             }
+            // v632: Multi->Multi conversion target currency (null for every other transfer).
+            const transferDestCurrencyVal = (document.getElementById("txTransferDestCurrencyRow").style.display !== "none"
+                && document.getElementById("txType").value === "transfer" && transferDestAmountOverride != null)
+                ? (document.getElementById("txTransferDestCurrency").value || null) : null;
 
             // Editing an existing Transfer that already carries the "Fixed Deposit" category (set
             // deliberately by the FD maturity-resolution flow, not through this form) should keep
@@ -16093,6 +16159,7 @@
                 // the destination account is credited via a live currency conversion each time
                 // the app renders, as before (see computeAccountBalances()/applyToAccountBalance()).
                 destAmount: transferDestAmountOverride,
+                destCurrency: transferDestCurrencyVal, // v632
                 // v468: optional link to an Insurance policy — only meaningful for an Expense, and only
                 // read while the "Policy" row is actually showing (see refreshTxPolicyRow()). Listed
                 // here explicitly for the same reason as splitGroupId/isRefund below: this record is
@@ -22883,7 +22950,9 @@
                 if (t.type === "expense") applyToAccountBalance(aSrc, t.amount, t.currency, -1, t.manualFxRate);
                 if (t.type === "transfer") {
                     applyToAccountBalance(aSrc, t.amount, t.currency, -1);
-                    applyToAccountBalance(aDest, t.amount, t.currency, +1, null, t.destAmount);
+                    // v632: Multi-Currency -> Multi-Currency conversion: credit destAmount to the destCurrency basket.
+                    if (t.destCurrency && t.destAmount != null) applyToAccountBalance(aDest, t.destAmount, t.destCurrency, +1, null, null);
+                    else applyToAccountBalance(aDest, t.amount, t.currency, +1, null, t.destAmount);
                 }
             });
 
@@ -25383,13 +25452,39 @@
         function fmtFundUnits(u) {
             return (u || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
         }
+        // v634: Average buy price = MOVING AVERAGE COST of the units still held, replayed oldest-first:
+        //   Buy: cost += amount, units += units.   Sell: cost -= cost * soldUnits / unitsBefore (average price unchanged).
+        //   Dividend (Reinvest) / Contribution: units += units at zero cost (they are profit, same as Invested excludes them).
+        // Hidden when nothing is held, or the log can't be replayed honestly (sold more than the entries ever bought).
+        function fundAvgBuyPrice(fundTxs) {
+            const rows = (fundTxs || []).filter(t => t.date).slice()
+                .sort((a, b) => String(a.date).localeCompare(String(b.date)) || (Number(a.id) || 0) - (Number(b.id) || 0));
+            let cost = 0, units = 0, sawBuy = false;
+            for (const t of rows) {
+                const u = Number(t.units) || 0;
+                if (t.fundTxType === "buy" && u > 0 && t.amount > 0) { cost += t.amount; units += u; sawBuy = true; }
+                else if ((t.fundTxType === "dividend_reinvest" || t.fundTxType === "contribution") && u > 0) { units += u; }
+                else if (t.fundTxType === "sell" && u > 0) {
+                    if (u > units + 1e-6) return null;
+                    cost -= units > 0 ? cost * (u / units) : 0;
+                    units -= u;
+                }
+            }
+            return (sawBuy && units > 1e-6 && cost > 0) ? cost / units : null;
+        }
+        function fundAvgBuyHTML(f, fundTxs) {
+            const p = fundAvgBuyPrice(fundTxs);
+            if (p === null) return "";
+            const s = p.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 }) + (isGoldFund(f) ? "/g" : "");
+            return `<div class="fh-grey fh-grey-gap" title="Moving average cost of the units you still hold. Sells keep the average; later buys re-average it; reinvested/contributed units count at zero cost.">Avg buy ${s}</div>`;
+        }
         // v534: one panel for both card types. Left = the main money figure: Current inv. (with Invested /
         // Recovered as small grey text) once something has been taken out, or just Invested when nothing has.
         // Right = Units x NAV, which is how the card's Value is made. Fully recovered principal reads
         // "Fully recovered" with the amount above cost instead of a negative number.
         function fundCardStatsHTML(f, invested, recovered, fundTxs) {
             const gold = isGoldFund(f);
-            const uxn = `<div class="fh-uxn"><div class="fh-stat-l">Units × NAV</div><div class="fh-stat-v">${fmtFundUnits(f.units)}${gold ? " g" : ""} × ${(Number(f.currentNav) || 0).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}${gold ? "/g" : ""}${goldStalenessBadgeHTML(f)}</div></div>`;
+            const uxn = `<div class="fh-uxn"><div class="fh-stat-l">Units × NAV</div><div class="fh-stat-v">${fmtFundUnits(f.units)}${gold ? " g" : ""} × ${(Number(f.currentNav) || 0).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}${gold ? "/g" : ""}${goldStalenessBadgeHTML(f)}</div>${fundAvgBuyHTML(f, fundTxs)}</div>`;
             if (Math.abs(recovered) < 0.005) {
                 return `<div class="fh-panel"><div><div class="fh-stat-l">Invested</div><div class="fh-stat-v strong">${formatCurrency(invested, f.currency)}</div></div>${uxn}</div>`;
             }
@@ -29849,6 +29944,7 @@
             recalcTxManualFxPreview: () => recalcTxManualFxPreview(),
             fxLockInvalidate: () => fxLockInvalidate(),
             recalcTransferFxFromRate: () => recalcTransferFxFromRate(),
+            onTransferDestCurrencyChange: () => onTransferDestCurrencyChange(),
             recalcTransferFxFromDestAmount: () => recalcTransferFxFromDestAmount(),
             recalcFundTxTotal: () => recalcFundTxTotal(),
             recalcFundTxPriceFromTotal: () => recalcFundTxPriceFromTotal(),
